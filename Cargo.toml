@@ -1,5 +1,5 @@
 [workspace]
-members = ["service"]
+members = ["parachains/asset-hub","parachains/coretime", "service"]
 resolver = "2"
 
 [workspace.package]

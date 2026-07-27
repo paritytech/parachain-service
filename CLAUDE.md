@@ -4,12 +4,13 @@ This implements the parachain service that will make Polkadot Parachains work on
 
 Ensure that you have access to all the resources below. Check the `.env` file for paths. They can
 either already be checked out on machine at something like `../` or need to be newly cloned into the
-gitignored `vendor/` directory. Once you have done this, write the paths to the resources in the
-`.env` file for future reference.
+gitignored `vendor/` directory. Ask the user whether it should be freshly cloned or not. Once you
+have done this, write the paths to the resources in the `.env` file for future reference. Use `gh`,
+if available.
 
 - WIP Dafny spec: https://github.com/paritytech/polkadot-sdk/pull/11883
 - WIP Cumulus Spec: https://github.com/paritytech/polkadot-sdk/blob/mku-cumulus-on-jam-doc/designs/parachain-service-on-jam/parachain-service-on-jam.md
-- 0.8.0 JAM Gray Paper: https://github.com/gavofyork/graypaper
+- JAM Gray Paper: https://github.com/gavofyork/graypaper
 
 ## Objectives
 
