@@ -15,13 +15,14 @@ unexpected_cfgs = { level = "warn", check-cfg = [] }
 [workspace.dependencies]
 jam-types = { version = "0.1.28", default-features = false }
 jam-pvm-common = { version = "0.1.28", default-features = false }
-polkavm-derive = { version = "0.30.0", default-features = false }
+polkavm-derive = { version = "0.36.0", default-features = false }
 
 # FRAME umbrella crate. Must be named `frame` (or `polkadot-sdk-frame`) for compatibility with
 # `frame-support`. See https://docs.rs/polkadot-sdk-frame
 frame = { version = "0.18.0", package = "polkadot-sdk-frame", default-features = false, features = ["runtime"] }
 codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }
 scale-info = { version = "2.11", default-features = false, features = ["derive"] }
+substrate-wasm-builder = { git = "https://github.com/paritytech/polkadot-sdk", rev = "1275a4bbddf264ac53b906617a75c5685c6c948e" }
 
 # System pallets, wired into their respective runtimes.
 asset-hub-system = { path = "pallets/asset-hub-system", default-features = false }

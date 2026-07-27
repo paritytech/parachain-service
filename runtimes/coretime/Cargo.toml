@@ -20,6 +20,7 @@ std = [
 	"coretime-system/std",
 	"frame/std",
 	"scale-info/std",
+	"substrate-wasm-builder",
 ]
 runtime-benchmarks = [
 	"coretime-system/runtime-benchmarks",
@@ -29,6 +30,9 @@ try-runtime = [
 	"coretime-system/try-runtime",
 	"frame/try-runtime",
 ]
+
+[build-dependencies]
+substrate-wasm-builder = { workspace = true, optional = true }
 
 [lints]
 workspace = true
