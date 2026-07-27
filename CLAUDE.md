@@ -11,6 +11,7 @@ if available.
 - WIP Dafny spec: https://github.com/paritytech/polkadot-sdk/pull/11883
 - WIP Cumulus Spec: https://github.com/paritytech/polkadot-sdk/blob/mku-cumulus-on-jam-doc/designs/parachain-service-on-jam/parachain-service-on-jam.md
 - JAM Gray Paper: https://github.com/gavofyork/graypaper
+- Project Plan: https://hackmd.io/16r_PWiUQTuStKtZZx-0Bw.md (needs to be fetched by the user manually)
 
 ## Objectives
 
