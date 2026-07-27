@@ -22,3 +22,7 @@ polkavm-derive = { version = "0.30.0", default-features = false }
 frame = { version = "0.18.0", package = "polkadot-sdk-frame", default-features = false, features = ["runtime"] }
 codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }
 scale-info = { version = "2.11", default-features = false, features = ["derive"] }
+
+# System pallets, wired into their respective runtimes.
+asset-hub-system = { path = "pallets/asset-hub-system", default-features = false }
+coretime-system = { path = "pallets/coretime-system", default-features = false }

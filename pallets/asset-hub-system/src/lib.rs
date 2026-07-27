@@ -6,13 +6,13 @@ pub use pallet::*;
 
 #[frame::pallet]
 pub mod pallet {
-	use frame::prelude::*;
+    use frame::prelude::*;
 
-	#[pallet::config]
-	pub trait Config: frame_system::Config {}
+    #[pallet::config]
+    pub trait Config: frame_system::Config {}
 
-	#[pallet::pallet]
-	pub struct Pallet<T>(_);
+    #[pallet::pallet]
+    pub struct Pallet<T>(_);
 
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {

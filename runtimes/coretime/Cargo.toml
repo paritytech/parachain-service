@@ -7,6 +7,28 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
+codec = { workspace = true }
+scale-info = { workspace = true }
+frame = { workspace = true }
+
+coretime-system = { workspace = true }
+
+[features]
+default = ["std"]
+std = [
+	"codec/std",
+	"coretime-system/std",
+	"frame/std",
+	"scale-info/std",
+]
+runtime-benchmarks = [
+	"coretime-system/runtime-benchmarks",
+	"frame/runtime-benchmarks",
+]
+try-runtime = [
+	"coretime-system/try-runtime",
+	"frame/try-runtime",
+]
 
 [lints]
 workspace = true

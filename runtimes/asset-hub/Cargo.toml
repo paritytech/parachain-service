@@ -7,6 +7,28 @@ repository.workspace = true
 license.workspace = true
 
 [dependencies]
+codec = { workspace = true }
+scale-info = { workspace = true }
+frame = { workspace = true }
+
+asset-hub-system = { workspace = true }
+
+[features]
+default = ["std"]
+std = [
+	"asset-hub-system/std",
+	"codec/std",
+	"frame/std",
+	"scale-info/std",
+]
+runtime-benchmarks = [
+	"asset-hub-system/runtime-benchmarks",
+	"frame/runtime-benchmarks",
+]
+try-runtime = [
+	"asset-hub-system/try-runtime",
+	"frame/try-runtime",
+]
 
 [lints]
 workspace = true

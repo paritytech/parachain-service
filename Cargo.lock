@@ -414,6 +414,12 @@ checksum = "d3fb67a6e08acf24fdeccbac2cb6ac4305825bd1f117462e0e6f2f193345ad56"
 [[package]]
 name = "asset-hub"
 version = "0.1.0"
+dependencies = [
+ "asset-hub-system",
+ "parity-scale-codec",
+ "polkadot-sdk-frame",
+ "scale-info",
+]
 
 [[package]]
 name = "asset-hub-system"
@@ -718,6 +724,12 @@ checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 [[package]]
 name = "coretime"
 version = "0.1.0"
+dependencies = [
+ "coretime-system",
+ "parity-scale-codec",
+ "polkadot-sdk-frame",
+ "scale-info",
+]
 
 [[package]]
 name = "coretime-system"

@@ -1,14 +1,178 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+//! Coretime runtime.
+//!
+//! A minimal FRAME runtime that amalgamates [`frame_system`] with the
+//! [`coretime_system`] pallet, generated with the `frame`
+//! ([`polkadot-sdk-frame`](https://docs.rs/polkadot-sdk-frame)) umbrella crate's `runtime` feature.
+
+#![cfg_attr(not(feature = "std"), no_std)]
+
+extern crate alloc;
+
+use alloc::{borrow::Cow, vec::Vec};
+use frame::{
+    deps::sp_runtime::transaction_validity::{TransactionSource, TransactionValidity},
+    runtime::{apis, prelude::*},
+};
+
+/// The runtime version.
+#[runtime_version]
+pub const VERSION: RuntimeVersion = RuntimeVersion {
+    spec_name: Cow::Borrowed("coretime"),
+    impl_name: Cow::Borrowed("coretime"),
+    authoring_version: 1,
+    spec_version: 0,
+    impl_version: 1,
+    apis: RUNTIME_API_VERSIONS,
+    transaction_version: 1,
+    system_version: 1,
+};
+
+/// The version information used to identify this runtime when compiled natively.
+#[cfg(feature = "std")]
+pub fn native_version() -> NativeVersion {
+    NativeVersion {
+        runtime_version: VERSION,
+        can_author_with: Default::default(),
+    }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// The transaction extensions that are added to the runtime.
+type TxExtension = (
+    // Checks that the sender is not the zero address.
+    frame_system::CheckNonZeroSender<Runtime>,
+    // Checks that the runtime version is correct.
+    frame_system::CheckSpecVersion<Runtime>,
+    // Checks that the transaction version is correct.
+    frame_system::CheckTxVersion<Runtime>,
+    // Checks that the genesis hash is correct.
+    frame_system::CheckGenesis<Runtime>,
+    // Checks that the era is valid.
+    frame_system::CheckEra<Runtime>,
+    // Checks that the nonce is valid.
+    frame_system::CheckNonce<Runtime>,
+    // Checks that the weight is valid.
+    frame_system::CheckWeight<Runtime>,
+);
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+// Composes the runtime by adding all the used pallets and deriving necessary types.
+#[frame_construct_runtime]
+mod runtime {
+    /// The main runtime type.
+    #[runtime::runtime]
+    #[runtime::derive(
+        RuntimeCall,
+        RuntimeEvent,
+        RuntimeError,
+        RuntimeOrigin,
+        RuntimeFreezeReason,
+        RuntimeHoldReason,
+        RuntimeSlashReason,
+        RuntimeLockId,
+        RuntimeTask,
+        RuntimeViewFunction
+    )]
+    pub struct Runtime;
+
+    /// Mandatory system pallet that should always be included in a FRAME runtime.
+    #[runtime::pallet_index(0)]
+    pub type System = frame_system::Pallet<Runtime>;
+
+    /// Coretime specific system pallet, exercising coretime host functions and hooks.
+    #[runtime::pallet_index(1)]
+    pub type CoretimeSystem = coretime_system::Pallet<Runtime>;
+}
+
+parameter_types! {
+    pub const Version: RuntimeVersion = VERSION;
+}
+
+/// Implements the types required for the system pallet.
+#[derive_impl(frame_system::config_preludes::SolochainDefaultConfig)]
+impl frame_system::Config for Runtime {
+    type Block = Block;
+    type Version = Version;
+}
+
+/// Implements the types required for the coretime system pallet.
+impl coretime_system::Config for Runtime {}
+
+type Block = frame::runtime::types_common::BlockOf<Runtime, TxExtension>;
+type Header = HeaderFor<Runtime>;
+
+type RuntimeExecutive =
+    Executive<Runtime, Block, frame_system::ChainContext<Runtime>, Runtime, AllPalletsWithSystem>;
+
+impl_runtime_apis! {
+    impl apis::Core<Block> for Runtime {
+        fn version() -> RuntimeVersion {
+            VERSION
+        }
+
+        fn execute_block(block: <Block as frame::traits::Block>::LazyBlock) {
+            RuntimeExecutive::execute_block(block)
+        }
+
+        fn initialize_block(header: &Header) -> ExtrinsicInclusionMode {
+            RuntimeExecutive::initialize_block(header)
+        }
+    }
+
+    impl apis::Metadata<Block> for Runtime {
+        fn metadata() -> OpaqueMetadata {
+            OpaqueMetadata::new(Runtime::metadata().into())
+        }
+
+        fn metadata_at_version(version: u32) -> Option<OpaqueMetadata> {
+            Runtime::metadata_at_version(version)
+        }
+
+        fn metadata_versions() -> Vec<u32> {
+            Runtime::metadata_versions()
+        }
+    }
+
+    impl apis::BlockBuilder<Block> for Runtime {
+        fn apply_extrinsic(extrinsic: ExtrinsicFor<Runtime>) -> ApplyExtrinsicResult {
+            RuntimeExecutive::apply_extrinsic(extrinsic)
+        }
+
+        fn finalize_block() -> HeaderFor<Runtime> {
+            RuntimeExecutive::finalize_block()
+        }
+
+        fn inherent_extrinsics(data: InherentData) -> Vec<ExtrinsicFor<Runtime>> {
+            data.create_extrinsics()
+        }
+
+        fn check_inherents(
+            block: <Block as frame::traits::Block>::LazyBlock,
+            data: InherentData,
+        ) -> CheckInherentsResult {
+            data.check_extrinsics(&block)
+        }
+    }
+
+    impl apis::TaggedTransactionQueue<Block> for Runtime {
+        fn validate_transaction(
+            source: TransactionSource,
+            tx: ExtrinsicFor<Runtime>,
+            block_hash: <Runtime as frame_system::Config>::Hash,
+        ) -> TransactionValidity {
+            RuntimeExecutive::validate_transaction(source, tx, block_hash)
+        }
+    }
+
+    impl apis::GenesisBuilder<Block> for Runtime {
+        fn build_state(config: Vec<u8>) -> GenesisBuilderResult {
+            build_state::<RuntimeGenesisConfig>(config)
+        }
+
+        fn get_preset(id: &Option<PresetId>) -> Option<Vec<u8>> {
+            get_preset::<RuntimeGenesisConfig>(id, |_| None)
+        }
+
+        fn preset_names() -> Vec<PresetId> {
+            Default::default()
+        }
     }
 }
