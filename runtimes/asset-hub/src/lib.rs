@@ -36,28 +36,18 @@ pub fn native_version() -> NativeVersion {
     }
 }
 
-/// The transaction extensions that are added to the runtime.
 type TxExtension = (
-    // Checks that the sender is not the zero address.
     frame_system::CheckNonZeroSender<Runtime>,
-    // Checks that the runtime version is correct.
     frame_system::CheckSpecVersion<Runtime>,
-    // Checks that the transaction version is correct.
     frame_system::CheckTxVersion<Runtime>,
-    // Checks that the genesis hash is correct.
     frame_system::CheckGenesis<Runtime>,
-    // Checks that the era is valid.
     frame_system::CheckEra<Runtime>,
-    // Checks that the nonce is valid.
     frame_system::CheckNonce<Runtime>,
-    // Checks that the weight is valid.
     frame_system::CheckWeight<Runtime>,
 );
 
-// Composes the runtime by adding all the used pallets and deriving necessary types.
 #[frame_construct_runtime]
 mod runtime {
-    /// The main runtime type.
     #[runtime::runtime]
     #[runtime::derive(
         RuntimeCall,
@@ -174,5 +164,21 @@ impl_runtime_apis! {
         fn preset_names() -> Vec<PresetId> {
             Default::default()
         }
+    }
+}
+
+// TODO: Use register_validate_block! macro from cumulus-pallet-parachain-system once it is ready.
+#[cfg(not(feature = "std"))]
+#[doc(hidden)]
+mod jam_parachain_entrypoint {
+    #[no_mangle]
+    #[cfg_attr(
+        target_arch = "riscv64",
+        frame::deps::sp_api::__private::polkavm_export(
+            abi = frame::deps::sp_api::__private::polkavm_abi
+        )
+    )]
+    unsafe fn jam_validate_block() {
+        todo!("Impl jam_validate_block");
     }
 }

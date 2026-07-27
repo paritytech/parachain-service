@@ -1,3 +1,5 @@
+mod pvm 'scripts/pvm.justfile'
+
 default: help
 
 help:
