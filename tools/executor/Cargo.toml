@@ -1,0 +1,47 @@
+# Standalone harness for running parachain PVM blobs natively, for debugging.
+#
+# Two backends:
+#   * `runtime` — Substrate runtime blobs (`*.polkavm`) via `sc-executor`'s
+#     `WasmExecutor` (PolkaVM backend), resolving `sp_io` host functions by name.
+#   * `service` — JAM service blobs (`*.jam`) via a bare PolkaVM engine, with JAM
+#     host calls dispatched by numeric `ecalli` index (see `src/host.rs`).
+#
+# This is its OWN workspace on purpose: it path-depends on the polkadot-sdk
+# companion submodule (a large dependency tree incl. wasmtime), and we don't want
+# that pulled into the main parachain-service workspace / dev loop.
+[package]
+name = "executor"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Empty table => standalone workspace, isolated from the parent workspace.
+[workspace]
+
+[dependencies]
+# --- runtime backend: Substrate WasmExecutor (PolkaVM) ---
+sc-executor = { path = "../../vendor/polkadot-sdk-companion/substrate/client/executor" }
+sp-io = { path = "../../vendor/polkadot-sdk-companion/substrate/primitives/io" }
+sp-core = { path = "../../vendor/polkadot-sdk-companion/substrate/primitives/core" }
+sp-version = { path = "../../vendor/polkadot-sdk-companion/substrate/primitives/version" }
+sp-runtime = { path = "../../vendor/polkadot-sdk-companion/substrate/primitives/runtime" }
+sp-state-machine = { path = "../../vendor/polkadot-sdk-companion/substrate/primitives/state-machine" }
+codec = { package = "parity-scale-codec", version = "3" }
+
+# --- service backend: bare PolkaVM (JAM) ---
+# Same PolkaVM version as the rest of the tree; it executes the JamV1 ISA.
+polkavm = "0.36.0"
+# Parser for the `.jam` container only. `default-features = false` keeps its
+# `std` feature off, which is what force-enables `polkavm/std` (pinned to 0.30)
+# — so we avoid a second, semver-incompatible PolkaVM in the graph. We build the
+# 0.36 `ProgramParts` ourselves from its public fields (see `src/service.rs`).
+jam-program-blob-common = { version = "0.1.28", default-features = false }
+jam-types = { version = "0.1.28" }
+jam-codec = { version = "0.1.1", features = ["derive"] }
+
+# --- CLI / util ---
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hex = "0.4"
+anyhow = "1"

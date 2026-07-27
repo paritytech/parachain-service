@@ -1,11 +1,8 @@
 mod parachain 'scripts/parachain.justfile'
+mod service 'scripts/service.justfile'
 
-AHM_PVM_BLOB := "target/release/rbuild/asset-hub/asset-hub-blob.polkavm"
-CORETIME_PVM_BLOB := "target/release/rbuild/coretime/coretime-blob.polkavm"
-SERVICE_PVM_BLOB := "target/parachain-service.jam"
-
-# Max size of Service and para runtime blobs
-MAX_BLOB_SIZE := "4194304"
+# Shared paths & config; also imported by the modules above.
+import 'scripts/common.justfile'
 
 default: help
 
@@ -51,9 +48,9 @@ build-service-pvm:
 	set -eu
 
 	mkdir -p target
-	jam-pvm-build --module service --output {{ SERVICE_PVM_BLOB }} service
+	jam-pvm-build --module service --output {{ SERVICE_BLOB }} service
 
-	just check-blob-sizes {{ SERVICE_PVM_BLOB }}
+	just check-blob-sizes {{ SERVICE_BLOB }}
 
 build-runtime-pvms:
 	#!/usr/bin/env sh
@@ -62,8 +59,8 @@ build-runtime-pvms:
 
 	SUBSTRATE_RUNTIME_TARGET=riscv cargo build --release --package asset-hub --package coretime
 
-	just check-blob-sizes {{ AHM_PVM_BLOB }}
-	just check-blob-sizes {{ CORETIME_PVM_BLOB }}
+	just check-blob-sizes {{ ASSET_HUB_BLOB }}
+	just check-blob-sizes {{ CORETIME_BLOB }}
 
 # TODO: use production profile for building
 
