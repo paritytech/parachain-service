@@ -14,7 +14,6 @@ use frame::{
     runtime::{apis, prelude::*},
 };
 
-/// The runtime version.
 #[runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: Cow::Borrowed("coretime"),
@@ -63,11 +62,9 @@ mod runtime {
     )]
     pub struct Runtime;
 
-    /// Mandatory system pallet that should always be included in a FRAME runtime.
     #[runtime::pallet_index(0)]
     pub type System = frame_system::Pallet<Runtime>;
 
-    /// Coretime specific system pallet, exercising coretime host functions and hooks.
     #[runtime::pallet_index(1)]
     pub type CoretimeSystem = coretime_system::Pallet<Runtime>;
 }
@@ -76,14 +73,12 @@ parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
 }
 
-/// Implements the types required for the system pallet.
 #[derive_impl(frame_system::config_preludes::SolochainDefaultConfig)]
 impl frame_system::Config for Runtime {
     type Block = Block;
     type Version = Version;
 }
 
-/// Implements the types required for the coretime system pallet.
 impl coretime_system::Config for Runtime {}
 
 type Block = frame::runtime::types_common::BlockOf<Runtime, TxExtension>;
