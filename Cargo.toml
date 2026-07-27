@@ -1,0 +1,18 @@
+[workspace]
+members = ["service"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Parity Technologies <admin@parity.io>"]
+repository = "https://github.com/paritytech/parachain-service"
+license = "Apache-2.0"
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [] }
+
+[workspace.dependencies]
+jam-types = { version = "0.1.28", default-features = false }
+jam-pvm-common = { version = "0.1.28", default-features = false }
+polkavm-derive = { version = "0.30.0", default-features = false }
