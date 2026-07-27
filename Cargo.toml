@@ -1,5 +1,5 @@
 [workspace]
-members = ["parachains/asset-hub","parachains/coretime", "service"]
+members = ["pallets/asset-hub-system", "pallets/coretime-system","runtimes/asset-hub","runtimes/coretime", "service"]
 resolver = "2"
 
 [workspace.package]
@@ -16,3 +16,9 @@ unexpected_cfgs = { level = "warn", check-cfg = [] }
 jam-types = { version = "0.1.28", default-features = false }
 jam-pvm-common = { version = "0.1.28", default-features = false }
 polkavm-derive = { version = "0.30.0", default-features = false }
+
+# FRAME umbrella crate. Must be named `frame` (or `polkadot-sdk-frame`) for compatibility with
+# `frame-support`. See https://docs.rs/polkadot-sdk-frame
+frame = { version = "0.18.0", package = "polkadot-sdk-frame", default-features = false, features = ["runtime"] }
+codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }
+scale-info = { version = "2.11", default-features = false, features = ["derive"] }

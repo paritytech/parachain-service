@@ -1,0 +1,29 @@
+[package]
+name = "coretime-system"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+codec = { workspace = true }
+scale-info = { workspace = true }
+frame = { workspace = true }
+
+[features]
+default = ["std"]
+std = [
+	"codec/std",
+	"frame/std",
+	"scale-info/std",
+]
+runtime-benchmarks = [
+	"frame/runtime-benchmarks",
+]
+try-runtime = [
+	"frame/try-runtime",
+]
+
+[lints]
+workspace = true
