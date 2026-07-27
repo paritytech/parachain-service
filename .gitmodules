@@ -1,0 +1,4 @@
+[submodule "vendor/polkadot-sdk-companion"]
+	path = vendor/polkadot-sdk-companion
+	url = https://github.com/paritytech/polkadot-sdk.git
+	branch = master

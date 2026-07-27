@@ -1,0 +1,25 @@
+# Standalone harness for running parachain runtime PVM blobs natively.
+#
+# This is its OWN workspace on purpose: it path-depends on the polkadot-sdk
+# companion submodule (a large dependency tree incl. wasmtime), and we don't
+# want that pulled into the main parachain-service workspace / dev loop.
+[package]
+name = "runtime-executor"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Empty table => standalone workspace, isolated from the parent workspace.
+[workspace]
+
+[dependencies]
+sc-executor = { path = "../../vendor/polkadot-sdk-companion/substrate/client/executor" }
+sp-io = { path = "../../vendor/polkadot-sdk-companion/substrate/primitives/io" }
+sp-core = { path = "../../vendor/polkadot-sdk-companion/substrate/primitives/core" }
+sp-version = { path = "../../vendor/polkadot-sdk-companion/substrate/primitives/version" }
+sp-runtime = { path = "../../vendor/polkadot-sdk-companion/substrate/primitives/runtime" }
+sp-state-machine = { path = "../../vendor/polkadot-sdk-companion/substrate/primitives/state-machine" }
+codec = { package = "parity-scale-codec", version = "3" }
+clap = { version = "4", features = ["derive"] }
+hex = "0.4"
+anyhow = "1"
