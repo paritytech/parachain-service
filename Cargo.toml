@@ -1,5 +1,5 @@
 [workspace]
-members = ["pallets/asset-hub-system", "pallets/coretime-system","runtimes/asset-hub","runtimes/coretime", "service"]
+members = ["pallets/asset-hub-system", "pallets/coretime-system","runtimes/asset-hub","runtimes/coretime", "service", "authorizer"]
 resolver = "2"
 
 [workspace.package]

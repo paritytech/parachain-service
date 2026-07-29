@@ -1,0 +1,19 @@
+[package]
+name = "parachain-authorizer"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+jam-types = { workspace = true }
+jam-pvm-common = { workspace = true, features = ["authorizer", "logging"] }
+polkavm-derive = { workspace = true }

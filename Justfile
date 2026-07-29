@@ -40,8 +40,8 @@ build: build-native build-pvm
 build-native:
 	SKIP_WASM_BUILD=1 cargo build
 
-# Build the service and parachain-runtime PVM blobs
-build-pvm: build-service-pvm build-runtime-pvms
+# Build the service, authorizer and parachain-runtime PVM blobs
+build-pvm: build-service-pvm build-authorizer-pvm build-runtime-pvms
 
 build-service-pvm:
 	#!/usr/bin/env sh
@@ -51,6 +51,15 @@ build-service-pvm:
 	jam-pvm-build --module service --output {{ SERVICE_BLOB }} service
 
 	just check-blob-sizes {{ SERVICE_BLOB }}
+
+build-authorizer-pvm:
+	#!/usr/bin/env sh
+	set -eu
+
+	mkdir -p target
+	jam-pvm-build --module authorizer --output {{ AUTHORIZER_BLOB }} authorizer
+
+	just check-blob-sizes {{ AUTHORIZER_BLOB }}
 
 build-runtime-pvms:
 	#!/usr/bin/env sh

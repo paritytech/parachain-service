@@ -16,6 +16,7 @@
 
 mod host;
 mod input;
+mod jam_backend;
 mod runtime;
 mod service;
 
@@ -110,6 +111,7 @@ fn main() -> Result<()> {
                 ServiceAction::Refine(a) => (Entry::Refine, a),
                 ServiceAction::Accumulate(a) => (Entry::Accumulate, a),
             };
+
             let params = input::load_params(entry, args.input.as_deref(), args.format)?;
             println!(
                 "Invoking `{}` with {} bytes of params (gas budget {})",

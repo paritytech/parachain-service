@@ -29,14 +29,15 @@ sp-state-machine = { path = "../../vendor/polkadot-sdk-companion/substrate/primi
 codec = { package = "parity-scale-codec", version = "3" }
 
 # --- service backend: bare PolkaVM (JAM) ---
-# Same PolkaVM version as the rest of the tree; it executes the JamV1 ISA.
+# Our own 0.36 run-loop (src/service.rs) still exists; the polkajam node's host
+# runs on 0.30. Both PolkaVM majors coexist in the graph — each backend uses
+# exactly one, and JamV1 blobs are portable across them.
 polkavm = "0.36.0"
-# Parser for the `.jam` container only. `default-features = false` keeps its
-# `std` feature off, which is what force-enables `polkavm/std` (pinned to 0.30)
-# — so we avoid a second, semver-incompatible PolkaVM in the graph. We build the
-# 0.36 `ProgramParts` ourselves from its public fields (see `src/service.rs`).
-jam-program-blob-common = { version = "0.1.28", default-features = false }
-jam-types = { version = "0.1.28" }
+# JAM crates pinned to the *vendored polkajam sources* so they are a single,
+# shared instance with the `jam-node` dev-dependency (a crates.io copy would be a
+# distinct, type-incompatible crate that the node's contexts wouldn't accept).
+jam-program-blob-common = { path = "../../vendor/polkajam/crates/jam-program-blob/common" }
+jam-types = { path = "../../vendor/polkajam/crates/jam-types", features = ["std"] }
 jam-codec = { version = "0.1.1", features = ["derive"] }
 
 # --- CLI / util ---
@@ -45,3 +46,16 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 hex = "0.4"
 anyhow = "1"
+
+# --- reuse the node's in-memory JAM host (Storage + Engine + contexts) ---
+# Used ONLY by the tests in `src/jam_backend.rs`, so it lives in dev-dependencies
+# and never touches the CLI binary. `hazmat` exposes `jam_node::vm`
+# (Engine, {Refine,Accumulate}CallContext, Storage, ...). No polkadot-sdk deps in
+# this subtree; it brings its own PolkaVM 0.30 (the CLI binary only links 0.36).
+# jam-node uses an undeclared unstable feature (`substr_range`), so `cargo test`
+# needs `RUSTC_BOOTSTRAP=1` — see the `just service test` recipe.
+[dev-dependencies]
+jam-node = { path = "../../vendor/polkajam/crates/node", default-features = false, features = ["hazmat"] }
+jam-std-common = { path = "../../vendor/polkajam/crates/jam-std-common" }
+# So `RUST_LOG=jam_node=trace,pvm=trace` surfaces the node's host-call trace.
+env_logger = "0.11"

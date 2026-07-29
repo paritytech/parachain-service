@@ -1,0 +1,8 @@
+# The executor's test suite (src/jam_backend.rs) links the vendored polkajam
+# `jam-node` crate, which uses the unstable `#![feature(substr_range)]`. A pinned
+# nightly enables that feature directly, so no `RUSTC_BOOTSTRAP=1` hack is needed.
+#
+# This file only applies to `cargo` invoked from within `tools/executor/` (its own
+# workspace) — the parent parachain-service workspace keeps its default toolchain.
+[toolchain]
+channel = "nightly-2026-01-27"
