@@ -3704,6 +3704,7 @@ version = "0.1.0"
 dependencies = [
  "jam-pvm-common 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "jam-types 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "parity-scale-codec",
  "polkavm-derive 0.36.0",
 ]
 

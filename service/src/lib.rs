@@ -6,6 +6,7 @@ use jam_types::{WorkOutput as WorkResult, *};
 
 mod accumulate;
 mod refine;
+pub mod work_digest;
 
 /// Directory of this crate's `Cargo.toml`, used by `parachain-service-bin`'s
 /// `build.rs` to locate the crate when compiling it into a PVM blob.
