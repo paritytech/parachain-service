@@ -12,7 +12,8 @@ use jam_node::{
 };
 use jam_std_common::{hash_raw, Entropy, Privileges, Service};
 use jam_types::{
-    AuthConfig, Authorization, Authorizer, CodeHash, CoreIndex, FixedVec, RefineContext,
+    AuthConfig, Authorization, Authorizer, CodeHash, CoreIndex, ExtrinsicHash, ExtrinsicSpec,
+    FixedVec, RefineContext,
 };
 
 pub use jam_types::{
@@ -56,9 +57,35 @@ pub fn blob_hash(blob: &[u8]) -> Hash {
     hash_raw(blob)
 }
 
+/// A work item paired with the raw bytes of its extrinsics.
+///
+/// [`WorkItem::extrinsics`] only records each extrinsic's hash and length; the
+/// bytes themselves are supplied out-of-band through the refine context's
+/// `extrinsic_data`. Bundling them keeps a single source of truth so the
+/// per-item extrinsic count and the bytes fetched by `refine` cannot drift apart.
+pub struct WorkItemWithExtrinsics {
+    pub item: WorkItem,
+    pub extrinsics: Vec<Vec<u8>>,
+}
+
 /// Construct a minimal work item that invokes `service_blob`.
-pub fn work_item(service_blob: &[u8], payload: Vec<u8>) -> WorkItem {
-    WorkItem {
+///
+/// `extrinsics` holds one `Vec<u8>` per extrinsic; each becomes an
+/// [`ExtrinsicSpec`] (hash + length) on the [`WorkItem`], while the bytes are
+/// carried alongside for the refine context to expose via `refine::extrinsic`.
+pub fn work_item(
+    service_blob: &[u8],
+    payload: Vec<u8>,
+    extrinsics: Vec<Vec<u8>>,
+) -> WorkItemWithExtrinsics {
+    let specs: Vec<ExtrinsicSpec> = extrinsics
+        .iter()
+        .map(|bytes| ExtrinsicSpec {
+            hash: ExtrinsicHash(hash_raw(bytes)),
+            len: bytes.len() as u32,
+        })
+        .collect();
+    let item = WorkItem {
         service: SERVICE_ID,
         code_hash: CodeHash(blob_hash(service_blob)),
         refine_gas_limit: GAS,
@@ -66,15 +93,18 @@ pub fn work_item(service_blob: &[u8], payload: Vec<u8>) -> WorkItem {
         export_count: 0,
         payload: WorkPayload(payload),
         import_segments: Default::default(),
-        extrinsics: Default::default(),
-    }
+        extrinsics: specs
+            .try_into()
+            .expect("extrinsic count exceeds the JAM bound"),
+    };
+    WorkItemWithExtrinsics { item, extrinsics }
 }
 
 /// Execute a service blob's refine entry point with a minimal node call context.
 pub fn refine(
     service_blob: &[u8],
     authorizer_blob: &[u8],
-    work_items: Vec<WorkItem>,
+    work_items: Vec<WorkItemWithExtrinsics>,
     work_item_index: usize,
 ) -> Result<RefineOutcome> {
     if work_items.is_empty() {
@@ -88,8 +118,19 @@ pub fn refine(
     }
 
     let (storage, code_hash) = storage_with_code(service_blob)?;
+
+    // Split the bundles: the specs go into the work package, the raw bytes into
+    // the context's `extrinsic_data` (indexed `[work_item][extrinsic]`, which is
+    // what backs the `refine::extrinsic(index)` host call).
+    let mut items = Vec::with_capacity(work_items.len());
+    let mut extrinsic_data = Vec::with_capacity(work_items.len());
+    for bundle in work_items {
+        items.push(bundle.item);
+        extrinsic_data.push(bundle.extrinsics);
+    }
+
     let work_package = work_package(
-        work_items,
+        items,
         blob_hash(authorizer_blob),
         Default::default(),
         Default::default(),
@@ -102,7 +143,10 @@ pub fn refine(
         gas: GAS,
         auth_output: Default::default(),
         import_data: vec![],
-        extrinsic_data: vec![],
+        extrinsic_data: extrinsic_data
+            .into_iter()
+            .map(|per_item| per_item.into_iter().map(Into::into).collect())
+            .collect(),
         export_counter: 0,
         max_exports: 1024,
         exports: vec![],

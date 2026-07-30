@@ -19,7 +19,7 @@ pub fn refine(
 	let [work_item]: &[_; 1] = work_items.as_slice().try_into().expect("there must be exactly one work item");
 	
 	if work_item.extrinsics_count != 2 {
-		panic!("Work items need exactly two extrinsics");
+		panic!("The work item needs exactly two extrinsics");
 	}
 	let ext_para_state_proof = refine::extrinsic(0).expect("checked above for 2 extrinsics; qed");
 	let ext_jam_state_proof = refine::extrinsic(1).expect("checked above for 2 extrinsics; qed");

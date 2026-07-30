@@ -1,6 +1,7 @@
 use executor::jam;
 use jam_codec::Decode;
 use jam_types::{AuthTrace, WorkPayload};
+use codec::Encode;
 
 use parachain_authorizer_bin::BLOB as AUTHORIZER;
 use parachain_service_bin::BLOB as SERVICE;
@@ -9,11 +10,16 @@ use parachain_service_bin::BLOB as SERVICE;
 fn refine_runs_for_asset_hub() {
     let runtime = crate::WASM_BINARY.expect("Asset Hub runtime blob is built with `std`");
 
-    // Until the service invokes `jam_validate_block`, carry the runtime identity
-    // as the work payload. This keeps the runtime-owned refine test connected to
-    // the exact Asset Hub artifact it is intended to validate.
-    let payload = jam::blob_hash(runtime).to_vec();
-    let work_items = vec![jam::work_item(SERVICE, payload.clone())];
+    let code_hash = jam::blob_hash(runtime).to_vec();
+    let payload = code_hash.encode();
+
+    let para_state_proof = b"para-state-proof".to_vec();
+    let jam_state_proof = b"jam-state-proof".to_vec();
+    let work_items = vec![jam::work_item(
+        SERVICE,
+        payload.clone(),
+        vec![para_state_proof, jam_state_proof],
+    )];
     let outcome = jam::refine(SERVICE, AUTHORIZER, work_items, 0)
         .expect("Asset Hub refine should run to completion");
 
