@@ -1,6 +1,6 @@
 //! Execute parachain service entry points with polkajam's in-memory node host.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, bail, Result};
 use jam_node::{
@@ -11,11 +11,11 @@ use jam_node::{
     PvmBackend,
 };
 use jam_std_common::{hash_raw, Entropy, Privileges, Service};
-use jam_types::{Authorizer, CodeHash, FixedVec, RefineContext};
+use jam_types::{Authorization, Authorizer, CodeHash, CoreIndex, FixedVec, RefineContext};
 
 pub use jam_types::{
-    AccumulateItem, Hash, Segment, ServiceId, WorkItem, WorkItemRecord, WorkOutput, WorkPackage,
-    WorkPayload,
+    AccumulateItem, AuthTrace, Hash, Segment, ServiceId, WorkItem, WorkItemRecord, WorkOutput,
+    WorkPackage, WorkPayload,
 };
 
 /// Service id used by the lightweight executor contexts.
@@ -25,6 +25,7 @@ pub const SERVICE_ID: ServiceId = 0;
 pub const GAS: u64 = 5_000_000_000;
 
 /// Result of a refine invocation.
+#[derive(Debug)]
 pub struct RefineOutcome {
     pub output: WorkOutput,
     pub elapsed: Duration,
@@ -33,8 +34,17 @@ pub struct RefineOutcome {
 }
 
 /// Result of an accumulate invocation.
+#[derive(Debug)]
 pub struct AccumulateOutcome {
     pub yielded: Option<Hash>,
+    pub elapsed: Duration,
+    pub gas_used: u64,
+}
+
+/// Result of an is_authorized invocation.
+#[derive(Debug)]
+pub struct AuthorizeOutcome {
+    pub auth_trace: AuthTrace,
     pub elapsed: Duration,
     pub gas_used: u64,
 }
@@ -76,7 +86,7 @@ pub fn refine(
     }
 
     let (storage, code_hash) = storage_with_code(service_blob)?;
-    let work_package = work_package(work_items, blob_hash(authorizer_blob))?;
+    let work_package = work_package(work_items, blob_hash(authorizer_blob), Default::default())?;
 
     let mut context = RefineCallContextOwned {
         storage,
@@ -141,9 +151,39 @@ pub fn accumulate(service_blob: &[u8], items: Vec<AccumulateItem>) -> Result<Acc
     })
 }
 
-fn work_package(work_items: Vec<WorkItem>, authorizer_code_hash: Hash) -> Result<WorkPackage> {
+/// Execute an authorizer blob's is_authorized entry point with a minimal node call context.
+///
+/// The authorizer is a separate program from the service, with its own blob and
+/// code hash. `token` becomes the work package's `authorization` (the authorizer's
+/// input); the returned [`AuthTrace`] is what refine/accumulate later observe.
+pub fn is_authorized(
+    authorizer_blob: &[u8],
+    token: Vec<u8>,
+    core: CoreIndex,
+) -> Result<AuthorizeOutcome> {
+    let (storage, authorizer_code_hash) = storage_with_code(authorizer_blob)?;
+    let package = work_package(Vec::new(), authorizer_code_hash, Authorization(token))?;
+
+    let engine = interpreter_engine()?;
+    let start = Instant::now();
+    let (result, gas_used) = engine.is_authorized(&package.into(), core, &storage, None);
+    let elapsed = start.elapsed();
+    let auth_trace = result.map_err(|error| anyhow!("is_authorized failed: {error}"))?;
+
+    Ok(AuthorizeOutcome {
+        auth_trace,
+        elapsed,
+        gas_used,
+    })
+}
+
+fn work_package(
+    work_items: Vec<WorkItem>,
+    authorizer_code_hash: Hash,
+    authorization: Authorization,
+) -> Result<WorkPackage> {
     Ok(WorkPackage {
-        authorization: Default::default(),
+        authorization,
         auth_code_host: SERVICE_ID,
         authorizer: Authorizer {
             code_hash: CodeHash(authorizer_code_hash),

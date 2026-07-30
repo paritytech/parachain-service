@@ -30,3 +30,9 @@ To build the PVM service blob in `target/parachain-service.jam`, run:
 ```bash
 just build
 ```
+
+## Conventions
+
+### Testing
+
+Write test names in the form of `[<context>|trivial]_[errors|works]`. For example, `two_work_items_errors` or `trivial_works`. Assume that the file or module name is prefixed to the test function name.

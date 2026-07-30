@@ -12,6 +12,21 @@ help:
 # Run all checks
 ci: fmt check build lint
 
+# Fetch the build-critical vendored dependencies a fresh clone needs.
+vendor:
+	#!/usr/bin/env sh
+	set -eu
+	# The `polkadot-sdk-companion` submodule plus the (non-submodule, pinned)
+	# polkajam checkout that `tools/executor` builds against. Reference-only
+	# vendors (graypaper, cumulus/dafny specs) are cloned manually — see CLAUDE.md.
+	git submodule update --init --recursive
+	if [ ! -d vendor/polkajam/.git ]; then
+		git clone {{ POLKAJAM_URL }} vendor/polkajam
+	fi
+	git -C vendor/polkajam fetch --quiet origin {{ POLKAJAM_REV }} 2>/dev/null || git -C vendor/polkajam fetch --quiet origin
+	git -C vendor/polkajam checkout --quiet {{ POLKAJAM_REV }}
+	echo "vendored: polkajam @ {{ POLKAJAM_REV }} + submodules"
+
 # Short for fmt
 f: fmt
 # Format the code
@@ -43,6 +58,11 @@ fmt:
 c: check
 check:
 	cargo check --all-targets --workspace
+	# The `executor` runtime/service backends and the `executor-cli` binary sit
+	# behind non-default features, so `--workspace` alone never compiles them
+	# (the `jam` backend is covered above via the service/asset-hub test deps).
+	# Check them explicitly, else CI stays green while that code rots.
+	cargo check --all-targets --package executor-cli --features executor
 
 # Remove target dir
 clean:
@@ -91,6 +111,8 @@ build-runtime-pvms:
 
 lint:
 	cargo clippy --all-targets --workspace
+	# See `check`: lint the feature-gated executor backends and CLI too.
+	cargo clippy --all-targets --package executor-cli --features executor
 
 check-blob-sizes blob:
 	#!/usr/bin/env sh
