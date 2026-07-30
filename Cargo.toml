@@ -30,6 +30,12 @@ unexpected_cfgs = { level = "warn", check-cfg = [] }
 [workspace.dependencies]
 jam-types = { version = "0.1.28", default-features = false }
 jam-pvm-common = { version = "0.1.28", default-features = false }
+binary-merkle-tree = { version = "16.1.1", default-features = false }
+# `H256` for the authorizer's collator-set root. Sourced from `primitive-types`
+# directly (not `sp-core`) to keep the PVM guest off the `sp-runtime`/`sp-io`
+# dependency tree, which unconditionally compiles `secp256k1`'s C sources on
+# `cfg(not(substrate_runtime))` targets and so cannot build for PolkaVM.
+primitive-types = { version = "0.13.1", default-features = false, features = ["codec"] }
 # Build-script library (NOT the `jam-pvm-build` CLI): compiles a guest crate to a
 # PVM blob from a `build.rs` and hands the bytes back via the `pvm_binary!` macro.
 jam-pvm-builder = { version = "0.1.28" }

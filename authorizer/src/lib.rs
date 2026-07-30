@@ -12,8 +12,17 @@
 
 extern crate alloc;
 
-use jam_pvm_common::{info, is_authorized::auth_token};
-use jam_types::{AuthTrace, Authorization, CoreIndex};
+use alloc::vec::Vec;
+
+use codec::{Decode, Encode};
+use jam_types::{AuthTrace, CoreIndex};
+use primitive_types::H256;
+
+mod is_authorized;
+
+/// Unique identifier of a parachain.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]
+pub struct ParaId(pub u32);
 
 /// Directory of this crate's `Cargo.toml`, used by `parachain-authorizer-bin`'s
 /// `build.rs` to locate the crate when compiling it into a PVM blob.
@@ -24,16 +33,14 @@ jam_pvm_common::declare_authorizer!(ParachainAuthorizer);
 
 impl jam_pvm_common::Authorizer for ParachainAuthorizer {
     fn is_authorized(core: CoreIndex) -> AuthTrace {
-        // The token is the package-supplied input to the authorizer (from
-        // `WorkPackage::authorization`); the fixed per-authorizer parameter lives
-        // in `Authorizer::config` (fetch via `is_authorized::auth_config()`).
-        let Authorization(token) = auth_token();
-        info!("is_authorized on core {core}: {} token bytes", token.len());
-
-        // --- FILL IN: the real authorization policy. ---
-        // Reject by panicking (`assert!`/`panic!`) when the package is not
-        // authorized for this core. For now we authorize unconditionally and
-        // forward the token as the auth trace so refine/accumulate can see it.
-        AuthTrace(token)
+        is_authorized::is_authorized(core)
     }
+}
+
+pub struct AuraAuthorizerConfig {
+    pub para_ids: Vec<ParaId>,
+    pub collator_set_root: H256,
+    pub collator_set_size: u32,
+    /// In multiples of JAM 6 second slots
+    pub slot_duration: u32,
 }

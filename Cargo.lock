@@ -3682,9 +3682,12 @@ dependencies = [
 name = "parachain-authorizer"
 version = "0.1.0"
 dependencies = [
+ "binary-merkle-tree 16.1.1",
  "jam-pvm-common 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "jam-types 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "parity-scale-codec",
  "polkavm-derive 0.36.0",
+ "primitive-types",
 ]
 
 [[package]]
@@ -3710,8 +3713,10 @@ version = "0.1.0"
 dependencies = [
  "executor",
  "jam-pvm-builder 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "parachain-authorizer",
  "parachain-authorizer-bin",
  "parachain-service",
+ "parity-scale-codec",
 ]
 
 [[package]]
@@ -4357,7 +4362,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]

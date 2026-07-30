@@ -22,3 +22,5 @@ parachain-service = { workspace = true }
 [dev-dependencies]
 executor = { workspace = true, features = ["jam"] }
 parachain-authorizer-bin = { workspace = true }
+parachain-authorizer = { workspace = true }
+codec = { workspace = true }

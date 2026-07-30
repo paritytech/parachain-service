@@ -18,3 +18,6 @@ workspace = true
 jam-types = { workspace = true }
 jam-pvm-common = { workspace = true, features = ["authorizer", "logging"] }
 polkavm-derive = { workspace = true }
+codec = { workspace = true }
+binary-merkle-tree = { workspace = true }
+primitive-types = { workspace = true }
