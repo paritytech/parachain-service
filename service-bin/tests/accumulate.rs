@@ -2,14 +2,13 @@
 
 use executor::jam::{self, AccumulateItem, WorkItemRecord, WorkOutput};
 
-use super::service_blob;
+use parachain_service_bin::BLOB as SERVICE;
 
 // Traps in the guest's own accumulate logic on the empty `WorkItemRecord`.
 // Un-ignore once this carries real inputs.
 #[test]
 #[ignore]
 fn accumulate_runs() {
-    let code = service_blob();
     let items = vec![AccumulateItem::WorkItem(WorkItemRecord {
         package: Default::default(),
         exports_root: Default::default(),
@@ -21,7 +20,7 @@ fn accumulate_runs() {
     })];
 
     let outcome =
-        jam::accumulate(&code, items).expect("accumulate should run to completion (not trap)");
+        jam::accumulate(SERVICE, items).expect("accumulate should run to completion (not trap)");
     println!(
         "accumulate ok in {:?}, gas used {}, yielded: {:?}",
         outcome.elapsed, outcome.gas_used, outcome.yielded

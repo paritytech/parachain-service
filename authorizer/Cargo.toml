@@ -7,8 +7,9 @@ repository.workspace = true
 license.workspace = true
 publish = false
 
-[lib]
-crate-type = ["cdylib"]
+# Plain `rlib` (the default): see the note in `service/Cargo.toml`. The
+# `parachain-authorizer-bin` wrapper build-depends on this crate for `MANIFEST_DIR`,
+# and `jam-pvm-builder` forces `--crate-type=cdylib` when building the blob.
 
 [lints]
 workspace = true

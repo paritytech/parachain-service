@@ -8,6 +8,12 @@
 
 extern crate alloc;
 
+// The compiled Asset Hub runtime PVM blob, embedded at build time by
+// `substrate-wasm-builder`. Defines `WASM_BINARY: Option<&[u8]>` (plus
+// `WASM_BINARY_BLOATY` / `WASM_BINARY_PATH`); `None` only when built without `std`.
+#[cfg(feature = "std")]
+include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
+
 use alloc::{borrow::Cow, vec::Vec};
 use frame::{
     deps::sp_runtime::transaction_validity::{TransactionSource, TransactionValidity},

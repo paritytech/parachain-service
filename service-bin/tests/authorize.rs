@@ -2,14 +2,13 @@
 
 use executor::jam;
 
-use super::authorizer_blob;
+use parachain_authorizer_bin::BLOB as AUTHORIZER;
 
 #[test]
 fn is_authorized_echoes_token_as_auth_trace() {
-    let authorizer = authorizer_blob();
     let token = b"parachain-auth-token".to_vec();
 
-    let outcome = jam::is_authorized(&authorizer, token.clone(), 0)
+    let outcome = jam::is_authorized(AUTHORIZER, token.clone(), 0)
         .expect("is_authorized should run to completion (not trap)");
 
     // The parachain authorizer authorizes unconditionally and forwards its input

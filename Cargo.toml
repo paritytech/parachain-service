@@ -1,11 +1,13 @@
 [workspace]
 members = [
     "authorizer",
+    "authorizer-bin",
     "pallets/asset-hub-system",
     "pallets/coretime-system",
     "runtimes/asset-hub",
     "runtimes/coretime",
     "service",
+    "service-bin",
     "tools/executor",
     "tools/executor-cli",
 ]
@@ -28,7 +30,16 @@ unexpected_cfgs = { level = "warn", check-cfg = [] }
 [workspace.dependencies]
 jam-types = { version = "0.1.28", default-features = false }
 jam-pvm-common = { version = "0.1.28", default-features = false }
+# Build-script library (NOT the `jam-pvm-build` CLI): compiles a guest crate to a
+# PVM blob from a `build.rs` and hands the bytes back via the `pvm_binary!` macro.
+jam-pvm-builder = { version = "0.1.28" }
 polkavm-derive = { version = "0.36.0", default-features = false }
+
+# Guest crates and their prebuilt-blob wrapper crates.
+parachain-service = { path = "service" }
+parachain-service-bin = { path = "service-bin" }
+parachain-authorizer = { path = "authorizer" }
+parachain-authorizer-bin = { path = "authorizer-bin" }
 
 # FRAME umbrella crate. Must be named `frame` (or `polkadot-sdk-frame`) for compatibility with
 # `frame-support`. See https://docs.rs/polkadot-sdk-frame
@@ -41,3 +52,14 @@ executor = { path = "tools/executor", default-features = false }
 # System pallets, wired into their respective runtimes.
 asset-hub-system = { path = "pallets/asset-hub-system", default-features = false }
 coretime-system = { path = "pallets/coretime-system", default-features = false }
+
+# `jam-pvm-builder` compiles guest crates with `--profile=production`, so the
+# workspace must define it. Only used when that profile is explicitly selected
+# (i.e. by the PVM blob build); normal `cargo build`/`test` use dev/release.
+[profile.production]
+inherits = "release"
+lto = true
+codegen-units = 1
+debug = false
+debug-assertions = false
+overflow-checks = false

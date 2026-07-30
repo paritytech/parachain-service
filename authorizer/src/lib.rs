@@ -15,6 +15,10 @@ extern crate alloc;
 use jam_pvm_common::{info, is_authorized::auth_token};
 use jam_types::{AuthTrace, Authorization, CoreIndex};
 
+/// Directory of this crate's `Cargo.toml`, used by `parachain-authorizer-bin`'s
+/// `build.rs` to locate the crate when compiling it into a PVM blob.
+pub const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
+
 pub struct ParachainAuthorizer;
 jam_pvm_common::declare_authorizer!(ParachainAuthorizer);
 

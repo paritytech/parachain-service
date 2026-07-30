@@ -542,6 +542,8 @@ dependencies = [
  "executor",
  "jam-codec",
  "jam-types 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "parachain-authorizer-bin",
+ "parachain-service-bin",
  "parity-scale-codec",
  "polkadot-sdk-frame",
  "scale-info",
@@ -1808,7 +1810,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "jam-node",
- "jam-program-blob-common",
+ "jam-program-blob-common 0.1.28",
  "jam-std-common",
  "jam-types 0.1.28",
  "parity-scale-codec",
@@ -2816,7 +2818,7 @@ name = "jam-bootstrap-service-bin"
 version = "0.1.28"
 dependencies = [
  "jam-bootstrap-service",
- "jam-pvm-builder",
+ "jam-pvm-builder 0.1.28",
 ]
 
 [[package]]
@@ -2884,7 +2886,7 @@ dependencies = [
  "jam-bootstrap-service-common",
  "jam-codec",
  "jam-null-authorizer-bin",
- "jam-program-blob-common",
+ "jam-program-blob-common 0.1.28",
  "jam-std-common",
  "jam-types 0.1.28",
  "log",
@@ -2928,12 +2930,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "jam-program-blob-common"
+version = "0.1.28"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "96f007b097811de6c3fbd7d48773afc627409a13dc445e133ff8973f0ce30f6e"
+dependencies = [
+ "jam-codec",
+ "polkavm 0.30.0",
+]
+
+[[package]]
 name = "jam-pvm-builder"
 version = "0.1.28"
 dependencies = [
  "blake2b_simd",
  "jam-codec",
- "jam-program-blob-common",
+ "jam-program-blob-common 0.1.28",
+ "jobserver",
+ "polkavm-linker 0.30.0",
+ "serde",
+ "serde_json",
+ "toml",
+]
+
+[[package]]
+name = "jam-pvm-builder"
+version = "0.1.28"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d29d3b18d5680af215b1e536e5051e0b8e51cf9f7b23893ca68f8172a477e27"
+dependencies = [
+ "blake2b_simd",
+ "jam-codec",
+ "jam-program-blob-common 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "jobserver",
  "polkavm-linker 0.30.0",
  "serde",
@@ -3660,13 +3688,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "parachain-authorizer-bin"
+version = "0.1.0"
+dependencies = [
+ "jam-pvm-builder 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "parachain-authorizer",
+]
+
+[[package]]
 name = "parachain-service"
 version = "0.1.0"
 dependencies = [
- "executor",
  "jam-pvm-common 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "jam-types 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "polkavm-derive 0.36.0",
+]
+
+[[package]]
+name = "parachain-service-bin"
+version = "0.1.0"
+dependencies = [
+ "executor",
+ "jam-pvm-builder 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "parachain-authorizer-bin",
+ "parachain-service",
 ]
 
 [[package]]

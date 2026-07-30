@@ -38,6 +38,10 @@ substrate-wasm-builder = { workspace = true, optional = true }
 executor = { workspace = true, features = ["jam"] }
 jam-codec = { version = "0.1.1", features = ["derive"] }
 jam-types = { workspace = true }
+# Embedded PVM blobs for the refine test (built by their own `build.rs`), so a bare
+# `cargo test` needs no prior `just build`.
+parachain-service-bin = { workspace = true }
+parachain-authorizer-bin = { workspace = true }
 
 [lints]
 workspace = true

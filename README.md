@@ -17,15 +17,16 @@ for Asset Hub and Coretime there are special system pallets.
 
 ```
 .
-├── pallets
+├── authorizer          # JAM authorizer for the service
+├── pallets             # System pallets wired into the runtimes
 │   ├── asset-hub-system
-│   ├── coretime-system
-│   └── parachain-system
-├── runtimes
+│   └── coretime-system
+├── runtimes            # Parachain runtimes
 │   ├── asset-hub
 │   └── coretime
-├── service
+├── scripts             # Justfile modules
+├── service             # The parachain service (refine + accumulate)
 └── tools
-    ├── executor
-    └── executor-cli
+    ├── executor        # PVM/runtime executor library
+    └── executor-cli    # Debug CLI around the executor
 ```

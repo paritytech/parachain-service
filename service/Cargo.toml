@@ -7,8 +7,9 @@ repository.workspace = true
 license.workspace = true
 publish = false
 
-[lib]
-crate-type = ["cdylib"]
+# Plain `rlib` (the default): the `parachain-service-bin` wrapper build-depends on
+# this crate to read `MANIFEST_DIR`, and `jam-pvm-builder` forces `--crate-type=cdylib`
+# on its own inner build when producing the PVM blob — so no `cdylib` is needed here.
 
 [lints]
 workspace = true
@@ -17,6 +18,3 @@ workspace = true
 jam-types = { workspace = true }
 jam-pvm-common = { workspace = true, features = ["service", "logging"] }
 polkavm-derive = { workspace = true }
-
-[dev-dependencies]
-executor = { workspace = true, features = ["jam"] }

@@ -1,0 +1,18 @@
+[package]
+name = "parachain-authorizer-bin"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+jam-pvm-builder = { workspace = true }
+
+[build-dependencies]
+jam-pvm-builder = { workspace = true }
+parachain-authorizer = { workspace = true }

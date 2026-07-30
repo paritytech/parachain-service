@@ -1,0 +1,24 @@
+[package]
+name = "parachain-service-bin"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+jam-pvm-builder = { workspace = true }
+
+[build-dependencies]
+jam-pvm-builder = { workspace = true }
+parachain-service = { workspace = true }
+
+# The blob integration tests (`tests/`) run the service against polkajam's
+# in-memory node host and also need the authorizer blob.
+[dev-dependencies]
+executor = { workspace = true, features = ["jam"] }
+parachain-authorizer-bin = { workspace = true }
