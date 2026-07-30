@@ -16,37 +16,16 @@ use sp_runtime::traits::BlakeTwo256;
 use sp_state_machine::TestExternalities;
 use sp_version::RuntimeVersion;
 
-/// Call `Core_version` and print the decoded [`RuntimeVersion`].
-pub fn core_version(code: &[u8]) -> Result<()> {
+/// Call `Core_version` and return the decoded [`RuntimeVersion`].
+pub fn core_version(code: &[u8]) -> Result<RuntimeVersion> {
     let encoded = call_export(code, "Core_version", &[])?;
-    let version = RuntimeVersion::decode(&mut &encoded[..])
-        .map_err(|e| anyhow!("failed to decode RuntimeVersion ({e})"))?;
-
-    println!("\n✅ Core_version executed successfully:");
-    println!("  spec_name:           {}", version.spec_name);
-    println!("  impl_name:           {}", version.impl_name);
-    println!("  authoring_version:   {}", version.authoring_version);
-    println!("  spec_version:        {}", version.spec_version);
-    println!("  impl_version:        {}", version.impl_version);
-    println!("  transaction_version: {}", version.transaction_version);
-    println!("  runtime APIs:        {}", version.apis.len());
-    Ok(())
+    RuntimeVersion::decode(&mut &encoded[..])
+        .map_err(|e| anyhow!("failed to decode RuntimeVersion ({e})"))
 }
 
-/// Call an arbitrary exported method with an optional hex-encoded payload.
-pub fn call(code: &[u8], method: &str, input: Option<String>) -> Result<()> {
-    let input = match input {
-        Some(hex_str) => hex::decode(hex_str.trim_start_matches("0x"))
-            .map_err(|e| anyhow!("invalid --input hex ({e})"))?,
-        None => Vec::new(),
-    };
-    let output = call_export(code, method, &input)?;
-    println!(
-        "\n✅ {method} executed successfully, returned {} bytes:",
-        output.len()
-    );
-    println!("0x{}", hex::encode(&output));
-    Ok(())
+/// Call an arbitrary exported method and return its raw SCALE-encoded output.
+pub fn call(code: &[u8], method: &str, input: &[u8]) -> Result<Vec<u8>> {
+    call_export(code, method, input)
 }
 
 /// Trivial [`FetchRuntimeCode`] over an in-memory blob.

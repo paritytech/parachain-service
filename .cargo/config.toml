@@ -1,0 +1,5 @@
+# The vendored jam-node exposes its VM test harness behind `hazmat` and declares
+# `substr_range`. Limit the stable-toolchain bootstrap escape hatch to that crate
+# so `cargo test` works without granting it to the rest of the workspace.
+[env]
+RUSTC_BOOTSTRAP = { value = "jam_node", force = false }

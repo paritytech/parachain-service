@@ -25,4 +25,7 @@ for Asset Hub and Coretime there are special system pallets.
 │   ├── asset-hub
 │   └── coretime
 ├── service
+└── tools
+    ├── executor
+    └── executor-cli
 ```

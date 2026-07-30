@@ -1,31 +1,16 @@
 //! CLI for executing parachain PVM blobs natively, for debugging.
-//!
-//! Two backends, one per blob kind:
-//!
-//! * `runtime` — a Substrate *runtime* blob (`*.polkavm`) via `WasmExecutor`
-//!   (`sp_io` host functions resolved by name). See [`runtime`].
-//! * `service` — a JAM *service* blob (`*.jam`) on a bare PolkaVM engine, with JAM
-//!   host calls dispatched by numeric `ecalli` index. See [`service`] / [`host`].
-//!
-//! Examples:
-//! ```text
-//! executor runtime -b asset-hub-blob.polkavm core-version
-//! executor service -b parachain-service.jam refine --input refine.json
-//! executor service -b parachain-service.jam accumulate
-//! ```
 
-mod host;
 mod input;
-mod jam_backend;
-mod runtime;
-mod service;
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use clap::{Args, Parser, Subcommand};
-
-use service::Entry;
+use executor::{
+    host::DebugHost,
+    runtime,
+    service::{self, Entry},
+};
 
 #[derive(Parser)]
 #[command(
@@ -39,7 +24,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Run a Substrate *runtime* blob (`*.polkavm`) via WasmExecutor.
+    /// Run a Substrate runtime blob (`*.polkavm`) via WasmExecutor.
     Runtime {
         /// Path to the runtime PVM blob.
         #[arg(long, short)]
@@ -47,7 +32,7 @@ enum Command {
         #[command(subcommand)]
         action: RuntimeAction,
     },
-    /// Run a JAM *service* blob (`*.jam`) on a bare PolkaVM engine.
+    /// Run a JAM service blob (`*.jam`) on a bare PolkaVM engine.
     Service {
         /// Path to the service `.jam` blob.
         #[arg(long, short)]
@@ -96,20 +81,43 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     match cli.command {
         Command::Runtime { blob, action } => {
-            // sc-executor rejects PolkaVM blobs unless this is set
-            // (see `sc_executor_common::is_polkavm_enabled`).
+            // sc-executor rejects PolkaVM blobs unless this is set.
             std::env::set_var("SUBSTRATE_ENABLE_POLKAVM", "1");
             let code = read_blob(&blob)?;
             match action {
-                RuntimeAction::CoreVersion => runtime::core_version(&code)?,
-                RuntimeAction::Call { method, input } => runtime::call(&code, &method, input)?,
+                RuntimeAction::CoreVersion => {
+                    let version = runtime::core_version(&code)?;
+                    println!("\nCore_version executed successfully:");
+                    println!("  spec_name:           {}", version.spec_name);
+                    println!("  impl_name:           {}", version.impl_name);
+                    println!("  authoring_version:   {}", version.authoring_version);
+                    println!("  spec_version:        {}", version.spec_version);
+                    println!("  impl_version:        {}", version.impl_version);
+                    println!("  transaction_version: {}", version.transaction_version);
+                    println!("  runtime APIs:        {}", version.apis.len());
+                }
+                RuntimeAction::Call { method, input } => {
+                    let input = input
+                        .map(|value| {
+                            hex::decode(value.trim_start_matches("0x"))
+                                .map_err(|error| anyhow!("invalid --input hex ({error})"))
+                        })
+                        .transpose()?
+                        .unwrap_or_default();
+                    let output = runtime::call(&code, &method, &input)?;
+                    println!(
+                        "\n{method} executed successfully, returned {} bytes:",
+                        output.len()
+                    );
+                    println!("0x{}", hex::encode(output));
+                }
             }
         }
         Command::Service { blob, action } => {
             let code = read_blob(&blob)?;
             let (entry, args) = match action {
-                ServiceAction::Refine(a) => (Entry::Refine, a),
-                ServiceAction::Accumulate(a) => (Entry::Accumulate, a),
+                ServiceAction::Refine(args) => (Entry::Refine, args),
+                ServiceAction::Accumulate(args) => (Entry::Accumulate, args),
             };
 
             let params = input::load_params(entry, args.input.as_deref(), args.format)?;
@@ -120,11 +128,11 @@ fn main() -> Result<()> {
                 args.gas
             );
 
-            let mut host = host::DebugHost::default();
+            let mut host = DebugHost;
             let outcome = service::run(&code, entry, &params, args.gas, &mut host)?;
 
             println!(
-                "\n✅ `{}` finished (gas used: {})",
+                "\n`{}` finished (gas used: {})",
                 entry.as_str(),
                 outcome.gas_used
             );

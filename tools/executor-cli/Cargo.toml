@@ -1,0 +1,39 @@
+[package]
+name = "executor-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "executor"
+path = "src/main.rs"
+required-features = ["executor"]
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = { version = "1", optional = true }
+clap = { version = "4", features = ["derive"], optional = true }
+executor = { workspace = true, features = ["runtime", "service"], optional = true }
+hex = { version = "0.4", optional = true }
+jam-codec = { version = "0.1.1", features = ["derive"], optional = true }
+jam-types = { path = "../../vendor/polkajam/crates/jam-types", features = ["std"], optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+
+[features]
+default = []
+executor = [
+    "dep:anyhow",
+    "dep:clap",
+    "dep:executor",
+    "dep:hex",
+    "dep:jam-codec",
+    "dep:jam-types",
+    "dep:serde",
+    "dep:serde_json",
+]

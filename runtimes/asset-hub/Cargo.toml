@@ -34,5 +34,10 @@ try-runtime = [
 [build-dependencies]
 substrate-wasm-builder = { workspace = true, optional = true }
 
+[dev-dependencies]
+executor = { workspace = true, features = ["jam"] }
+jam-codec = { version = "0.1.1", features = ["derive"] }
+jam-types = { workspace = true }
+
 [lints]
 workspace = true

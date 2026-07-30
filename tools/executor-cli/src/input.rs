@@ -1,30 +1,22 @@
 //! Parameter input for the JAM service entry points.
-//!
-//! Accepts either raw SCALE bytes (an already-encoded `RefineParams` /
-//! `AccumulateParams`, fed to the guest verbatim) or a small, debugging-friendly
-//! JSON form that we encode with `jam-codec`. Without `--input`, zero defaults are
-//! used so the entry point can be invoked with no setup.
 
 use std::path::Path;
 
 use anyhow::{anyhow, Context, Result};
+use executor::service::Entry;
 use jam_codec::Encode;
 use jam_types::{AccumulateParams, RefineParams, WorkPackageHash, WorkPayload};
 use serde::Deserialize;
 
-use crate::service::Entry;
-
 /// How to interpret an `--input` file.
 #[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
 pub enum Format {
-    /// A JSON object (see [`RefineInput`] / [`AccumulateInput`]).
+    /// A JSON object.
     Json,
     /// Raw, already-SCALE-encoded params bytes.
     Scale,
 }
 
-/// JSON form of `RefineParams`. `payload` / `package_hash` are strings: `0x…` hex,
-/// otherwise literal UTF-8 bytes (`package_hash` must resolve to exactly 32 bytes).
 #[derive(Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
 struct RefineInput {
@@ -35,7 +27,6 @@ struct RefineInput {
     package_hash: String,
 }
 
-/// JSON form of `AccumulateParams`.
 #[derive(Deserialize, Default)]
 #[serde(default, deny_unknown_fields)]
 struct AccumulateInput {
@@ -51,31 +42,30 @@ pub fn load_params(entry: Entry, input: Option<&Path>, format: Option<Format>) -
     };
 
     let bytes = std::fs::read(path).with_context(|| format!("reading input {}", path.display()))?;
-    let fmt = format.unwrap_or_else(|| infer_format(path, &bytes));
+    let format = format.unwrap_or_else(|| infer_format(path, &bytes));
 
-    match fmt {
-        // Already-encoded params: pass through verbatim (the guest decodes them).
+    match format {
         Format::Scale => Ok(bytes),
         Format::Json => match entry {
             Entry::Refine => {
-                let r: RefineInput =
+                let input: RefineInput =
                     serde_json::from_slice(&bytes).context("parsing refine params JSON")?;
                 Ok(RefineParams {
-                    core_index: r.core_index,
-                    item_index: r.item_index,
-                    service_id: r.service_id,
-                    payload: WorkPayload(parse_bytes(&r.payload)?),
-                    package_hash: WorkPackageHash(parse_hash(&r.package_hash)?),
+                    core_index: input.core_index,
+                    item_index: input.item_index,
+                    service_id: input.service_id,
+                    payload: WorkPayload(parse_bytes(&input.payload)?),
+                    package_hash: WorkPackageHash(parse_hash(&input.package_hash)?),
                 }
                 .encode())
             }
             Entry::Accumulate => {
-                let a: AccumulateInput =
+                let input: AccumulateInput =
                     serde_json::from_slice(&bytes).context("parsing accumulate params JSON")?;
                 Ok(AccumulateParams {
-                    slot: a.slot,
-                    service_id: a.service_id,
-                    item_count: a.item_count,
+                    slot: input.slot,
+                    service_id: input.service_id,
+                    item_count: input.item_count,
                 }
                 .encode())
             }
@@ -103,31 +93,31 @@ fn defaults(entry: Entry) -> Vec<u8> {
 }
 
 fn infer_format(path: &Path, bytes: &[u8]) -> Format {
-    match path.extension().and_then(|e| e.to_str()) {
+    match path.extension().and_then(|extension| extension.to_str()) {
         Some("json") => Format::Json,
         Some("bin") | Some("scale") => Format::Scale,
-        // Otherwise sniff: JSON objects start with `{` after optional whitespace.
-        _ => match bytes.iter().find(|b| !b.is_ascii_whitespace()) {
+        _ => match bytes.iter().find(|byte| !byte.is_ascii_whitespace()) {
             Some(b'{') => Format::Json,
             _ => Format::Scale,
         },
     }
 }
 
-/// `0x…` hex, otherwise the literal UTF-8 bytes of the string.
-fn parse_bytes(s: &str) -> Result<Vec<u8>> {
-    match s.strip_prefix("0x") {
-        Some(hex) => hex::decode(hex).map_err(|e| anyhow!("invalid hex `{s}`: {e}")),
-        None => Ok(s.as_bytes().to_vec()),
+fn parse_bytes(value: &str) -> Result<Vec<u8>> {
+    match value.strip_prefix("0x") {
+        Some(value) => {
+            hex::decode(value).map_err(|error| anyhow!("invalid hex `0x{value}`: {error}"))
+        }
+        None => Ok(value.as_bytes().to_vec()),
     }
 }
 
-fn parse_hash(s: &str) -> Result<[u8; 32]> {
-    if s.is_empty() {
+fn parse_hash(value: &str) -> Result<[u8; 32]> {
+    if value.is_empty() {
         return Ok([0u8; 32]);
     }
-    let bytes = parse_bytes(s)?;
+    let bytes = parse_bytes(value)?;
     bytes
         .try_into()
-        .map_err(|v: Vec<u8>| anyhow!("expected a 32-byte hash, got {} bytes", v.len()))
+        .map_err(|bytes: Vec<u8>| anyhow!("expected a 32-byte hash, got {} bytes", bytes.len()))
 }

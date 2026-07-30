@@ -18,9 +18,25 @@ f: fmt
 fmt:
 	#!/usr/bin/env sh
 	if command -v cargo-ff >/dev/null 2>&1; then # https://github.com/ggwpez/cargo-ff
-		cargo +nightly ff --all
+		cargo +nightly ff \
+			--package asset-hub \
+			--package asset-hub-system \
+			--package coretime \
+			--package coretime-system \
+			--package executor \
+			--package executor-cli \
+			--package parachain-authorizer \
+			--package parachain-service
 	else
-		cargo +nightly fmt --all
+		cargo +nightly fmt \
+			--package asset-hub \
+			--package asset-hub-system \
+			--package coretime \
+			--package coretime-system \
+			--package executor \
+			--package executor-cli \
+			--package parachain-authorizer \
+			--package parachain-service
 	fi
 
 # Short for check

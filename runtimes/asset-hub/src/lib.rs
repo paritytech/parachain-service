@@ -177,3 +177,6 @@ mod jam_parachain_entrypoint {
         todo!("Impl jam_validate_block");
     }
 }
+
+#[cfg(test)]
+mod tests;

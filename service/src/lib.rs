@@ -63,3 +63,6 @@ fn on_transfer(slot: Slot, item: TransferRecord) {
     info!("{}", msg);
     set_storage(b"last-tx", msg.as_bytes()).expect("balance low");
 }
+
+#[cfg(test)]
+mod tests;

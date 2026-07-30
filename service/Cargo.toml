@@ -18,4 +18,5 @@ jam-types = { workspace = true }
 jam-pvm-common = { workspace = true, features = ["service", "logging"] }
 polkavm-derive = { workspace = true }
 
-[features]
+[dev-dependencies]
+executor = { workspace = true, features = ["jam"] }
