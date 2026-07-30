@@ -11,7 +11,9 @@ use jam_node::{
     PvmBackend,
 };
 use jam_std_common::{hash_raw, Entropy, Privileges, Service};
-use jam_types::{Authorization, Authorizer, CodeHash, CoreIndex, FixedVec, RefineContext};
+use jam_types::{
+    AuthConfig, Authorization, Authorizer, CodeHash, CoreIndex, FixedVec, RefineContext,
+};
 
 pub use jam_types::{
     AccumulateItem, AuthTrace, Hash, Segment, ServiceId, WorkItem, WorkItemRecord, WorkOutput,
@@ -86,7 +88,12 @@ pub fn refine(
     }
 
     let (storage, code_hash) = storage_with_code(service_blob)?;
-    let work_package = work_package(work_items, blob_hash(authorizer_blob), Default::default())?;
+    let work_package = work_package(
+        work_items,
+        blob_hash(authorizer_blob),
+        Default::default(),
+        Default::default(),
+    )?;
 
     let mut context = RefineCallContextOwned {
         storage,
@@ -155,15 +162,24 @@ pub fn accumulate(service_blob: &[u8], items: Vec<AccumulateItem>) -> Result<Acc
 /// Execute an authorizer blob's is_authorized entry point with a minimal node call context.
 ///
 /// The authorizer is a separate program from the service, with its own blob and
-/// code hash. `token` becomes the work package's `authorization` (the authorizer's
-/// input); the returned [`AuthTrace`] is what refine/accumulate later observe.
+/// code hash. `config` becomes the authorizer's `config` blob (pinned by the
+/// Coretime chain; it begins with the `Vec<ParaId>` the service is authorized
+/// for) and `token` becomes the work package's `authorization` (the collator's
+/// per-package token). The returned [`AuthTrace`] is what refine/accumulate
+/// later observe.
 pub fn is_authorized(
     authorizer_blob: &[u8],
+    config: Vec<u8>,
     token: Vec<u8>,
     core: CoreIndex,
 ) -> Result<AuthorizeOutcome> {
     let (storage, authorizer_code_hash) = storage_with_code(authorizer_blob)?;
-    let package = work_package(Vec::new(), authorizer_code_hash, Authorization(token))?;
+    let package = work_package(
+        Vec::new(),
+        authorizer_code_hash,
+        Authorization(token),
+        AuthConfig(config),
+    )?;
 
     let engine = interpreter_engine()?;
     let start = Instant::now();
@@ -182,13 +198,14 @@ fn work_package(
     work_items: Vec<WorkItem>,
     authorizer_code_hash: Hash,
     authorization: Authorization,
+    config: AuthConfig,
 ) -> Result<WorkPackage> {
     Ok(WorkPackage {
         authorization,
         auth_code_host: SERVICE_ID,
         authorizer: Authorizer {
             code_hash: CodeHash(authorizer_code_hash),
-            config: Default::default(),
+            config,
         },
         context: RefineContext {
             anchor: Default::default(),
