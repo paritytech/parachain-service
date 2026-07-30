@@ -14,15 +14,12 @@ extern crate alloc;
 
 use alloc::vec::Vec;
 
-use codec::{Decode, Encode};
 use jam_types::{AuthTrace, CoreIndex};
 use primitive_types::H256;
 
-mod is_authorized;
+pub use parachain_types::ParaId;
 
-/// Unique identifier of a parachain.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]
-pub struct ParaId(pub u32);
+mod is_authorized;
 
 /// Directory of this crate's `Cargo.toml`, used by `parachain-authorizer-bin`'s
 /// `build.rs` to locate the crate when compiling it into a PVM blob.

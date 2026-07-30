@@ -4,10 +4,7 @@ use alloc::vec::Vec;
 
 use codec::{Decode, Encode};
 use jam_types::Hash;
-
-/// Parachain identifier.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]
-pub struct ParaId(pub u32);
+use parachain_types::ParaId;
 
 /// A JAM timeslot.
 pub type Timeslot = u32;
