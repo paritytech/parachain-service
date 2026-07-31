@@ -1,13 +1,13 @@
 # Parachain Service PoC
 
-The parachain service allows to run Polkadot parachains on JAM. It:
+The parachain service lets you run Polkadot parachains on JAM. It:
 
 - Replaces the *candidate inclusion* with an implementation of JAM `accumulate`.
 - Replaces the off-chain validation of *candidate backing* with an implementation of JAM `refine`.
 - Offloads *approval checking*, *availability* and *backing* to JAM.
 - Exposes a new Cumulus interface for collators to author parachain blocks.
 
-There is on more relay chain runtime; the former relay chain logic is implemented without FRAME
+There is no longer a relay chain runtime; the former relay chain logic is implemented without FRAME
 directly as an `accumulate` hook. Parachain runtimes need to use a new parachain system pallet and
 for Asset Hub and Coretime there are special system pallets.
 
@@ -31,10 +31,11 @@ for Asset Hub and Coretime there are special system pallets.
 
 ## Building
 
-There are [just](https://github.com/casey/just) commands for convenience operations but the main one
-currently is:
+Fetch the vendored submodules once, then build and test with `cargo`:
 
 ```sh
-git submodule update --init --recursive # Only needed once
+just vendor   # or: git submodule update --init — only needed once
 cargo test
 ```
+
+There are [just](https://github.com/casey/just) recipes for the other operations (`just --list`).

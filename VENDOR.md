@@ -19,7 +19,8 @@ git submodule update --init
 | `polkadot-sdk-dafny` | `paritytech/polkadot-sdk` | `bkchr-parachain-service-doc` (PR [#11883](https://github.com/paritytech/polkadot-sdk/pull/11883)) | `afe236db` | reference: Dafny spec |
 | `graypaper` | `gavofyork/graypaper` | `main` | `8ab3542` | reference: JAM Gray Paper |
 
-`cumulus` and `dafny` are separate checkouts of the same repo on different branches.
+`polkadot-sdk-companion`, `polkadot-sdk-cumulus`, and `polkadot-sdk-dafny` are three checkouts of
+the same `paritytech/polkadot-sdk` repo on different branches.
 
 ## Build patches
 

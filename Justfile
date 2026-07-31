@@ -87,6 +87,10 @@ lint:
 	# See `check`: lint the feature-gated executor backends and CLI too.
 	cargo clippy --all-targets --package executor-cli --features executor
 
+# Run the full workspace test suite
+test:
+	cargo test --all-targets --workspace
+
 check-blob-sizes blob:
 	#!/usr/bin/env sh
 	set -eu
@@ -94,6 +98,3 @@ check-blob-sizes blob:
 		echo "  ^ too large (max {{ MAX_BLOB_SIZE }} bytes)"
 		exit 1
 	fi
-
-test:
-	cargo test --all-targets --workspace

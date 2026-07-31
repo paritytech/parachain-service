@@ -1,19 +1,18 @@
-# Parachain Service on JAM: Graypaper Compatibility Issues
+# Spec Gaps — Parachain Service on JAM vs. Graypaper 0.8.0
 
 ## Audit scope and verdict
 
 This file records the full findings from comparing
-`[parachain-service-on-jam.md](./parachain-service-on-jam.md)` with the adjacent JAM Graypaper,
-version `[0.8.0](../../../graypaper/VERSION)`, and from exercising the accompanying
-`[quint](./quint)` model.
+[parachain-service-on-jam.md](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/parachain-service-on-jam.md)
+with the vendored JAM Graypaper, version [0.8.0](vendor/graypaper/VERSION), and from exercising the
+vendored [quint](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint) model. All
+paths below are relative to the repo root; see [VENDOR.md](./VENDOR.md) for the pinned commits.
 
 The design is not yet a correct or deployable Parachain Service specification. It is a useful
 architecture sketch, but several interfaces contradict JAM and major state, funding, messaging,
 failure-handling, and migration mechanisms remain undefined.
 
 ## Blocking protocol and ABI issues
-
-
 
 ### 1. Refine has no authenticated parachain-state input
 
@@ -34,8 +33,8 @@ A concrete validation-input format and proof scheme anchored to the context's
 `lookup_anchor_post_state_root` is required.
 
 References: design lines 556-559, 797-800, and 875-879; Graypaper
-`[pvm_invocations.tex](../../../graypaper/text/pvm_invocations.tex)` lines 59-120 and
-`[accounts.tex](../../../graypaper/text/accounts.tex)` lines 69-89.
+[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex) lines 59-120 and
+[accounts.tex](vendor/graypaper/text/accounts.tex) lines 69-89.
 
 ### 2. The child-PVF ABI is not implementable as specified
 
@@ -54,8 +53,8 @@ parachains are WASM blobs called as `validate_block(ValidationParams) -> Validat
 cannot use the proposed entry point without a new runtime toolchain and migration path.
 
 References: design lines 548-574; Graypaper
-`[pvm_invocations.tex](../../../graypaper/text/pvm_invocations.tex)` lines 69-120 and 590-710;
-current SDK `[cumulus/test/client/src/lib.rs](../../cumulus/test/client/src/lib.rs)` lines 197-225.
+[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex) lines 69-120 and 590-710;
+current SDK [cumulus/test/client/src/lib.rs](vendor/polkadot-sdk-cumulus/cumulus/test/client/src/lib.rs) lines 197-225.
 
 ### 3. The parent-head check authenticates only a declaration
 
@@ -83,7 +82,7 @@ required to change only the assigner. Resetting privileges requires the manager'
 `assign(None)`.
 
 References: design lines 610-611, 1214-1229, and 1337-1339; Graypaper
-`[pvm_invocations.tex](../../../graypaper/text/pvm_invocations.tex)` lines 762-778.
+[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex) lines 762-778.
 
 ### 5. The single-slot on-demand model cannot work
 
@@ -96,8 +95,8 @@ one slot. A real design must account for modulo-80 placement, report and availab
 admission, use/removal, and a later queue replacement.
 
 References: design lines 1346-1366; Graypaper
-`[authorization.tex](../../../graypaper/text/authorization.tex)` lines 13-30 and
-`[reporting_assurance.tex](../../../graypaper/text/reporting_assurance.tex)` lines 323-334.
+[authorization.tex](vendor/graypaper/text/authorization.tex) lines 13-30 and
+[reporting_assurance.tex](vendor/graypaper/text/reporting_assurance.tex) lines 323-334.
 
 ### 6. Required JAM privileges and bootstrap state are unspecified
 
@@ -111,7 +110,7 @@ For this architecture to operate, the Parachain Service must be:
 Without explicit genesis/bootstrap transitions, `assign` and `designate` return errors, and
 scheduled housekeeping does not run.
 
-Reference: Graypaper `[accounts.tex](../../../graypaper/text/accounts.tex)` lines 163-180.
+Reference: Graypaper [accounts.tex](vendor/graypaper/text/accounts.tex) lines 163-180.
 
 ### 7. Per-parachain quotas are disconnected from the real JAM service balance
 
@@ -125,8 +124,8 @@ and Asset Hub transfer liquidity also share the same JAM service balance without
 reservation rule.
 
 References: design lines 945-973 and 1110-1121; Graypaper
-`[accounts.tex](../../../graypaper/text/accounts.tex)` lines 11-29 and
-`[pvm_invocations.tex](../../../graypaper/text/pvm_invocations.tex)` lines 472-495 and 946-968.
+[accounts.tex](vendor/graypaper/text/accounts.tex) lines 11-29 and
+[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex) lines 472-495 and 946-968.
 
 ### 8. State-deposit accounting is wrong
 
@@ -144,9 +143,9 @@ design's sole-user rule, the incremental charge is `187 + len`, not `157 + len`.
 need explicit bounds and conversion rules.
 
 References: design lines 935-943, 1011-1058, and 1086-1108; Graypaper
-`[accounts.tex](../../../graypaper/text/accounts.tex)` lines 135-158,
-`[definitions.tex](../../../graypaper/text/definitions.tex)` lines 258-260, and
-`[overview.tex](../../../graypaper/text/overview.tex)` lines 105-108.
+[accounts.tex](vendor/graypaper/text/accounts.tex) lines 135-158,
+[definitions.tex](vendor/graypaper/text/definitions.tex) lines 258-260, and
+[overview.tex](vendor/graypaper/text/overview.tex) lines 105-108.
 
 ### 9. Parachain state commits before fallible JAM effects
 
@@ -165,7 +164,7 @@ this permits failures such as:
 The present lossy log is not a transaction or receipt protocol.
 
 References: design lines 699-709 and 609-619; Graypaper
-`[pvm_invocations.tex](../../../graypaper/text/pvm_invocations.tex)` lines 762-804 and 847-998.
+[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex) lines 762-804 and 847-998.
 
 ### 10. The transfer API is incomplete and the queue protocol is unsafe
 
@@ -181,7 +180,7 @@ later candidate consume newly arrived entries. A monotonic transfer ID and base 
 missing.
 
 References: design lines 607-613 and 657-666; Graypaper
-`[pvm_invocations.tex](../../../graypaper/text/pvm_invocations.tex)` lines 864-893.
+[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex) lines 864-893.
 
 ### 11. Checkpointing does not prevent loss of unprocessed results
 
@@ -194,9 +193,9 @@ The implementation therefore needs strict per-operand metering and a proven wors
 and always-accumulate gas have not been reconciled with up to 1,024 side effects per result.
 
 References: design lines 730-735; Graypaper
-`[accumulation.tex](../../../graypaper/text/accumulation.tex)` lines 289-343,
-`[pvm_invocations.tex](../../../graypaper/text/pvm_invocations.tex)` lines 219-247, and
-`[definitions.tex](../../../graypaper/text/definitions.tex)` lines 265-268.
+[accumulation.tex](vendor/graypaper/text/accumulation.tex) lines 289-343,
+[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex) lines 219-247, and
+[definitions.tex](vendor/graypaper/text/definitions.tex) lines 265-268.
 
 ### 12. All Graypaper `WorkError`s are silently discarded
 
@@ -208,7 +207,7 @@ and consumes work without advancing the parachain. The authorizer trace or anoth
 mapping must identify the para even when no custom digest was produced.
 
 References: design lines 515-519 and 670-673; Graypaper
-`[reporting_assurance.tex](../../../graypaper/text/reporting_assurance.tex)` lines 114-122.
+[reporting_assurance.tex](vendor/graypaper/text/reporting_assurance.tex) lines 114-122.
 
 ### 13. Service self-upgrade can permanently brick the service
 
@@ -221,9 +220,9 @@ currently provided.
 - Already-guaranteed results produced by the old Refine code may later be decoded by the new
 Accumulate code. There is no result/storage version or pipeline-drain protocol.
 
-References: design lines 863-894; Graypaper `[accounts.tex](../../../graypaper/text/accounts.tex)`
-lines 38-52, `[pvm_invocations.tex](../../../graypaper/text/pvm_invocations.tex)` lines 847-861, and
-`[reporting_assurance.tex](../../../graypaper/text/reporting_assurance.tex)` lines 428-431.
+References: design lines 863-894; Graypaper [accounts.tex](vendor/graypaper/text/accounts.tex)
+lines 38-52, [pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex) lines 847-861, and
+[reporting_assurance.tex](vendor/graypaper/text/reporting_assurance.tex) lines 428-431.
 
 ### 14. Messaging is not actually specified
 
@@ -250,13 +249,11 @@ Therefore current HRMP/UMP migration, "full XCMP," and the XCM-dependent collato
 cannot work yet.
 
 References: design lines 1370-1412; Graypaper
-`[pvm_invocations.tex](../../../graypaper/text/pvm_invocations.tex)` lines 572-587 and
-`[work_packages_and_reports.tex](../../../graypaper/text/work_packages_and_reports.tex)` lines 45-57
+[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex) lines 572-587 and
+[work_packages_and_reports.tex](vendor/graypaper/text/work_packages_and_reports.tex) lines 45-57
 and 154-168.
 
 ## Other real-world correctness and liveness problems
-
-
 
 ### 15. Forced management operations race with normal candidates
 
@@ -317,7 +314,7 @@ finish forgetting.
 - There is no maximum inner PVF length or validation policy before forced activation.
 
 References: design lines 737-829 and 975-1015; Graypaper
-`[pvm_invocations.tex](../../../graypaper/text/pvm_invocations.tex)` lines 921-998.
+[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex) lines 921-998.
 
 ### 20. The authorizer does not enforce the intended work target
 
@@ -352,8 +349,8 @@ migration must either prove that every target chain is below 4 KiB or use a larg
 representation.
 
 References: design lines 309-311; SDK
-`[polkadot/primitives/src/v9/mod.rs](../../polkadot/primitives/src/v9/mod.rs)` lines 450-456 and
-`[cumulus/pallets/parachain-system/src/lib.rs](../../cumulus/pallets/parachain-system/src/lib.rs)`
+[polkadot/primitives/src/v9/mod.rs](vendor/polkadot-sdk-cumulus/polkadot/primitives/src/v9/mod.rs) lines 450-456 and
+[cumulus/pallets/parachain-system/src/lib.rs](vendor/polkadot-sdk-cumulus/cumulus/pallets/parachain-system/src/lib.rs)
 lines 1643-1650.
 
 ### 23. Logs cannot serve as reliable receipts or slashing evidence
@@ -394,11 +391,9 @@ state, logs, KV data, and global reserves.
 the single Accumulate invocation.
 
 References: design lines 330-348, 679-728, and 952-957; Graypaper
-`[accumulation.tex](../../../graypaper/text/accumulation.tex)` lines 289-341.
+[accumulation.tex](vendor/graypaper/text/accumulation.tex) lines 289-341.
 
 ## Quint-model defects
-
-
 
 ### 26. Solicited-but-unprovided validation code is treated as available
 
@@ -406,8 +401,8 @@ References: design lines 330-348, 679-728, and 952-957; Graypaper
 `Unrequested`, and the lookup-anchor time. Initial active codes can therefore execute in the model
 before anyone provides their preimages.
 
-References: `[quint/state.qnt](./quint/state.qnt)` lines 43-63 and
-`[quint/refine.qnt](./quint/refine.qnt)` lines 140-158.
+References: [quint/state.qnt](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint/state.qnt) lines 43-63 and
+[quint/refine.qnt](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint/refine.qnt) lines 140-158.
 
 ### 27. Service upgrade repeats the same availability bug
 
@@ -415,7 +410,7 @@ The model upgrades whenever a registry referencer exists, even when the code pre
 `Unprovided` or unavailable. It can therefore model a successful upgrade that would leave the real
 JAM service without executable code.
 
-Reference: `[quint/accumulate.qnt](./quint/accumulate.qnt)` lines 296-307.
+Reference: [quint/accumulate.qnt](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint/accumulate.qnt) lines 296-307.
 
 ### 28. Important effects are stubbed or model the wrong Graypaper API
 
@@ -428,8 +423,8 @@ Reference: `[quint/accumulate.qnt](./quint/accumulate.qnt)` lines 296-307.
 - Gas, OOG, panic, and checkpoint collapse are absent.
 - D3L and messaging are absent.
 
-References: `[quint/accumulate.qnt](./quint/accumulate.qnt)` lines 233-285 and
-`[quint/invariants.qnt](./quint/invariants.qnt)` lines 342-369.
+References: [quint/accumulate.qnt](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint/accumulate.qnt) lines 233-285 and
+[quint/invariants.qnt](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint/invariants.qnt) lines 342-369.
 
 ### 29. The 48 KiB result-budget model is incorrect
 
@@ -439,8 +434,8 @@ timeslot, and enum/container overhead.
 
 Graypaper limits the exact successful output blob plus the full authorizer trace.
 
-References: `[quint/refine.qnt](./quint/refine.qnt)` lines 98-106; Graypaper
-`[reporting_assurance.tex](../../../graypaper/text/reporting_assurance.tex)` lines 124-134.
+References: [quint/refine.qnt](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint/refine.qnt) lines 98-106; Graypaper
+[reporting_assurance.tex](vendor/graypaper/text/reporting_assurance.tex) lines 124-134.
 
 ### 30. The model omits the boundaries where most protocol risk lies
 
@@ -448,15 +443,15 @@ The model explicitly abstracts or omits cryptography, real PVF execution, D3L, A
 proofs, lookup-anchor state access, and messaging. It also omits actual JAM item deposits from its
 balance model.
 
-References: `[quint/README.md](./quint/README.md)` lines 24-46 and
-`[quint/state_balance.qnt](./quint/state_balance.qnt)` lines 38-48.
+References: [quint/README.md](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint/README.md) lines 24-46 and
+[quint/state_balance.qnt](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint/state_balance.qnt) lines 38-48.
 
 ### 31. The advertised randomized invariant does not hold
 
 The following command reproducibly exits with an invariant violation:
 
 ```sh
-cd designs/parachain-service-on-jam/quint
+cd vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint
 quint run main.qnt \
   --invariant=parent_head_continuity \
   --max-steps=30 \
@@ -470,14 +465,14 @@ bug. The invariant replay accepts every result with a matching parent but ignore
 accumulator's validation-code rejection. A preceding result can force a code change, making the
 following old-code result invalid even though its parent matches.
 
-Reference: `[quint/invariants.qnt](./quint/invariants.qnt)` lines 227-263.
+Reference: [quint/invariants.qnt](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint/invariants.qnt) lines 227-263.
 
 ### 32. Passing unit tests do not establish Graypaper compatibility
 
 The model typechecks and all 39 scripted tests pass:
 
 ```sh
-cd designs/parachain-service-on-jam/quint
+cd vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint
 quint typecheck main.qnt
 quint test tests.qnt
 ```
@@ -487,15 +482,13 @@ assumptions listed above.
 
 ## Documentation drift
 
-
-
 ### 33. The table of contents and model references are stale
 
 The table of contents promises "§9 Missing JAM / Gray Paper Features" and "§10 References," but §9
 is References and the missing-features section does not exist. The Quint README still refers to the
 absent §9, while the design's TODO section is empty.
 
-References: design lines 27-32 and 1416-1430; `[quint/README.md](./quint/README.md)` lines 44-46.
+References: design lines 27-32 and 1416-1430; [quint/README.md](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint/README.md) lines 44-46.
 
 ## Required work before implementation
 
