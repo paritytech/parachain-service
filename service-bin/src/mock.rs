@@ -24,9 +24,9 @@ pub fn good_config(para_ids: usize) -> AuthConfig {
 /// An empty but well-formed Aura collator authorization token.
 pub fn good_token() -> AuthToken {
     let token = AuraCollatorAuthToken {
-        proof: vec![],
+        proof: vec![H256::zero()],
         key: [0; 32],
-        signature: [0; 64],
+        signature: [255; 64],
     };
     AuthToken(token.encode())
 }

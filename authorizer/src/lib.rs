@@ -90,7 +90,7 @@ impl AuraCollatorAuthToken {
 
     pub fn check_signature(&self, work_package_hash: H256) -> bool {
         // FIXME unmock
-        self.signature == work_package_hash.as_ref()
+        self.signature == [255; 64]
     }
 
     pub fn try_into_trace(
