@@ -12,14 +12,20 @@ use jam_node::{
 };
 use jam_std_common::{hash_raw, Entropy, Privileges, Service};
 use jam_types::{
-    AuthConfig, Authorization, Authorizer, CodeHash, CoreIndex, ExtrinsicHash, ExtrinsicSpec,
-    FixedVec, RefineContext,
+    Authorizer, CodeHash, CoreIndex, ExtrinsicHash, ExtrinsicSpec, FixedVec, RefineContext,
 };
 
 pub use jam_types::{
-    AccumulateItem, AuthTrace, Hash, Segment, ServiceId, WorkItem, WorkItemRecord, WorkOutput,
-    WorkPackage, WorkPayload,
+    AccumulateItem, AuthConfig, AuthTrace, Hash, Segment, ServiceId, WorkItem, WorkItemRecord,
+    WorkOutput, WorkPackage, WorkPayload,
 };
+
+/// The collator's per-package authorization token.
+///
+/// An alias for jam's [`jam_types::Authorization`], named for how the parachain
+/// service uses it: the token a collator submits alongside a work package, which
+/// the authorizer checks and echoes into the [`AuthTrace`].
+pub type AuthToken = jam_types::Authorization;
 
 /// Service id used by the lightweight executor contexts.
 pub const SERVICE_ID: ServiceId = 0;
@@ -101,9 +107,22 @@ pub fn work_item(
 }
 
 /// Execute a service blob's refine entry point with a minimal node call context.
+///
+/// `config`/`token` are the authorizer config and the collator's authorization
+/// token; they populate the work package refine refines, so it carries the same
+/// authorization the authorizer ran against (pass the same values here as to
+/// [`is_authorized`]). `auth_trace` is that authorizer's output, obtained by
+/// running [`is_authorized`] separately; refine reads it back through the guest's
+/// `auth_trace()`. Per the Gray Paper, refinement (`Ψ_R`) takes both the package
+/// `p` and the auth trace `r` as inputs — is-authorized (`Ψ_I`) is a separate
+/// function — so the caller runs [`is_authorized`] first and threads its trace in
+/// here.
 pub fn refine(
     service_blob: &[u8],
     authorizer_blob: &[u8],
+    config: AuthConfig,
+    token: AuthToken,
+    auth_trace: AuthTrace,
     work_items: Vec<WorkItemWithExtrinsics>,
     work_item_index: usize,
 ) -> Result<RefineOutcome> {
@@ -129,19 +148,14 @@ pub fn refine(
         extrinsic_data.push(bundle.extrinsics);
     }
 
-    let work_package = work_package(
-        items,
-        blob_hash(authorizer_blob),
-        Default::default(),
-        Default::default(),
-    )?;
+    let work_package = work_package(items, blob_hash(authorizer_blob), token, config)?;
 
     let mut context = RefineCallContextOwned {
         storage,
         core: 0,
         service_id: SERVICE_ID,
         gas: GAS,
-        auth_output: Default::default(),
+        auth_output: auth_trace,
         import_data: vec![],
         extrinsic_data: extrinsic_data
             .into_iter()
@@ -213,17 +227,12 @@ pub fn accumulate(service_blob: &[u8], items: Vec<AccumulateItem>) -> Result<Acc
 /// later observe.
 pub fn is_authorized(
     authorizer_blob: &[u8],
-    config: Vec<u8>,
-    token: Vec<u8>,
+    config: AuthConfig,
+    token: AuthToken,
     core: CoreIndex,
 ) -> Result<AuthorizeOutcome> {
     let (storage, authorizer_code_hash) = storage_with_code(authorizer_blob)?;
-    let package = work_package(
-        Vec::new(),
-        authorizer_code_hash,
-        Authorization(token),
-        AuthConfig(config),
-    )?;
+    let package = work_package(Vec::new(), authorizer_code_hash, token, config)?;
 
     let engine = interpreter_engine()?;
     let start = Instant::now();
@@ -241,7 +250,7 @@ pub fn is_authorized(
 fn work_package(
     work_items: Vec<WorkItem>,
     authorizer_code_hash: Hash,
-    authorization: Authorization,
+    authorization: AuthToken,
     config: AuthConfig,
 ) -> Result<WorkPackage> {
     Ok(WorkPackage {

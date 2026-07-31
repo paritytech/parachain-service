@@ -12,25 +12,25 @@ use parachain_authorizer_bin::BLOB as AUTHORIZER;
 
 #[test]
 fn config_not_starting_with_para_ids_errors() {
-    let config = b"not-starting-with-parids".to_vec();
+    let config = jam::AuthConfig(b"not-starting-with-parids".to_vec());
 
-    jam::is_authorized(AUTHORIZER, config, Vec::new(), 0)
+    jam::is_authorized(AUTHORIZER, config, jam::AuthToken::new(), 0)
         .expect_err("is_authorized should error (not trap)");
 }
 
 #[test]
 fn config_single_paraid_works() {
-    let config = vec![ParaId(1)].encode();
+    let config = jam::AuthConfig(vec![ParaId(1)].encode());
 
-    jam::is_authorized(AUTHORIZER, config, Vec::new(), 0)
+    jam::is_authorized(AUTHORIZER, config, jam::AuthToken::new(), 0)
         .expect("is_authorized should run to completion (not trap)");
 }
 
 #[test]
 fn config_multiple_paraids_works() {
-    let config = vec![ParaId(1), ParaId(2)].encode();
+    let config = jam::AuthConfig(vec![ParaId(1), ParaId(2)].encode());
 
-    jam::is_authorized(AUTHORIZER, config, Vec::new(), 0)
+    jam::is_authorized(AUTHORIZER, config, jam::AuthToken::new(), 0)
         .expect("is_authorized should run to completion (not trap)");
 }
 
@@ -41,14 +41,14 @@ fn config_trailing_data_works() {
     let mut config = vec![ParaId(1), ParaId(2)].encode();
     config.extend_from_slice(b"trailing data");
 
-    jam::is_authorized(AUTHORIZER, config, Vec::new(), 0)
+    jam::is_authorized(AUTHORIZER, jam::AuthConfig(config), jam::AuthToken::new(), 0)
         .expect("is_authorized should run to completion (not trap)");
 }
 
 #[test]
 fn config_wrong_para_id_type_errors() {
-    let config = vec![1u16].encode();
+    let config = jam::AuthConfig(vec![1u16].encode());
 
-    jam::is_authorized(AUTHORIZER, config, Vec::new(), 0)
+    jam::is_authorized(AUTHORIZER, config, jam::AuthToken::new(), 0)
         .expect_err("is_authorized should error (not trap)");
 }

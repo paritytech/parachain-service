@@ -544,6 +544,7 @@ dependencies = [
  "jam-types 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "parachain-authorizer-bin",
  "parachain-service-bin",
+ "parachain-support",
  "parity-scale-codec",
  "polkadot-sdk-frame",
  "scale-info",

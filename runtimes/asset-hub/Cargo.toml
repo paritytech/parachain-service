@@ -42,6 +42,7 @@ jam-types = { workspace = true }
 # `cargo test` needs no prior `just build`.
 parachain-service-bin = { workspace = true }
 parachain-authorizer-bin = { workspace = true }
+parachain-support = { workspace = true }
 
 [lints]
 workspace = true
