@@ -41,8 +41,4 @@ fn refine_runs_for_asset_hub() {
             .expect("Asset Hub refine should run to completion");
 
     assert!(outcome.gas_used > 0);
-    let (_, refined_payload, _) =
-        <(u64, WorkPayload, AuthTrace)>::decode(&mut outcome.output.as_slice())
-            .expect("service refine output should decode");
-    assert_eq!(refined_payload.0, payload);
 }

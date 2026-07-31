@@ -24,8 +24,5 @@ pub fn refine(
 	let ext_para_state_proof = refine::extrinsic(0).expect("checked above for 2 extrinsics; qed");
 	let ext_jam_state_proof = refine::extrinsic(1).expect("checked above for 2 extrinsics; qed");
 
-    let msg = format!("hey");
-
-    let export_index = export_slice(msg.as_bytes()).expect("infallible");
-    (export_index, payload, auth_trace).encode().into()
+    Vec::new().into()
 }

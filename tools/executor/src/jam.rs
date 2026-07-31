@@ -162,7 +162,7 @@ pub fn refine(
             .map(|per_item| per_item.into_iter().map(Into::into).collect())
             .collect(),
         export_counter: 0,
-        max_exports: 1024,
+        max_exports: 0,
         exports: vec![],
         work_package: work_package.into(),
         work_item_index,
