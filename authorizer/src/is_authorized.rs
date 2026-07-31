@@ -28,7 +28,7 @@ pub fn is_authorized(_core: CoreIndex) -> AuthTrace {
         panic!("the authorizer token is invalid");
     };
 
-    // TODO: Check the AURA round-robin collator selection
+    // FIXME: Check the AURA round-robin collator selection
 
     AuthTrace(trace.author_key.encode())
 }

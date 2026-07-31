@@ -85,14 +85,12 @@ pub struct AuraCollatorAuthToken {
 impl AuraCollatorAuthToken {
     pub fn check_proof(&self, config: &AuraAuthConfig) -> bool {
         // FIXME unmock
-        self.proof.as_slice() == &[config.collator_set_root];
-        true
+        self.proof.as_slice() == &[config.collator_set_root]
     }
 
     pub fn check_signature(&self, work_package_hash: H256) -> bool {
         // FIXME unmock
-        self.signature == work_package_hash.as_ref();
-        true
+        self.signature == work_package_hash.as_ref()
     }
 
     pub fn try_into_trace(
