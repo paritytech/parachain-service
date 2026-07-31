@@ -10,7 +10,7 @@ help:
 	just --list
 
 # Run all checks
-ci: fmt check build lint
+ci: fmt-check check build lint
 
 # Fetch the vendored dependencies a fresh clone needs. See VENDOR.md.
 vendor:
@@ -26,6 +26,10 @@ fmt:
 	else
 		cargo +nightly fmt --all
 	fi
+
+# Verify formatting without touching the tree (used by `ci`).
+fmt-check:
+	cargo +nightly fmt --all --check
 
 # Short for check
 c: check
@@ -59,7 +63,7 @@ build-service-pvm:
 	mkdir -p target
 	jam-pvm-build --module service --output {{ SERVICE_BLOB }} service
 
-	just check-blob-sizes {{ SERVICE_BLOB }}
+	just check-blob-size {{ SERVICE_BLOB }}
 
 build-authorizer-pvm:
 	#!/usr/bin/env sh
@@ -68,19 +72,18 @@ build-authorizer-pvm:
 	mkdir -p target
 	jam-pvm-build --module authorizer --output {{ AUTHORIZER_BLOB }} authorizer
 
-	just check-blob-sizes {{ AUTHORIZER_BLOB }}
+	just check-blob-size {{ AUTHORIZER_BLOB }}
 
 build-runtime-pvms:
 	#!/usr/bin/env sh
 	set -eu
 	mkdir -p target
 
+	# TODO: build with the `production` profile instead of `--release`.
 	SUBSTRATE_RUNTIME_TARGET=riscv cargo build --release --package asset-hub --package coretime
 
-	just check-blob-sizes {{ ASSET_HUB_BLOB }}
-	just check-blob-sizes {{ CORETIME_BLOB }}
-
-# TODO: use production profile for building
+	just check-blob-size {{ ASSET_HUB_BLOB }}
+	just check-blob-size {{ CORETIME_BLOB }}
 
 lint:
 	cargo clippy --all-targets --workspace
@@ -91,10 +94,12 @@ lint:
 test:
 	cargo test --all-targets --workspace
 
-check-blob-sizes blob:
+# Fail if the given blob exceeds MAX_BLOB_SIZE.
+check-blob-size blob:
 	#!/usr/bin/env sh
 	set -eu
-	if [ $(wc -c < "{{ blob }}") -gt {{ MAX_BLOB_SIZE }} ]; then
-		echo "  ^ too large (max {{ MAX_BLOB_SIZE }} bytes)"
+	size=$(wc -c < "{{ blob }}")
+	if [ "$size" -gt {{ MAX_BLOB_SIZE }} ]; then
+		echo "{{ blob }}: $size bytes exceeds max {{ MAX_BLOB_SIZE }}" >&2
 		exit 1
 	fi
