@@ -1,4 +1,20 @@
 [submodule "vendor/polkadot-sdk-companion"]
 	path = vendor/polkadot-sdk-companion
 	url = https://github.com/paritytech/polkadot-sdk.git
-	branch = master
+	branch = oty-parachain-companion
+[submodule "vendor/polkajam"]
+	path = vendor/polkajam
+	url = https://github.com/paritytech/polkajam.git
+	branch = oty-parachain-service-companion
+[submodule "vendor/polkadot-sdk-cumulus"]
+	path = vendor/polkadot-sdk-cumulus
+	url = https://github.com/paritytech/polkadot-sdk.git
+	branch = mku-cumulus-on-jam-doc
+[submodule "vendor/graypaper"]
+	path = vendor/graypaper
+	url = https://github.com/gavofyork/graypaper.git
+	branch = main
+[submodule "vendor/polkadot-sdk-dafny"]
+	path = vendor/polkadot-sdk-dafny
+	url = https://github.com/paritytech/polkadot-sdk.git
+	branch = bkchr-parachain-service-doc
