@@ -1,7 +1,7 @@
+use codec::Encode;
 use executor::jam;
 use jam_codec::Decode;
 use jam_types::{AuthTrace, WorkPayload};
-use codec::Encode;
 use parachain_support::types::ParaId;
 
 use parachain_authorizer_bin::BLOB as AUTHORIZER;
@@ -36,9 +36,16 @@ fn refine_runs_for_asset_hub() {
         .expect("is_authorized should run to completion")
         .auth_trace;
 
-    let outcome =
-        jam::refine(SERVICE, AUTHORIZER, auth_config(), auth_token(), auth_trace, work_items, 0)
-            .expect("Asset Hub refine should run to completion");
+    let outcome = jam::refine(
+        SERVICE,
+        AUTHORIZER,
+        auth_config(),
+        auth_token(),
+        auth_trace,
+        work_items,
+        0,
+    )
+    .expect("Asset Hub refine should run to completion");
 
     assert!(outcome.gas_used > 0);
 }

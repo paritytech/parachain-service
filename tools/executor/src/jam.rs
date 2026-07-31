@@ -173,7 +173,7 @@ pub fn refine(
     let engine = interpreter_engine()?;
     let (result, elapsed, gas_used) =
         engine.refine(CodeHash(code_hash), RefineCallContext::from(&mut context));
-    
+
     let output = result.map_err(|error| anyhow!("refine failed: {error}"))?;
 
     Ok(RefineOutcome {
