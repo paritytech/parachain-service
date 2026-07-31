@@ -28,6 +28,9 @@ pub const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
 /// Domain separator for the token-free work-package hash signed by AURA collators.
 const SIGNABLE_WORK_PACKAGE_DOMAIN: &[u8] = b"parachain-service:aura:work-package:v1";
 
+pub type CollatorKey = [u8; 32];
+pub type CollatorSignature = [u8; 64];
+
 /// Hash of a work-package that can be signed by AURA collators.
 ///
 /// This excludes the authorization token since that would contain said signature.
@@ -70,13 +73,13 @@ pub struct AuraAuthConfig {
 #[derive(Debug, Encode, Decode)]
 pub struct AuraCollatorAuthToken {
     /// Proof that the `key` is in the `collator_set_root` of the Aura auth config.
-    pub proof: Vec<u8>,
+    pub proof: Vec<H256>,
 
     /// Key of the collator that authored the work package.
-    pub key: Vec<u8>, // 32 byte?
+    pub key: CollatorKey,
 
     /// Signature by the `key` over the work package hash.
-    pub signature: Vec<u8>,
+    pub signature: CollatorSignature,
 }
 
 impl AuraCollatorAuthToken {
@@ -92,16 +95,21 @@ impl AuraCollatorAuthToken {
         true
     }
 
-    pub fn try_into_trace(&self, config: &AuraAuthConfig, wp: &WorkPackage) -> Option<AuthTrace> {
+    pub fn try_into_trace(
+        &self,
+        config: &AuraAuthConfig,
+        wp: &WorkPackage,
+    ) -> Option<AuraAuthTrace> {
         let wp_hash = signable_work_package_hash(wp);
 
         let good = self.check_proof(config) && self.check_signature(wp_hash);
-        good.then_some(AuthTrace(wp.authorization.0.clone()))
+        good.then_some(AuraAuthTrace {
+            author_key: self.key.clone(),
+        })
     }
 }
 
 #[derive(Debug, Encode, Decode)]
 pub struct AuraAuthTrace {
-    /// Key of the collator that authored the work package.
-    pub author_key: Vec<u8>,
+    pub author_key: CollatorKey,
 }

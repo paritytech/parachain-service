@@ -3,27 +3,22 @@
 //! Blobs are embedded by the wrapper crates' build scripts, so `cargo test`
 //! rebuilds them automatically when the guest sources change.
 
-use codec::Encode;
-
-use parachain_authorizer::ParaId;
 use parachain_authorizer_bin::BLOB as AUTHORIZER;
 use parachain_service_bin::BLOB as SERVICE;
 use jam_types::{AuthConfig, Authorization as AuthToken, AuthTrace};
+use parachain_service_bin::mock::{good_config, good_token};
 
 #[test]
 fn trivial_works() {
-    // Run the authorizer first, exactly as a guarantor would (spec: `Ψ_I` before
-    // `Ψ_R`), and feed its auth trace into refine as the `r` argument. The same
-    // config/token go into refine so its work package matches what was authorized.
-    let config = AuthConfig(vec![ParaId(1)].encode());
-    let token = AuthToken::new();
-    let auth_trace = todo!();
+    let config = good_config(1);
+    let token = good_token();
+    let auth_trace = AuthTrace::new(); // TODO hold author key
 
     // `refine` requires exactly two extrinsics (see `service/src/refine.rs`);
     // supply two empty placeholders so the call runs to completion.
-    let work_items = vec![executor::jam::work_item(SERVICE, Vec::new(), vec![Vec::new(), Vec::new()])];
+    let work_items = vec![executor::pj::work_item(SERVICE, Vec::new(), vec![Vec::new(), Vec::new()])];
 
-    let outcome = executor::jam::refine(SERVICE, AUTHORIZER, config, token, auth_trace, work_items, 0)
+    let outcome = executor::pj::refine(SERVICE, AUTHORIZER, config, token, auth_trace, work_items, 0)
         .expect("refine should run to completion (not trap)");
 
     assert!(outcome.gas_used > 0, "refine should use some gas");
@@ -33,7 +28,7 @@ fn trivial_works() {
 fn no_work_items_errors() {
     let work_items = vec![];
 
-    executor::jam::refine(
+    executor::pj::refine(
         SERVICE,
         AUTHORIZER,
         AuthConfig::new(),
@@ -48,11 +43,11 @@ fn no_work_items_errors() {
 #[test]
 fn two_work_items_errors() {
     let work_items = vec![
-        executor::jam::work_item(SERVICE, Vec::new(), vec![]),
-        executor::jam::work_item(SERVICE, Vec::new(), vec![]),
+        executor::pj::work_item(SERVICE, Vec::new(), vec![]),
+        executor::pj::work_item(SERVICE, Vec::new(), vec![]),
     ];
 
-    executor::jam::refine(
+    executor::pj::refine(
         SERVICE,
         AUTHORIZER,
         AuthConfig::new(),

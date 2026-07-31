@@ -19,7 +19,7 @@ fn accumulate_runs() {
     })];
 
     let outcome =
-        executor::jam::accumulate(SERVICE, items).expect("accumulate should run to completion (not trap)");
+        executor::pj::accumulate(SERVICE, items).expect("accumulate should run to completion (not trap)");
     println!(
         "accumulate ok in {:?}, gas used {}, yielded: {:?}",
         outcome.elapsed, outcome.gas_used, outcome.yielded

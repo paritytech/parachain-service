@@ -2,7 +2,7 @@ use crate::ParaId;
 
 use super::{AuraAuthConfig, AuraCollatorAuthToken};
 use alloc::vec::Vec;
-use codec::{Decode, DecodeAll};
+use codec::{Decode, DecodeAll, Encode};
 use jam_pvm_common::is_authorized::{auth_token, work_package};
 use jam_types::{AuthTrace, Authorizer, CoreIndex};
 
@@ -10,10 +10,10 @@ pub fn is_authorized(_core: CoreIndex) -> AuthTrace {
     let package = work_package();
     let Authorizer { config, .. } = &package.authorizer;
 
-    let (para_ids, config) = <(Vec<ParaId>, AuraAuthConfig)>::decode_all(&mut &config[..])
+    let config = AuraAuthConfig::decode_all(&mut &config[..])
         .expect("authorizer config must decode to a (Vec<ParaId>, AuraAuthConfig)");
 
-    if para_ids.len() != package.items.len() {
+    if config.para_ids.len() != package.items.len() {
         panic!("auth config: number of para IDs does not match number of work items");
     }
     if package.items.len() == 0 {
@@ -28,5 +28,7 @@ pub fn is_authorized(_core: CoreIndex) -> AuthTrace {
         panic!("the authorizer token is invalid");
     };
 
-    trace
+    // TODO: Check the AURA round-robin collator selection
+
+    AuthTrace(trace.author_key.encode())
 }

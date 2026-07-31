@@ -10,19 +10,35 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+# Shared test fixtures (`src/mock.rs`) reused across the blob integration tests.
+# Off by default so production builds only embed the blob; enabled for this
+# crate's own tests via the self dev-dependency below.
+test-utils = [
+    "dep:executor",
+    "dep:parachain-authorizer",
+    "dep:codec",
+    "dep:primitive-types",
+    "dep:jam-types",
+]
+
 [dependencies]
 jam-pvm-builder = { workspace = true }
+
+# Optional: only pulled in by `test-utils` for the `mock` fixtures.
+executor = { workspace = true, features = ["jam"], optional = true }
+parachain-authorizer = { workspace = true, optional = true }
+codec = { workspace = true, optional = true }
+primitive-types = { workspace = true, optional = true }
+jam-types = { workspace = true, optional = true }
 
 [build-dependencies]
 jam-pvm-builder = { workspace = true }
 parachain-service = { workspace = true }
 
 # The blob integration tests (`tests/`) run the service against polkajam's
-# in-memory node host and also need the authorizer blob.
+# in-memory node host and also need the authorizer blob. The self dev-dependency
+# turns on `test-utils` so `parachain_service_bin::mock` is compiled for them.
 [dev-dependencies]
-executor = { workspace = true, features = ["jam"] }
+parachain-service-bin = { path = ".", features = ["test-utils"] }
 parachain-authorizer-bin = { workspace = true }
-parachain-authorizer = { workspace = true }
-codec = { workspace = true }
-primitive-types = { workspace = true }
-jam-types = { workspace = true }
