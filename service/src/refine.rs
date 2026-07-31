@@ -15,6 +15,8 @@ pub fn refine(
 ) -> WorkResult {
     let auth_trace = auth_trace();
 
+    // TODO: Re-check auth config prefix
+
     let work_items = refine::work_items_summary();
     let [work_item]: &[_; 1] = work_items
         .as_slice()

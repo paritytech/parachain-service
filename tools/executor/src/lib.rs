@@ -6,8 +6,10 @@
 
 #[cfg(feature = "service")]
 pub mod host;
+
 #[cfg(feature = "jam")]
 pub mod polkajam;
+#[cfg(feature = "jam")]
 pub use polkajam as pj;
 
 #[cfg(feature = "runtime")]

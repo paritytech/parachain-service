@@ -85,7 +85,7 @@ pub struct AuraCollatorAuthToken {
 impl AuraCollatorAuthToken {
     pub fn check_proof(&self, config: &AuraAuthConfig) -> bool {
         // FIXME unmock
-        self.proof == config.collator_set_root.as_ref();
+        self.proof.as_slice() == &[config.collator_set_root];
         true
     }
 
