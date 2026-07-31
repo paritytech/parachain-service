@@ -1,7 +1,7 @@
 //! `accumulate` entry-point tests.
 
-use parachain_service_bin::BLOB as SERVICE;
 use jam_types::{AccumulateItem, WorkItemRecord, WorkOutput};
+use parachain_service_bin::BLOB as SERVICE;
 
 // Traps in the guest's own accumulate logic on the empty `WorkItemRecord`.
 // Un-ignore once this carries real inputs.
@@ -18,8 +18,8 @@ fn accumulate_runs() {
         auth_output: Default::default(),
     })];
 
-    let outcome =
-        executor::pj::accumulate(SERVICE, items).expect("accumulate should run to completion (not trap)");
+    let outcome = executor::pj::accumulate(SERVICE, items)
+        .expect("accumulate should run to completion (not trap)");
     println!(
         "accumulate ok in {:?}, gas used {}, yielded: {:?}",
         outcome.elapsed, outcome.gas_used, outcome.yielded

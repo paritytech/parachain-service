@@ -3,10 +3,10 @@
 //! Blobs are embedded by the wrapper crates' build scripts, so `cargo test`
 //! rebuilds them automatically when the guest sources change.
 
+use jam_types::{AuthConfig, AuthTrace, Authorization as AuthToken};
 use parachain_authorizer_bin::BLOB as AUTHORIZER;
-use parachain_service_bin::BLOB as SERVICE;
-use jam_types::{AuthConfig, Authorization as AuthToken, AuthTrace};
 use parachain_service_bin::mock::{good_config, good_token};
+use parachain_service_bin::BLOB as SERVICE;
 
 #[test]
 fn trivial_works() {
@@ -16,10 +16,16 @@ fn trivial_works() {
 
     // `refine` requires exactly two extrinsics (see `service/src/refine.rs`);
     // supply two empty placeholders so the call runs to completion.
-    let work_items = vec![executor::pj::work_item(SERVICE, Vec::new(), vec![Vec::new(), Vec::new()])];
+    let work_items = vec![executor::pj::work_item(
+        SERVICE,
+        Vec::new(),
+        vec![Vec::new(), Vec::new()],
+    )];
 
-    let outcome = executor::pj::refine(SERVICE, AUTHORIZER, config, token, auth_trace, work_items, 0)
-        .expect("refine should run to completion (not trap)");
+    let outcome = executor::pj::refine(
+        SERVICE, AUTHORIZER, config, token, auth_trace, work_items, 0,
+    )
+    .expect("refine should run to completion (not trap)");
 
     assert!(outcome.gas_used > 0, "refine should use some gas");
 }
