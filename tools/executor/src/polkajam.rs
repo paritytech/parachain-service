@@ -17,7 +17,7 @@ use jam_types::{
 
 use jam_types::{
     AccumulateItem, AuthConfig, AuthTrace, Authorization as AuthToken, Hash, Segment, ServiceId,
-    WorkItem, WorkItemRecord, WorkOutput, WorkPackage, WorkPayload,
+    WorkItem, WorkOutput, WorkPackage, WorkPayload,
 };
 
 /// Service id used by the lightweight executor contexts.

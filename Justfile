@@ -12,20 +12,9 @@ help:
 # Run all checks
 ci: fmt check build lint
 
-# Fetch the build-critical vendored dependencies a fresh clone needs.
+# Fetch the vendored dependencies a fresh clone needs. See VENDOR.md.
 vendor:
-	#!/usr/bin/env sh
-	set -eu
-	# The `polkadot-sdk-companion` submodule plus the (non-submodule, pinned)
-	# polkajam checkout that `tools/executor` builds against. Reference-only
-	# vendors (graypaper, cumulus/dafny specs) are cloned manually — see CLAUDE.md.
-	git submodule update --init --recursive
-	if [ ! -d vendor/polkajam/.git ]; then
-		git clone {{ POLKAJAM_URL }} vendor/polkajam
-	fi
-	git -C vendor/polkajam fetch --quiet origin {{ POLKAJAM_REV }} 2>/dev/null || git -C vendor/polkajam fetch --quiet origin
-	git -C vendor/polkajam checkout --quiet {{ POLKAJAM_REV }}
-	echo "vendored: polkajam @ {{ POLKAJAM_REV }} + submodules"
+	git submodule update --init
 
 # Short for fmt
 f: fmt
@@ -105,3 +94,6 @@ check-blob-sizes blob:
 		echo "  ^ too large (max {{ MAX_BLOB_SIZE }} bytes)"
 		exit 1
 	fi
+
+test:
+	cargo test --all-targets --workspace

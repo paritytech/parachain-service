@@ -1,7 +1,5 @@
 # Parachain Service PoC
 
-
-
 The parachain service allows to run Polkadot parachains on JAM. It:
 
 - Replaces the *candidate inclusion* with an implementation of JAM `accumulate`.
@@ -29,4 +27,14 @@ for Asset Hub and Coretime there are special system pallets.
 └── tools
     ├── executor        # PVM/runtime executor library
     └── executor-cli    # Debug CLI around the executor
+```
+
+## Building
+
+There are [just](https://github.com/casey/just) commands for convenience operations but the main one
+currently is:
+
+```sh
+git submodule update --init --recursive # Only needed once
+cargo test
 ```

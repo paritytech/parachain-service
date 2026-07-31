@@ -1,8 +1,6 @@
 //! `refine` entry point of the parachain service.
 
-use alloc::{format, string::String};
-
-use jam_pvm_common::refine::{self, auth_trace, export_slice};
+use jam_pvm_common::refine::{self, auth_trace};
 use jam_pvm_common::*;
 use jam_types::{WorkOutput as WorkResult, *};
 

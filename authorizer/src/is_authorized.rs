@@ -1,8 +1,5 @@
-use crate::ParaId;
-
 use super::{AuraAuthConfig, AuraCollatorAuthToken};
-use alloc::vec::Vec;
-use codec::{Decode, DecodeAll, Encode};
+use codec::{DecodeAll, Encode};
 use jam_pvm_common::is_authorized::{auth_token, work_package};
 use jam_types::{AuthTrace, Authorizer, CoreIndex};
 
