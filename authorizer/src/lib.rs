@@ -17,7 +17,7 @@ use alloc::vec::Vec;
 use jam_types::{AuthTrace, CoreIndex};
 use primitive_types::H256;
 
-pub use parachain_types::ParaId;
+pub use parachain_support::types::ParaId;
 
 mod is_authorized;
 

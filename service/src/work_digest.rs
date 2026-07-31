@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 
 use codec::{Decode, Encode};
 use jam_types::Hash;
-use parachain_types::ParaId;
+use parachain_support::types::ParaId;
 
 /// A JAM timeslot.
 pub type Timeslot = u32;

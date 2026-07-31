@@ -16,7 +16,7 @@ workspace = true
 
 [dependencies]
 jam-types = { workspace = true }
-parachain-types = { workspace = true }
+parachain-support = { workspace = true }
 jam-pvm-common = { workspace = true, features = ["authorizer", "logging"] }
 polkavm-derive = { workspace = true }
 codec = { workspace = true }

@@ -8,9 +8,9 @@ members = [
     "runtimes/coretime",
     "service",
     "service-bin",
+    "support",
     "tools/executor",
     "tools/executor-cli",
-    "types",
 ]
 exclude = [
     "vendor/polkadot-sdk-companion",
@@ -47,7 +47,7 @@ parachain-service = { path = "service" }
 parachain-service-bin = { path = "service-bin" }
 parachain-authorizer = { path = "authorizer" }
 parachain-authorizer-bin = { path = "authorizer-bin" }
-parachain-types = { path = "types", default-features = false }
+parachain-support = { path = "support", default-features = false }
 
 # FRAME umbrella crate. Must be named `frame` (or `polkadot-sdk-frame`) for compatibility with
 # `frame-support`. See https://docs.rs/polkadot-sdk-frame

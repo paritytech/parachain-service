@@ -3685,7 +3685,7 @@ dependencies = [
  "binary-merkle-tree 16.1.1",
  "jam-pvm-common 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "jam-types 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "parachain-types",
+ "parachain-support",
  "parity-scale-codec",
  "polkavm-derive 0.36.0",
  "primitive-types",
@@ -3705,7 +3705,7 @@ version = "0.1.0"
 dependencies = [
  "jam-pvm-common 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "jam-types 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "parachain-types",
+ "parachain-support",
  "parity-scale-codec",
  "polkavm-derive 0.36.0",
 ]
@@ -3723,7 +3723,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "parachain-types"
+name = "parachain-support"
 version = "0.1.0"
 dependencies = [
  "parity-scale-codec",

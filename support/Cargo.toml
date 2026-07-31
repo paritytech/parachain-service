@@ -1,0 +1,19 @@
+[package]
+name = "parachain-support"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+
+# Shared support code for the `service` and `authorizer` JAM programs. Those two
+# compile to separate blobs and must not depend on each other, so anything they
+# both need lives here. Kept deliberately off the `sp-runtime`/`sp-core` dependency
+# tree so it stays buildable for the PolkaVM target (see the note in `authorizer/Cargo.toml`).
+
+[lints]
+workspace = true
+
+[dependencies]
+codec = { workspace = true }

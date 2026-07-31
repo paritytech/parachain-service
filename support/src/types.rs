@@ -1,5 +1,3 @@
-#![cfg_attr(any(target_arch = "riscv32", target_arch = "riscv64"), no_std)]
-
 //! Types shared between the parachain `service` and `authorizer` JAM programs.
 //!
 //! The two programs build into separate blobs and are peers — neither may depend
