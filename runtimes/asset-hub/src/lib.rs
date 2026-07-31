@@ -1,8 +1,4 @@
 //! Asset Hub runtime.
-//!
-//! A minimal FRAME runtime that amalgamates [`frame_system`] with the
-//! [`asset_hub_system`] pallet, generated with the `frame`
-//! ([`polkadot-sdk-frame`](https://docs.rs/polkadot-sdk-frame)) umbrella crate's `runtime` feature.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -19,6 +15,30 @@ use frame::{
     deps::sp_runtime::transaction_validity::{TransactionSource, TransactionValidity},
     runtime::{apis, prelude::*},
 };
+
+#[frame_construct_runtime]
+mod runtime {
+    #[runtime::runtime]
+    #[runtime::derive(
+        RuntimeCall,
+        RuntimeEvent,
+        RuntimeError,
+        RuntimeOrigin,
+        RuntimeFreezeReason,
+        RuntimeHoldReason,
+        RuntimeSlashReason,
+        RuntimeLockId,
+        RuntimeTask,
+        RuntimeViewFunction
+    )]
+    pub struct Runtime;
+
+    #[runtime::pallet_index(0)]
+    pub type System = frame_system::Pallet<Runtime>;
+
+    #[runtime::pallet_index(1)]
+    pub type AssetHubSystem = asset_hub_system::Pallet<Runtime>;
+}
 
 #[runtime_version]
 pub const VERSION: RuntimeVersion = RuntimeVersion {
@@ -50,30 +70,6 @@ type TxExtension = (
     frame_system::CheckNonce<Runtime>,
     frame_system::CheckWeight<Runtime>,
 );
-
-#[frame_construct_runtime]
-mod runtime {
-    #[runtime::runtime]
-    #[runtime::derive(
-        RuntimeCall,
-        RuntimeEvent,
-        RuntimeError,
-        RuntimeOrigin,
-        RuntimeFreezeReason,
-        RuntimeHoldReason,
-        RuntimeSlashReason,
-        RuntimeLockId,
-        RuntimeTask,
-        RuntimeViewFunction
-    )]
-    pub struct Runtime;
-
-    #[runtime::pallet_index(0)]
-    pub type System = frame_system::Pallet<Runtime>;
-
-    #[runtime::pallet_index(1)]
-    pub type AssetHubSystem = asset_hub_system::Pallet<Runtime>;
-}
 
 parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
