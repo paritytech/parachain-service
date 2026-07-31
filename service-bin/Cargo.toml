@@ -24,3 +24,5 @@ executor = { workspace = true, features = ["jam"] }
 parachain-authorizer-bin = { workspace = true }
 parachain-authorizer = { workspace = true }
 codec = { workspace = true }
+primitive-types = { workspace = true }
+jam-types = { workspace = true }

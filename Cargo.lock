@@ -541,7 +541,7 @@ dependencies = [
  "asset-hub-system",
  "executor",
  "jam-codec",
- "jam-types 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "jam-types",
  "parachain-authorizer-bin",
  "parachain-service-bin",
  "parachain-support",
@@ -1813,7 +1813,7 @@ dependencies = [
  "jam-node",
  "jam-program-blob-common 0.1.28",
  "jam-std-common",
- "jam-types 0.1.28",
+ "jam-types",
  "parity-scale-codec",
  "polkavm 0.36.0",
  "sc-executor",
@@ -1833,7 +1833,7 @@ dependencies = [
  "executor",
  "hex",
  "jam-codec",
- "jam-types 0.1.28",
+ "jam-types",
  "serde",
  "serde_json",
 ]
@@ -2809,8 +2809,8 @@ dependencies = [
  "bounded-collections",
  "jam-bootstrap-service-common",
  "jam-codec",
- "jam-pvm-common 0.1.28",
- "jam-types 0.1.28",
+ "jam-pvm-common",
+ "jam-types",
  "polkavm-derive 0.30.0",
 ]
 
@@ -2828,7 +2828,7 @@ version = "0.1.28"
 dependencies = [
  "bounded-collections",
  "jam-codec",
- "jam-types 0.1.28",
+ "jam-types",
  "rand 0.9.5",
  "serde",
  "thiserror 2.0.19",
@@ -2889,7 +2889,7 @@ dependencies = [
  "jam-null-authorizer-bin",
  "jam-program-blob-common 0.1.28",
  "jam-std-common",
- "jam-types 0.1.28",
+ "jam-types",
  "log",
  "p256",
  "parity-db",
@@ -2976,20 +2976,7 @@ version = "0.1.28"
 dependencies = [
  "bounded-collections",
  "jam-codec",
- "jam-types 0.1.28",
- "picoalloc",
- "polkavm-derive 0.30.0",
-]
-
-[[package]]
-name = "jam-pvm-common"
-version = "0.1.28"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28b633dcee3a2910e634bf3824bc0761ba62c8ed9f1713b5f76786f939dcbb03"
-dependencies = [
- "bounded-collections",
- "jam-codec",
- "jam-types 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "jam-types",
  "picoalloc",
  "polkavm-derive 0.30.0",
 ]
@@ -3007,7 +2994,7 @@ dependencies = [
  "ed25519-consensus",
  "futures",
  "jam-codec",
- "jam-types 0.1.28",
+ "jam-types",
  "jsonrpsee",
  "p256",
  "rand 0.9.5",
@@ -3029,18 +3016,6 @@ dependencies = [
  "jam-codec",
  "macro_rules_attribute",
  "serde",
-]
-
-[[package]]
-name = "jam-types"
-version = "0.1.28"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "658ebd3553ff9639a66d4d42b62b6a4c5a0d31923c36aa90a2dbf243545126ca"
-dependencies = [
- "atomic-traits",
- "bounded-collections",
- "jam-codec",
- "macro_rules_attribute",
 ]
 
 [[package]]
@@ -3684,8 +3659,9 @@ name = "parachain-authorizer"
 version = "0.1.0"
 dependencies = [
  "binary-merkle-tree 16.1.1",
- "jam-pvm-common 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "jam-types 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "blake2b_simd",
+ "jam-pvm-common",
+ "jam-types",
  "parachain-support",
  "parity-scale-codec",
  "polkavm-derive 0.36.0",
@@ -3704,8 +3680,8 @@ dependencies = [
 name = "parachain-service"
 version = "0.1.0"
 dependencies = [
- "jam-pvm-common 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "jam-types 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "jam-pvm-common",
+ "jam-types",
  "parachain-support",
  "parity-scale-codec",
  "polkavm-derive 0.36.0",
@@ -3717,16 +3693,19 @@ version = "0.1.0"
 dependencies = [
  "executor",
  "jam-pvm-builder 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "jam-types",
  "parachain-authorizer",
  "parachain-authorizer-bin",
  "parachain-service",
  "parity-scale-codec",
+ "primitive-types",
 ]
 
 [[package]]
 name = "parachain-support"
 version = "0.1.0"
 dependencies = [
+ "jam-types",
  "parity-scale-codec",
 ]
 

@@ -15,17 +15,10 @@ use jam_types::{
     Authorizer, CodeHash, CoreIndex, ExtrinsicHash, ExtrinsicSpec, FixedVec, RefineContext,
 };
 
-pub use jam_types::{
-    AccumulateItem, AuthConfig, AuthTrace, Hash, Segment, ServiceId, WorkItem, WorkItemRecord,
-    WorkOutput, WorkPackage, WorkPayload,
+use jam_types::{
+    AccumulateItem, AuthConfig, AuthTrace, Authorization as AuthToken, Hash, Segment, ServiceId,
+    WorkItem, WorkItemRecord, WorkOutput, WorkPackage, WorkPayload,
 };
-
-/// The collator's per-package authorization token.
-///
-/// An alias for jam's [`jam_types::Authorization`], named for how the parachain
-/// service uses it: the token a collator submits alongside a work package, which
-/// the authorizer checks and echoes into the [`AuthTrace`].
-pub type AuthToken = jam_types::Authorization;
 
 /// Service id used by the lightweight executor contexts.
 pub const SERVICE_ID: ServiceId = 0;
@@ -229,10 +222,11 @@ pub fn is_authorized(
     authorizer_blob: &[u8],
     config: AuthConfig,
     token: AuthToken,
+    work_items: Vec<WorkItem>,
     core: CoreIndex,
 ) -> Result<AuthorizeOutcome> {
     let (storage, authorizer_code_hash) = storage_with_code(authorizer_blob)?;
-    let package = work_package(Vec::new(), authorizer_code_hash, token, config)?;
+    let package = work_package(work_items, authorizer_code_hash, token, config)?;
 
     let engine = interpreter_engine()?;
     let start = Instant::now();

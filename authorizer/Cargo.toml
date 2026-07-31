@@ -21,4 +21,5 @@ jam-pvm-common = { workspace = true, features = ["authorizer", "logging"] }
 polkavm-derive = { workspace = true }
 codec = { workspace = true }
 binary-merkle-tree = { workspace = true }
+blake2b_simd = { workspace = true }
 primitive-types = { workspace = true }
