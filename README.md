@@ -50,7 +50,7 @@ with real PVM blobs and host calls.
 Fetch the vendored submodules once, then build and test with `cargo`:
 
 ```sh
-just vendor   # or: git submodule update --init — only needed once
+git submodule update --init # only needed once
 cargo test
 ```
 
