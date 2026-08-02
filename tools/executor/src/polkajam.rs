@@ -1,38 +1,20 @@
-//! Execute parachain service entry points with polkajam's in-memory node host.
+//! Thin adapters around PolkaJAM's in-memory executor.
 
 use std::time::{Duration, Instant};
 
 use anyhow::{anyhow, Result};
-use jam_node::{
-    vm::{
-        AccumulateCallContext, Engine, RefineCallContext, RefineCallContextOwned, StateMutations,
-        Storage,
-    },
-    PvmBackend,
+use jam_node::vm::{
+    AccumulateCallContext, Engine, RefineCallContext, RefineCallContextOwned, Storage,
 };
-use jam_std_common::{hash_raw, Entropy, Privileges, Service};
-use jam_types::{
-    AccumulateItem, AuthConfig, AuthTrace, Authorization as AuthToken, Authorizer, CodeHash,
-    CoreIndex, ExtrinsicHash, ExtrinsicSpec, FixedVec, Hash, RefineContext, Segment, ServiceId,
-    WorkItem, WorkOutput, WorkPackage, WorkPayload,
-};
+use jam_types::{AuthTrace, CodeHash, CoreIndex, Hash, WorkOutput, WorkPackage};
 
-/// Service id used by the lightweight executor contexts.
-pub const SERVICE_ID: ServiceId = 0;
-
-/// Gas budget used by the lightweight executor contexts.
-pub const GAS: u64 = 5_000_000_000;
-
-/// Result of a refine invocation.
 #[derive(Debug)]
 pub struct RefineOutcome {
     pub output: WorkOutput,
     pub elapsed: Duration,
     pub gas_used: u64,
-    pub exports: Vec<Segment>,
 }
 
-/// Result of an accumulate invocation.
 #[derive(Debug)]
 pub struct AccumulateOutcome {
     pub yielded: Option<Hash>,
@@ -40,141 +22,36 @@ pub struct AccumulateOutcome {
     pub gas_used: u64,
 }
 
-/// Result of an is_authorized invocation.
 #[derive(Debug)]
-pub struct AuthorizeOutcome {
+pub struct IsAuthorizedOutcome {
     pub auth_trace: AuthTrace,
     pub elapsed: Duration,
     pub gas_used: u64,
 }
 
-/// Hash a PVM blob using the hash expected by JAM code storage.
-pub fn blob_hash(blob: &[u8]) -> Hash {
-    hash_raw(blob)
-}
-
-/// A work item and the extrinsic bytes available while refining it.
-///
-/// [`WorkItem::extrinsics`] contains only hashes and lengths. PolkaJAM receives
-/// the corresponding bytes separately through its refine call context.
-#[derive(Debug)]
-pub struct WorkItemWithExtrinsics {
-    pub item: WorkItem,
-    pub extrinsics: Vec<Vec<u8>>,
-}
-
-/// Construct a minimal work item that invokes `service_blob`.
-pub fn work_item(
-    service_blob: &[u8],
-    payload: Vec<u8>,
-    extrinsics: Vec<Vec<u8>>,
-) -> WorkItemWithExtrinsics {
-    let extrinsic_specs: Vec<ExtrinsicSpec> = extrinsics
-        .iter()
-        .map(|bytes| ExtrinsicSpec {
-            hash: ExtrinsicHash(hash_raw(bytes)),
-            len: bytes.len() as u32,
-        })
-        .collect();
-
-    let item = WorkItem {
-        service: SERVICE_ID,
-        code_hash: CodeHash(blob_hash(service_blob)),
-        refine_gas_limit: GAS,
-        accumulate_gas_limit: 0,
-        export_count: 0,
-        payload: WorkPayload(payload),
-        import_segments: Default::default(),
-        extrinsics: extrinsic_specs
-            .try_into()
-            .expect("extrinsic count exceeds the JAM bound"),
-    };
-
-    WorkItemWithExtrinsics { item, extrinsics }
-}
-
-/// Execute a service blob's refine entry point with a minimal node call context.
-///
-/// `auth_trace` must come from [`is_authorized`] with the same `config` and
-/// `token`.
+/// Run refine with a caller-built engine and call context.
 pub fn refine(
-    service_blob: &[u8],
-    authorizer_blob: &[u8],
-    config: AuthConfig,
-    token: AuthToken,
-    auth_trace: AuthTrace,
-    work_items: Vec<WorkItemWithExtrinsics>,
-    work_item_index: usize,
+    engine: &Engine,
+    code_hash: CodeHash,
+    context: &mut RefineCallContextOwned,
 ) -> Result<RefineOutcome> {
-    init_logging();
-    let (storage, code_hash) = storage_with_code(service_blob)?;
-
-    let (items, extrinsic_data): (Vec<_>, Vec<_>) = work_items
-        .into_iter()
-        .map(|WorkItemWithExtrinsics { item, extrinsics }| {
-            let extrinsics = extrinsics.into_iter().map(Into::into).collect::<Vec<_>>();
-            (item, extrinsics)
-        })
-        .unzip();
-    let package = work_package(items, blob_hash(authorizer_blob), token, config)?;
-
-    let mut context = RefineCallContextOwned {
-        storage,
-        core: 0,
-        service_id: SERVICE_ID,
-        gas: GAS,
-        auth_output: auth_trace,
-        import_data: Vec::new(),
-        extrinsic_data,
-        export_counter: 0,
-        max_exports: 0,
-        exports: Vec::new(),
-        work_package: package.into(),
-        work_item_index,
-        output_len: 0,
-        engine: interpreter_engine()?, // Used by nested-PVM host calls.
-    };
-
-    let engine = interpreter_engine()?;
-    let (result, elapsed, gas_used) =
-        engine.refine(CodeHash(code_hash), RefineCallContext::from(&mut context));
-
+    let (result, elapsed, gas_used) = engine.refine(code_hash, RefineCallContext::from(context));
     let output = result.map_err(|error| anyhow!("refine failed: {error}"))?;
 
     Ok(RefineOutcome {
         output,
         elapsed,
         gas_used,
-        exports: context.exports,
     })
 }
 
-/// Execute a service blob's accumulate entry point with a minimal node call context.
-pub fn accumulate(service_blob: &[u8], items: Vec<AccumulateItem>) -> Result<AccumulateOutcome> {
-    init_logging();
-
-    let (storage, code_hash) = storage_with_code(service_blob)?;
-    let mut context = AccumulateCallContext {
-        storage,
-        mutations: StateMutations::new(0),
-        snapshot: None,
-        gas: GAS,
-        slot: 0,
-        service_id: SERVICE_ID,
-        entropy: Entropy::default(),
-        items,
-        privileges: Privileges {
-            bless: SERVICE_ID,
-            assign: FixedVec::new(SERVICE_ID),
-            designate: SERVICE_ID,
-            register: SERVICE_ID,
-            always_acc: Default::default(),
-        },
-        cost: None,
-    };
-
-    let engine = interpreter_engine()?;
-    let (result, elapsed, gas_used) = engine.accumulate(CodeHash(code_hash), &mut context);
+/// Run accumulate with a caller-built engine and call context.
+pub fn accumulate(
+    engine: &Engine,
+    code_hash: CodeHash,
+    context: &mut AccumulateCallContext<'_>,
+) -> Result<AccumulateOutcome> {
+    let (result, elapsed, gas_used) = engine.accumulate(code_hash, context);
     let yielded = result.map_err(|error| anyhow!("accumulate failed: {error}"))?;
 
     Ok(AccumulateOutcome {
@@ -184,94 +61,22 @@ pub fn accumulate(service_blob: &[u8], items: Vec<AccumulateItem>) -> Result<Acc
     })
 }
 
-/// Execute an authorizer blob's is_authorized entry point with a minimal node call context.
-///
-/// `config` and `token` become the work package's authorizer configuration and
-/// authorization token. Pass the returned trace to [`refine`].
+/// Run is-authorized against a caller-built package and storage snapshot.
 pub fn is_authorized(
-    authorizer_blob: &[u8],
-    config: AuthConfig,
-    token: AuthToken,
-    work_items: Vec<WorkItem>,
+    engine: &Engine,
+    package: &WorkPackage,
     core: CoreIndex,
-) -> Result<AuthorizeOutcome> {
-    init_logging();
-    let (storage, authorizer_code_hash) = storage_with_code(authorizer_blob)?;
-    let package = work_package(work_items, authorizer_code_hash, token, config)?;
-
-    let engine = interpreter_engine()?;
+    storage: &Storage,
+) -> Result<IsAuthorizedOutcome> {
+    let package = package.into();
     let start = Instant::now();
-    let (result, gas_used) = engine.is_authorized(&package.into(), core, &storage, None);
+    let (result, gas_used) = engine.is_authorized(&package, core, storage, None);
     let elapsed = start.elapsed();
     let auth_trace = result.map_err(|error| anyhow!("is_authorized failed: {error}"))?;
 
-    Ok(AuthorizeOutcome {
+    Ok(IsAuthorizedOutcome {
         auth_trace,
         elapsed,
         gas_used,
     })
-}
-
-fn work_package(
-    work_items: Vec<WorkItem>,
-    authorizer_code_hash: Hash,
-    authorization: AuthToken,
-    config: AuthConfig,
-) -> Result<WorkPackage> {
-    let items = work_items
-        .try_into()
-        .map_err(|_| anyhow!("work-item count exceeds the JAM bound"))?;
-
-    Ok(WorkPackage {
-        authorization,
-        auth_code_host: SERVICE_ID,
-        authorizer: Authorizer {
-            code_hash: CodeHash(authorizer_code_hash),
-            config,
-        },
-        context: RefineContext {
-            anchor: Default::default(),
-            state_root: Default::default(),
-            beefy_root: Default::default(),
-            lookup_anchor: Default::default(),
-            lookup_anchor_slot: 0,
-            prerequisites: Default::default(),
-        },
-        items,
-    })
-}
-
-fn storage_with_code(blob: &[u8]) -> Result<(Storage, Hash)> {
-    let code_hash = blob_hash(blob);
-    let service = Service {
-        code_hash: CodeHash(code_hash),
-        balance: 1_000_000_000_000,
-        min_item_gas: 100,
-        min_memo_gas: 100,
-        bytes: 1_000_000,
-        items: 1_000,
-        deposit_offset: 0,
-        creation_slot: 0,
-        last_accumulation_slot: 0,
-        parent_service: 0,
-    };
-    let mut storage = Storage::new_empty();
-    storage.set_service(SERVICE_ID, &service);
-    storage
-        .solicit(0, SERVICE_ID, code_hash, blob.len() as u32)
-        .map_err(|error| anyhow!("soliciting service code failed: {error:?}"))?;
-    storage
-        .provide(0, SERVICE_ID, blob)
-        .map_err(|error| anyhow!("providing service code failed: {error:?}"))?;
-    storage.commit();
-    Ok((storage, code_hash))
-}
-
-fn interpreter_engine() -> Result<Engine> {
-    Engine::new(Some(PvmBackend::Interpreter))
-        .map_err(|error| anyhow!("creating interpreter engine failed: {error}"))
-}
-
-fn init_logging() {
-    let _ = env_logger::try_init();
 }
