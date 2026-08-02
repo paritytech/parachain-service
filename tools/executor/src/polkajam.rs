@@ -12,11 +12,9 @@ use jam_node::{
 };
 use jam_std_common::{hash_raw, Entropy, Privileges, Service};
 use jam_types::{
-    AccumulateItem, AuthConfig, AuthTrace, Authorization as AuthToken, Hash, Segment, ServiceId,
+    AccumulateItem, AuthConfig, AuthTrace, Authorization as AuthToken, Authorizer, CodeHash,
+    CoreIndex, ExtrinsicHash, ExtrinsicSpec, FixedVec, Hash, RefineContext, Segment, ServiceId,
     WorkItem, WorkOutput, WorkPackage, WorkPayload,
-};
-use jam_types::{
-    Authorizer, CodeHash, CoreIndex, ExtrinsicHash, ExtrinsicSpec, FixedVec, RefineContext,
 };
 
 /// Service id used by the lightweight executor contexts.
@@ -55,34 +53,30 @@ pub fn blob_hash(blob: &[u8]) -> Hash {
     hash_raw(blob)
 }
 
-/// A work item paired with the raw bytes of its extrinsics.
+/// A work item and the extrinsic bytes available while refining it.
 ///
-/// [`WorkItem::extrinsics`] only records each extrinsic's hash and length; the
-/// bytes themselves are supplied out-of-band through the refine context's
-/// `extrinsic_data`. Bundling them keeps a single source of truth so the
-/// per-item extrinsic count and the bytes fetched by `refine` cannot drift apart.
+/// [`WorkItem::extrinsics`] contains only hashes and lengths. PolkaJAM receives
+/// the corresponding bytes separately through its refine call context.
+#[derive(Debug)]
 pub struct WorkItemWithExtrinsics {
     pub item: WorkItem,
     pub extrinsics: Vec<Vec<u8>>,
 }
 
 /// Construct a minimal work item that invokes `service_blob`.
-///
-/// `extrinsics` holds one `Vec<u8>` per extrinsic; each becomes an
-/// [`ExtrinsicSpec`] (hash + length) on the [`WorkItem`], while the bytes are
-/// carried alongside for the refine context to expose via `refine::extrinsic`.
 pub fn work_item(
     service_blob: &[u8],
     payload: Vec<u8>,
     extrinsics: Vec<Vec<u8>>,
 ) -> WorkItemWithExtrinsics {
-    let specs: Vec<ExtrinsicSpec> = extrinsics
+    let extrinsic_specs: Vec<ExtrinsicSpec> = extrinsics
         .iter()
         .map(|bytes| ExtrinsicSpec {
             hash: ExtrinsicHash(hash_raw(bytes)),
             len: bytes.len() as u32,
         })
         .collect();
+
     let item = WorkItem {
         service: SERVICE_ID,
         code_hash: CodeHash(blob_hash(service_blob)),
@@ -91,24 +85,18 @@ pub fn work_item(
         export_count: 0,
         payload: WorkPayload(payload),
         import_segments: Default::default(),
-        extrinsics: specs
+        extrinsics: extrinsic_specs
             .try_into()
             .expect("extrinsic count exceeds the JAM bound"),
     };
+
     WorkItemWithExtrinsics { item, extrinsics }
 }
 
 /// Execute a service blob's refine entry point with a minimal node call context.
 ///
-/// `config`/`token` are the authorizer config and the collator's authorization
-/// token; they populate the work package refine refines, so it carries the same
-/// authorization the authorizer ran against (pass the same values here as to
-/// [`is_authorized`]). `auth_trace` is that authorizer's output, obtained by
-/// running [`is_authorized`] separately; refine reads it back through the guest's
-/// `auth_trace()`. Per the Gray Paper, refinement (`Ψ_R`) takes both the package
-/// `p` and the auth trace `r` as inputs — is-authorized (`Ψ_I`) is a separate
-/// function — so the caller runs [`is_authorized`] first and threads its trace in
-/// here.
+/// `auth_trace` must come from [`is_authorized`] with the same `config` and
+/// `token`.
 pub fn refine(
     service_blob: &[u8],
     authorizer_blob: &[u8],
@@ -118,18 +106,17 @@ pub fn refine(
     work_items: Vec<WorkItemWithExtrinsics>,
     work_item_index: usize,
 ) -> Result<RefineOutcome> {
-    let _ = env_logger::try_init();
+    init_logging();
     let (storage, code_hash) = storage_with_code(service_blob)?;
 
-    let mut items = Vec::with_capacity(work_items.len());
-    let mut extrinsic_data = Vec::with_capacity(work_items.len());
-
-    for bundle in work_items {
-        items.push(bundle.item);
-        extrinsic_data.push(bundle.extrinsics);
-    }
-
-    let work_package = work_package(items, blob_hash(authorizer_blob), token, config)?;
+    let (items, extrinsic_data): (Vec<_>, Vec<_>) = work_items
+        .into_iter()
+        .map(|WorkItemWithExtrinsics { item, extrinsics }| {
+            let extrinsics = extrinsics.into_iter().map(Into::into).collect::<Vec<_>>();
+            (item, extrinsics)
+        })
+        .unzip();
+    let package = work_package(items, blob_hash(authorizer_blob), token, config)?;
 
     let mut context = RefineCallContextOwned {
         storage,
@@ -137,18 +124,15 @@ pub fn refine(
         service_id: SERVICE_ID,
         gas: GAS,
         auth_output: auth_trace,
-        import_data: vec![],
-        extrinsic_data: extrinsic_data
-            .into_iter()
-            .map(|per_item| per_item.into_iter().map(Into::into).collect())
-            .collect(),
+        import_data: Vec::new(),
+        extrinsic_data,
         export_counter: 0,
         max_exports: 0,
-        exports: vec![],
-        work_package: work_package.into(),
+        exports: Vec::new(),
+        work_package: package.into(),
         work_item_index,
         output_len: 0,
-        engine: interpreter_engine()?,
+        engine: interpreter_engine()?, // Used by nested-PVM host calls.
     };
 
     let engine = interpreter_engine()?;
@@ -167,7 +151,8 @@ pub fn refine(
 
 /// Execute a service blob's accumulate entry point with a minimal node call context.
 pub fn accumulate(service_blob: &[u8], items: Vec<AccumulateItem>) -> Result<AccumulateOutcome> {
-    let _ = env_logger::try_init();
+    init_logging();
+
     let (storage, code_hash) = storage_with_code(service_blob)?;
     let mut context = AccumulateCallContext {
         storage,
@@ -201,12 +186,8 @@ pub fn accumulate(service_blob: &[u8], items: Vec<AccumulateItem>) -> Result<Acc
 
 /// Execute an authorizer blob's is_authorized entry point with a minimal node call context.
 ///
-/// The authorizer is a separate program from the service, with its own blob and
-/// code hash. `config` becomes the authorizer's `config` blob (pinned by the
-/// Coretime chain; it begins with the `Vec<ParaId>` the service is authorized
-/// for) and `token` becomes the work package's `authorization` (the collator's
-/// per-package token). The returned [`AuthTrace`] is what refine/accumulate
-/// later observe.
+/// `config` and `token` become the work package's authorizer configuration and
+/// authorization token. Pass the returned trace to [`refine`].
 pub fn is_authorized(
     authorizer_blob: &[u8],
     config: AuthConfig,
@@ -214,7 +195,7 @@ pub fn is_authorized(
     work_items: Vec<WorkItem>,
     core: CoreIndex,
 ) -> Result<AuthorizeOutcome> {
-    let _ = env_logger::try_init();
+    init_logging();
     let (storage, authorizer_code_hash) = storage_with_code(authorizer_blob)?;
     let package = work_package(work_items, authorizer_code_hash, token, config)?;
 
@@ -237,6 +218,10 @@ fn work_package(
     authorization: AuthToken,
     config: AuthConfig,
 ) -> Result<WorkPackage> {
+    let items = work_items
+        .try_into()
+        .map_err(|_| anyhow!("work-item count exceeds the JAM bound"))?;
+
     Ok(WorkPackage {
         authorization,
         auth_code_host: SERVICE_ID,
@@ -252,9 +237,7 @@ fn work_package(
             lookup_anchor_slot: 0,
             prerequisites: Default::default(),
         },
-        items: work_items
-            .try_into()
-            .map_err(|_| anyhow!("work-item count exceeds the JAM bound"))?,
+        items,
     })
 }
 
@@ -287,4 +270,8 @@ fn storage_with_code(blob: &[u8]) -> Result<(Storage, Hash)> {
 fn interpreter_engine() -> Result<Engine> {
     Engine::new(Some(PvmBackend::Interpreter))
         .map_err(|error| anyhow!("creating interpreter engine failed: {error}"))
+}
+
+fn init_logging() {
+    let _ = env_logger::try_init();
 }
