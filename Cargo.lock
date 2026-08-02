@@ -1814,6 +1814,7 @@ dependencies = [
  "jam-program-blob-common 0.1.28",
  "jam-std-common",
  "jam-types",
+ "log",
  "parity-scale-codec",
  "polkavm 0.36.0",
  "sc-executor",

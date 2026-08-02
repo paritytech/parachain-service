@@ -15,6 +15,7 @@ anyhow = { version = "1", optional = true }
 codec = { package = "parity-scale-codec", version = "3", optional = true }
 jam-node = { path = "../../vendor/polkajam/crates/node", default-features = false, features = ["hazmat"], optional = true }
 jam-program-blob-common = { path = "../../vendor/polkajam/crates/jam-program-blob/common", optional = true }
+env_logger = { version = "0.11", optional = true }
 jam-std-common = { path = "../../vendor/polkajam/crates/jam-std-common", optional = true }
 jam-types = { path = "../../vendor/polkajam/crates/jam-types", features = ["std"], optional = true }
 polkavm = { version = "0.36.0", optional = true }
@@ -30,6 +31,7 @@ default = []
 # Execute service entry points with the real polkajam node host.
 jam = [
     "dep:anyhow",
+    "dep:env_logger",
     "dep:jam-node",
     "dep:jam-std-common",
     "dep:jam-types",

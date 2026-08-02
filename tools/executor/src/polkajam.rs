@@ -119,7 +119,7 @@ pub fn refine(
     work_items: Vec<WorkItemWithExtrinsics>,
     work_item_index: usize,
 ) -> Result<RefineOutcome> {
-    crate::logging::init();
+    let _ = env_logger::try_init();
     let (storage, code_hash) = storage_with_code(service_blob)?;
 
     let mut items = Vec::with_capacity(work_items.len());
@@ -168,7 +168,7 @@ pub fn refine(
 
 /// Execute a service blob's accumulate entry point with a minimal node call context.
 pub fn accumulate(service_blob: &[u8], items: Vec<AccumulateItem>) -> Result<AccumulateOutcome> {
-    crate::logging::init();
+    let _ = env_logger::try_init();
     let (storage, code_hash) = storage_with_code(service_blob)?;
     let mut context = AccumulateCallContext {
         storage,
@@ -215,7 +215,7 @@ pub fn is_authorized(
     work_items: Vec<WorkItem>,
     core: CoreIndex,
 ) -> Result<AuthorizeOutcome> {
-    crate::logging::init();
+    let _ = env_logger::try_init();
     let (storage, authorizer_code_hash) = storage_with_code(authorizer_blob)?;
     let package = work_package(work_items, authorizer_code_hash, token, config)?;
 
