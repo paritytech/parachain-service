@@ -6,7 +6,14 @@ use jam_pvm_common::accumulate::{accumulate_items, set_storage};
 use jam_pvm_common::*;
 use jam_types::{WorkOutput as WorkResult, *};
 
-pub fn accumulate(slot: Slot, id: ServiceId, item_count: usize) -> Option<Hash> {
+#[derive(Debug)]
+pub enum AccumulateError {}
+
+pub fn accumulate(
+    slot: Slot,
+    id: ServiceId,
+    item_count: usize,
+) -> Result<Option<Hash>, AccumulateError> {
     // FIXME: I did not start with this. It is just dummy code here.
     info!(
         "This is Accumulate in the Parachain Service {id:x}h with {} items",
@@ -19,7 +26,8 @@ pub fn accumulate(slot: Slot, id: ServiceId, item_count: usize) -> Option<Hash> 
             AccumulateItem::Transfer(t) => on_transfer(slot, t),
         }
     }
-    None
+
+    Ok(None)
 }
 
 fn on_accumulate_item(item: WorkItemRecord) {

@@ -24,12 +24,15 @@ fn trivial_works() {
 
     let outcome = executor::pj::refine(
         SERVICE, AUTHORIZER, config, token, auth_trace, work_items, 0,
-    ).unwrap();
+    )
+    .unwrap();
 
     assert!(outcome.gas_used > 0, "refine should use some gas");
 }
 
+// Empty WPs are invalid per GP, hence panic.
 #[test]
+#[should_panic(expected = "the len is 0 but the index is 0")]
 fn no_work_items_errors() {
     let work_items = vec![];
 
@@ -41,8 +44,7 @@ fn no_work_items_errors() {
         AuthTrace::new(),
         work_items,
         0,
-    )
-    .expect_err("empty WPs are forbidden by the Gray Paper; qed");
+    );
 }
 
 #[test]

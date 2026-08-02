@@ -6,7 +6,7 @@
 use codec::Encode;
 use executor::pj::SERVICE_ID;
 use jam_types::{AuthConfig, Authorization as AuthToken, CodeHash, WorkItem};
-use parachain_authorizer::{AuraAuthConfig, AuraCollatorAuthToken, ParaId};
+use parachain_authorizer::{AuraAuthConfig, AuthToken as CollatorAuthToken, ParaId};
 use primitive_types::H256;
 
 /// An authorizer config whose `ParaId` prefix authorizes `para_ids` packages.
@@ -23,7 +23,7 @@ pub fn good_config(para_ids: usize) -> AuthConfig {
 
 /// An empty but well-formed Aura collator authorization token.
 pub fn good_token() -> AuthToken {
-    let token = AuraCollatorAuthToken {
+    let token = CollatorAuthToken {
         proof: vec![H256::zero()],
         key: [0; 32],
         signature: [255; 64],

@@ -31,6 +31,23 @@ const SIGNABLE_WORK_PACKAGE_DOMAIN: &[u8] = b"parachain-service:aura:work-packag
 pub type CollatorKey = [u8; 32];
 pub type CollatorSignature = [u8; 64];
 
+pub struct ParachainAuthorizer;
+jam_pvm_common::declare_authorizer!(ParachainAuthorizer);
+
+impl jam_pvm_common::Authorizer for ParachainAuthorizer {
+    fn is_authorized(core: CoreIndex) -> AuthTrace {
+        match is_authorized::is_authorized(core) {
+            Ok(r) => r,
+            Err(e) => {
+                let msg = format!("BUG: Parachain Service is_authorized crashed: {e:?}");
+
+                jam_pvm_common::error!("{msg}");
+                panic!("{msg}");
+            }
+        }
+    }
+}
+
 /// Hash of a work-package that can be signed by AURA collators.
 ///
 /// This excludes the authorization token since that would contain said signature.
@@ -52,15 +69,6 @@ pub fn signable_work_package_hash(package: &WorkPackage) -> H256 {
     H256::from_slice(hash.as_bytes())
 }
 
-pub struct ParachainAuthorizer;
-jam_pvm_common::declare_authorizer!(ParachainAuthorizer);
-
-impl jam_pvm_common::Authorizer for ParachainAuthorizer {
-    fn is_authorized(core: CoreIndex) -> AuthTrace {
-        is_authorized::is_authorized(core)
-    }
-}
-
 #[derive(Debug, Encode, Decode)]
 pub struct AuraAuthConfig {
     pub para_ids: Vec<ParaId>,
@@ -71,7 +79,7 @@ pub struct AuraAuthConfig {
 }
 
 #[derive(Debug, Encode, Decode)]
-pub struct AuraCollatorAuthToken {
+pub struct AuthToken {
     /// Proof that the `key` is in the `collator_set_root` of the Aura auth config.
     pub proof: Vec<H256>,
 
@@ -82,26 +90,42 @@ pub struct AuraCollatorAuthToken {
     pub signature: CollatorSignature,
 }
 
-impl AuraCollatorAuthToken {
-    pub fn check_proof(&self, config: &AuraAuthConfig) -> bool {
+#[derive(Debug)]
+pub enum AuthTokenError {
+    BadCollatorSetProof,
+    BadCollatorSignature,
+}
+
+impl AuthToken {
+    pub fn check_proof(&self, config: &AuraAuthConfig) -> Result<(), AuthTokenError> {
         // FIXME unmock
-        self.proof.as_slice() == &[config.collator_set_root]
+        if self.proof.as_slice() == &[config.collator_set_root] {
+            Ok(())
+        } else {
+            Err(AuthTokenError::BadCollatorSetProof)
+        }
     }
 
-    pub fn check_signature(&self, work_package_hash: H256) -> bool {
+    pub fn check_signature(&self, work_package_hash: H256) -> Result<(), AuthTokenError> {
         // FIXME unmock
-        self.signature == [255; 64]
+        if self.signature == [255; 64] {
+            Ok(())
+        } else {
+            Err(AuthTokenError::BadCollatorSignature)
+        }
     }
 
     pub fn try_into_trace(
         &self,
         config: &AuraAuthConfig,
         wp: &WorkPackage,
-    ) -> Option<AuraAuthTrace> {
+    ) -> Result<AuraAuthTrace, AuthTokenError> {
         let wp_hash = signable_work_package_hash(wp);
 
-        let good = self.check_proof(config) && self.check_signature(wp_hash);
-        good.then_some(AuraAuthTrace {
+        self.check_proof(config)?;
+        self.check_signature(wp_hash)?;
+
+        Ok(AuraAuthTrace {
             author_key: self.key.clone(),
         })
     }

@@ -2,7 +2,7 @@
 
 use std::time::{Duration, Instant};
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, Result};
 use jam_node::{
     vm::{
         AccumulateCallContext, Engine, RefineCallContext, RefineCallContextOwned, StateMutations,
@@ -12,12 +12,11 @@ use jam_node::{
 };
 use jam_std_common::{hash_raw, Entropy, Privileges, Service};
 use jam_types::{
-    Authorizer, CodeHash, CoreIndex, ExtrinsicHash, ExtrinsicSpec, FixedVec, RefineContext,
-};
-
-use jam_types::{
     AccumulateItem, AuthConfig, AuthTrace, Authorization as AuthToken, Hash, Segment, ServiceId,
     WorkItem, WorkOutput, WorkPackage, WorkPayload,
+};
+use jam_types::{
+    Authorizer, CodeHash, CoreIndex, ExtrinsicHash, ExtrinsicSpec, FixedVec, RefineContext,
 };
 
 /// Service id used by the lightweight executor contexts.

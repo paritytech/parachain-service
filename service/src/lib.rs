@@ -1,8 +1,12 @@
 #![cfg_attr(any(target_arch = "riscv32", target_arch = "riscv64"), no_std)]
 
 extern crate alloc;
-use jam_pvm_common::*;
-use jam_types::{WorkOutput as WorkResult, *};
+
+use alloc::format;
+use jam_pvm_common::{declare_service, Service};
+use jam_types::Hash;
+use jam_types::WorkOutput as WorkResult;
+use jam_types::{CoreIndex, ServiceId, Slot, WorkPackageHash, WorkPayload};
 
 mod accumulate;
 mod refine;
@@ -23,10 +27,26 @@ impl Service for ParachainService {
         payload: WorkPayload,
         package_hash: WorkPackageHash,
     ) -> WorkResult {
-        refine::refine(core_index, item_index, service_id, payload, package_hash)
+        match refine::refine(core_index, item_index, service_id, payload, package_hash) {
+            Ok(r) => r,
+            Err(e) => {
+                let msg = format!("BUG: Parachain Service refine crashed: {e:?}");
+
+                jam_pvm_common::error!("{msg}");
+                panic!("{msg}");
+            }
+        }
     }
 
     fn accumulate(slot: Slot, id: ServiceId, item_count: usize) -> Option<Hash> {
-        accumulate::accumulate(slot, id, item_count)
+        match accumulate::accumulate(slot, id, item_count) {
+            Ok(r) => r,
+            Err(e) => {
+                let msg = format!("BUG: Parachain Service accumulate crashed: {e:?}");
+
+                jam_pvm_common::error!("{msg}");
+                panic!("{msg}");
+            }
+        }
     }
 }

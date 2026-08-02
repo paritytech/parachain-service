@@ -1,31 +1,40 @@
-use super::{AuraAuthConfig, AuraCollatorAuthToken};
+use super::{AuraAuthConfig, AuthToken};
 use codec::{DecodeAll, Encode};
 use jam_pvm_common::is_authorized::{auth_token, work_package};
-use jam_types::{AuthTrace, Authorizer, CoreIndex};
+use jam_types::{AuthTrace, CoreIndex};
 
-pub fn is_authorized(_core: CoreIndex) -> AuthTrace {
+#[derive(Debug)]
+pub enum IsAuthorizedError {
+    UndecodableAuthConfig,
+    InvalidWorkItemCount,
+    UndecodableAuthToken,
+    BadAuthToken(super::AuthTokenError),
+}
+
+pub fn is_authorized(_core: CoreIndex) -> Result<AuthTrace, IsAuthorizedError> {
     let package = work_package();
-    let Authorizer { config, .. } = &package.authorizer;
+    let auth_config = &package.authorizer.config;
 
-    let config = AuraAuthConfig::decode_all(&mut &config[..])
-        .expect("authorizer config must decode to a (Vec<ParaId>, AuraAuthConfig)");
+    let config = AuraAuthConfig::decode_all(&mut &auth_config[..])
+        .map_err(|_| IsAuthorizedError::UndecodableAuthConfig)?;
 
     if config.para_ids.len() != package.items.len() {
-        panic!("auth config: number of para IDs does not match number of work items");
+        return Err(IsAuthorizedError::InvalidWorkItemCount);
     }
-    if package.items.len() == 0 {
-        unreachable!("BUG: work packages need to have at least one item per Gray Paper");
-    }
+    assert!(
+        package.items.len() > 0,
+        "work packages need to have at least one item per Gray Paper"
+    );
 
     let token = auth_token();
-    let aura_token = AuraCollatorAuthToken::decode_all(&mut &token.0[..])
-        .expect("the authorizer token must be a valid AuraCollatorAuthToken");
+    let aura_token = AuthToken::decode_all(&mut &token.0[..])
+        .map_err(|_| IsAuthorizedError::UndecodableAuthToken)?;
 
-    let Some(trace) = aura_token.try_into_trace(&config, &package) else {
-        panic!("the authorizer token is invalid");
-    };
+    let trace = aura_token
+        .try_into_trace(&config, &package)
+        .map_err(|e| IsAuthorizedError::BadAuthToken(e))?;
 
     // FIXME: Check the AURA round-robin collator selection
 
-    AuthTrace(trace.author_key.encode())
+    Ok(AuthTrace(trace.author_key.encode()))
 }
