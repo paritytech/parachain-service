@@ -41,6 +41,10 @@ for Asset Hub and Coretime there are special system pallets.
 - [coretime](./runtimes/coretime/src/lib.rs) with its [system pallet](./pallets/coretime-system/src/lib.rs)
 - [PolkaJAM](./tools/executor/src/polkajam.rs) in-memory execution wrapper
 
+## Executor
+
+We use the [in-memory executor](./tools/executor/src/polkajam.rs) of PolkaJAM with real PVM blobs and host calls. There is currently no abstracted host-call interface but the errors from panics are logged for debuggability.
+
 ## Building
 
 Fetch the vendored submodules once, then build and test with `cargo`:
