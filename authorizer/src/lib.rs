@@ -13,6 +13,7 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
+use alloc::format;
 
 use codec::{Decode, Encode};
 use jam_types::{AuthTrace, CoreIndex, Encode as JamEncode, WorkPackage};

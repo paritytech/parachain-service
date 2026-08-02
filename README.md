@@ -16,7 +16,7 @@ for Asset Hub and Coretime there are special system pallets.
 ```
 .
 ├── authorizer          # JAM authorizer for the service
-├── authorizer-bin      # Prebuilt-blob wrapper crate for the authorizer
+│   └── bin             # Prebuilt-blob wrapper crate for the authorizer
 ├── pallets             # System pallets wired into the runtimes
 │   ├── asset-hub-system
 │   └── coretime-system
@@ -25,7 +25,7 @@ for Asset Hub and Coretime there are special system pallets.
 │   └── coretime
 ├── scripts             # Justfile modules
 ├── service             # The parachain service (refine + accumulate)
-├── service-bin         # Prebuilt-blob wrapper crate for the service
+│   └── bin             # Prebuilt-blob wrapper crate for the service
 ├── support             # Code shared across the crates above
 └── tools
     └── executor        # PolkaJAM test adapter
@@ -33,9 +33,9 @@ for Asset Hub and Coretime there are special system pallets.
 
 ## Notable Code Locations
 
-- [is_authorized.rs](./authorizer/src/is_authorized.rs) and its [tests](./service-bin/tests/is_authorized.rs)
-- [refine.rs](./service/src/refine.rs) and its [tests](./service-bin/tests/refine.rs)
-- [accumulate.rs](./service/src/accumulate.rs) and its [tests](./service-bin/tests/accumulate.rs)
+- [is_authorized.rs](./authorizer/src/is_authorized.rs) and its [tests](./service/bin/tests/is_authorized.rs)
+- [refine.rs](./service/src/refine.rs) and its [tests](./service/bin/tests/refine.rs)
+- [accumulate.rs](./service/src/accumulate.rs) and its [tests](./service/bin/tests/accumulate.rs)
 - [asset-hub](./runtimes/asset-hub/src/lib.rs) with its [system pallet](./pallets/asset-hub-system/src/lib.rs)
 - [coretime](./runtimes/coretime/src/lib.rs) with its [system pallet](./pallets/coretime-system/src/lib.rs)
 - [PolkaJAM](./tools/executor/src/polkajam.rs) in-memory execution wrapper

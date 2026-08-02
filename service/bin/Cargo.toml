@@ -29,8 +29,8 @@ jam-pvm-builder = { workspace = true }
 
 # Optional: only pulled in by `test-utils` for the `mock` fixtures.
 executor = { workspace = true, optional = true }
-jam-node = { path = "../vendor/polkajam/crates/node", default-features = false, features = ["hazmat"], optional = true }
-jam-std-common = { path = "../vendor/polkajam/crates/jam-std-common", optional = true }
+jam-node = { path = "../../vendor/polkajam/crates/node", default-features = false, features = ["hazmat"], optional = true }
+jam-std-common = { path = "../../vendor/polkajam/crates/jam-std-common", optional = true }
 parachain-authorizer = { workspace = true, optional = true }
 codec = { workspace = true, optional = true }
 primitive-types = { workspace = true, optional = true }

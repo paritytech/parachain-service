@@ -1,13 +1,13 @@
 [workspace]
 members = [
     "authorizer",
-    "authorizer-bin",
+    "authorizer/bin",
     "pallets/asset-hub-system",
     "pallets/coretime-system",
     "runtimes/asset-hub",
     "runtimes/coretime",
     "service",
-    "service-bin",
+    "service/bin",
     "support",
     "tools/executor",
 ]
@@ -44,9 +44,9 @@ polkavm-derive = { version = "0.36.0", default-features = false }
 
 # Guest crates and their prebuilt-blob wrapper crates.
 parachain-service = { path = "service" }
-parachain-service-bin = { path = "service-bin" }
+parachain-service-bin = { path = "service/bin" }
 parachain-authorizer = { path = "authorizer" }
-parachain-authorizer-bin = { path = "authorizer-bin" }
+parachain-authorizer-bin = { path = "authorizer/bin" }
 parachain-support = { path = "support", default-features = false }
 
 # FRAME umbrella crate. Must be named `frame` (or `polkadot-sdk-frame`) for compatibility with
