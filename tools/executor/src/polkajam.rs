@@ -119,23 +119,12 @@ pub fn refine(
     work_items: Vec<WorkItemWithExtrinsics>,
     work_item_index: usize,
 ) -> Result<RefineOutcome> {
-    if work_items.is_empty() {
-        bail!("refine requires at least one work item");
-    }
-    if work_item_index >= work_items.len() {
-        bail!(
-            "work item index {work_item_index} is out of bounds for {} items",
-            work_items.len()
-        );
-    }
-
+    crate::logging::init();
     let (storage, code_hash) = storage_with_code(service_blob)?;
 
-    // Split the bundles: the specs go into the work package, the raw bytes into
-    // the context's `extrinsic_data` (indexed `[work_item][extrinsic]`, which is
-    // what backs the `refine::extrinsic(index)` host call).
     let mut items = Vec::with_capacity(work_items.len());
     let mut extrinsic_data = Vec::with_capacity(work_items.len());
+
     for bundle in work_items {
         items.push(bundle.item);
         extrinsic_data.push(bundle.extrinsics);
@@ -179,6 +168,7 @@ pub fn refine(
 
 /// Execute a service blob's accumulate entry point with a minimal node call context.
 pub fn accumulate(service_blob: &[u8], items: Vec<AccumulateItem>) -> Result<AccumulateOutcome> {
+    crate::logging::init();
     let (storage, code_hash) = storage_with_code(service_blob)?;
     let mut context = AccumulateCallContext {
         storage,
@@ -225,6 +215,7 @@ pub fn is_authorized(
     work_items: Vec<WorkItem>,
     core: CoreIndex,
 ) -> Result<AuthorizeOutcome> {
+    crate::logging::init();
     let (storage, authorizer_code_hash) = storage_with_code(authorizer_blob)?;
     let package = work_package(work_items, authorizer_code_hash, token, config)?;
 
