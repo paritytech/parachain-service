@@ -10,7 +10,6 @@ members = [
     "service-bin",
     "support",
     "tools/executor",
-    "tools/executor-cli",
 ]
 exclude = [
     "vendor/polkadot-sdk-companion",
@@ -56,7 +55,7 @@ frame = { version = "0.18.0", package = "polkadot-sdk-frame", default-features =
 codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }
 scale-info = { version = "2.11", default-features = false, features = ["derive"] }
 substrate-wasm-builder = { git = "https://github.com/paritytech/polkadot-sdk", rev = "1275a4bbddf264ac53b906617a75c5685c6c948e" }
-executor = { path = "tools/executor", default-features = false }
+executor = { path = "tools/executor" }
 
 # System pallets, wired into their respective runtimes.
 asset-hub-system = { path = "pallets/asset-hub-system", default-features = false }

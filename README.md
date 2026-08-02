@@ -28,8 +28,7 @@ for Asset Hub and Coretime there are special system pallets.
 ├── service-bin         # Prebuilt-blob wrapper crate for the service
 ├── support             # Code shared across the crates above
 └── tools
-    ├── executor        # PVM/runtime executor library
-    └── executor-cli    # Debug CLI around the executor
+    └── executor        # PolkaJAM test adapter
 ```
 
 ## Notable Code Locations
@@ -43,7 +42,8 @@ for Asset Hub and Coretime there are special system pallets.
 
 ## Executor
 
-We use the [in-memory executor](./tools/executor/src/polkajam.rs) of PolkaJAM with real PVM blobs and host calls. There is currently no abstracted host-call interface but the errors from panics are logged for debuggability.
+The blob integration tests use [PolkaJAM's in-memory executor](./tools/executor/src/polkajam.rs)
+with real PVM blobs and host calls.
 
 ## Building
 

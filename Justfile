@@ -35,11 +35,6 @@ fmt-check:
 c: check
 check:
 	cargo check --all-targets --workspace
-	# The `executor` runtime/service backends and the `executor-cli` binary sit
-	# behind non-default features, so `--workspace` alone never compiles them
-	# (the `jam` backend is covered above via the service/asset-hub test deps).
-	# Check them explicitly, else CI stays green while that code rots.
-	cargo check --all-targets --package executor-cli --features executor
 
 # Remove target dir
 clean:
@@ -87,8 +82,6 @@ build-runtime-pvms:
 
 lint:
 	cargo clippy --all-targets --workspace
-	# See `check`: lint the feature-gated executor backends and CLI too.
-	cargo clippy --all-targets --package executor-cli --features executor
 
 # Run the full workspace test suite
 test:

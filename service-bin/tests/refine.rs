@@ -3,9 +3,10 @@
 //! Blobs are embedded by the wrapper crates' build scripts, so `cargo test`
 //! rebuilds them automatically when the guest sources change.
 
+use executor::pj;
 use jam_types::{AuthConfig, AuthTrace, Authorization as AuthToken};
 use parachain_authorizer_bin::BLOB as AUTHORIZER;
-use parachain_service_bin::mock::{good_config, good_token};
+use parachain_service_bin::mock::{good_config, good_token, refine_args, refine_work_item};
 use parachain_service_bin::BLOB as SERVICE;
 
 #[test]
@@ -16,16 +17,16 @@ fn trivial_works() {
 
     // `refine` requires exactly two extrinsics (see `service/src/refine.rs`);
     // supply two empty placeholders so the call runs to completion.
-    let work_items = vec![executor::pj::work_item(
+    let work_items = vec![refine_work_item(
         SERVICE,
         Vec::new(),
         vec![Vec::new(), Vec::new()],
     )];
-
-    let outcome = executor::pj::refine(
+    let (engine, code_hash, mut context) = refine_args(
         SERVICE, AUTHORIZER, config, token, auth_trace, work_items, 0,
-    )
-    .unwrap();
+    );
+
+    let outcome = pj::refine(&engine, code_hash, &mut context).unwrap();
 
     assert!(outcome.gas_used > 0, "refine should use some gas");
 }
@@ -34,9 +35,26 @@ fn trivial_works() {
 #[test]
 #[should_panic(expected = "the len is 0 but the index is 0")]
 fn no_work_items_errors() {
-    let work_items = vec![];
+    let (engine, code_hash, mut context) = refine_args(
+        SERVICE,
+        AUTHORIZER,
+        AuthConfig::new(),
+        AuthToken::new(),
+        AuthTrace::new(),
+        Vec::new(),
+        0,
+    );
 
-    executor::pj::refine(
+    let _ = pj::refine(&engine, code_hash, &mut context);
+}
+
+#[test]
+fn two_work_items_errors() {
+    let work_items = vec![
+        refine_work_item(SERVICE, Vec::new(), vec![]),
+        refine_work_item(SERVICE, Vec::new(), vec![]),
+    ];
+    let (engine, code_hash, mut context) = refine_args(
         SERVICE,
         AUTHORIZER,
         AuthConfig::new(),
@@ -45,23 +63,6 @@ fn no_work_items_errors() {
         work_items,
         0,
     );
-}
 
-#[test]
-fn two_work_items_errors() {
-    let work_items = vec![
-        executor::pj::work_item(SERVICE, Vec::new(), vec![]),
-        executor::pj::work_item(SERVICE, Vec::new(), vec![]),
-    ];
-
-    executor::pj::refine(
-        SERVICE,
-        AUTHORIZER,
-        AuthConfig::new(),
-        AuthToken::new(),
-        AuthTrace::new(),
-        work_items,
-        0,
-    )
-    .unwrap_err();
+    pj::refine(&engine, code_hash, &mut context).unwrap_err();
 }
