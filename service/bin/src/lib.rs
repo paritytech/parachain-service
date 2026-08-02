@@ -1,4 +1,4 @@
-//! Prebuilt PVM blob for the parachain service.
+//! PVM blob builder for the parachain service.
 //!
 //! The blob is compiled from the `parachain-service` guest crate by this crate's
 //! `build.rs` (via `jam-pvm-builder`) and embedded here at compile time. Depend on

@@ -1,4 +1,4 @@
-//! Prebuilt PVM blob for the parachain authorizer.
+//! PVM blob builder for the parachain authorizer.
 //!
 //! The blob is compiled from the `parachain-authorizer` guest crate by this
 //! crate's `build.rs` (via `jam-pvm-builder`) and embedded here at compile time.

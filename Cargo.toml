@@ -42,7 +42,7 @@ primitive-types = { version = "0.13.1", default-features = false, features = ["c
 jam-pvm-builder = { version = "0.1.28" }
 polkavm-derive = { version = "0.36.0", default-features = false }
 
-# Guest crates and their prebuilt-blob wrapper crates.
+# Guest crates and their blob builder crates.
 parachain-service = { path = "service" }
 parachain-service-bin = { path = "service/bin" }
 parachain-authorizer = { path = "authorizer" }

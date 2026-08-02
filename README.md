@@ -16,7 +16,7 @@ for Asset Hub and Coretime there are special system pallets.
 ```
 .
 ├── authorizer          # JAM authorizer for the service
-│   └── bin             # Prebuilt-blob wrapper crate for the authorizer
+│   └── bin             # Blob builder for the authorizer
 ├── pallets             # System pallets wired into the runtimes
 │   ├── asset-hub-system
 │   └── coretime-system
@@ -25,7 +25,7 @@ for Asset Hub and Coretime there are special system pallets.
 │   └── coretime
 ├── scripts             # Justfile modules
 ├── service             # The parachain service (refine + accumulate)
-│   └── bin             # Prebuilt-blob wrapper crate for the service
+│   └── bin             # Blob builder for the service
 ├── support             # Code shared across the crates above
 └── tools
     └── executor        # PolkaJAM test adapter

@@ -1,6 +1,6 @@
 //! `refine` entry-point tests, run against polkajam's in-memory node host.
 //!
-//! Blobs are embedded by the wrapper crates' build scripts, so `cargo test`
+//! Blobs are embedded by the blob builder crates' build scripts, so `cargo test`
 //! rebuilds them automatically when the guest sources change.
 
 use executor::pj;
