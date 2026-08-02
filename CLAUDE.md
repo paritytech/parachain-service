@@ -2,7 +2,7 @@ This implements the parachain service that will make Polkadot Parachains work on
 
 ## Resources
 
-Specs and references (Dafny, Cumulus, Gray Paper) are vendored under `vendor/` — see
+Specs and references (Quint, Cumulus, Gray Paper) are vendored under `vendor/` — see
 [VENDOR.md](./VENDOR.md).
 
 - Project Plan: https://hackmd.io/16r_PWiUQTuStKtZZx-0Bw.md (fetch manually)

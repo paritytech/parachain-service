@@ -14,7 +14,7 @@
 	path = vendor/graypaper
 	url = https://github.com/gavofyork/graypaper.git
 	branch = main
-[submodule "vendor/polkadot-sdk-dafny"]
-	path = vendor/polkadot-sdk-dafny
+[submodule "vendor/polkadot-sdk-quint"]
+	path = vendor/polkadot-sdk-quint
 	url = https://github.com/paritytech/polkadot-sdk.git
 	branch = bkchr-parachain-service-doc

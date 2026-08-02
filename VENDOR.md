@@ -16,10 +16,10 @@ git submodule update --init
 | `polkajam` | `paritytech/polkajam` | `oty-parachain-service-companion` | `3c9387bf` | build: `jam-types`, `jam-pvm-common`, `jam-node`, `jam-program-blob-common`, `jam-std-common` |
 | `polkadot-sdk-companion` | `paritytech/polkadot-sdk` | `oty-parachain-companion` | `cb9f3ded` | build: `sc-executor`, `sp-core`, `sp-io`, `sp-runtime`, `sp-state-machine`, `sp-version` |
 | `polkadot-sdk-cumulus` | `paritytech/polkadot-sdk` | `mku-cumulus-on-jam-doc` | `3b934d1c` | reference: Cumulus-on-JAM design doc |
-| `polkadot-sdk-dafny` | `paritytech/polkadot-sdk` | `bkchr-parachain-service-doc` (PR [#11883](https://github.com/paritytech/polkadot-sdk/pull/11883)) | `afe236db` | reference: Dafny spec |
+| `polkadot-sdk-quint` | `paritytech/polkadot-sdk` | `bkchr-parachain-service-doc` (PR [#11883](https://github.com/paritytech/polkadot-sdk/pull/11883)) | `afe236db` | reference: Quint spec |
 | `graypaper` | `gavofyork/graypaper` | `main` | `8ab3542` | reference: JAM Gray Paper |
 
-`polkadot-sdk-companion`, `polkadot-sdk-cumulus`, and `polkadot-sdk-dafny` are three checkouts of
+`polkadot-sdk-companion`, `polkadot-sdk-cumulus`, and `polkadot-sdk-quint` are three checkouts of
 the same `paritytech/polkadot-sdk` repo on different branches.
 
 ## Build patches
