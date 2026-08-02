@@ -17,6 +17,7 @@ pub mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(_n: BlockNumberFor<T>) -> Weight {
+            // FIXME: Call some Coretime-only host functions here.
             todo!()
         }
     }

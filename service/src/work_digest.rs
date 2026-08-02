@@ -31,7 +31,7 @@ pub enum UpwardMessage {}
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub enum RefineLog {
     Opaque(Vec<u8>),
-    // TODO
+    // FIXME
 }
 
 /// The parachain service's Refine output for one parachain candidate. Side

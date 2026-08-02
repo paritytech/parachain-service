@@ -7,6 +7,7 @@ use jam_pvm_common::*;
 use jam_types::{WorkOutput as WorkResult, *};
 
 pub fn accumulate(slot: Slot, id: ServiceId, item_count: usize) -> Option<Hash> {
+    // FIXME: I did not start with this. It is just dummy code here.
     info!(
         "This is Accumulate in the Parachain Service {id:x}h with {} items",
         item_count

@@ -24,8 +24,7 @@ fn trivial_works() {
 
     let outcome = executor::pj::refine(
         SERVICE, AUTHORIZER, config, token, auth_trace, work_items, 0,
-    )
-    .expect("refine should run to completion (not trap)");
+    ).unwrap();
 
     assert!(outcome.gas_used > 0, "refine should use some gas");
 }
