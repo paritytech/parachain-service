@@ -14,14 +14,16 @@ frame = { workspace = true }
 asset-hub-system = { workspace = true }
 
 [features]
-default = ["std"]
+default = [
+	"std",
+]
 std = [
 	"asset-hub-system/std",
 	"codec/std",
 	"frame/std",
+	"jam-types/std",
 	"scale-info/std",
 	"substrate-wasm-builder",
-	"jam-types/std"
 ]
 runtime-benchmarks = [
 	"asset-hub-system/runtime-benchmarks",

@@ -12,7 +12,9 @@ scale-info = { workspace = true }
 frame = { workspace = true }
 
 [features]
-default = ["std"]
+default = [
+	"std",
+]
 std = [
 	"codec/std",
 	"frame/std",

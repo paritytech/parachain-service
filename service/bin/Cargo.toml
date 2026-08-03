@@ -15,15 +15,15 @@ workspace = true
 # Off by default so production builds only embed the blob; enabled for this
 # crate's own tests via the self dev-dependency below.
 test-utils = [
+	"dep:codec",
 	"dep:executor",
 	"dep:jam-node",
 	"dep:jam-std-common",
-	"dep:parachain-authorizer",
-	"dep:codec",
-	"dep:primitive-types",
 	"dep:jam-types",
+	"dep:parachain-authorizer",
+	"dep:primitive-types",
+	"parachain-service-bin/test-utils",
 	"parachain-service/test-utils",
-	"parachain-service-bin/test-utils"
 ]
 
 [dependencies]
