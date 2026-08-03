@@ -20,3 +20,6 @@ parachain-support = { workspace = true }
 jam-pvm-common = { workspace = true, features = ["service", "logging"] }
 codec = { workspace = true }
 polkavm-derive = { workspace = true }
+
+[features]
+test-utils = []

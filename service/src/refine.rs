@@ -6,24 +6,13 @@ use alloc::vec;
 use alloc::vec::Vec;
 use codec::{Decode, DecodeAll, Encode};
 use jam_pvm_common::refine::{self, auth_trace};
-use jam_types::{CoreIndex, ServiceId, WorkOutput as WorkResult, WorkPackageHash, WorkPayload};
+use jam_types::{CoreIndex, ServiceId, WorkPackageHash, WorkPayload};
 use parachain_support::types::ParaId;
 
 /// Work package payload for a parachain candidate.
 #[derive(Encode, Decode)]
 struct CandidatePayload {
     validation_code_hash: ValidationCodeHash,
-}
-
-/// Why refine failed to process a Work Package. This means that the WP is invalid.
-#[derive(Debug)]
-pub enum RefineError {
-    UndecodableAuthConfig,
-    UndecodablePayload,
-    WrongParaIdCount(usize),
-    WrongWorkItemCount(usize),
-    WrongItemIndex(usize),
-    WrongExtrinsicCount(u16),
 }
 
 pub fn refine(

@@ -98,7 +98,7 @@ pub enum ParachainWorkDigest {
     AuthError { error: RefineLog },
 }
 
-//#[cfg(feature = "std")]
+#[cfg(feature = "test-utils")]
 impl ParachainWorkDigest {
     pub fn try_into_log(self) -> Result<RefineLog, ()> {
         match self {

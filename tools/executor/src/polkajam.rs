@@ -5,7 +5,7 @@ use codec::DecodeAll;
 use jam_node::vm::{
     AccumulateCallContext, Engine, RefineCallContext, RefineCallContextOwned, Storage,
 };
-use jam_types::{AuthTrace, CodeHash, CoreIndex, Hash, WorkOutput, WorkPackage};
+use jam_types::{AuthTrace, CodeHash, CoreIndex, Hash, WorkPackage};
 use parachain_service::work_digest::ParachainWorkDigest;
 use std::time::{Duration, Instant};
 
