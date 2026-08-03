@@ -5,36 +5,36 @@ use jam_types::{AuthTrace, CoreIndex};
 
 #[derive(Debug)]
 pub enum AuthorizationError {
-    UndecodableAuthConfig,
-    UndecodableAuthToken,
-    InvalidWorkItemCount,
-    BadAuthToken(aura::TokenError),
+	UndecodableAuthConfig,
+	UndecodableAuthToken,
+	InvalidWorkItemCount,
+	BadAuthToken(aura::TokenError),
 }
 
 pub fn is_authorized(_core: CoreIndex) -> Result<AuthTrace, AuthorizationError> {
-    let package = work_package();
-    assert!(
-        package.items.len() > 0,
-        "work packages need to have at least one item (see Gray Paper)"
-    );
-    let raw_config = &package.authorizer.config;
+	let package = work_package();
+	assert!(
+		package.items.len() > 0,
+		"work packages need to have at least one item (see Gray Paper)"
+	);
+	let raw_config = &package.authorizer.config;
 
-    let config = aura::AuthConfig::decode_all(&mut &raw_config[..])
-        .map_err(|_| AuthorizationError::UndecodableAuthConfig)?;
+	let config = aura::AuthConfig::decode_all(&mut &raw_config[..])
+		.map_err(|_| AuthorizationError::UndecodableAuthConfig)?;
 
-    if config.para_ids.len() != package.items.len() {
-        return Err(AuthorizationError::InvalidWorkItemCount);
-    }
+	if config.para_ids.len() != package.items.len() {
+		return Err(AuthorizationError::InvalidWorkItemCount);
+	}
 
-    let raw_token = &auth_token().0;
-    let token = aura::AuthToken::decode_all(&mut &raw_token[..])
-        .map_err(|_| AuthorizationError::UndecodableAuthToken)?;
+	let raw_token = &auth_token().0;
+	let token = aura::AuthToken::decode_all(&mut &raw_token[..])
+		.map_err(|_| AuthorizationError::UndecodableAuthToken)?;
 
-    let trace = token
-        .try_into_trace(&config, &package)
-        .map_err(|e| AuthorizationError::BadAuthToken(e))?;
+	let trace = token
+		.try_into_trace(&config, &package)
+		.map_err(|e| AuthorizationError::BadAuthToken(e))?;
 
-    // FIXME: Check the AURA round-robin collator selection
+	// FIXME: Check the AURA round-robin collator selection
 
-    Ok(AuthTrace(trace.author_key.encode()))
+	Ok(AuthTrace(trace.author_key.encode()))
 }

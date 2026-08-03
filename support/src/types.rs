@@ -13,13 +13,13 @@ use codec::{Decode, Encode};
 pub struct ParaId(pub u32);
 
 impl From<u32> for ParaId {
-    fn from(id: u32) -> Self {
-        ParaId(id)
-    }
+	fn from(id: u32) -> Self {
+		ParaId(id)
+	}
 }
 
 impl From<ParaId> for u32 {
-    fn from(id: ParaId) -> Self {
-        id.0
-    }
+	fn from(id: ParaId) -> Self {
+		id.0
+	}
 }

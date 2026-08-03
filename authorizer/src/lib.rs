@@ -28,15 +28,15 @@ pub struct ParachainAuthorizer;
 jam_pvm_common::declare_authorizer!(ParachainAuthorizer);
 
 impl jam_pvm_common::Authorizer for ParachainAuthorizer {
-    fn is_authorized(core: CoreIndex) -> AuthTrace {
-        match is_authorized::is_authorized(core) {
-            Ok(r) => r,
-            Err(e) => {
-                let msg = format!("BUG: Parachain Service is_authorized crashed: {e:?}");
+	fn is_authorized(core: CoreIndex) -> AuthTrace {
+		match is_authorized::is_authorized(core) {
+			Ok(r) => r,
+			Err(e) => {
+				let msg = format!("BUG: Parachain Service is_authorized crashed: {e:?}");
 
-                jam_pvm_common::error!("{msg}");
-                panic!("{msg}");
-            }
-        }
-    }
+				jam_pvm_common::error!("{msg}");
+				panic!("{msg}");
+			},
+		}
+	}
 }

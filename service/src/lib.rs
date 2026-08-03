@@ -5,9 +5,9 @@ extern crate alloc;
 use alloc::format;
 use codec::Encode;
 use jam_pvm_common::{declare_service, Service};
-use jam_types::Hash;
-use jam_types::WorkOutput as WorkResult;
-use jam_types::{CoreIndex, ServiceId, Slot, WorkPackageHash, WorkPayload};
+use jam_types::{
+	CoreIndex, Hash, ServiceId, Slot, WorkOutput as WorkResult, WorkPackageHash, WorkPayload,
+};
 
 mod accumulate;
 mod refine;
@@ -21,27 +21,27 @@ pub struct ParachainService;
 declare_service!(ParachainService);
 
 impl Service for ParachainService {
-    fn refine(
-        core_index: CoreIndex,
-        item_index: usize,
-        service_id: ServiceId,
-        payload: WorkPayload,
-        package_hash: WorkPackageHash,
-    ) -> WorkResult {
-        let digest = refine::refine(core_index, item_index, service_id, payload, package_hash);
+	fn refine(
+		core_index: CoreIndex,
+		item_index: usize,
+		service_id: ServiceId,
+		payload: WorkPayload,
+		package_hash: WorkPackageHash,
+	) -> WorkResult {
+		let digest = refine::refine(core_index, item_index, service_id, payload, package_hash);
 
-        WorkResult(digest.encode())
-    }
+		WorkResult(digest.encode())
+	}
 
-    fn accumulate(slot: Slot, id: ServiceId, item_count: usize) -> Option<Hash> {
-        match accumulate::accumulate(slot, id, item_count) {
-            Ok(r) => r,
-            Err(e) => {
-                let msg = format!("BUG: Parachain Service accumulate crashed: {e:?}");
+	fn accumulate(slot: Slot, id: ServiceId, item_count: usize) -> Option<Hash> {
+		match accumulate::accumulate(slot, id, item_count) {
+			Ok(r) => r,
+			Err(e) => {
+				let msg = format!("BUG: Parachain Service accumulate crashed: {e:?}");
 
-                jam_pvm_common::error!("{msg}");
-                panic!("{msg}");
-            }
-        }
-    }
+				jam_pvm_common::error!("{msg}");
+				panic!("{msg}");
+			},
+		}
+	}
 }
