@@ -2,6 +2,7 @@
 members = [
     "authorizer",
     "authorizer/bin",
+    "cumulus",
     "pallets/asset-hub-system",
     "pallets/coretime-system",
     "runtimes/asset-hub",

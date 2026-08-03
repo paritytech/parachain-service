@@ -17,6 +17,7 @@ for Asset Hub and Coretime there are special system pallets.
 .
 ├── authorizer          # JAM authorizer for the service
 │   └── bin             # Blob builder for the authorizer
+├── cumulus             # Re-exports for candidate authorship
 ├── pallets             # System pallets wired into the runtimes
 │   ├── asset-hub-system
 │   └── coretime-system

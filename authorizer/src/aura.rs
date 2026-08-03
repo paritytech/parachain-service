@@ -75,7 +75,7 @@ impl AuthToken {
 }
 
 /// Domain separator for the token-free work-package hash signed by AURA collators.
-const WORK_PACKAGE_SIGN_CTX: &[u8] = b"jam:parachain-service:aura:work-package:v1";
+pub const WORK_PACKAGE_SIGN_CTX: &[u8] = b"jam:parachain-service:aura:work-package:v1";
 
 /// Hash of a work-package that can be signed by AURA collators.
 ///

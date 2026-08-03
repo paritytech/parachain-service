@@ -1046,6 +1046,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cumulus"
+version = "0.1.0"
+dependencies = [
+ "parachain-authorizer",
+ "parachain-service",
+]
+
+[[package]]
 name = "curve25519-dalek"
 version = "4.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

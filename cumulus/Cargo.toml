@@ -1,0 +1,15 @@
+[package]
+name = "cumulus"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+parachain-service = { workspace = true }
+parachain-authorizer = { workspace = true }
+jam-types = { workspace = true }
