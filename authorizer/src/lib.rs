@@ -27,7 +27,7 @@ mod is_authorized;
 pub const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
 
 /// Domain separator for the token-free work-package hash signed by AURA collators.
-const SIGNABLE_WORK_PACKAGE_DOMAIN: &[u8] = b"parachain-service:aura:work-package:v1";
+const WORK_PACKAGE_SIGN_CTX: &[u8] = b"parachain-service:aura:work-package:v1";
 
 pub type CollatorKey = [u8; 32];
 pub type CollatorSignature = [u8; 64];
@@ -54,7 +54,7 @@ impl jam_pvm_common::Authorizer for ParachainAuthorizer {
 /// This excludes the authorization token since that would contain said signature.
 pub fn signable_work_package_hash(package: &WorkPackage) -> H256 {
     let mut signable = Vec::new();
-    signable.extend_from_slice(SIGNABLE_WORK_PACKAGE_DOMAIN);
+    signable.extend_from_slice(WORK_PACKAGE_SIGN_CTX);
     JamEncode::encode_to(
         &(
             &package.auth_code_host,
