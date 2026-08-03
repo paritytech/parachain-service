@@ -11,7 +11,7 @@ use jam_types::{
     ExtrinsicHash, ExtrinsicSpec, FixedVec, RefineContext, ServiceId, WorkItem, WorkPackage,
     WorkPayload,
 };
-use parachain_authorizer::{AuraAuthConfig, AuthToken as CollatorAuthToken, ParaId};
+use parachain_authorizer::{aura, ParaId};
 use primitive_types::H256;
 
 const SERVICE_ID: ServiceId = 0;
@@ -22,22 +22,24 @@ pub type RefineWorkItem = (WorkItem, Vec<Vec<u8>>);
 /// An authorizer config whose `ParaId` prefix authorizes `para_ids` packages.
 pub fn good_config(para_ids: usize) -> AuthConfig {
     let para_ids = (0..para_ids).map(|i| ParaId(i as u32)).collect::<Vec<_>>();
-    let config = AuraAuthConfig {
+    let config = aura::AuthConfig {
         para_ids,
         collator_set_root: H256::zero(),
         collator_set_size: 0,
         slot_duration: 0,
     };
+
     AuthConfig(config.encode())
 }
 
 /// An empty but well-formed Aura collator authorization token.
 pub fn good_token() -> AuthToken {
-    let token = CollatorAuthToken {
+    let token = aura::AuthToken {
         proof: vec![H256::zero()],
         key: [0; 32],
         signature: [255; 64],
     };
+
     AuthToken(token.encode())
 }
 
@@ -98,6 +100,7 @@ pub fn refine_args(
     let (items, extrinsic_data): (Vec<_>, Vec<_>) = work_items.into_iter().unzip();
     let package = work_package(authorizer_blob, config, token, items);
     let (storage, code_hash) = storage_with_code(service_blob);
+
     let context = RefineCallContextOwned {
         storage,
         core: 0,

@@ -1,4 +1,4 @@
-use super::{AuraAuthConfig, AuthToken};
+use super::aura;
 use codec::{DecodeAll, Encode};
 use jam_pvm_common::is_authorized::{auth_token, work_package};
 use jam_types::{AuthTrace, CoreIndex};
@@ -8,14 +8,14 @@ pub enum IsAuthorizedError {
     UndecodableAuthConfig,
     InvalidWorkItemCount,
     UndecodableAuthToken,
-    BadAuthToken(super::AuthTokenError),
+    BadAuthToken(aura::AuthTokenError),
 }
 
 pub fn is_authorized(_core: CoreIndex) -> Result<AuthTrace, IsAuthorizedError> {
     let package = work_package();
     let auth_config = &package.authorizer.config;
 
-    let config = AuraAuthConfig::decode_all(&mut &auth_config[..])
+    let config = aura::AuthConfig::decode_all(&mut &auth_config[..])
         .map_err(|_| IsAuthorizedError::UndecodableAuthConfig)?;
 
     if config.para_ids.len() != package.items.len() {
@@ -27,7 +27,7 @@ pub fn is_authorized(_core: CoreIndex) -> Result<AuthTrace, IsAuthorizedError> {
     );
 
     let token = auth_token();
-    let aura_token = AuthToken::decode_all(&mut &token.0[..])
+    let aura_token = aura::AuthToken::decode_all(&mut &token.0[..])
         .map_err(|_| IsAuthorizedError::UndecodableAuthToken)?;
 
     let trace = aura_token
