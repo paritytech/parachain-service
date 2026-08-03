@@ -6,13 +6,10 @@ use jam_pvm_common::refine::{self, auth_trace};
 use jam_types::{CoreIndex, ServiceId, WorkOutput as WorkResult, WorkPackageHash, WorkPayload};
 use parachain_support::types::ParaId;
 
-// The tuple payloads are only ever read through the `Debug` impl (they end up in
-// the `error!` log emitted by `Service::refine`), which the dead-code lint does
-// not count as a use.
-#[allow(dead_code)]
+/// Why refine failed to process a Work Package. This means that the WP is invalid.
 #[derive(Debug)]
 pub enum RefineError {
-    InvalidAuthConfig,
+    UndecodableAuthConfig,
     WrongParaIdCount(usize),
     WrongWorkItemCount(usize),
     WrongItemIndex(usize),
@@ -29,8 +26,8 @@ pub fn refine(
     let _auth_trace = auth_trace();
     let auth_config = refine::work_package().authorizer.config;
 
-    let para_ids =
-        Vec::<ParaId>::decode(&mut &auth_config[..]).map_err(|_| RefineError::InvalidAuthConfig)?;
+    let para_ids = Vec::<ParaId>::decode(&mut &auth_config[..])
+        .map_err(|_| RefineError::UndecodableAuthConfig)?;
     if para_ids.len() != 1 {
         return Err(RefineError::WrongParaIdCount(para_ids.len()));
     }
