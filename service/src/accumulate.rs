@@ -2,6 +2,8 @@
 
 use alloc::format;
 
+use crate::work_digest::ParachainWorkDigest;
+use codec::DecodeAll;
 use jam_pvm_common::accumulate::{accumulate_items, set_storage};
 use jam_pvm_common::*;
 use jam_types::{WorkOutput as WorkResult, *};
@@ -33,12 +35,23 @@ pub fn accumulate(
 fn on_accumulate_item(item: WorkItemRecord) {
     let Ok(result) = item.result else { return };
     let root = item.exports_root;
-    let (info_id, payload, auth_trace) =
-        <(u64, WorkResult, AuthTrace)>::decode(&mut &result[..]).expect("infallible");
-    let info = format!("0x{}... {info_id}", hex::to_hex(&root[..4]));
+    let digest = ParachainWorkDigest::decode_all(&mut &result[..])
+        .expect("refine must produce a ParachainWorkDigest as WorkDigest");
+
+    match digest {
+        ParachainWorkDigest::Ok { head_data, .. } => {
+            if &head_data != b"head data" {
+                panic!("adf");
+            }
+            return;
+        }
+        _ => todo!(),
+    }
+
+    /*let info = format!("0x{}... {info_id}", hex::to_hex(&root[..4]));
     set_storage(b"last-info", info.as_bytes()).expect("balance low");
     set_storage(b"last-payload", &payload).expect("balance low");
-    set_storage(b"last-trace", &auth_trace).expect("balance low");
+    set_storage(b"last-trace", &auth_trace).expect("balance low");*/
 }
 
 fn on_transfer(slot: Slot, item: TransferRecord) {

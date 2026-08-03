@@ -50,5 +50,5 @@ pub fn refine(
     let _ext_para_state_proof = refine::extrinsic(0).expect("checked above");
     let _ext_jam_state_proof = refine::extrinsic(1).expect("checked above");
 
-    Ok(Vec::new().into())
+    Ok(b"Hello from refine WorkResult".to_vec().into())
 }

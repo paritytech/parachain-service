@@ -11,7 +11,7 @@ pub type Timeslot = u32;
 
 /// Hash of a parachain's validation code (PVF) preimage.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]
-pub struct ValidationCodeHash(pub Hash);
+pub struct ValidationCodeHash(pub Hash); // TODO maybe use own hash type
 
 /// A validation code reference: its hash plus its byte length.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]

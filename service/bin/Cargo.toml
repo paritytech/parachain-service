@@ -40,9 +40,7 @@ jam-types = { workspace = true, optional = true }
 jam-pvm-builder = { workspace = true }
 parachain-service = { workspace = true }
 
-# The blob integration tests (`tests/`) run the service against polkajam's
-# in-memory node host and also need the authorizer blob. The self dev-dependency
-# turns on `test-utils` so `parachain_service_bin::mock` is compiled for them.
 [dev-dependencies]
-parachain-service-bin = { path = ".", features = ["test-utils"] }
+parachain-service-bin = { path = ".", features = ["test-utils"] } # TODO clean this up
 parachain-authorizer-bin = { workspace = true }
+parachain-service = { workspace = true }
