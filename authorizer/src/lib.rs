@@ -13,12 +13,9 @@
 extern crate alloc;
 
 use alloc::format;
-use alloc::vec::Vec;
 
-use codec::{Decode, Encode};
-use jam_types::{AuthTrace, CoreIndex, Encode as JamEncode, WorkPackage};
+use jam_types::{AuthTrace, CoreIndex};
 pub use parachain_support::types::ParaId;
-use primitive_types::H256;
 
 pub mod aura;
 pub mod is_authorized;

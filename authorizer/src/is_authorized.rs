@@ -4,22 +4,22 @@ use jam_pvm_common::is_authorized::{auth_token, work_package};
 use jam_types::{AuthTrace, CoreIndex};
 
 #[derive(Debug)]
-pub enum IsAuthorizedError {
+pub enum AuthorizationError {
     UndecodableAuthConfig,
-    InvalidWorkItemCount,
     UndecodableAuthToken,
-    BadAuthToken(aura::AuthTokenError),
+    InvalidWorkItemCount,
+    BadAuthToken(aura::AuthorizationError),
 }
 
-pub fn is_authorized(_core: CoreIndex) -> Result<AuthTrace, IsAuthorizedError> {
+pub fn is_authorized(_core: CoreIndex) -> Result<AuthTrace, AuthorizationError> {
     let package = work_package();
     let auth_config = &package.authorizer.config;
 
     let config = aura::AuthConfig::decode_all(&mut &auth_config[..])
-        .map_err(|_| IsAuthorizedError::UndecodableAuthConfig)?;
+        .map_err(|_| AuthorizationError::UndecodableAuthConfig)?;
 
     if config.para_ids.len() != package.items.len() {
-        return Err(IsAuthorizedError::InvalidWorkItemCount);
+        return Err(AuthorizationError::InvalidWorkItemCount);
     }
     assert!(
         package.items.len() > 0,
@@ -28,11 +28,11 @@ pub fn is_authorized(_core: CoreIndex) -> Result<AuthTrace, IsAuthorizedError> {
 
     let token = auth_token();
     let aura_token = aura::AuthToken::decode_all(&mut &token.0[..])
-        .map_err(|_| IsAuthorizedError::UndecodableAuthToken)?;
+        .map_err(|_| AuthorizationError::UndecodableAuthToken)?;
 
     let trace = aura_token
         .try_into_trace(&config, &package)
-        .map_err(|e| IsAuthorizedError::BadAuthToken(e))?;
+        .map_err(|e| AuthorizationError::BadAuthToken(e))?;
 
     // FIXME: Check the AURA round-robin collator selection
 
