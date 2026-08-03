@@ -6,12 +6,22 @@ use codec::{Decode, Encode};
 use jam_types::Hash;
 use parachain_support::types::ParaId;
 
+#[cfg(feature = "std")]
+use jam_std_common::hash_raw;
+
 /// A JAM timeslot.
 pub type Timeslot = u32;
 
 /// Hash of a parachain's validation code (PVF) preimage.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]
 pub struct ValidationCodeHash(pub Hash); // TODO maybe use own hash type
+
+#[cfg(feature = "std")]
+impl From<&[u8]> for ValidationCodeHash {
+	fn from(code: &[u8]) -> Self {
+		Self(hash_raw(code))
+	}
+}
 
 /// A validation code reference: its hash plus its byte length.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]

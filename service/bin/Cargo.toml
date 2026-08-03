@@ -45,5 +45,5 @@ parachain-service = { workspace = true }
 [dev-dependencies]
 parachain-service-bin = { path = ".", features = ["test-utils"] } # TODO clean this up
 parachain-authorizer-bin = { workspace = true }
-parachain-service = { workspace = true, features = ["test-utils"] }
+parachain-service = { workspace = true, features = ["test-utils", "std"] }
 anyhow = "1" # TODO pull up to workspace
