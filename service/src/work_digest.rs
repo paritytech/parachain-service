@@ -30,10 +30,9 @@ pub enum UpwardMessage {}
 /// Structured reason a `refine` invocation failed.
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub enum RefineLog {
-	/// `historical_lookup(validation_code_hash)` returned `None`: the
-	/// validation code preimage is not available in the service's store
-	/// at the lookup-anchor. See §4.1 step 3.
-	InvalidCodeHash,
+	UnrequestedCodeHash,
+	TooBigCode,
+	MalformedPayload,
 	/// Opaque payload supplied by the PVF via `report_error(data)` before
 	/// failing the execution (max 1024 bytes).
 	// Opaque(BoundedVec<u8, 1024>),

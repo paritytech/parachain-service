@@ -9,8 +9,8 @@ use parachain_support::types::ParaId;
 
 /// Work package payload for a parachain candidate.
 #[derive(Encode, Decode)]
-struct CandidatePayload {
-	validation_code_hash: ValidationCodeHash,
+pub struct CandidatePayload {
+	pub validation_code_hash: ValidationCodeHash,
 }
 
 pub fn refine(
@@ -35,8 +35,7 @@ pub fn refine(
 	};
 
 	let Ok(candidate) = CandidatePayload::decode_all(&mut &raw_payload.0[..]) else {
-		// FIXME: add dedicated error for this case
-		return ParachainWorkDigest::Err { para_id: *para_id, error: RefineLog::InvalidCodeHash };
+		return ParachainWorkDigest::Err { para_id: *para_id, error: RefineLog::MalformedPayload };
 	};
 
 	let work_items = refine::work_items_summary();
@@ -60,18 +59,23 @@ pub fn refine(
 
 	let code_hash = candidate.validation_code_hash;
 	let Some(code) = refine::lookup(&code_hash.0) else {
-		return ParachainWorkDigest::Err { para_id: *para_id, error: RefineLog::InvalidCodeHash };
+		return ParachainWorkDigest::Err {
+			para_id: *para_id,
+			error: RefineLog::UnrequestedCodeHash,
+		};
+	};
+	let Ok(code_len) = TryInto::<u32>::try_into(code.len()) else {
+		// NOTE: Should be impossible, but still nicer that panicking.
+		// FIXME: Own error variant
+		return ParachainWorkDigest::Err { para_id: *para_id, error: RefineLog::TooBigCode };
 	};
 
-	// FIXME: call into PVM
+	// FIXME: call into PVF
 	let head_data = vec![];
 
 	ParachainWorkDigest::Ok {
 		para_id: *para_id,
-		validation_code: ValidationCodeRef {
-			hash: code_hash,
-			len: code.len().try_into().expect("Code is less than 4 GiB"),
-		},
+		validation_code: ValidationCodeRef { hash: code_hash, len: code_len },
 		parent_head_hash: [0; 32], // FIXME
 		head_data,
 		upward_messages: vec![],

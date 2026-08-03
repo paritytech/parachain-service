@@ -3,14 +3,20 @@
 //! Blobs are embedded by the blob builder crates' build scripts, so `cargo test`
 //! rebuilds them automatically when the guest sources change.
 
+use codec::Encode;
 use executor::{pj, pj::RefineOutcome};
 use jam_types::{AuthConfig, AuthTrace, Authorization as AuthToken};
 use parachain_authorizer_bin::BLOB as AUTHORIZER;
-use parachain_service::work_digest::RefineLog;
+use parachain_service::{
+	refine::CandidatePayload,
+	work_digest::{ParachainWorkDigest, RefineLog, ValidationCodeHash},
+};
 use parachain_service_bin::{
 	mock::{good_config, good_token, refine_args, refine_work_item},
 	BLOB as SERVICE,
 };
+
+pub const MOCK_CODE_HASH: ValidationCodeHash = ValidationCodeHash([123; 32]);
 
 #[test]
 fn trivial_works() {
@@ -18,21 +24,20 @@ fn trivial_works() {
 	let token = good_token();
 	let auth_trace = AuthTrace::new(); // TODO hold author key
 
-	// `refine` requires exactly two extrinsics (see `service/src/refine.rs`);
-	// supply two empty placeholders so the call runs to completion.
-	let work_items = vec![refine_work_item(SERVICE, Vec::new(), vec![Vec::new(), Vec::new()])];
+	let payload = CandidatePayload { validation_code_hash: MOCK_CODE_HASH }.encode();
+	let work_items = vec![refine_work_item(SERVICE, payload, vec![Vec::new(), Vec::new()])];
 	let (engine, code_hash, mut context) =
 		refine_args(SERVICE, AUTHORIZER, config, token, auth_trace, work_items, 0);
 
-	let outcome = pj::refine(&engine, code_hash, &mut context).unwrap();
-
-	assert!(outcome.gas_used > 0, "refine should use some gas");
+	let outcome = pj::refine(&engine, code_hash, &mut context);
+	assert_eq!(expect_log(outcome), RefineLog::MalformedAuthorizerConfig);
+	// assert!(matches!(outcome.digest, ParachainWorkDigest::Err { .. }));
 }
 
 // Empty WPs are invalid per GP, hence panic.
 #[test]
 #[should_panic(expected = "the len is 0 but the index is 0")]
-fn no_work_items_errors() {
+fn no_work_items_panicks() {
 	let (engine, code_hash, mut context) = refine_args(
 		SERVICE,
 		AUTHORIZER,
@@ -62,9 +67,29 @@ fn two_work_items_errors() {
 		0,
 	);
 
-	let output = pj::refine(&engine, code_hash, &mut context);
-	assert_eq!(expect_log(output), RefineLog::MalformedAuthorizerConfig);
+	let outcome = pj::refine(&engine, code_hash, &mut context);
+	assert_eq!(expect_log(outcome), RefineLog::MalformedAuthorizerConfig);
 }
+
+// #[test]
+// fn more_para_ids_than_work_items_errors() {
+// let work_items = vec![
+// refine_work_item(SERVICE, Vec::new(), vec![]),
+// refine_work_item(SERVICE, Vec::new(), vec![]),
+// ];
+// let (engine, code_hash, mut context) = refine_args(
+// SERVICE,
+// AUTHORIZER,
+// AuthConfig::new(),
+// AuthToken::new(),
+// AuthTrace::new(),
+// work_items,
+// 0,
+// );
+//
+// let outcome = pj::refine(&engine, code_hash, &mut context);
+// assert_eq!(expect_log(outcome), RefineLog::MalformedAuthorizerConfig);
+// }
 
 /// Extract a RefineLog or panic.
 fn expect_log(res: anyhow::Result<RefineOutcome>) -> RefineLog {

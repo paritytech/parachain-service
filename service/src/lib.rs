@@ -10,7 +10,7 @@ use jam_types::{
 };
 
 mod accumulate;
-mod refine;
+pub mod refine;
 pub mod work_digest;
 
 /// Directory of this crate's `Cargo.toml`, used by `parachain-service-bin`'s
