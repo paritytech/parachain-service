@@ -21,6 +21,7 @@ std = [
 	"frame/std",
 	"scale-info/std",
 	"substrate-wasm-builder",
+	"jam-types/std"
 ]
 runtime-benchmarks = [
 	"asset-hub-system/runtime-benchmarks",
