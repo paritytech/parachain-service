@@ -1506,6 +1506,8 @@ dependencies = [
  "anyhow",
  "jam-node",
  "jam-types",
+ "parachain-service",
+ "parity-scale-codec",
 ]
 
 [[package]]
@@ -3257,6 +3259,7 @@ dependencies = [
 name = "parachain-service-bin"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "executor",
  "jam-node",
  "jam-pvm-builder 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",

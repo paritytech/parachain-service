@@ -4,8 +4,10 @@
 //! rebuilds them automatically when the guest sources change.
 
 use executor::pj;
+use executor::pj::RefineOutcome;
 use jam_types::{AuthConfig, AuthTrace, Authorization as AuthToken};
 use parachain_authorizer_bin::BLOB as AUTHORIZER;
+use parachain_service::work_digest::RefineLog;
 use parachain_service_bin::mock::{good_config, good_token, refine_args, refine_work_item};
 use parachain_service_bin::BLOB as SERVICE;
 
@@ -64,5 +66,16 @@ fn two_work_items_errors() {
         0,
     );
 
-    pj::refine(&engine, code_hash, &mut context).unwrap_err();
+    let output = pj::refine(&engine, code_hash, &mut context);
+    assert_eq!(expect_log(output), RefineLog::MalformedAuthorizerConfig);
+}
+
+/// Extract a RefineLog or panic.
+fn expect_log(res: anyhow::Result<RefineOutcome>) -> RefineLog {
+    let output = res.expect("Expected refine to return a ParachainWorkDigest");
+    let log = output
+        .digest
+        .try_into_log()
+        .expect("Expected refine to produce a RefineLog and not just `Ok`");
+    log
 }

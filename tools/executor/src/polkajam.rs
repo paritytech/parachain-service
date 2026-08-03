@@ -1,16 +1,17 @@
 //! Thin adapters around PolkaJAM's in-memory executor.
 
-use std::time::{Duration, Instant};
-
 use anyhow::{anyhow, Result};
+use codec::DecodeAll;
 use jam_node::vm::{
     AccumulateCallContext, Engine, RefineCallContext, RefineCallContextOwned, Storage,
 };
 use jam_types::{AuthTrace, CodeHash, CoreIndex, Hash, WorkOutput, WorkPackage};
+use parachain_service::work_digest::ParachainWorkDigest;
+use std::time::{Duration, Instant};
 
 #[derive(Debug)]
 pub struct RefineOutcome {
-    pub output: WorkOutput,
+    pub digest: ParachainWorkDigest,
     pub elapsed: Duration,
     pub gas_used: u64,
 }
@@ -37,9 +38,11 @@ pub fn refine(
 ) -> Result<RefineOutcome> {
     let (result, elapsed, gas_used) = engine.refine(code_hash, RefineCallContext::from(context));
     let output = result.map_err(|error| anyhow!("refine failed: {error}"))?;
+    let digest = ParachainWorkDigest::decode_all(&mut &output[..])
+        .map_err(|e| anyhow!("refine produced an undecodable digest: {e}"))?;
 
     Ok(RefineOutcome {
-        output,
+        digest,
         elapsed,
         gas_used,
     })

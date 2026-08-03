@@ -30,8 +30,40 @@ pub enum UpwardMessage {}
 /// Structured reason a `refine` invocation failed.
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub enum RefineLog {
-    Opaque(Vec<u8>),
-    // FIXME
+    /// `historical_lookup(validation_code_hash)` returned `None`: the
+    /// validation code preimage is not available in the service's store
+    /// at the lookup-anchor. See §4.1 step 3.
+    InvalidCodeHash,
+    /// Opaque payload supplied by the PVF via `report_error(data)` before
+    /// failing the execution (max 1024 bytes).
+    //Opaque(BoundedVec<u8, 1024>),
+    /// A `set_validator_keys` chunk contained more than 30 keys, or
+    /// `set_validator_keys` was called more than once in a single Refine
+    /// invocation. See §4.3, §5.3.
+    SetValidatorKeysTooManyKeys,
+    /// The PVF emitted more than 1024 upward messages in a single Refine
+    /// invocation. See §4.3.
+    TooManyUpwardMessages,
+    /// The PVF invoked a host function restricted to another parachain
+    /// (Asset Hub or the Coretime chain). See §4.3.
+    RestrictedHostFunction,
+    /// The authorizer config's `authorized_paras` prefix length does not
+    /// match the work package's item count. See §4.1 step 1.
+    AuthConfigMismatch,
+    /// The work package has 0 items or more than 1 item; only single-item
+    /// packages are currently supported (§3.2).
+    InvalidItemCount,
+    /// The opaque `AuthorizerConfig` blob failed to decode. See §4.1 step 1.
+    MalformedAuthorizerConfig,
+    /// The encoded `ParachainWorkDigest` (head data + upward messages) would
+    /// exceed the Gray Paper's 48 KiB combined result-blob + auth-trace
+    /// budget. See §4.1.
+    WorkDigestTooLarge,
+    /// The PVF exited without calling `set_parent_head_hash` and/or `set_head`
+    /// exactly once. Both head declarations are mandatory. See §4.2.
+    MissingHeadDeclaration,
+    /// Not exactly two extrinsics per Work Item.
+    InvalidExtrinsicCount,
 }
 
 /// The parachain service's Refine output for one parachain candidate. Side
@@ -61,4 +93,18 @@ pub enum ParachainWorkDigest {
         /// Structured failure reason.
         error: RefineLog,
     },
+    /// Could not determine for which ParaID a Work Item was intended.
+    // FIXME: Update spec with this
+    AuthError { error: RefineLog },
+}
+
+//#[cfg(feature = "std")]
+impl ParachainWorkDigest {
+    pub fn try_into_log(self) -> Result<RefineLog, ()> {
+        match self {
+            Self::Ok { .. } => Err(()),
+            Self::Err { error, .. } => Ok(error),
+            Self::AuthError { error, .. } => Ok(error),
+        }
+    }
 }

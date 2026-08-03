@@ -3,6 +3,7 @@
 extern crate alloc;
 
 use alloc::format;
+use codec::Encode;
 use jam_pvm_common::{declare_service, Service};
 use jam_types::Hash;
 use jam_types::WorkOutput as WorkResult;
@@ -27,15 +28,9 @@ impl Service for ParachainService {
         payload: WorkPayload,
         package_hash: WorkPackageHash,
     ) -> WorkResult {
-        match refine::refine(core_index, item_index, service_id, payload, package_hash) {
-            Ok(r) => r,
-            Err(e) => {
-                let msg = format!("BUG: Parachain Service refine crashed: {e:?}");
+        let digest = refine::refine(core_index, item_index, service_id, payload, package_hash);
 
-                jam_pvm_common::error!("{msg}");
-                panic!("{msg}");
-            }
-        }
+        WorkResult(digest.encode())
     }
 
     fn accumulate(slot: Slot, id: ServiceId, item_count: usize) -> Option<Hash> {
