@@ -5,10 +5,12 @@
 //! missing instead of accessing the other crates directly. You might still need to use the
 //! `jam-types` crate, but please check that it is the same version as used here.
 
-pub use jam_types::WorkPackage;
-pub use parachain_service::{refine::CandidatePayload, work_digest::ValidationCodeHash};
-pub use parachain_support::types::ParaId;
-pub use primitive_types::H256;
+pub use ::{
+	jam_types::WorkPackage,
+	parachain_service::{refine::CandidatePayload, work_digest::ValidationCodeHash},
+	parachain_support::types::ParaId,
+	primitive_types::H256,
+};
 
 pub mod aura {
 	pub use parachain_authorizer::aura::{

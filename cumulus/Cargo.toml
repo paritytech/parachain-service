@@ -13,3 +13,5 @@ workspace = true
 parachain-service = { workspace = true }
 parachain-authorizer = { workspace = true }
 jam-types = { workspace = true }
+parachain-support = { workspace = true }
+primitive-types = { workspace = true }
