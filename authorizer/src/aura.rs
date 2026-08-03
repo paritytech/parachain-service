@@ -36,27 +36,27 @@ pub struct AuthTrace {
 
 /// Authorization token validation failed.
 #[derive(Debug)]
-pub enum AuthorizationError {
+pub enum TokenError {
     BadCollatorSetProof,
     BadCollatorSignature,
 }
 
 impl AuthToken {
-    pub fn check_proof(&self, config: &AuthConfig) -> Result<(), AuthorizationError> {
+    pub fn check_proof(&self, config: &AuthConfig) -> Result<(), TokenError> {
         // FIXME unmock
         if self.proof.as_slice() == &[config.collator_set_root] {
             Ok(())
         } else {
-            Err(AuthorizationError::BadCollatorSetProof)
+            Err(TokenError::BadCollatorSetProof)
         }
     }
 
-    pub fn check_signature(&self, work_package_hash: H256) -> Result<(), AuthorizationError> {
+    pub fn check_signature(&self, work_package_hash: H256) -> Result<(), TokenError> {
         // FIXME unmock
         if self.signature == [255; 64] {
             Ok(())
         } else {
-            Err(AuthorizationError::BadCollatorSignature)
+            Err(TokenError::BadCollatorSignature)
         }
     }
 
@@ -64,7 +64,7 @@ impl AuthToken {
         &self,
         config: &AuthConfig,
         wp: &WorkPackage,
-    ) -> Result<AuthTrace, AuthorizationError> {
+    ) -> Result<AuthTrace, TokenError> {
         let wp_hash = signable_work_package_hash(wp);
 
         self.check_proof(config)?;
