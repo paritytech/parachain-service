@@ -7,7 +7,7 @@
 
 pub use ::{
 	jam_types::WorkPackage,
-	parachain_service::{refine::CandidatePayload, work_digest::ValidationCodeHash},
+	parachain_service::{refine::ParachainCandidate, work_digest::ValidationCodeHash},
 	parachain_support::types::ParaId,
 	primitive_types::H256,
 };

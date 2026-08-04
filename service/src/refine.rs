@@ -10,7 +10,7 @@ use parachain_support::types::ParaId;
 
 /// Work package payload for a parachain candidate.
 #[derive(Encode, Decode)]
-pub struct CandidatePayload {
+pub struct ParachainCandidate {
 	pub validation_code_hash: ValidationCodeHash,
 }
 
@@ -47,7 +47,7 @@ pub fn refine(
 		return ParachainWorkDigest::Err { para_id, error: RefineLog::AuthConfigMismatch };
 	};
 
-	let Ok(candidate) = CandidatePayload::decode_all(&mut &raw_payload.0[..]) else {
+	let Ok(candidate) = ParachainCandidate::decode_all(&mut &raw_payload.0[..]) else {
 		return ParachainWorkDigest::Err { para_id, error: RefineLog::MalformedPayload };
 	};
 
