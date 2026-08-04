@@ -21,6 +21,7 @@ jam-pvm-common = { workspace = true, features = ["service", "logging"] }
 codec = { workspace = true }
 polkavm-derive = { workspace = true }
 jam-std-common = { workspace = true, optional = true }
+parachain-authorizer = { workspace = true }
 
 [features]
 test-utils = []

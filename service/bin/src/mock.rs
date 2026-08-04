@@ -39,6 +39,11 @@ pub fn good_token() -> AuthToken {
 	AuthToken(token.encode())
 }
 
+pub fn good_trace() -> AuthTrace {
+	let trace = aura::AuthTrace { author_key: [0; 32] };
+	AuthTrace(trace.encode())
+}
+
 /// `n` minimal work items addressed to the parachain service.
 pub fn work_items(n: usize) -> Vec<WorkItem> {
 	(0..n)

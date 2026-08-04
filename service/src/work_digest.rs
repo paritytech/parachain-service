@@ -102,9 +102,6 @@ pub enum ParachainWorkDigest {
 		/// Structured failure reason.
 		error: RefineLog,
 	},
-	/// Could not determine for which ParaID a Work Item was intended.
-	// FIXME: Update spec with this
-	AuthError { error: RefineLog },
 }
 
 #[cfg(feature = "test-utils")]
@@ -113,7 +110,6 @@ impl ParachainWorkDigest {
 		match self {
 			Self::Ok { .. } => Err(()),
 			Self::Err { error, .. } => Ok(error),
-			Self::AuthError { error, .. } => Ok(error),
 		}
 	}
 }

@@ -12,7 +12,7 @@ use parachain_service::{
 	work_digest::{ParachainWorkDigest, RefineLog, ValidationCodeHash},
 };
 use parachain_service_bin::{
-	mock::{good_config, good_token, refine_args, refine_work_item},
+	mock::{good_config, good_token, good_trace, refine_args, refine_work_item},
 	BLOB as SERVICE,
 };
 
@@ -22,7 +22,7 @@ pub const MOCK_CODE_HASH: ValidationCodeHash = ValidationCodeHash([123; 32]);
 fn trivial_works() {
 	let config = good_config(1);
 	let token = good_token();
-	let auth_trace = AuthTrace::new(); // TODO hold author key
+	let auth_trace = good_trace();
 
 	let validation_code_hash = ValidationCodeHash::from(SERVICE);
 	let payload = CandidatePayload { validation_code_hash }.encode();
@@ -57,43 +57,39 @@ fn two_work_items_errors() {
 		refine_work_item(SERVICE, Vec::new(), vec![]),
 		refine_work_item(SERVICE, Vec::new(), vec![]),
 	];
-	let (engine, code_hash, mut context) = refine_args(
-		SERVICE,
-		AUTHORIZER,
-		AuthConfig::new(),
-		AuthToken::new(),
-		AuthTrace::new(),
-		work_items,
-		0,
-	);
+	let (engine, code_hash, mut context) =
+		refine_args(SERVICE, AUTHORIZER, good_config(2), good_token(), good_trace(), work_items, 0);
 
 	let outcome = pj::refine(&engine, code_hash, &mut context);
-	assert_eq!(expect_log(outcome), RefineLog::MalformedAuthorizerConfig);
+	assert_eq!(expect_log(outcome), RefineLog::InvalidItemCount);
 }
 
-// #[test]
-// fn more_para_ids_than_work_items_errors() {
-// let work_items = vec![
-// refine_work_item(SERVICE, Vec::new(), vec![]),
-// refine_work_item(SERVICE, Vec::new(), vec![]),
-// ];
-// let (engine, code_hash, mut context) = refine_args(
-// SERVICE,
-// AUTHORIZER,
-// AuthConfig::new(),
-// AuthToken::new(),
-// AuthTrace::new(),
-// work_items,
-// 0,
-// );
-//
-// let outcome = pj::refine(&engine, code_hash, &mut context);
-// assert_eq!(expect_log(outcome), RefineLog::MalformedAuthorizerConfig);
-// }
+#[test]
+fn more_para_ids_than_work_items_errors() {
+	let work_items = vec![refine_work_item(SERVICE, Vec::new(), vec![])];
+	let (engine, code_hash, mut context) =
+		refine_args(SERVICE, AUTHORIZER, good_config(2), good_token(), good_trace(), work_items, 0);
+
+	let outcome = pj::refine(&engine, code_hash, &mut context);
+	assert_eq!(expect_log(outcome), RefineLog::AuthConfigMismatch);
+}
+
+#[test]
+fn less_para_ids_than_work_items_errors() {
+	let work_items = vec![
+		refine_work_item(SERVICE, Vec::new(), vec![]),
+		refine_work_item(SERVICE, Vec::new(), vec![]),
+	];
+	let (engine, code_hash, mut context) =
+		refine_args(SERVICE, AUTHORIZER, good_config(1), good_token(), good_trace(), work_items, 0);
+
+	let outcome = pj::refine(&engine, code_hash, &mut context);
+	assert_eq!(expect_log(outcome), RefineLog::AuthConfigMismatch);
+}
 
 /// Extract a RefineLog or panic.
 fn expect_log(res: anyhow::Result<RefineOutcome>) -> RefineLog {
-	let output = res.expect("Expected refine to return a ParachainWorkDigest");
+	let output = res.expect("Refine failed to return a ParachainWorkDigest");
 	let log = output
 		.digest
 		.try_into_log()
@@ -102,11 +98,9 @@ fn expect_log(res: anyhow::Result<RefineOutcome>) -> RefineLog {
 }
 
 fn expect_ok(res: anyhow::Result<RefineOutcome>) {
-	let output = res.expect("Expected refine to return a ParachainWorkDigest");
+	let output = res.expect("Refine failed to return a ParachainWorkDigest");
 	match output.digest {
 		ParachainWorkDigest::Ok { .. } => (),
-		ParachainWorkDigest::Err { error, .. } | ParachainWorkDigest::AuthError { error } => {
-			panic!("RefineLog error: #{error:?}")
-		},
+		ParachainWorkDigest::Err { error, .. } => panic!("RefineLog error: #{error:?}"),
 	}
 }
