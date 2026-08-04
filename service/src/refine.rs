@@ -34,28 +34,25 @@ pub fn refine(
 	let work_items = refine::work_items_summary();
 	// TODO: check if its actually invalid per GP
 	assert!(item_index < work_items.len(), "Out of bounds item_index is invalid per GP");
-	let para_id = para_ids.get(item_index).expect("There must be a para_id for each work_item");
 
-	if work_items.len() != para_ids.len() {
-		return ParachainWorkDigest::Err {
-			para_id: *para_id,
-			error: RefineLog::AuthConfigMismatch,
-		};
-	};
+	// TODO: The quint spec uses default 0 here, but why?
+	let para_id = *para_ids.get(0).unwrap_or(&ParaId::from(0));
 
 	let Ok([work_item]): Result<&[_; 1], _> = work_items.as_slice().try_into() else {
-		return ParachainWorkDigest::Err { para_id: *para_id, error: RefineLog::InvalidItemCount };
+		// TODO: maybe reorder this with the check below, quint does it this way for some reason
+		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidItemCount };
+	};
+
+	if work_items.len() != para_ids.len() {
+		return ParachainWorkDigest::Err { para_id, error: RefineLog::AuthConfigMismatch };
 	};
 
 	let Ok(candidate) = CandidatePayload::decode_all(&mut &raw_payload.0[..]) else {
-		return ParachainWorkDigest::Err { para_id: *para_id, error: RefineLog::MalformedPayload };
+		return ParachainWorkDigest::Err { para_id, error: RefineLog::MalformedPayload };
 	};
 
 	if work_item.extrinsics_count != 2 {
-		return ParachainWorkDigest::Err {
-			para_id: *para_id,
-			error: RefineLog::InvalidExtrinsicCount,
-		};
+		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidExtrinsicCount };
 	}
 
 	// TODO: check if we should load them chunked to not OOM
@@ -64,19 +61,19 @@ pub fn refine(
 
 	let code_hash = candidate.validation_code_hash;
 	let Some(code) = refine::lookup(&code_hash.0) else {
-		return ParachainWorkDigest::Err { para_id: *para_id, error: RefineLog::InvalidCodeHash };
+		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidCodeHash };
 	};
 	let Ok(code_len) = TryInto::<u32>::try_into(code.len()) else {
 		// NOTE: Should be impossible, but still nicer that panicking.
 		// FIXME: Own error variant
-		return ParachainWorkDigest::Err { para_id: *para_id, error: RefineLog::TooBigCode };
+		return ParachainWorkDigest::Err { para_id, error: RefineLog::TooBigCode };
 	};
 
 	// FIXME: call into PVF
 	let head_data = vec![];
 
 	ParachainWorkDigest::Ok {
-		para_id: *para_id,
+		para_id,
 		validation_code: ValidationCodeRef { hash: code_hash, len: code_len },
 		parent_head_hash: [0; 32], // FIXME
 		head_data,
