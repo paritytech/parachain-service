@@ -27,7 +27,7 @@ pub fn refine(
 	let Ok(para_ids) = Vec::<ParaId>::decode(&mut &raw_auth_config[..]) else {
 		panic!("The AuthConfig already passed IsAuthorized, it must be valid")
 	};
-	let Ok(auth_trace) = aura::AuthTrace::decode_all(&mut &raw_auth_trace[..]) else {
+	let Ok(_auth_trace) = aura::AuthTrace::decode_all(&mut &raw_auth_trace[..]) else {
 		panic!("The AuthTrace was produced by IsAuthorized, it must be valid")
 	};
 
@@ -64,10 +64,7 @@ pub fn refine(
 
 	let code_hash = candidate.validation_code_hash;
 	let Some(code) = refine::lookup(&code_hash.0) else {
-		return ParachainWorkDigest::Err {
-			para_id: *para_id,
-			error: RefineLog::UnrequestedCodeHash,
-		};
+		return ParachainWorkDigest::Err { para_id: *para_id, error: RefineLog::InvalidCodeHash };
 	};
 	let Ok(code_len) = TryInto::<u32>::try_into(code.len()) else {
 		// NOTE: Should be impossible, but still nicer that panicking.

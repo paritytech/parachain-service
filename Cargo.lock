@@ -3259,6 +3259,7 @@ dependencies = [
 name = "parachain-service"
 version = "0.1.0"
 dependencies = [
+ "bounded-collections",
  "jam-pvm-common",
  "jam-std-common",
  "jam-types",
