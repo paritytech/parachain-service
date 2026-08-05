@@ -3,8 +3,9 @@
 use crate::work_digest::{ParachainWorkDigest, RefineLog, ValidationCodeHash, ValidationCodeRef};
 use alloc::{vec, vec::Vec};
 use codec::{Decode, DecodeAll, Encode};
+use jam_pvm_common::refine::lookup as historical_lookup; /* PolkaJAM somehow renamed the
+                                                           * export */
 use jam_pvm_common::refine::{self, auth_trace};
-use jam_pvm_common::refine::lookup as historical_lookup; // PolkaJAM somehow renamed the export
 use jam_types::{CoreIndex, ServiceId, WorkPackageHash, WorkPayload};
 use parachain_authorizer::aura;
 use parachain_support::types::ParaId;
@@ -44,13 +45,12 @@ pub fn refine(
 	// TODO: The quint spec uses default 0 here, but why?
 	let para_id = *para_ids.get(item_index).unwrap_or(&ParaId::from(0));
 
-	let Ok([work_item]): Result<&[_; 1], _> = work_items.as_slice().try_into() else {
-		// TODO: maybe reorder this with the check below, quint does it this way for some reason
-		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidItemCount };
-	};
-
 	if work_items.len() != para_ids.len() {
 		return ParachainWorkDigest::Err { para_id, error: RefineLog::AuthConfigMismatch };
+	};
+
+	let Ok([work_item]): Result<&[_; 1], _> = work_items.as_slice().try_into() else {
+		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidItemCount };
 	};
 
 	let Ok(candidate) = ParachainCandidate::decode_all(&mut &raw_payload.0[..]) else {

@@ -84,7 +84,7 @@ fn less_para_ids_than_work_items_errors() {
 		refine_args(SERVICE, AUTHORIZER, good_config(1), good_token(), good_trace(), work_items, 0);
 
 	let outcome = pj::refine(&engine, code_hash, &mut context);
-	assert_eq!(expect_log(outcome), RefineLog::InvalidItemCount);
+	assert_eq!(expect_log(outcome), RefineLog::AuthConfigMismatch);
 }
 
 /// Extract a RefineLog or panic.
