@@ -23,3 +23,6 @@ codec = { workspace = true }
 binary-merkle-tree = { workspace = true }
 blake2b_simd = { workspace = true }
 primitive-types = { workspace = true }
+
+[features]
+test-utils = []

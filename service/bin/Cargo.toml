@@ -22,6 +22,7 @@ test-utils = [
 	"dep:jam-types",
 	"dep:parachain-authorizer",
 	"dep:primitive-types",
+	"parachain-authorizer?/test-utils",
 	"parachain-service-bin/test-utils",
 	"parachain-service/test-utils",
 ]
