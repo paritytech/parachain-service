@@ -70,10 +70,6 @@ pub enum RefineLog {
 	/// The work package has 0 items or more than 1 item; only single-item
 	/// packages are currently supported (§3.2).
 	InvalidItemCount,
-	/// Not exactly two extrinsics per work item.
-	InvalidExtrinsicCount,
-	/// The opaque `AuthorizerConfig` blob failed to decode. See §4.1 step 1.
-	MalformedAuthorizerConfig,
 	/// The work package payload failed to be decoded.
 	MalformedPayload,
 	/// The encoded `ParachainWorkDigest` (head data + upward messages) would

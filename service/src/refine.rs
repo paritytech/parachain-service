@@ -3,8 +3,8 @@
 use crate::work_digest::{ParachainWorkDigest, RefineLog, ValidationCodeHash, ValidationCodeRef};
 use alloc::{vec, vec::Vec};
 use codec::{Decode, DecodeAll, Encode};
-use jam_pvm_common::refine::lookup as historical_lookup; /* PolkaJAM somehow renamed the
-                                                           * export */
+use jam_pvm_common::refine::lookup as historical_lookup; // PolkaJAM somehow renamed the
+														 // export
 use jam_pvm_common::refine::{self, auth_trace};
 use jam_types::{CoreIndex, ServiceId, WorkPackageHash, WorkPayload};
 use parachain_authorizer::aura;
