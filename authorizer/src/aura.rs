@@ -30,6 +30,7 @@ pub struct AuthToken {
 }
 
 #[derive(Debug, Encode, Decode)]
+#[cfg_attr(feature = "test-utils", derive(codec::MaxEncodedLen))]
 pub struct AuthTrace {
 	pub author_key: CollatorKey,
 }

@@ -3241,6 +3241,7 @@ dependencies = [
  "blake2b_simd",
  "jam-pvm-common",
  "jam-types",
+ "parachain-service",
  "parachain-support",
  "parity-scale-codec",
  "polkavm-derive 0.36.0",

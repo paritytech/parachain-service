@@ -24,5 +24,10 @@ binary-merkle-tree = { workspace = true }
 blake2b_simd = { workspace = true }
 primitive-types = { workspace = true }
 
+[dev-dependencies]
+parachain-service = { workspace = true }
+
 [features]
-test-utils = []
+test-utils = [
+	"parachain-service/test-utils",
+]
