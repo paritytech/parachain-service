@@ -39,7 +39,6 @@ pub fn refine(
 	};
 
 	let work_items = refine::work_items_summary();
-	// TODO: check if its actually invalid per GP
 	assert!(item_index < work_items.len(), "Out of bounds item_index is invalid per GP");
 
 	// TODO: The quint spec uses default 0 here, but why?
