@@ -3,8 +3,8 @@
 # so `cargo test` works without granting it to the rest of the workspace.
 [env]
 RUSTC_BOOTSTRAP = { value = "jam_node", force = false }
-# This is a PVM project: build the asset-hub / coretime runtimes for RISC-V (PolkaVM),
+# This is a PVM project: build the frameless runtime for RISC-V (PolkaVM),
 # never WASM. `substrate-wasm-builder` defaults to `wasm32-unknown-unknown` unless this
 # is set, so pin it here for every `cargo` command (check/test/build/clippy), not just
-# the `just build-runtime-pvms` recipe. `force = false` keeps it overridable via the env.
+# the `just build-runtime-pvm` recipe. `force = false` keeps it overridable via the env.
 SUBSTRATE_RUNTIME_TARGET = { value = "riscv", force = false }

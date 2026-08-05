@@ -3,10 +3,7 @@ members = [
     "authorizer",
     "authorizer/bin",
     "cumulus",
-    "pallets/asset-hub-system",
-    "pallets/coretime-system",
-    "runtimes/asset-hub",
-    "runtimes/coretime",
+    "runtimes/frameless",
     "service",
     "service/bin",
     "support",
@@ -52,17 +49,19 @@ parachain-authorizer = { path = "authorizer" }
 parachain-authorizer-bin = { path = "authorizer/bin" }
 parachain-support = { path = "support", default-features = false }
 
-# FRAME umbrella crate. Must be named `frame` (or `polkadot-sdk-frame`) for compatibility with
-# `frame-support`. See https://docs.rs/polkadot-sdk-frame
-frame = { version = "0.18.0", package = "polkadot-sdk-frame", default-features = false, features = ["runtime"] }
 codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }
-scale-info = { version = "2.11", default-features = false, features = ["derive"] }
 substrate-wasm-builder = { git = "https://github.com/paritytech/polkadot-sdk", rev = "1275a4bbddf264ac53b906617a75c5685c6c948e" }
 executor = { path = "tools/executor" }
 
-# System pallets, wired into their respective runtimes.
-asset-hub-system = { path = "pallets/asset-hub-system", default-features = false }
-coretime-system = { path = "pallets/coretime-system", default-features = false }
+# Minimal (FRAME-less) parachain runtime deps. `tiny-keccak` hashes the head-data
+# commitment (as polkadot-sdk's `adder` parachain does). `sp-io` supplies the guest's
+# global allocator, panic handler and OOM handler: `substrate-wasm-builder` compiles
+# the runtime with `--cfg substrate_runtime`, which activates sp-io's `__heap_base`
+# bump allocator (no `sbrk`, unlike a general-purpose allocator, so it links for JAM's
+# PolkaVM instruction set) and gates out sp-io's `secp256k1` C sources. Pinned to the
+# same polkadot-sdk rev as `substrate-wasm-builder` so the two agree on the toolchain.
+tiny-keccak = { version = "2.0.2", default-features = false, features = ["keccak"] }
+sp-io = { git = "https://github.com/paritytech/polkadot-sdk", rev = "1275a4bbddf264ac53b906617a75c5685c6c948e", default-features = false }
 
 # `jam-pvm-builder` compiles guest crates with `--profile=production`, so the
 # workspace must define it. Only used when that profile is explicitly selected

@@ -8,8 +8,7 @@ The parachain service lets you run Polkadot parachains on JAM. It:
 - Exposes a new Cumulus interface for collators to author parachain blocks as Work Packages.
 
 There is no longer a relay chain runtime; the former relay chain logic is implemented without FRAME
-directly as an `accumulate` hook. Parachain runtimes need to use a new parachain system pallet and
-for Asset Hub and Coretime there are special system pallets.
+directly as an `accumulate` hook.
 
 ## Project Structure
 
@@ -18,12 +17,8 @@ for Asset Hub and Coretime there are special system pallets.
 ├── authorizer          # JAM authorizer for the service
 │   └── bin             # Blob builder for the authorizer
 ├── cumulus             # Re-exports for candidate authorship
-├── pallets             # System pallets wired into the runtimes
-│   ├── asset-hub-system
-│   └── coretime-system
 ├── runtimes            # Parachain runtimes
-│   ├── asset-hub
-│   └── coretime
+│   └── frameless       # One mock runtime for both Coretime and Asset Hub
 ├── scripts             # Justfile modules
 ├── service             # The parachain service (refine + accumulate)
 │   └── bin             # Blob builder for the service
@@ -37,8 +32,7 @@ for Asset Hub and Coretime there are special system pallets.
 - [is_authorized.rs](./authorizer/src/is_authorized.rs) and its [tests](./service/bin/tests/is_authorized.rs)
 - [refine.rs](./service/src/refine.rs) and its [tests](./service/bin/tests/refine.rs)
 - [accumulate.rs](./service/src/accumulate.rs) and its [tests](./service/bin/tests/accumulate.rs)
-- [asset-hub](./runtimes/asset-hub/src/lib.rs) with its [system pallet](./pallets/asset-hub-system/src/lib.rs)
-- [coretime](./runtimes/coretime/src/lib.rs) with its [system pallet](./pallets/coretime-system/src/lib.rs)
+- [frameless](./runtimes/frameless/src/lib.rs), the mock runtime whose `Config` picks Coretime or Asset Hub
 - [PolkaJAM](./tools/executor/src/polkajam.rs) in-memory execution wrapper
 
 ## Executor

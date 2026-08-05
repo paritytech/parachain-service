@@ -49,7 +49,7 @@ build-native:
 	SKIP_WASM_BUILD=1 cargo build
 
 # Build the service, authorizer and parachain-runtime PVM blobs
-build-pvm: build-service-pvm build-authorizer-pvm build-runtime-pvms
+build-pvm: build-service-pvm build-authorizer-pvm build-runtime-pvm
 
 build-service-pvm:
 	#!/usr/bin/env sh
@@ -69,16 +69,15 @@ build-authorizer-pvm:
 
 	just check-blob-size {{ AUTHORIZER_BLOB }}
 
-build-runtime-pvms:
+build-runtime-pvm:
 	#!/usr/bin/env sh
 	set -eu
 	mkdir -p target
 
 	# TODO: build with the `production` profile instead of `--release`.
-	SUBSTRATE_RUNTIME_TARGET=riscv cargo build --release --package asset-hub --package coretime
+	SUBSTRATE_RUNTIME_TARGET=riscv cargo build --release --package frameless
 
-	just check-blob-size {{ ASSET_HUB_BLOB }}
-	just check-blob-size {{ CORETIME_BLOB }}
+	just check-blob-size {{ FRAMELESS_BLOB }}
 
 lint:
 	cargo clippy --all-targets --workspace
