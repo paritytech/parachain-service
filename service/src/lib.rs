@@ -8,6 +8,7 @@ use jam_pvm_common::{declare_service, Service};
 use jam_types::{
 	CoreIndex, Hash, ServiceId, Slot, WorkOutput as WorkResult, WorkPackageHash, WorkPayload,
 };
+use work_digest::{ParachainWorkDigest, RefineLog, MAX_REFINE_OUTPUT_SIZE};
 
 mod accumulate;
 pub mod refine;
@@ -29,8 +30,22 @@ impl Service for ParachainService {
 		package_hash: WorkPackageHash,
 	) -> WorkResult {
 		let digest = refine::refine(core_index, item_index, service_id, payload, package_hash);
+		let encoded = digest.encode();
 
-		WorkResult(digest.encode())
+		// NOTE: since we only have a single work item, we can conveniently check the size here.
+		let total_len = encoded.len().saturating_add(jam_pvm_common::refine::auth_trace().len());
+
+		if total_len > MAX_REFINE_OUTPUT_SIZE {
+			WorkResult(
+				ParachainWorkDigest::Err {
+					para_id: digest.para_id(),
+					error: RefineLog::RefineOutputTooLarge,
+				}
+				.encode(),
+			)
+		} else {
+			WorkResult(encoded)
+		}
 	}
 
 	fn accumulate(slot: Slot, id: ServiceId, item_count: usize) -> Option<Hash> {

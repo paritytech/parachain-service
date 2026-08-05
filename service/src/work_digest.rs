@@ -15,6 +15,10 @@ pub type Timeslot = u32;
 /// New head data produced by a parachain block.
 pub type HeadData = Vec<u8>;
 
+/// Maximum combined encoded size of all `ParachainWorkDigest`s and the auth
+/// trace — the Gray Paper's `W_R` (`C_maxreportvarsize`).
+pub const MAX_REFINE_OUTPUT_SIZE: usize = 48 * 1024;
+
 /// The parachain service's Refine output for one parachain candidate. Side
 /// effects from host functions are carried in `upward_messages` and applied by
 /// Accumulate. Spec §3.3.
@@ -42,6 +46,15 @@ pub enum ParachainWorkDigest {
 		/// Structured failure reason.
 		error: RefineLog,
 	},
+}
+
+impl ParachainWorkDigest {
+	pub fn para_id(&self) -> ParaId {
+		match self {
+			Self::Ok { para_id, .. } => *para_id,
+			Self::Err { para_id, .. } => *para_id,
+		}
+	}
 }
 
 /// Structured reason a `refine` invocation failed.
@@ -75,7 +88,7 @@ pub enum RefineLog {
 	/// The encoded `ParachainWorkDigest` (head data + upward messages) would
 	/// exceed the Gray Paper's 48 KiB combined result-blob + auth-trace
 	/// budget. See §4.1.
-	WorkDigestTooLarge,
+	RefineOutputTooLarge,
 	/// The PVF exited without calling `set_parent_head_hash` and/or `set_head`
 	/// exactly once. Both head declarations are mandatory. See §4.2.
 	MissingHeadDeclaration,
