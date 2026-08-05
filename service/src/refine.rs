@@ -11,12 +11,12 @@ use parachain_support::types::ParaId;
 /// Work package payload for a parachain candidate.
 #[derive(Encode, Decode)]
 pub struct ParachainCandidate {
-    /// The hash of the currently active validation code. Used by Refine to
-    /// look up the PVF bytecode from the preimage store.
-    pub validation_code_hash: ValidationCodeHash,
+	/// The hash of the currently active validation code. Used by Refine to
+	/// look up the PVF bytecode from the preimage store.
+	pub validation_code_hash: ValidationCodeHash,
 
-    /// The Proof-of-Validity (PoV) — the actual block data + witness.
-    pub pov: Vec<u8>,
+	/// The Proof-of-Validity (PoV) — the actual block data + witness.
+	pub pov: Vec<u8>,
 }
 
 pub fn refine(
