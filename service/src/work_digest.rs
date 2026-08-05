@@ -51,8 +51,6 @@ pub enum RefineLog {
 	/// validation code preimage is not available in the service's store
 	/// at the lookup-anchor. See §4.1 step 3.
 	InvalidCodeHash,
-	/// Code is larger than 4 GiB.
-	TooBigCode,
 	/// Opaque payload supplied by the PVF via `report_error(data)` before
 	/// failing the execution (max 1024 bytes).
 	Opaque(BoundedVec<u8, ConstU32<1024>>),

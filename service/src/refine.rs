@@ -60,11 +60,7 @@ pub fn refine(
 	let Some(code) = refine::lookup(&code_hash.0) else {
 		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidCodeHash };
 	};
-	let Ok(code_len) = TryInto::<u32>::try_into(code.len()) else {
-		// NOTE: Should be impossible, but still nicer that panicking.
-		// FIXME: Own error variant
-		return ParachainWorkDigest::Err { para_id, error: RefineLog::TooBigCode };
-	};
+	let code_len: u32 = code.len().try_into().expect("PVF code must be at most 4 GiB");
 
 	// FIXME: call into PVF
 	let head_data = vec![];
