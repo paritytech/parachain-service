@@ -26,8 +26,15 @@ primitive-types = { workspace = true }
 
 [dev-dependencies]
 parachain-service = { workspace = true }
+parachain-authorizer = { path = ".", features = ["test-utils"] }
 
 [features]
-test-utils = [
-	"parachain-service/test-utils",
+std = [
+	"binary-merkle-tree/std",
+	"blake2b_simd/std",
+	"codec/std",
+	"jam-pvm-common/std",
+	"jam-types/std",
+	"primitive-types/std",
 ]
+test-utils = []

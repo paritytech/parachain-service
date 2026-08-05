@@ -19,8 +19,6 @@ pub use parachain_support::types::ParaId;
 
 pub mod aura;
 pub mod is_authorized;
-#[cfg(feature = "test")]
-mod tests;
 
 /// Directory of this crate's `Cargo.toml`, used by `parachain-authorizer-bin`'s
 /// `build.rs` to locate the crate when compiling it into a PVM blob.

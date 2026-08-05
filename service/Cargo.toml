@@ -25,13 +25,12 @@ parachain-authorizer = { workspace = true }
 bounded-collections = { workspace = true }
 
 [features]
-test-utils = [
-	"parachain-authorizer/test-utils",
-]
+test-utils = []
 std = [
 	"bounded-collections/std",
 	"codec/std",
 	"dep:jam-std-common",
 	"jam-pvm-common/std",
 	"jam-types/std",
+	"parachain-authorizer/std",
 ]
