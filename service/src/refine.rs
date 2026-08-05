@@ -42,7 +42,7 @@ pub fn refine(
 	assert!(item_index < work_items.len(), "Out of bounds item_index is invalid per GP");
 
 	// TODO: The quint spec uses default 0 here, but why?
-	let para_id = *para_ids.get(0).unwrap_or(&ParaId::from(0));
+	let para_id = *para_ids.get(item_index).unwrap_or(&ParaId::from(0));
 
 	let Ok([work_item]): Result<&[_; 1], _> = work_items.as_slice().try_into() else {
 		// TODO: maybe reorder this with the check below, quint does it this way for some reason
