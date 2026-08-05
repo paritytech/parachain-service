@@ -11,7 +11,12 @@ use parachain_support::types::ParaId;
 /// Work package payload for a parachain candidate.
 #[derive(Encode, Decode)]
 pub struct ParachainCandidate {
-	pub validation_code_hash: ValidationCodeHash,
+    /// The hash of the currently active validation code. Used by Refine to
+    /// look up the PVF bytecode from the preimage store.
+    pub validation_code_hash: ValidationCodeHash,
+
+    /// The Proof-of-Validity (PoV) — the actual block data + witness.
+    pub pov: Vec<u8>,
 }
 
 pub fn refine(
@@ -50,14 +55,6 @@ pub fn refine(
 	let Ok(candidate) = ParachainCandidate::decode_all(&mut &raw_payload.0[..]) else {
 		return ParachainWorkDigest::Err { para_id, error: RefineLog::MalformedPayload };
 	};
-
-	if work_item.extrinsics_count != 2 {
-		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidExtrinsicCount };
-	}
-
-	// TODO: check if we should load them chunked to not OOM
-	let _ext_para_state_proof = refine::extrinsic(0).expect("checked above");
-	let _ext_jam_state_proof = refine::extrinsic(1).expect("checked above");
 
 	let code_hash = candidate.validation_code_hash;
 	let Some(code) = refine::lookup(&code_hash.0) else {

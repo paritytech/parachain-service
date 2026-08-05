@@ -25,7 +25,7 @@ fn trivial_works() {
 	let auth_trace = good_trace();
 
 	let validation_code_hash = ValidationCodeHash::from(SERVICE);
-	let payload = ParachainCandidate { validation_code_hash }.encode();
+	let payload = ParachainCandidate { validation_code_hash, pov: Vec::new() }.encode();
 	let work_items = vec![refine_work_item(SERVICE, payload, vec![Vec::new(), Vec::new()])];
 	let (engine, code_hash, mut context) =
 		refine_args(SERVICE, AUTHORIZER, config, token, auth_trace, work_items, 0);
