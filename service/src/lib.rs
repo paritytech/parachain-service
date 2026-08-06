@@ -10,7 +10,8 @@ use jam_types::{
 };
 use work_digest::{ParachainWorkDigest, RefineLog, MAX_REFINE_OUTPUT_SIZE};
 
-mod accumulate;
+pub mod accumulate;
+pub mod pvf;
 pub mod refine;
 pub mod work_digest;
 
