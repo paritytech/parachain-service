@@ -65,18 +65,14 @@ pub fn refine(
 	};
 	let code_len: u32 = code.len().try_into().expect("PVF code must be at most 4 GiB");
 
-	// Preparing for inner PVM invocation:
-
+	// Run the PVF over the opaque PoV in an inner PVM.
 	let Some(parsed) = pvf::parse_pvf(&code) else {
 		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidCode };
 	};
-	let Ok(vm_handle) = refine::machine(&parsed.code[..], parsed.entry_pc) else {
-		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidCode };
+	let head_data = match pvf::run(&parsed, &candidate.pov) {
+		Ok(head_data) => head_data,
+		Err(error) => return ParachainWorkDigest::Err { para_id, error },
 	};
-
-	let _ = vm_handle; // TODO: invoke `vm_handle` and collect head_data / upward_messages.
-
-	let head_data = vec![]; // FIXME
 
 	ParachainWorkDigest::Ok {
 		para_id,

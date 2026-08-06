@@ -67,6 +67,10 @@ pub enum RefineLog {
 	/// The PVF could not be parsed as a PVM program, its `validate_block` entry point
 	/// was not found, or the inner PVM could not be instantiated from it.
 	InvalidCode,
+	/// The PVF ran but did not validate the candidate: it panicked, trapped, ran out of
+	/// gas, or otherwise failed to return head data.
+	// FIXME: split into distinct causes (panic / OOG / stray host call) once needed.
+	ValidationFailed,
 	/// Opaque payload supplied by the PVF via `report_error(data)` before
 	/// failing the execution (max 1024 bytes).
 	Opaque(BoundedVec<u8, ConstU32<1024>>),

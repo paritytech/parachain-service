@@ -158,6 +158,9 @@ pub fn validate(input: &[u8]) -> Vec<u8> {
 #[cfg(target_arch = "riscv64")]
 #[polkavm_derive::polkavm_export]
 extern "C" fn validate_block(ptr: u32, len: u32) -> (u64, u64) {
+	// The refine service poked a SCALE-encoded `ValidationParams` at `ptr`; decode it,
+	// validate the block, and hand back the `(ptr, len)` of the encoded new `HeadData`,
+	// leaked so it outlives the call.
 	let input = unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) };
 	let output = alloc::boxed::Box::leak(validate(input).into_boxed_slice());
 	(output.as_ptr() as u64, output.len() as u64)

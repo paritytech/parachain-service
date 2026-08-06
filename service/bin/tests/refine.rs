@@ -3,8 +3,9 @@
 //! Blobs are embedded by the blob builder crates' build scripts, so `cargo test`
 //! rebuilds them automatically when the guest sources change.
 
-use codec::Encode;
+use codec::{Decode, Encode};
 use executor::{pj, pj::RefineOutcome};
+use frameless::{hash_state, BlockData, Config, HeadData, State, ValidationParams};
 use jam_types::{AuthConfig, AuthTrace, Authorization as AuthToken};
 use parachain_authorizer_bin::BLOB as AUTHORIZER;
 use parachain_service::{
@@ -27,13 +28,29 @@ fn trivial_works() {
 	let pvf = frameless::WASM_BINARY.unwrap();
 	let pvf_hash = ValidationCodeHash::from(pvf);
 
-	let payload = ParachainCandidate { validation_code_hash: pvf_hash, pov: Vec::new() }.encode();
+	// One block on top of the Coretime genesis: counter 0 -> 512.
+	let parent = HeadData {
+		number: 0,
+		parent_hash: [0; 32],
+		post_state: hash_state(&State { config: Config::Coretime, counter: 0 }),
+	};
+	let block = BlockData { state: State { config: Config::Coretime, counter: 0 }, add: 512 };
+	let params = ValidationParams { parent_head: parent.encode(), block_data: block.encode() };
+
+	let payload =
+		ParachainCandidate { validation_code_hash: pvf_hash, pov: params.encode() }.encode();
 	let work_items = vec![refine_work_item(SERVICE, payload, vec![Vec::new(), Vec::new()])];
 	let (engine, code_hash, mut context) =
 		refine_args(SERVICE, AUTHORIZER, config, token, auth_trace, work_items, &[pvf], 0);
 
 	let outcome = pj::refine(&engine, code_hash, &mut context);
-	expect_ok(outcome);
+
+	// The inner PVM decoded the PoV, executed the block, and returned the new head data.
+	let head_data = expect_ok(outcome);
+	let head = HeadData::decode(&mut &head_data[..]).expect("refine returned valid HeadData");
+	assert_eq!(head.number, 1);
+	assert_eq!(head.parent_hash, parent.hash());
+	assert_eq!(head.post_state, hash_state(&State { config: Config::Coretime, counter: 512 }));
 }
 
 // Empty WPs are invalid per GP, hence panic.
@@ -124,10 +141,10 @@ fn expect_log(res: anyhow::Result<RefineOutcome>) -> RefineLog {
 	log
 }
 
-fn expect_ok(res: anyhow::Result<RefineOutcome>) {
+fn expect_ok(res: anyhow::Result<RefineOutcome>) -> Vec<u8> {
 	let output = res.expect("Refine failed to return a ParachainWorkDigest");
 	match output.digest {
-		ParachainWorkDigest::Ok { .. } => (),
+		ParachainWorkDigest::Ok { head_data, .. } => head_data,
 		ParachainWorkDigest::Err { error, .. } => panic!("RefineLog error: {error:?}"),
 	}
 }
