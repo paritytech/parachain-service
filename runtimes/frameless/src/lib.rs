@@ -36,12 +36,6 @@ use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use tiny_keccak::{Hasher as _, Keccak};
 
-/// The runtime PVM blob, unwrapped. Panics if built with a dummy (empty) blob.
-#[cfg(feature = "std")]
-pub fn wasm_binary_unwrap() -> &'static [u8] {
-	WASM_BINARY.expect("Development PVM binary is not available; build with the blob enabled.")
-}
-
 fn keccak256(input: &[u8]) -> [u8; 32] {
 	let mut out = [0u8; 32];
 	let mut hasher = Keccak::v256();

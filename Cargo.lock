@@ -2862,6 +2862,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "executor",
+ "frameless",
  "jam-node",
  "jam-pvm-builder 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "jam-std-common",

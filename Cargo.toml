@@ -38,6 +38,7 @@ bounded-collections = { version = "0.3.2", default-features = false, features = 
 polkavm = { version = "0.30.0", default-features = false }
 
 # Guest crates and their blob builder crates.
+frameless = { path = "runtimes/frameless" }
 parachain-service = { path = "service" }
 parachain-service-bin = { path = "service/bin" }
 parachain-authorizer = { path = "authorizer" }

@@ -96,11 +96,15 @@ pub fn refine_args(
 	token: AuthToken,
 	auth_trace: AuthTrace,
 	work_items: Vec<RefineWorkItem>,
+	preimages: &[&[u8]],
 	work_item_index: usize,
 ) -> (Engine, CodeHash, RefineCallContextOwned) {
 	let (items, extrinsic_data): (Vec<_>, Vec<_>) = work_items.into_iter().unzip();
 	let package = work_package(authorizer_blob, config, token, items);
-	let (storage, code_hash) = storage_with_code(service_blob);
+	let (mut storage, code_hash) = storage_with_code(service_blob);
+	for blob in preimages {
+		provide_preimage(&mut storage, blob);
+	}
 
 	let context = RefineCallContextOwned {
 		storage,
@@ -183,6 +187,18 @@ fn work_package(
 		},
 		items: work_items.try_into().expect("work-item count exceeds the JAM bound"),
 	}
+}
+
+/// Put preimage into store for historical_lookup to resolve.
+pub fn provide_preimage(storage: &mut Storage, blob: &[u8]) {
+	let hash = hash_raw(blob);
+	storage
+		.solicit(0, SERVICE_ID, hash, blob.len() as u32)
+		.expect("preimage should fit in storage");
+	storage
+		.provide(0, SERVICE_ID, blob)
+		.expect("preimage should be accepted by storage");
+	storage.commit();
 }
 
 fn storage_with_code(blob: &[u8]) -> (Storage, CodeHash) {

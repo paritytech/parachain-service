@@ -47,4 +47,5 @@ parachain-service = { workspace = true }
 parachain-service-bin = { path = ".", features = ["test-utils"] } # TODO clean this up
 parachain-authorizer-bin = { workspace = true }
 parachain-service = { workspace = true, features = ["test-utils", "std"] }
+frameless = { workspace = true }
 anyhow = "1" # TODO pull up to workspace

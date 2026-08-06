@@ -63,10 +63,9 @@ pub fn refine(
 	let code_len: u32 = code.len().try_into().expect("PVF code must be at most 4 GiB");
 
 	// Finally preparing to call into PVF:
-	// let Some(pc) = entry_point(&code) else {
-	// TODO own error
-	// return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidCodeHash };
-	// };
+	let Some(pc) = entry_point(&code) else {
+		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidCode };
+	};
 	// let Ok(handle) = refine::machine(&code, pc) else {
 	// TODO own error
 	// return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidCodeHash };

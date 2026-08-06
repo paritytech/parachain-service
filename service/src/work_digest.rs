@@ -64,6 +64,8 @@ pub enum RefineLog {
 	/// validation code preimage is not available in the service's store
 	/// at the lookup-anchor. See §4.1 step 3.
 	InvalidCodeHash,
+	/// Code could not be parsed as a PVM program or the PVF entry point was not found.
+	InvalidCode,
 	/// Opaque payload supplied by the PVF via `report_error(data)` before
 	/// failing the execution (max 1024 bytes).
 	Opaque(BoundedVec<u8, ConstU32<1024>>),
