@@ -62,8 +62,17 @@ pub fn refine(
 	};
 	let code_len: u32 = code.len().try_into().expect("PVF code must be at most 4 GiB");
 
-	// FIXME: call into PVF
-	let head_data = vec![];
+	// Finally preparing to call into PVF:
+	// let Some(pc) = entry_point(&code) else {
+	// TODO own error
+	// return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidCodeHash };
+	// };
+	// let Ok(handle) = refine::machine(&code, pc) else {
+	// TODO own error
+	// return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidCodeHash };
+	// };
+
+	let head_data = vec![]; // FIXME
 
 	ParachainWorkDigest::Ok {
 		para_id,
@@ -73,4 +82,17 @@ pub fn refine(
 		upward_messages: vec![],
 		lookup_anchor: 123, // FIXME
 	}
+}
+
+// TODO: let the code hash already commit to this instead of the bare code
+fn entry_point(code: &[u8]) -> Option<u64> {
+	use polkavm::{ArcBytes, ProgramBlob, ProgramParts};
+
+	let parts = ProgramParts::from_bytes(ArcBytes::from(code)).ok()?;
+	let code = parts.code_and_jump_table.clone();
+
+	let program = ProgramBlob::from_parts(parts).ok()?;
+	let entry_pc = program.exports().find(|export| export == "validate_block")?.program_counter().0;
+
+	Some(entry_pc as u64)
 }

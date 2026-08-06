@@ -31,16 +31,11 @@ jam-pvm-common = { path = "vendor/polkajam/crates/jam-pvm-common", default-featu
 jam-std-common = { path = "vendor/polkajam/crates/jam-std-common" }
 binary-merkle-tree = { version = "16.1.1", default-features = false }
 blake2b_simd = { version = "1", default-features = false }
-# `H256` for the authorizer's collator-set root. Sourced from `primitive-types`
-# directly (not `sp-core`) to keep the PVM guest off the `sp-runtime`/`sp-io`
-# dependency tree, which unconditionally compiles `secp256k1`'s C sources on
-# `cfg(not(substrate_runtime))` targets and so cannot build for PolkaVM.
 primitive-types = { version = "0.13.1", default-features = false, features = ["codec"] }
-# Build-script library (NOT the `jam-pvm-build` CLI): compiles a guest crate to a
-# PVM blob from a `build.rs` and hands the bytes back via the `pvm_binary!` macro.
 jam-pvm-builder = { version = "0.1.28" }
 polkavm-derive = { version = "0.36.0", default-features = false }
 bounded-collections = { version = "0.3.2", default-features = false, features = ["scale-codec"] }
+polkavm = { version = "0.30.0", default-features = false }
 
 # Guest crates and their blob builder crates.
 parachain-service = { path = "service" }
@@ -52,20 +47,9 @@ parachain-support = { path = "support", default-features = false }
 codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }
 substrate-wasm-builder = { git = "https://github.com/paritytech/polkadot-sdk", rev = "1275a4bbddf264ac53b906617a75c5685c6c948e" }
 executor = { path = "tools/executor" }
-
-# Minimal (FRAME-less) parachain runtime deps. `tiny-keccak` hashes the head-data
-# commitment (as polkadot-sdk's `adder` parachain does). `sp-io` supplies the guest's
-# global allocator, panic handler and OOM handler: `substrate-wasm-builder` compiles
-# the runtime with `--cfg substrate_runtime`, which activates sp-io's `__heap_base`
-# bump allocator (no `sbrk`, unlike a general-purpose allocator, so it links for JAM's
-# PolkaVM instruction set) and gates out sp-io's `secp256k1` C sources. Pinned to the
-# same polkadot-sdk rev as `substrate-wasm-builder` so the two agree on the toolchain.
 tiny-keccak = { version = "2.0.2", default-features = false, features = ["keccak"] }
 sp-io = { git = "https://github.com/paritytech/polkadot-sdk", rev = "1275a4bbddf264ac53b906617a75c5685c6c948e", default-features = false }
 
-# `jam-pvm-builder` compiles guest crates with `--profile=production`, so the
-# workspace must define it. Only used when that profile is explicitly selected
-# (i.e. by the PVM blob build); normal `cargo build`/`test` use dev/release.
 [profile.production]
 inherits = "release"
 lto = true

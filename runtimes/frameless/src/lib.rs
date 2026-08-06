@@ -5,9 +5,11 @@
 //! state is a `u64` counter, each block applies a per-[`Config`] transition, and the
 //! runtime is one [`execute`] step behind the [`validate_block`] PVM entry point.
 //!
-//! As in `adder`, `sp-io` supplies the guest's allocator and panic/OOM handlers.
-//! `substrate-wasm-builder` builds with `--cfg substrate_runtime`, which swaps in
-//! sp-io's `__heap_base` bump allocator (no `sbrk`, so it links for PolkaVM) and drops
+//! The guest's global allocator is a fixed-arena bump allocator (see the
+//! `arena_allocator` module). JAM's `jam_v1` ISA has no `sbrk`, so a growable in-guest
+//! heap (picoalloc / RFC-145) can't link; sp-io's own host-call allocator is turned off
+//! via its `disable_allocator` feature, and sp-io is kept only for its panic/OOM
+//! handlers. `substrate-wasm-builder` builds with `--cfg substrate_runtime`, which drops
 //! sp-io's `secp256k1` C sources — so, unlike the bare JAM guests, this runtime can
 //! depend on sp-io.
 
@@ -15,8 +17,13 @@
 
 extern crate alloc;
 
-// Pull sp-io into the link (never called directly) for the guest's allocator and
-// panic/OOM handlers; std provides those on the host build.
+// Guest-only fixed-arena `#[global_allocator]`. sp-io's host-call allocator is disabled
+// (its `disable_allocator` feature), so this is the only one.
+#[cfg(target_arch = "riscv64")]
+mod arena_allocator;
+
+// Keep sp-io linked (never called directly) for the guest's panic/OOM handlers; std
+// provides those on the host build.
 #[cfg(not(feature = "std"))]
 use sp_io as _;
 

@@ -2852,6 +2852,7 @@ dependencies = [
  "parachain-authorizer",
  "parachain-support",
  "parity-scale-codec",
+ "polkavm",
  "polkavm-derive 0.36.0",
 ]
 

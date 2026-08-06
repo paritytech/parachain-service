@@ -23,6 +23,7 @@ polkavm-derive = { workspace = true }
 jam-std-common = { workspace = true, optional = true }
 parachain-authorizer = { workspace = true }
 bounded-collections = { workspace = true }
+polkavm = { workspace = true }
 
 [features]
 test-utils = []
