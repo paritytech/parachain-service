@@ -62,14 +62,16 @@ pub fn refine(
 	};
 	let code_len: u32 = code.len().try_into().expect("PVF code must be at most 4 GiB");
 
-	// Finally preparing to call into PVF:
-	let Some(pc) = entry_point(&code) else {
+	// Preparing for inner PVM invocation:
+
+	let Some(pvf) = parse_pvf(&code) else {
 		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidCode };
 	};
-	// let Ok(handle) = refine::machine(&code, pc) else {
-	// TODO own error
-	// return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidCodeHash };
-	// };
+	let Ok(vm_handle) = refine::machine(&pvf.code[..], pvf.entry_pc) else {
+		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidCode };
+	};
+
+	let _ = vm_handle; // TODO: invoke `vm_handle` and collect head_data / upward_messages.
 
 	let head_data = vec![]; // FIXME
 
@@ -83,8 +85,17 @@ pub fn refine(
 	}
 }
 
+/// A parachain validation function parsed into a form ready to run as an inner PVM.
+struct ParsedPvf {
+	/// The `code + jump table` blob in JAM's standard program format, as the `machine`
+	/// host call expects it.
+	code: polkavm::ArcBytes,
+	/// Program counter of the `validate_block` export: the inner PVM's entry point.
+	entry_pc: u64,
+}
+
 // TODO: let the code hash already commit to this instead of the bare code
-fn entry_point(code: &[u8]) -> Option<u64> {
+fn parse_pvf(code: &[u8]) -> Option<ParsedPvf> {
 	use polkavm::{ArcBytes, ProgramBlob, ProgramParts};
 
 	let parts = ProgramParts::from_bytes(ArcBytes::from(code)).ok()?;
@@ -93,5 +104,5 @@ fn entry_point(code: &[u8]) -> Option<u64> {
 	let program = ProgramBlob::from_parts(parts).ok()?;
 	let entry_pc = program.exports().find(|export| export == "validate_block")?.program_counter().0;
 
-	Some(entry_pc as u64)
+	Some(ParsedPvf { code, entry_pc: entry_pc as u64 })
 }
