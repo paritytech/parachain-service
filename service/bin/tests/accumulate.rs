@@ -15,7 +15,7 @@ fn trivial_works() {
 		validation_code: ValidationCodeRef { hash: ValidationCodeHash([0; 32]), len: 123 },
 		parent_head_hash: [1; 32],
 		head_data: b"head data".into(),
-		upward_messages: vec![],
+		upward_messages: Default::default(),
 		lookup_anchor: 456,
 	};
 	let items = vec![AccumulateItem::WorkItem(WorkItemRecord {

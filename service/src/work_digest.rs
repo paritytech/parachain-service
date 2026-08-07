@@ -19,6 +19,9 @@ pub type HeadData = Vec<u8>;
 /// trace — the Gray Paper's `W_R` (`C_maxreportvarsize`).
 pub const MAX_REFINE_OUTPUT_SIZE: usize = 48 * 1024;
 
+/// Maximum number of upward messages per `ParachainWorkDigest`.
+pub const MAX_UPWARD_MESSAGES_PER_DIGEST: u32 = 1024;
+
 /// The parachain service's Refine output for one parachain candidate. Side
 /// effects from host functions are carried in `upward_messages` and applied by
 /// Accumulate. Spec §3.3.
@@ -35,7 +38,7 @@ pub enum ParachainWorkDigest {
 		/// New head data produced by the parachain block.
 		head_data: HeadData,
 		/// Upward messages emitted through host functions during Refine.
-		upward_messages: Vec<UpwardMessage>,
+		upward_messages: BoundedVec<UpwardMessage, ConstU32<MAX_UPWARD_MESSAGES_PER_DIGEST>>,
 		/// The work package's lookup-anchor timeslot.
 		lookup_anchor: Timeslot,
 	},

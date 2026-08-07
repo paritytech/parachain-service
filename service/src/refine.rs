@@ -79,7 +79,7 @@ pub fn refine(
 		validation_code: ValidationCodeRef { hash: code_hash, len: code_len },
 		parent_head_hash: [0; 32], // FIXME
 		head_data,
-		upward_messages: vec![],
+		upward_messages: Default::default(),
 		lookup_anchor: 123, // FIXME
 	}
 }
