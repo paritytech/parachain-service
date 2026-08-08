@@ -50,6 +50,7 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
+use parachain_support::types::UpwardMessage;
 use tiny_keccak::{Hasher as _, Keccak};
 
 fn keccak256(input: &[u8]) -> [u8; 32] {
@@ -63,12 +64,18 @@ fn keccak256(input: &[u8]) -> [u8; 32] {
 /// Which parachain this is. Fixed at genesis and carried in [`State`]; a block cannot
 /// change it, since its start state must hash-match the parent head and
 /// [`State::transition`] keeps the `Config`.
-#[derive(Clone, Copy, Eq, PartialEq, Encode, Decode, Debug)]
+#[derive(Clone, Eq, PartialEq, Encode, Decode, Debug)]
 pub enum Config {
 	/// The Coretime chain.
 	Coretime,
 	/// The Asset Hub chain.
 	AssetHub,
+	Mock(Vec<MockAction>),
+}
+
+#[derive(Clone, Encode, Decode, Debug, PartialEq, Eq)]
+pub enum MockAction {
+	UMP(UpwardMessage),
 }
 
 /// The full chain state: the immutable [`Config`] plus the mutable counter.
@@ -83,19 +90,17 @@ pub struct State {
 impl State {
 	/// Apply one block's `add`, carrying [`State::config`] through unchanged.
 	fn transition(&self, add: u64) -> State {
-		#[cfg(target_arch = "riscv64")]
-		send_upward(&parachain_support::types::UpwardMessage::SetKV {
-			key: b"KEY".to_vec(),
-			value: b"VALUE".to_vec(),
-		});
+		if let Config::Mock(actions) = &self.config {
+			for action in actions {
+				if let MockAction::UMP(msg) = action {
+					#[cfg(target_arch = "riscv64")]
+					send_upward(&msg);
+				}
+			}
+		}
 
-		let counter = match self.config {
-			// FIXME: Coretime and Asset Hub logic (host calls, hooks) will diverge here;
-			// for now both just wrapping-add like `adder`.
-			Config::Coretime => self.counter.wrapping_add(add),
-			Config::AssetHub => self.counter.wrapping_add(add),
-		};
-		State { config: self.config, counter }
+		let counter = self.counter.wrapping_add(add);
+		State { config: self.config.clone(), counter } // TODO remove clone
 	}
 }
 
@@ -192,7 +197,7 @@ extern "C" {
 }
 
 #[cfg(target_arch = "riscv64")]
-pub(crate) fn send_upward(msg: &parachain_support::types::UpwardMessage) {
+pub(crate) fn send_upward(msg: &UpwardMessage) {
 	msg.using_encoded(|bytes| unsafe {
 		send_upward_raw(bytes.as_ptr() as u32, bytes.len() as u32);
 	});

@@ -2872,6 +2872,7 @@ dependencies = [
  "parachain-authorizer-bin",
  "parachain-service",
  "parachain-service-bin",
+ "parachain-support",
  "parity-scale-codec",
  "primitive-types",
 ]

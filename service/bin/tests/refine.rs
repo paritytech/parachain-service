@@ -5,7 +5,7 @@
 
 use codec::{Decode, Encode};
 use executor::{pj, pj::RefineOutcome};
-use frameless::{hash_state, BlockData, Config, HeadData, State, ValidationParams};
+use frameless::{hash_state, BlockData, Config, HeadData, MockAction, State, ValidationParams};
 use jam_types::{AuthConfig, AuthTrace, Authorization as AuthToken};
 use parachain_authorizer_bin::BLOB as AUTHORIZER;
 use parachain_service::{
@@ -16,6 +16,7 @@ use parachain_service_bin::{
 	mock::{good_config, good_token, good_trace, refine_args, refine_work_item},
 	BLOB as SERVICE,
 };
+use parachain_support::types::UpwardMessage;
 
 pub const MOCK_CODE_HASH: ValidationCodeHash = ValidationCodeHash([123; 32]);
 
@@ -51,6 +52,42 @@ fn trivial_works() {
 	assert_eq!(head.number, 1);
 	assert_eq!(head.parent_hash, parent.hash());
 	assert_eq!(head.post_state, hash_state(&State { config: Config::Coretime, counter: 512 }));
+}
+
+#[test]
+fn send_upward_messages_works() {
+	let config = good_config(1);
+	let token = good_token();
+	let auth_trace = good_trace();
+
+	let pvf = frameless::WASM_BINARY.unwrap();
+	let pvf_hash = ValidationCodeHash::from(pvf);
+
+	let mock_action =
+		MockAction::UMP(UpwardMessage::SetKV { key: b"KEY".to_vec(), value: b"VALUE".to_vec() });
+	let action = Config::Mock(vec![mock_action]);
+	let parent = HeadData {
+		number: 0,
+		parent_hash: [0; 32],
+		post_state: hash_state(&State { config: action.clone(), counter: 0 }),
+	};
+	let block = BlockData { state: State { config: action.clone(), counter: 0 }, add: 512 };
+	let params = ValidationParams { parent_head: parent.encode(), block_data: block.encode() };
+
+	let payload =
+		ParachainCandidate { validation_code_hash: pvf_hash, pov: params.encode() }.encode();
+	let work_items = vec![refine_work_item(SERVICE, payload, vec![Vec::new(), Vec::new()])];
+	let (engine, code_hash, mut context) =
+		refine_args(SERVICE, AUTHORIZER, config, token, auth_trace, work_items, &[pvf], 0);
+
+	let outcome = pj::refine(&engine, code_hash, &mut context);
+
+	// The inner PVM decoded the PoV, executed the block, and returned the new head data.
+	let head_data = expect_ok(outcome);
+	let head = HeadData::decode(&mut &head_data[..]).expect("refine returned valid HeadData");
+	assert_eq!(head.number, 1);
+	assert_eq!(head.parent_hash, parent.hash());
+	assert_eq!(head.post_state, hash_state(&State { config: action, counter: 512 }));
 }
 
 // Empty WPs are invalid per GP, hence panic.
