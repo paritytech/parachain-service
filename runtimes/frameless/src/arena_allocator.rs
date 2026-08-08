@@ -8,8 +8,8 @@
 //!
 //! `dealloc` is a no-op: the inner PVM is single-use and its memory is reclaimed wholesale
 //! by `expunge`, so there is nothing to free mid-run. Allocation is therefore monotonic and
-//! bounded by [`ARENA_SIZE`]; exhausting it returns null, which routes into sp-io's OOM
-//! handler (an abort).
+//! bounded by [`ARENA_SIZE`]; exhausting it returns null, which trips Rust's default
+//! alloc-error handler and traps the guest.
 
 use core::{
 	alloc::{GlobalAlloc, Layout},

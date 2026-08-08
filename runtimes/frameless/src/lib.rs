@@ -8,10 +8,13 @@
 //! The guest's global allocator is a fixed-arena bump allocator (see the
 //! `arena_allocator` module). JAM's `jam_v1` ISA has no `sbrk`, so a growable in-guest
 //! heap (picoalloc / RFC-145) can't link; sp-io's own host-call allocator is turned off
-//! via its `disable_allocator` feature, and sp-io is kept only for its panic/OOM
-//! handlers. `substrate-wasm-builder` builds with `--cfg substrate_runtime`, which drops
-//! sp-io's `secp256k1` C sources — so, unlike the bare JAM guests, this runtime can
-//! depend on sp-io.
+//! via its `disable_allocator` feature. Its `#[panic_handler]` is likewise disabled
+//! (`disable_panic_handler`) — it reaches the `logging::log` host import, which, being
+//! un-indexed, clashes with this runtime's explicitly-indexed host calls under
+//! polkavm-linker's all-or-none index rule — and replaced by the trapping handler below.
+//! sp-io stays a dependency for future host-function use. `substrate-wasm-builder` builds
+//! with `--cfg substrate_runtime`, which drops sp-io's `secp256k1` C sources — so, unlike
+//! the bare JAM guests, this runtime can depend on sp-io.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
@@ -22,10 +25,23 @@ extern crate alloc;
 #[cfg(target_arch = "riscv64")]
 mod arena_allocator;
 
-// Keep sp-io linked (never called directly) for the guest's panic/OOM handlers; std
-// provides those on the host build.
+// Keep sp-io in the dependency graph for future host-function use; it is not called and,
+// with its panic handler and allocator disabled (see Cargo.toml + module docs),
+// contributes no linked code. The `as _` binding only silences the unused-dep lint.
 #[cfg(not(feature = "std"))]
 use sp_io as _;
+
+// Guest panic handler: trap the PVM directly. sp-io's own `#[panic_handler]` is disabled
+// (its `disable_panic_handler` feature) because it reaches the un-indexed `logging::log`
+// host import, which is incompatible with this runtime's explicitly-indexed host calls. A
+// panic fails the candidate regardless, so trapping without a host round-trip is
+// equivalent; the host `std` build supplies its own panic handler.
+#[cfg(target_arch = "riscv64")]
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+	// The same trap instruction sp-io's `unreachable()` emits on RISC-V.
+	unsafe { core::arch::asm!("unimp", options(noreturn)) }
+}
 
 // The runtime blob `substrate-wasm-builder` embeds for the host build:
 // `WASM_BINARY: Option<&[u8]>`. Absent in the guest build.
@@ -118,6 +134,9 @@ pub fn execute(parent_head: HeadData, block_data: &BlockData) -> Result<HeadData
 		return Err(StateMismatch);
 	}
 
+	#[cfg(target_arch = "riscv64")]
+  	unsafe { send_upward(0, 0); }
+
 	let new_state = block_data.state.transition(block_data.add);
 
 	Ok(HeadData {
@@ -152,18 +171,21 @@ pub fn validate(input: &[u8]) -> Vec<u8> {
 
 /// PVM entry point: validate one block.
 ///
-/// The host passes the `(ptr, len)` of a SCALE-encoded [`ValidationParams`] in guest
-/// memory; we return the `(ptr, len)` of the encoded new [`HeadData`], leaked so it
-/// outlives the call. Logic is in [`validate`]; this is only the memory marshalling.
+/// Input: [`ValidationParams`], output: [`HeadData`]
 #[cfg(target_arch = "riscv64")]
 #[polkavm_derive::polkavm_export]
 extern "C" fn validate_block(ptr: u32, len: u32) -> (u64, u64) {
-	// The refine service poked a SCALE-encoded `ValidationParams` at `ptr`; decode it,
-	// validate the block, and hand back the `(ptr, len)` of the encoded new `HeadData`,
-	// leaked so it outlives the call.
 	let input = unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) };
 	let output = alloc::boxed::Box::leak(validate(input).into_boxed_slice());
 	(output.as_ptr() as u64, output.len() as u64)
+}
+
+#[cfg(target_arch = "riscv64")]
+#[polkavm_derive::polkavm_import]
+extern "C" {
+	// TODO fix index
+	#[polkavm_import(index = 0)]
+	fn send_upward(ptr: u32, len: u32);
 }
 
 #[cfg(test)]

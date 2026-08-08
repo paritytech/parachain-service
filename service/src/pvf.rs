@@ -79,8 +79,16 @@ pub fn run(pvf: &ParsedPvf, pov: &[u8]) -> Result<Vec<u8>, RefineLog> {
 		.map_err(|_| RefineLog::ValidationFailed)?;
 	// We pre-map everything, so anything but a clean halt (panic / trap / OOG / page fault
 	// / stray host call) means the candidate did not validate.
-	if !matches!(outcome, InvokeOutcome::Halt) {
-		return Err(RefineLog::ValidationFailed);
+	let result = match outcome {
+		InvokeOutcome::Halt => Ok(()),
+		InvokeOutcome::PageFault(_) => Err(RefineLog::ValidationFailed),
+		InvokeOutcome::HostCallFault(0) => Err(RefineLog::TODOMockError),
+		InvokeOutcome::HostCallFault(_) => Err(RefineLog::ValidationFailed),
+		InvokeOutcome::Panic => Err(RefineLog::ValidationFailed),
+		InvokeOutcome::OutOfGas => Err(RefineLog::ValidationFailed),
+	};
+	if let Err(log) = result {
+		return Err(log);
 	}
 
 	// `validate_block` returns `(ptr, len)` of the encoded head data in A0/A1.

@@ -102,6 +102,8 @@ pub enum RefineLog {
 	/// The PVF exited without calling `set_parent_head_hash` and/or `set_head`
 	/// exactly once. Both head declarations are mandatory. See §4.2.
 	MissingHeadDeclaration,
+
+	TODOMockError,
 }
 
 #[cfg(feature = "test-utils")]
