@@ -1,9 +1,12 @@
 //! Parsing and running a parachain validation function (PVF) as an inner PVM.
 
-use crate::work_digest::RefineLog;
+use crate::work_digest::{RefineLog, MAX_UPWARD_MESSAGES_PER_DIGEST};
 use alloc::vec::Vec;
+use bounded_collections::{BoundedVec, ConstU32};
+use codec::DecodeAll;
 use jam_pvm_common::{refine, InvokeOutcome};
 use jam_types::{PageMode, PAGE_SIZE};
+use parachain_support::types::UpwardMessage;
 use polkavm::Reg;
 
 /// A parachain validation function parsed into a form ready to run as an inner PVM.
@@ -21,6 +24,28 @@ pub struct ParsedPvf {
 	pub rw_data: polkavm::ArcBytes,
 	/// Absolute RO/RW/stack/heap layout the guest was linked against.
 	pub memory: polkavm::MemoryMap,
+}
+
+/// Side-effect buffer during refine invoke-PVM loop.
+#[derive(Default)]
+struct ExecutorState {
+	umps: BoundedVec<UpwardMessage, ConstU32<MAX_UPWARD_MESSAGES_PER_DIGEST>>,
+}
+
+impl ExecutorState {
+	pub fn send_upward_raw(self, handle: u64, ptr: u64, len: u64) -> Result<Self, RefineLog> {
+		let buffer = refine::peek(handle, ptr, len).map_err(|_| RefineLog::ValidationFailed)?;
+		let msg =
+			UpwardMessage::decode_all(&mut &buffer[..]).map_err(|_| RefineLog::MalformedPayload)?;
+
+		self.send_upward(msg)
+	}
+
+	fn send_upward(mut self, msg: UpwardMessage) -> Result<Self, RefineLog> {
+		self.umps.try_push(msg).map_err(|_| RefineLog::TooManyUpwardMessages)?;
+
+		Ok(self)
+	}
 }
 
 // TODO: let the code hash already commit to this instead of the bare code
@@ -75,24 +100,28 @@ pub fn run(pvf: &ParsedPvf, pov: &[u8]) -> Result<Vec<u8>, RefineLog> {
 	regs[Reg::A0 as usize] = input_ptr as u64;
 	regs[Reg::A1 as usize] = pov.len() as u64;
 
-	let (outcome, _gas, out_regs) = refine::invoke(handle, refine::gas() as i64, regs)
-		.map_err(|_| RefineLog::ValidationFailed)?;
-	// We pre-map everything, so anything but a clean halt (panic / trap / OOG / page fault
-	// / stray host call) means the candidate did not validate.
-	let result = match outcome {
-		InvokeOutcome::Halt => Ok(()),
-		InvokeOutcome::PageFault(_) => Err(RefineLog::ValidationFailed),
-		InvokeOutcome::HostCallFault(0) => Err(RefineLog::TODOMockError),
-		InvokeOutcome::HostCallFault(_) => Err(RefineLog::ValidationFailed),
-		InvokeOutcome::Panic => Err(RefineLog::ValidationFailed),
-		InvokeOutcome::OutOfGas => Err(RefineLog::ValidationFailed),
-	};
-	if let Err(log) = result {
-		return Err(log);
+	let mut exe = ExecutorState::default();
+
+	loop {
+		let (outcome, _gas, out_regs) = refine::invoke(handle, refine::gas() as i64, regs)
+			.map_err(|_| RefineLog::ValidationFailed)?;
+		regs = out_regs;
+
+		exe = match outcome {
+			InvokeOutcome::Halt => break,
+			InvokeOutcome::PageFault(_) => Err(RefineLog::ValidationFailed),
+			InvokeOutcome::HostCallFault(0) => {
+				let (ptr, len) = (regs[Reg::A0 as usize], regs[Reg::A1 as usize]);
+				exe.send_upward_raw(handle, ptr, len)
+			},
+			InvokeOutcome::HostCallFault(_) => Err(RefineLog::ValidationFailed),
+			InvokeOutcome::Panic => Err(RefineLog::ValidationFailed),
+			InvokeOutcome::OutOfGas => Err(RefineLog::ValidationFailed),
+		}?;
 	}
 
 	// `validate_block` returns `(ptr, len)` of the encoded head data in A0/A1.
-	let head_data = refine::peek(handle, out_regs[Reg::A0 as usize], out_regs[Reg::A1 as usize])
+	let head_data = refine::peek(handle, regs[Reg::A0 as usize], regs[Reg::A1 as usize])
 		.map_err(|_| RefineLog::ValidationFailed)?;
 
 	let _ = refine::expunge(handle);

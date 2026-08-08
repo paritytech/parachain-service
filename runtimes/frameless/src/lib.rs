@@ -83,6 +83,12 @@ pub struct State {
 impl State {
 	/// Apply one block's `add`, carrying [`State::config`] through unchanged.
 	fn transition(&self, add: u64) -> State {
+		#[cfg(target_arch = "riscv64")]
+		send_upward(&parachain_support::types::UpwardMessage::SetKV {
+			key: b"KEY".to_vec(),
+			value: b"VALUE".to_vec(),
+		});
+
 		let counter = match self.config {
 			// FIXME: Coretime and Asset Hub logic (host calls, hooks) will diverge here;
 			// for now both just wrapping-add like `adder`.
@@ -134,9 +140,6 @@ pub fn execute(parent_head: HeadData, block_data: &BlockData) -> Result<HeadData
 		return Err(StateMismatch);
 	}
 
-	#[cfg(target_arch = "riscv64")]
-  	unsafe { send_upward(0, 0); }
-
 	let new_state = block_data.state.transition(block_data.add);
 
 	Ok(HeadData {
@@ -185,7 +188,14 @@ extern "C" fn validate_block(ptr: u32, len: u32) -> (u64, u64) {
 extern "C" {
 	// TODO fix index
 	#[polkavm_import(index = 0)]
-	fn send_upward(ptr: u32, len: u32);
+	fn send_upward_raw(ptr: u32, len: u32);
+}
+
+#[cfg(target_arch = "riscv64")]
+pub(crate) fn send_upward(msg: &parachain_support::types::UpwardMessage) {
+	msg.using_encoded(|bytes| unsafe {
+		send_upward_raw(bytes.as_ptr() as u32, bytes.len() as u32);
+	});
 }
 
 #[cfg(test)]

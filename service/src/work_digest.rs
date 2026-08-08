@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Decode, Encode};
 use jam_types::Hash;
-use parachain_support::types::ParaId;
+use parachain_support::types::{ParaId, UpwardMessage};
 
 #[cfg(feature = "std")]
 use jam_std_common::hash_raw;
@@ -102,8 +102,6 @@ pub enum RefineLog {
 	/// The PVF exited without calling `set_parent_head_hash` and/or `set_head`
 	/// exactly once. Both head declarations are mandatory. See §4.2.
 	MissingHeadDeclaration,
-
-	TODOMockError,
 }
 
 #[cfg(feature = "test-utils")]
@@ -115,10 +113,6 @@ impl ParachainWorkDigest {
 		}
 	}
 }
-
-/// Upward messages emitted via host functions during Refine and replayed in order by Accumulate.
-#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
-pub enum UpwardMessage {}
 
 /// Hash of a parachain's validation code (PVF) preimage.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]

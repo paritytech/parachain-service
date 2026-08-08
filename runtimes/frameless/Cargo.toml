@@ -10,6 +10,7 @@ license.workspace = true
 codec = { workspace = true }
 tiny-keccak = { workspace = true }
 sp-io = { workspace = true }
+parachain-support = { workspace = true }
 
 [target.'cfg(target_arch = "riscv64")'.dependencies]
 polkavm-derive = { workspace = true }

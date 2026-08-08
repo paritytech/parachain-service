@@ -6,6 +6,9 @@
 //! tree so it keeps compiling for PolkaVM; Polkadot's own `ParaId`
 //! (`polkadot_parachain_primitives::Id`) is unusable here for that reason.
 
+extern crate alloc;
+
+use alloc::vec::Vec;
 use codec::{Decode, Encode};
 
 /// Unique identifier of a parachain.
@@ -22,4 +25,10 @@ impl From<ParaId> for u32 {
 	fn from(id: ParaId) -> Self {
 		id.0
 	}
+}
+
+/// Upward messages emitted via host functions during Refine and replayed in order by Accumulate.
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
+pub enum UpwardMessage {
+	SetKV { key: Vec<u8>, value: Vec<u8> },
 }
