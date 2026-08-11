@@ -10,7 +10,7 @@ license.workspace = true
 codec = { workspace = true }
 tiny-keccak = { workspace = true }
 sp-io = { workspace = true }
-parachain-support = { workspace = true }
+parachain-service-interface = { workspace = true }
 
 [target.'cfg(target_arch = "riscv64")'.dependencies]
 polkavm-derive = { workspace = true }
@@ -22,6 +22,7 @@ default = [
 ]
 std = [
 	"codec/std",
+	"parachain-service-interface/std",
 	"sp-io/std",
 	"substrate-wasm-builder",
 ]

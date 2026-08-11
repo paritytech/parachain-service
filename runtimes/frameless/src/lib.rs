@@ -50,7 +50,7 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
-use parachain_support::types::UpwardMessage;
+use parachain_service_interface::types::UpwardMessage;
 use tiny_keccak::{Hasher as _, Keccak};
 
 fn keccak256(input: &[u8]) -> [u8; 32] {
@@ -191,7 +191,7 @@ extern "C" fn jam_validate_block(ptr: u32, len: u32) -> (u64, u64) {
 #[cfg(target_arch = "riscv64")]
 #[polkavm_derive::polkavm_import]
 extern "C" {
-	// TODO fix index
+	// TODO ensure that these indices match
 	#[polkavm_import(index = 0)]
 	fn send_upward_raw(ptr: u32, len: u32);
 }

@@ -4,7 +4,7 @@ use crate::work_digest::{RefineLog, MAX_UPWARD_MESSAGES_PER_DIGEST};
 use bounded_collections::{BoundedVec, ConstU32};
 use codec::DecodeAll;
 use jam_pvm_common::refine;
-use parachain_support::types::UpwardMessage;
+use parachain_service_interface::types::UpwardMessage;
 
 /// Side-effect buffer during refine invoke-PVM loop.
 #[derive(Default)]

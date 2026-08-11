@@ -7,7 +7,7 @@ use crate::{
 use alloc::vec::Vec;
 use jam_pvm_common::{refine, InvokeOutcome};
 use jam_types::{PageMode, PAGE_SIZE};
-use parachain_support::types::UpwardMessage;
+use parachain_service_interface::types::UpwardMessage;
 use polkavm::Reg;
 
 /// A parachain validation function parsed into a form ready to run as an inner PVM.

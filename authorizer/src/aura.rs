@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 
 use codec::{Decode, Encode};
 use jam_types::{Encode as JamEncode, WorkPackage};
-use parachain_support::types::ParaId;
+use parachain_service_interface::types::ParaId;
 use primitive_types::H256;
 
 pub type CollatorKey = [u8; 32];

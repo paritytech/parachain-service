@@ -16,7 +16,7 @@ use parachain_service_bin::{
 	mock::{good_config, good_token, good_trace, refine_args, refine_work_item},
 	BLOB as SERVICE,
 };
-use parachain_support::types::UpwardMessage;
+use parachain_service_interface::types::UpwardMessage;
 
 pub const MOCK_CODE_HASH: ValidationCodeHash = ValidationCodeHash([123; 32]);
 

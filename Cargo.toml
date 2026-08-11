@@ -6,7 +6,7 @@ members = [
     "runtimes/frameless",
     "service",
     "service/bin",
-    "support",
+    "service-interface",
     "tools/executor",
 ]
 exclude = [
@@ -36,6 +36,7 @@ jam-pvm-builder = { version = "0.1.28" }
 polkavm-derive = { version = "0.36.0", default-features = false }
 bounded-collections = { version = "0.3.2", default-features = false, features = ["scale-codec"] }
 polkavm = { version = "0.30.0", default-features = false }
+num_enum = { version = "0.7", default-features = false }
 
 # Guest crates and their blob builder crates.
 frameless = { path = "runtimes/frameless" }
@@ -43,7 +44,7 @@ parachain-service = { path = "service" }
 parachain-service-bin = { path = "service/bin" }
 parachain-authorizer = { path = "authorizer" }
 parachain-authorizer-bin = { path = "authorizer/bin" }
-parachain-support = { path = "support", default-features = false }
+parachain-service-interface = { path = "service-interface", default-features = false }
 
 codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }
 # Sourced from the vendored companion (not a polkadot-sdk git rev) so `substrate-wasm-builder`

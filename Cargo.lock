@@ -949,7 +949,7 @@ dependencies = [
  "jam-types",
  "parachain-authorizer",
  "parachain-service",
- "parachain-support",
+ "parachain-service-interface",
  "primitive-types",
 ]
 
@@ -1404,7 +1404,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1563,7 +1563,7 @@ checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 name = "frameless"
 version = "0.1.0"
 dependencies = [
- "parachain-support",
+ "parachain-service-interface",
  "parity-scale-codec",
  "polkavm-derive 0.36.0",
  "sp-io",
@@ -2756,6 +2756,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "num_enum"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5d0bca838442ec211fa11de3a8b0e0e8f3a4522575b5c4c06ed722e005036f26"
+dependencies = [
+ "num_enum_derive",
+ "rustversion",
+]
+
+[[package]]
+name = "num_enum_derive"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "680998035259dcfcafe653688bf2aa6d3e2dc05e98be6ab46afb089dc84f1df8"
+dependencies = [
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "object"
 version = "0.36.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2828,7 +2850,7 @@ dependencies = [
  "jam-types",
  "parachain-authorizer",
  "parachain-service",
- "parachain-support",
+ "parachain-service-interface",
  "parity-scale-codec",
  "polkavm-derive 0.36.0",
  "primitive-types",
@@ -2851,7 +2873,7 @@ dependencies = [
  "jam-std-common",
  "jam-types",
  "parachain-authorizer",
- "parachain-support",
+ "parachain-service-interface",
  "parity-scale-codec",
  "polkavm",
  "polkavm-derive 0.36.0",
@@ -2872,16 +2894,17 @@ dependencies = [
  "parachain-authorizer-bin",
  "parachain-service",
  "parachain-service-bin",
- "parachain-support",
+ "parachain-service-interface",
  "parity-scale-codec",
  "primitive-types",
 ]
 
 [[package]]
-name = "parachain-support"
+name = "parachain-service-interface"
 version = "0.1.0"
 dependencies = [
  "jam-types",
+ "num_enum",
  "parity-scale-codec",
 ]
 
@@ -3671,7 +3694,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4081,7 +4104,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d1e2c7f27f8d4cb10542a02c49005dbd6e93095799d6f3be745fae9f8fedd4"
 dependencies = [
  "libc",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -4541,7 +4564,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -5277,7 +5300,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

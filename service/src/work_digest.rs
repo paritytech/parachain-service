@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Decode, Encode};
 use jam_types::Hash;
-use parachain_support::types::{ParaId, UpwardMessage};
+use parachain_service_interface::types::{ParaId, UpwardMessage};
 
 #[cfg(feature = "std")]
 use jam_std_common::hash_raw;

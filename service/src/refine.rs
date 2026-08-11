@@ -9,7 +9,7 @@ use codec::{Decode, DecodeAll, Encode};
 use jam_pvm_common::refine::{self, auth_trace, lookup as historical_lookup};
 use jam_types::{CoreIndex, ServiceId, WorkPackageHash, WorkPayload};
 use parachain_authorizer::aura;
-use parachain_support::types::ParaId;
+use parachain_service_interface::types::ParaId;
 
 /// Work package payload for a parachain candidate.
 #[derive(Encode, Decode)]

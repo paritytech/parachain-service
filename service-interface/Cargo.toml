@@ -1,5 +1,5 @@
 [package]
-name = "parachain-support"
+name = "parachain-service-interface"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -18,3 +18,11 @@ workspace = true
 [dependencies]
 codec = { workspace = true }
 jam-types = { workspace = true }
+num_enum = { workspace = true }
+
+[features]
+std = [
+	"codec/std",
+	"jam-types/std",
+	"num_enum/std",
+]

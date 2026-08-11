@@ -1,5 +1,4 @@
 pub mod executor;
-pub mod host_calls;
 pub mod pvm;
 
 /// Entry point for PVF block validation.
