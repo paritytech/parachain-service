@@ -50,7 +50,6 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
-use parachain_service_interface::types::UpwardMessage;
 use tiny_keccak::{Hasher as _, Keccak};
 
 fn keccak256(input: &[u8]) -> [u8; 32] {
@@ -75,7 +74,7 @@ pub enum Config {
 
 #[derive(Clone, Encode, Decode, Debug, PartialEq, Eq)]
 pub enum MockAction {
-	UMP(UpwardMessage),
+	KVSet(Vec<u8>, Vec<u8>),
 }
 
 /// The full chain state: the immutable [`Config`] plus the mutable counter.
@@ -92,9 +91,9 @@ impl State {
 	fn transition(&self, add: u64) -> State {
 		if let Config::Mock(actions) = &self.config {
 			for action in actions {
-				if let MockAction::UMP(msg) = action {
+				if let MockAction::KVSet(key, value) = action {
 					#[cfg(target_arch = "riscv64")]
-					send_upward(&msg);
+					kv_set(key, value);
 				}
 			}
 		}
@@ -192,15 +191,81 @@ extern "C" fn jam_validate_block(ptr: u32, len: u32) -> (u64, u64) {
 #[polkavm_derive::polkavm_import]
 extern "C" {
 	// TODO ensure that these indices match
+	// FIXME args wrong, just placeholders except for `kv_set``
+	// --- Data Access ---
 	#[polkavm_import(index = 0)]
-	fn send_upward_raw(ptr: u32, len: u32);
+	fn lookup_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 1)]
+	fn foreign_lookup_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 2)]
+	fn gas_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 3)]
+	fn work_package_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 4)]
+	fn work_package_context_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 5)]
+	fn auth_config_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 6)]
+	fn auth_token_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 7)]
+	fn work_items_summary_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 8)]
+	fn work_item_summary_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 9)]
+	fn work_item_payload_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 10)]
+	fn import_segments_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 11)]
+	fn import_segment_raw(ptr: u32, len: u32);
+	// --- Side-effects ---
+	#[polkavm_import(index = 12)]
+	fn export_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 13)]
+	fn set_parent_head_hash_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 14)]
+	fn set_head_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 15)]
+	fn request_code_upgrade_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 16)]
+	fn solicit_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 17)]
+	fn forget_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 18)]
+	fn kv_set_raw(key_ptr: u32, key_len: u32, value_ptr: u32, value_len: u32);
+	#[polkavm_import(index = 19)]
+	fn kv_remove_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 20)]
+	fn transfer_out_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 21)]
+	fn assign_core_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 22)]
+	fn set_validator_keys_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 23)]
+	fn consume_transfers_up_to_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 24)]
+	fn parachain_service_upgrade_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 25)]
+	fn report_error_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 26)]
+	fn parachain_set_head_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 27)]
+	fn parachain_set_validation_code_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 28)]
+	fn parachain_clean_up_raw(ptr: u32, len: u32);
+	#[polkavm_import(index = 29)]
+	fn parachain_set_state_balance_raw(ptr: u32, len: u32);
 }
 
 #[cfg(target_arch = "riscv64")]
-pub(crate) fn send_upward(msg: &UpwardMessage) {
-	msg.using_encoded(|bytes| unsafe {
-		send_upward_raw(bytes.as_ptr() as u32, bytes.len() as u32);
-	});
+pub(crate) fn kv_set(key: &[u8], value: &[u8]) {
+	unsafe {
+		kv_set_raw(
+			key.as_ptr() as u32,
+			key.len() as u32,
+			value.as_ptr() as u32,
+			value.len() as u32,
+		);
+	}
 }
 
 #[cfg(test)]

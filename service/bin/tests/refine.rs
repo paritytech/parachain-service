@@ -16,7 +16,6 @@ use parachain_service_bin::{
 	mock::{good_config, good_token, good_trace, refine_args, refine_work_item},
 	BLOB as SERVICE,
 };
-use parachain_service_interface::types::UpwardMessage;
 
 pub const MOCK_CODE_HASH: ValidationCodeHash = ValidationCodeHash([123; 32]);
 
@@ -63,8 +62,7 @@ fn send_upward_messages_works() {
 	let pvf = frameless::WASM_BINARY.unwrap();
 	let pvf_hash = ValidationCodeHash::from(pvf);
 
-	let mock_action =
-		MockAction::UMP(UpwardMessage::SetKV { key: b"KEY".to_vec(), value: b"VALUE".to_vec() });
+	let mock_action = MockAction::KVSet(b"KEY".to_vec(), b"VALUE".to_vec());
 	let action = Config::Mock(vec![mock_action]);
 	let parent = HeadData {
 		number: 0,

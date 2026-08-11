@@ -7,7 +7,7 @@ use crate::{
 use alloc::vec::Vec;
 use jam_pvm_common::{refine, InvokeOutcome};
 use jam_types::{PageMode, PAGE_SIZE};
-use parachain_service_interface::types::UpwardMessage;
+use parachain_service_interface::{host_call::HostCall, types::UpwardMessage};
 use polkavm::Reg;
 
 /// A parachain validation function parsed into a form ready to run as an inner PVM.
@@ -105,9 +105,14 @@ pub fn run(pvf: &ParsedPvf, pov: &[u8]) -> Result<Vec<u8>, RefineLog> {
 		exe = match outcome {
 			InvokeOutcome::Halt => break,
 			InvokeOutcome::PageFault(_) => Err(RefineLog::ValidationFailed),
-			InvokeOutcome::HostCallFault(0) => {
-				let (ptr, len) = (regs[Reg::A0 as usize], regs[Reg::A1 as usize]);
-				exe.send_upward_raw(handle, ptr, len)
+			InvokeOutcome::HostCallFault(hc) if hc == HostCall::KvSet as u64 => {
+				let (key_ptr, key_len, value_ptr, value_len) = (
+					regs[Reg::A0 as usize],
+					regs[Reg::A1 as usize],
+					regs[Reg::A2 as usize],
+					regs[Reg::A3 as usize],
+				);
+				exe.kv_set_raw(handle, key_ptr, key_len, value_ptr, value_len)
 			},
 			InvokeOutcome::HostCallFault(_) => Err(RefineLog::ValidationFailed),
 			InvokeOutcome::Panic => Err(RefineLog::ValidationFailed),

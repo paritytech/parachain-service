@@ -2,7 +2,6 @@
 
 use crate::work_digest::{RefineLog, MAX_UPWARD_MESSAGES_PER_DIGEST};
 use bounded_collections::{BoundedVec, ConstU32};
-use codec::DecodeAll;
 use jam_pvm_common::refine;
 use parachain_service_interface::types::UpwardMessage;
 
@@ -13,17 +12,29 @@ pub struct ExecutorState {
 }
 
 impl ExecutorState {
-	pub fn send_upward_raw(self, handle: u64, ptr: u64, len: u64) -> Result<Self, RefineLog> {
-		let buffer = refine::peek(handle, ptr, len).map_err(|_| RefineLog::ValidationFailed)?;
-		let msg =
-			UpwardMessage::decode_all(&mut &buffer[..]).map_err(|_| RefineLog::MalformedPayload)?;
+	pub fn kv_set_raw(
+		self,
+		handle: u64,
+		key_ptr: u64,
+		key_len: u64,
+		value_ptr: u64,
+		value_len: u64,
+	) -> Result<Self, RefineLog> {
+		let key_buff = refine::peek(handle, key_ptr as u64, key_len as u64)
+			.map_err(|_| RefineLog::ValidationFailed)?;
+		let key = unsafe {
+			core::slice::from_raw_parts(key_buff.as_ptr() as *const u8, key_len as usize)
+		};
+		let value_buff =
+			refine::peek(handle, value_ptr, value_len).map_err(|_| RefineLog::ValidationFailed)?;
+		let value = unsafe {
+			core::slice::from_raw_parts(value_buff.as_ptr() as *const u8, value_len as usize)
+		};
 
-		self.send_upward(msg)
+		self.kv_set(key, value)
 	}
 
-	fn send_upward(mut self, msg: UpwardMessage) -> Result<Self, RefineLog> {
-		self.umps.try_push(msg).map_err(|_| RefineLog::TooManyUpwardMessages)?;
-
-		Ok(self)
+	fn kv_set(self, key: &[u8], value: &[u8]) -> Result<Self, RefineLog> {
+		Ok(self) // FIXME record the side-effect
 	}
 }
