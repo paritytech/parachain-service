@@ -3,7 +3,7 @@
 //! A [`Config`] fixed at genesis and carried in [`State`] selects Coretime or Asset
 //! Hub; no block can change it. Modeled on polkadot-sdk's `adder` test parachain: the
 //! state is a `u64` counter, each block applies a per-[`Config`] transition, and the
-//! runtime is one [`execute`] step behind the [`validate_block`] PVM entry point.
+//! runtime is one [`execute`] step behind the [`jam_validate_block`] PVM entry point.
 //!
 //! The guest's global allocator is a fixed-arena bump allocator (see the
 //! `arena_allocator` module). JAM's `jam_v1` ISA has no `sbrk`, so a growable in-guest
@@ -154,7 +154,7 @@ pub fn execute(parent_head: HeadData, block_data: &BlockData) -> Result<HeadData
 	})
 }
 
-/// Input to [`validate_block`]. Parent head and block body as opaque SCALE bytes, per
+/// Input to [`jam_validate_block`]. Parent head and block body as opaque SCALE bytes, per
 /// `adder`'s wire format (minus its relay-chain fields, which JAM has no use for).
 #[derive(Clone, Encode, Decode, Debug)]
 pub struct ValidationParams {
@@ -164,7 +164,7 @@ pub struct ValidationParams {
 	pub block_data: Vec<u8>,
 }
 
-/// Host-testable core of [`validate_block`]: decode [`ValidationParams`], [`execute`],
+/// Host-testable core of [`jam_validate_block`]: decode [`ValidationParams`], [`execute`],
 /// encode the new [`HeadData`]. Panics on bad input, as the entry point does.
 pub fn validate(input: &[u8]) -> Vec<u8> {
 	let params = ValidationParams::decode(&mut &input[..]).expect("invalid validation params");
@@ -182,7 +182,7 @@ pub fn validate(input: &[u8]) -> Vec<u8> {
 /// Input: [`ValidationParams`], output: [`HeadData`]
 #[cfg(target_arch = "riscv64")]
 #[polkavm_derive::polkavm_export]
-extern "C" fn validate_block(ptr: u32, len: u32) -> (u64, u64) {
+extern "C" fn jam_validate_block(ptr: u32, len: u32) -> (u64, u64) {
 	let input = unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) };
 	let output = alloc::boxed::Box::leak(validate(input).into_boxed_slice());
 	(output.as_ptr() as u64, output.len() as u64)

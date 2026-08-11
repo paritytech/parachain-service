@@ -1,506 +1,345 @@
-# Spec Gaps — Parachain Service on JAM vs. Graypaper 0.8.0
+# Spec gaps — Parachain Service on JAM vs. Graypaper 0.8.0
+
+## Audit scope
 
-## Audit scope and verdict
+This file tracks unresolved specification issues in the current
+[Parachain Service design](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/parachain-service-on-jam.md)
+and its [Quint model](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint), checked against
+the vendored JAM Graypaper, version [0.8.0](vendor/graypaper/VERSION). See
+[VENDOR.md](./VENDOR.md) for the pinned revisions.
+
+This is deliberately a list of current, actionable gaps. Resolved findings and general implementation
+TODOs are not retained here. The Rust implementation is consulted where noted, but its vendored
+[PolkaJAM types](vendor/polkajam/crates/jam-types/src/simple.rs) still declare Graypaper version 0.7.2;
+those comparisons identify local design/implementation drift rather than establish complete
+implementation compatibility with Graypaper 0.8.0.
+
+The design has improved substantially since the previous audit. The remaining issues are concentrated
+around the consensus ABI, JAM authorization timing and privileges, economic backing and transfer
+reconciliation, upgrade and cleanup liveness, messaging, and fidelity of the formal model.
 
-This file records the full findings from comparing
-[parachain-service-on-jam.md](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/parachain-service-on-jam.md)
-with the vendored JAM Graypaper, version [0.8.0](vendor/graypaper/VERSION), and from exercising the
-vendored [quint](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint) model. All
-paths below are relative to the repo root; see [VENDOR.md](./VENDOR.md) for the pinned commits.
+Gaps are ordered by severity, most impactful first — both across the tiers and within each tier.
 
-The design is not yet a correct or deployable Parachain Service specification. It is a useful
-architecture sketch, but several interfaces contradict JAM and major state, funding, messaging,
-failure-handling, and migration mechanisms remain undefined.
+## Critical — fund loss, silent divergence, or unrecoverable state
 
-## Blocking protocol and ABI issues
+### 1. Refine lacks a specified authenticated service-state input
 
-### 1. Refine has no authenticated parachain-state input
+JAM Refine has no general access to service storage. The candidate payload now includes an opaque PoV
+described as “block data + witness,” and the context exposes anchor state roots, but the design does not
+specify which Parachain Service state is witnessed, the proof encoding and key set, snapshot semantics,
+or how that proof is verified against the appropriate context root.
 
-JAM Refine has no general chain-state access. It receives package data, imports/extrinsics, context,
-authorizer trace, and historical preimages. The design nevertheless expects the PVF to read downward
-transfers, logs, KV state, preimage availability, and other Parachain Service state "through
-validation inputs," without defining those inputs or a state proof.
+This state input is nevertheless relied upon later: parachain runtimes are expected to inspect
+preimage availability, while Asset Hub is expected to read incoming transfers and `parachain_log`
+entries through “validation inputs.” Without a canonical authenticated input, a PVF cannot safely act
+on those values and validators cannot deterministically reproduce its view. The wire format, proof
+verification, size/gas bounds, and child-PVF access ABI need to be specified.
 
-As written:
+References: design §3.2, §4.2–§4.3, §5.2, and §5.4; Graypaper
+[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex), “Refine Invocation,” and
+[accounts.tex](vendor/graypaper/text/accounts.tex), “Historical Preimage Lookups.”
 
-- Asset Hub cannot safely consume incoming transfers.
-- Parachains cannot read data previously written through `kv_set`.
-- Parachains cannot reliably read their service logs.
-- Runtime and service-upgrade logic cannot observe authoritative service state.
-- Slot and parent-state checks cannot bind execution to authenticated state.
+### 2. Transfer gas, admission, and financial reconciliation remain incomplete
 
-A concrete validation-input format and proof scheme anchored to the context's
-`lookup_anchor_post_state_root` is required.
+The bucketed timeslot cursor fixes the old mutable-vector indexing problem. The remaining transfer
+issues are:
 
-References: design lines 556-559, 797-800, and 875-879; Graypaper
-[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex) lines 59-120 and
-[accounts.tex](vendor/graypaper/text/accounts.tex) lines 69-89.
+- JAM `transfer` requires destination memo gas, but `transfer_out` carries no gas value or lookup policy.
+- The state stores only bucket links, not a total queued-transfer count, so deciding whether an arrival
+  is inside the reserved portion requires an unbounded scan or an unspecified counter.
+- A same-timeslot bucket contains an unbounded vector. Appending rewrites the growing bucket, so transfer
+  amount may cover the extra state deposit but does not bound execution gas. No fixed `min_memo_gas` can
+  cover the worst case without a per-bucket bound or an O(1)-append layout.
+- Once the reserved incoming portion is full, JAM has already credited an incoming transfer even when
+  the service drops its queue record. No mint, refund, beneficiary, or trapped-funds recovery semantics
+  are defined for that case.
+- Zero or tiny transfers can consume the pre-provisioned entries and force later small transfers into
+  the unrecorded path.
+- Failed outbound transfers have only an evictable, memo-hash log; Asset Hub's burn/refund/retry protocol
+  is not specified.
 
-### 2. The child-PVF ABI is not implementable as specified
+`min_memo_gas`, queue accounting, and the reserved queue size therefore still require a bounded layout
+and worst-case benchmarks, as the design itself notes.
 
-`fn jam_validate_block() -> ()` does not define:
+References: design §5.1 and §6.1; Graypaper
+[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex), `transfer`.
 
-- the PVM program/preimage format;
-- entry PC and initial memory;
-- validation-input and result encodings;
-- child host-call identifiers and memory conventions;
-- child gas allocation and accounting;
-- abnormal-exit and host-call error mapping; or
-- compatibility/version negotiation.
+### 3. Checkpointing does not establish a worst-case Accumulate path
 
-JAM's `machine`, `peek`, `poke`, `pages`, and `invoke` APIs operate at a much lower level. Existing
-parachains are WASM blobs called as `validate_block(ValidationParams) -> ValidationResult`; they
-cannot use the proposed entry point without a new runtime toolchain and migration path.
+JAM invokes a service once with all transfer and work operands and one aggregate gas allocation. A
+checkpoint preserves earlier effects after a later panic or out-of-gas exit, but execution does not
+resume and later operands are not retried.
 
-References: design lines 548-574; Graypaper
-[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex) lines 69-120 and 590-710;
-current SDK [cumulus/test/client/src/lib.rs](vendor/polkadot-sdk-cumulus/cumulus/test/client/src/lib.rs) lines 197-225.
+The design says to checkpoint after each report, but does not prove that one accepted digest fits its
+gas allocation. A digest can contain up to 1,024 effects, and large values such as the staged validator
+set, a 64 KiB log, and a shared preimage referencer set can require substantial decoding and rewriting.
+Concrete size bounds, per-operand metering, and worst-case benchmarks are required.
 
-### 3. The parent-head check authenticates only a declaration
+References: design §4.3, §5.1, and §5.3; Graypaper
+[accumulation.tex](vendor/graypaper/text/accumulation.tex), “The Accumulation Function,” and
+[definitions.tex](vendor/graypaper/text/definitions.tex), `C_reportaccgas`.
 
-The wrapper accepts whatever `set_parent_head_hash` the child supplies, while the actual parent head
-and state used during validation are not defined or proven. Accumulate comparing that declaration
-with the stored head hash is insufficient unless the validation ABI requires the corresponding
-parent data and proof and binds all validation inputs to it.
+### 4. Per-parachain quotas are not backed by the real service balance
 
-References: design lines 602-603 and 686-689.
+`total_state_balance` and `used_state_balance` are private accounting values. The design says the
+Coretime chain owns deposits and refunds, but `parachain_set_state_balance` transfers no JAM balance and
+there is no invariant connecting:
 
-### 4. The JAM `assign` ABI is modeled incorrectly
+- the sum of per-parachain reservations;
+- Asset Hub's global reservation;
+- the service base deposit and `gratis`; and
+- the Parachain Service account's actual JAM balance.
 
-Graypaper `assign` always takes:
+Consequently, private headroom can exist while a real `write` or `solicit` returns `FULL`. The funding,
+escrow, refund, and insolvency-recovery flows need to be defined. The wire types also need correction or
+checked conversion: JAM `Balance` is `u64`, whereas the design's sizing and message comments assume
+`Compact<u128>`.
 
-- a valid core index;
-- exactly 80 authorizer hashes; and
-- a new assigner service ID.
+References: design §6.1; Graypaper [accounts.tex](vendor/graypaper/text/accounts.tex), “Account Footprint
+and Threshold Balance”; [jam-types `Balance`](vendor/polkajam/crates/jam-types/src/simple.rs).
 
-The design instead permits queues of length `0..80`, separates `set_authorizer_queue` from
-`set_assigner`, offers `None` to reset an assigner, and claims that it can retain the current
-assigner. Those operations do not exist.
+### 5. Service self-upgrade lacks a safe compatibility and recovery protocol
 
-Once the current queue is drained from service storage, the service also lacks the 80 hashes
-required to change only the assigner. Resetting privileges requires the manager's `bless`, not
-`assign(None)`.
+The prose says Accumulate verifies that the new preimage is present, but does not define the exact
+`lookup`, length check, or decoding step; the Quint model implements the check as only
+a non-empty registry referencer set. JAM `upgrade` itself does not validate that the hash resolves to a
+well-formed `(metadata, code)` service blob. The flow needs to require a currently available preimage and
+decode it as the canonical JAM service blob before upgrading.
 
-References: design lines 610-611, 1214-1229, and 1337-1339; Graypaper
-[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex) lines 762-778.
+It also lacks a fallback/recovery authority if the new code cannot execute. Results refined and
+guaranteed under the old service code may be accumulated after activation by the new code, but no digest
+or storage version and no pipeline-drain/compatibility rule is specified.
 
-### 5. The single-slot on-demand model cannot work
+References: design §5.4; Graypaper [accounts.tex](vendor/graypaper/text/accounts.tex), “Code and Gas,”
+[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex), `upgrade`, and
+[reporting_assurance.tex](vendor/graypaper/text/reporting_assurance.tex), “Contextual Validity of Reports.”
 
-An authorizer queue is an 80-entry cyclic schedule. A changed queue contributes only the entry at
-`timeslot mod 80` to the pool after accumulation. Guarantees in that block are checked against the
-prior pool. Once admitted, an unused authorizer may remain in the pool for up to eight blocks.
+## High — security boundaries and deployment blockers
 
-Consequently, `set_authorizer_queue(..., near_term_slot)` cannot install an authorizer for exactly
-one slot. A real design must account for modulo-80 placement, report and availability latency, pool
-admission, use/removal, and a later queue replacement.
+### 6. The implemented child-PVF ABI and the design do not yet agree
 
-References: design lines 1346-1366; Graypaper
-[authorization.tex](vendor/graypaper/text/authorization.tex) lines 13-30 and
-[reporting_assurance.tex](vendor/graypaper/text/reporting_assurance.tex) lines 323-334.
+There is now a working inner-PVM path, so the old claim that the child PVF was not implementable was
+stale. However, the consensus-facing ABI still needs one canonical, versioned definition.
 
-### 6. Required JAM privileges and bootstrap state are unspecified
+The design specifies `jam_validate_block() -> ()` plus individual host functions. The implementation
+currently exports `validate_block(ptr, len) -> (ptr, len)`, loads a PolkaVM `ProgramParts` memory image,
+and assigns numeric child-host-call indices in code. The two descriptions also differ on how the parent
+head and new head are returned.
 
-For this architecture to operate, the Parachain Service must be:
+The specification should pin:
 
-- the assigner for every core it manages;
-- the delegator for validator-set updates;
-- an always-accumulate service with sufficient gas; and
-- coordinated with the manager for privilege resets and any gratis balance.
+- the accepted program-blob format and exported symbol;
+- register, pointer, memory, and return-value conventions;
+- every child host-call identifier and encoding;
+- child-gas allocation and charging;
+- exit/error mapping; and
+- ABI version negotiation for runtime upgrades.
 
-Without explicit genesis/bootstrap transitions, `assign` and `designate` return errors, and
-scheduled housekeeping does not run.
+References: design §4.2–§4.3; [service/src/pvf.rs](service/src/pvf.rs) and
+[runtimes/frameless/src/lib.rs](runtimes/frameless/src/lib.rs); Graypaper
+[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex), “General Functions.”
 
-Reference: Graypaper [accounts.tex](vendor/graypaper/text/accounts.tex) lines 163-180.
+### 7. The AURA authorizer remains an example, not an executable protocol
 
-### 7. Per-parachain quotas are disconnected from the real JAM service balance
+The example does not fully constrain the work being authorized. In particular, it does not require work
+items to target the Parachain Service or constrain expected service code, gas, imports, and exports, so a
+collator can spend para-specific coretime on other JAM work if policy intended otherwise.
 
-`total_state_balance` is only an internal storage number. `parachain_set_state_balance` transfers no
-JAM balance, there is no invariant relating the sum of quotas to `service_account.balance`, and no
-real funding or refund flow is defined.
+It also needs exact rejection rules for zero `slot_duration`/`collator_set_size`, canonical Merkle proof
+and non-power-of-two tree semantics, and a canonical domain-separated token-free package encoding. The
+current authorizer implementation still marks the round-robin selection and real proof/signature checks
+as unfinished.
 
-Coretime can therefore allocate arbitrary headroom while JAM `write` or `solicit` returns `FULL`.
-The design's claim that writes never fail on balance grounds is false as written. Storage collateral
-and Asset Hub transfer liquidity also share the same JAM service balance without any partition or
-reservation rule.
+References: design §7.1; [authorizer/src/aura.rs](authorizer/src/aura.rs) and
+[authorizer/src/is_authorized.rs](authorizer/src/is_authorized.rs).
 
-References: design lines 945-973 and 1110-1121; Graypaper
-[accounts.tex](vendor/graypaper/text/accounts.tex) lines 11-29 and
-[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex) lines 472-495 and 946-968.
+### 8. Forced management updates are not fenced from in-flight candidates
 
-### 8. State-deposit accounting is wrong
+Normal candidates and Coretime management messages are processed in operand order. An old candidate may
+enact its head and side effects just before a forced head/code replacement; if it appears after the
+replacement, the parent or code check rejects it instead. The latter is safe, while the former can leave
+side effects from the state being recovered away from.
 
-The accounting omits mandatory JAM balance components:
+Forced recovery and deregistration need an epoch/generation fence or a documented core-drain procedure
+covering already-guaranteed and not-yet-accumulated work.
 
-- JAM charges both octets and items.
-- A preimage request counts as two items, and its registry storage entry is another item. Under the
-design's sole-user rule, the incremental charge is `187 + len`, not `157 + len`.
-- Every KV and other storage entry needs the additional item deposit.
-- The two generic baseline storage entries need another 20 balance units.
-- The service's one-time base deposit and `gratis` must be included in aggregate backing.
-- The `ParaInfo` byte calculation omits the `Option<ValidationCode>` discriminant and
-`is_deregistering`, undercounting it by two bytes.
-- The design uses `Compact<u128>`, while JAM balances are `u64`. Private `u128` bookkeeping would
-need explicit bounds and conversion rules.
+References: design §5.1 and §6.2–§6.4.
 
-References: design lines 935-943, 1011-1058, and 1086-1108; Graypaper
-[accounts.tex](vendor/graypaper/text/accounts.tex) lines 135-158,
-[definitions.tex](vendor/graypaper/text/definitions.tex) lines 258-260, and
-[overview.tex](vendor/graypaper/text/overview.tex) lines 105-108.
+### 9. `assign_core` still does not define a valid JAM queue or on-demand schedule
 
-### 9. Parachain state commits before fallible JAM effects
+The updated design correctly combines queue and assigner changes into one operation. Two issues remain:
 
-The new head is installed before transfers, authorizer changes, validator designation, solicits, KV
-writes, and service upgrades are replayed. These host calls can fail while the parachain block
-remains enacted.
+- JAM `assign` reads exactly 80 authorizer hashes, while the design and Quint model accept any non-empty
+  list of at most 80. The service must reject invalid lengths or define exactly how a shorter policy-level
+  list expands into an 80-entry `AuthQueue`.
+- Applying a queue at `jam_slot` does not reserve that exact slot. At the end of a block, only the entry
+  at `timeslot mod 80` is admitted to the eight-entry pool; guarantees in that block were checked against
+  the previous pool. An unused authorization can remain in the pool, and the queue repeats every 80
+  slots until replaced.
 
-Unless every parachain runtime treats these requests as asynchronous and reconciles later receipts,
-this permits failures such as:
+The on-demand flow therefore needs explicit queue construction, lead time, pool-admission/use timing,
+and a later replacement policy.
 
-- Asset Hub burning assets while the JAM transfer fails;
-- Coretime recording a sale or assignment that JAM did not install;
-- a runtime assuming validator rotation before `designate` succeeded; and
-- a runtime assuming storage or preimage changes that were rejected by JAM.
+References: design §4.3, §5.1, and §7.2; Graypaper
+[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex), `assign`, and
+[authorization.tex](vendor/graypaper/text/authorization.tex), “Pool and Queue.”
 
-The present lossy log is not a transaction or receipt protocol.
+### 10. Required JAM privileges and bootstrap state are not specified
 
-References: design lines 699-709 and 609-619; Graypaper
-[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex) lines 762-804 and 847-998.
+The Parachain Service must be the assigner for every core it manages, the delegator if it calls
+`designate`, and an always-accumulate service with enough gas for housekeeping. The manager must also
+establish any gratis allowance and recover privileges when required.
 
-### 10. The transfer API is incomplete and the queue protocol is unsafe
+The design describes those roles informally but does not define the genesis/bootstrap transition or
+the authority hand-off between the manager, Coretime chain, Asset Hub, and Parachain Service. Without
+that state, `assign`/`designate` fail and scheduled housekeeping may not execute.
 
-- JAM `transfer` requires destination memo gas; `transfer_out` has no such argument or policy.
-- Bouncing a full-queue transfer is not guaranteed. The sender's minimum memo gas may exceed the gas
-supplied to the Parachain Service invocation.
-- Zero-value or tiny transfers can fill all 1,000 queue slots.
-- `consume_transfers_up_to(index)` uses a position in a mutable vector. Earlier pruning can make a
-later candidate consume newly arrived entries. A monotonic transfer ID and base cursor are needed.
-- Inclusive/exclusive and out-of-range index behavior is undefined.
-- `[0xFF; 128]` permanently reserves a valid memo without an application-level collision policy.
-- Beneficiary, mint/burn, acknowledgement, retry, and failed-withdrawal reconciliation semantics are
-missing.
+Reference: Graypaper [accounts.tex](vendor/graypaper/text/accounts.tex), “Service Privileges.”
 
-References: design lines 607-613 and 657-666; Graypaper
-[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex) lines 864-893.
+## Medium — liveness, migration, and model fidelity
 
-### 11. Checkpointing does not prevent loss of unprocessed results
+### 11. The 4 KiB head cap is an unverified migration constraint
 
-Graypaper invokes a service once with all of its transfer and work operands and the aggregate gas
-allocation. On panic or OOG, a checkpoint preserves earlier state, but execution does not resume and
-later operands are not retried.
+A 4 KiB limit is not inherently incompatible with every existing parachain, as the previous audit
+claimed. It is nevertheless lower than the SDK's supported 1 MiB maximum. Migration needs either an
+inventory proving every target chain fits the new cap, an explicit compatibility break, or a larger or
+committed head representation.
 
-The implementation therefore needs strict per-operand metering and a proven worst-case gas bound.
-"Checkpoint after each report" only protects earlier reports. The 10-million-gas per-report ceiling
-and always-accumulate gas have not been reconciled with up to 1,024 side effects per result.
+References: design §3.1; SDK
+[polkadot/primitives/src/v9/mod.rs](vendor/polkadot-sdk-cumulus/polkadot/primitives/src/v9/mod.rs) and
+[cumulus/pallets/parachain-system/src/lib.rs](vendor/polkadot-sdk-cumulus/cumulus/pallets/parachain-system/src/lib.rs).
 
-References: design lines 730-735; Graypaper
-[accumulation.tex](vendor/graypaper/text/accumulation.tex) lines 289-343,
-[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex) lines 219-247, and
-[definitions.tex](vendor/graypaper/text/definitions.tex) lines 265-268.
+### 12. XCMP and D3L messaging are still intentionally TBD
 
-### 12. All Graypaper `WorkError`s are silently discarded
+The design explicitly leaves channel-management and message host functions unspecified. A complete
+protocol still needs channel lifecycle, routing, sequence/watermark rules, congestion and fees,
+acknowledgements, replay protection, retention/recovery, and migration of HRMP/UMP state.
 
-These errors include OOG, panic, bad exports, oversized output, unavailable service code, and
-oversized service code. They are not all merely bugs in the service's Refine wrapper.
+D3L integration must additionally define deterministic 4,104-byte segmentation, export counts,
+segment-root/index proofs for imports, and how on-chain headers bind to those segments. Until then,
+“full XCMP” and the XCM-dependent collator-set rotation flow are proposals rather than implementable
+parts of the service.
 
-Losing them without a ParaId, trace, state transition, or log makes operational failures invisible
-and consumes work without advancing the parachain. The authorizer trace or another protocol-level
-mapping must identify the para even when no custom digest was produced.
+References: design §7.1 and §8; Graypaper
+[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex), `export`, and
+[work_packages_and_reports.tex](vendor/graypaper/text/work_packages_and_reports.tex), segment definitions.
 
-References: design lines 515-519 and 670-673; Graypaper
-[reporting_assurance.tex](vendor/graypaper/text/reporting_assurance.tex) lines 114-122.
+### 13. Forced cleanup can name state but cannot enumerate it
 
-### 13. Service self-upgrade can permanently brick the service
+The updated `forget(para_id, ...)` and `kv_remove(para_id, ...)` calls let Coretime clean another
+parachain's known state. That fixes the old authorization problem, but JAM storage has no prefix iterator
+and the layout has no per-parachain index of arbitrary KV keys and solicited preimages.
 
-- A JAM service code preimage must encode `(metadata, code)`, not merely an assumed SCALE code blob.
-- `upgrade` validates neither availability nor program correctness.
-- The design checks only that a registry referencer exists, not that a valid service program is
-currently provided.
-- There is no fallback code hash or external recovery path if the new code cannot execute.
-- The current service code is not separately pinned as a service-owned reference.
-- Already-guaranteed results produced by the old Refine code may later be decoded by the new
-Accumulate code. There is no result/storage version or pipeline-drain protocol.
+For a bricked or malicious parachain, Coretime therefore needs an authoritative source for every exact
+key/hash/length or a bounded on-service sweeper/index before `parachain_clean_up` can reach its required
+baseline-only state.
 
-References: design lines 863-894; Graypaper [accounts.tex](vendor/graypaper/text/accounts.tex)
-lines 38-52, [pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex) lines 847-861, and
-[reporting_assurance.tex](vendor/graypaper/text/reporting_assurance.tex) lines 428-431.
+References: design §3.1, §4.3, and §6.4.
 
-### 14. Messaging is not actually specified
+### 14. Validation-code timeout cleanup is still lazy
 
-The document explicitly leaves messaging host functions TBD, and the work digest has no XCMP header
-or message variant. Missing pieces include:
+A timed-out pending upgrade is released only while processing another successful-parent candidate for
+that parachain. An idle or dead parachain can therefore retain the pending preimage indefinitely despite
+the advertised 24-hour timeout.
 
-- channel creation, acceptance, closure, and ownership;
-- sequence numbers and watermarks;
-- routing and destination discovery;
-- congestion, fees, and admission control;
-- acknowledgements and replay protection;
-- data retention, receiver recovery, and expiry; and
-- migration of current HRMP/UMP state and semantics.
+The timeout needs an always-accumulate deadline index or must be documented as an adoption deadline that
+does not guarantee storage cleanup. The rule should also say whether accumulation delay can invalidate a
+candidate refined or guaranteed before the deadline.
 
-D3L is not a transparent off-chain message bus:
+References: design §5.1 and §5.2.
 
-- each export is exactly 4,104 bytes after padding or truncation;
-- larger messages require deterministic chunking;
-- consumers import by segment root and index with proofs, not by message hash alone;
-- export count must be declared in advance; and
-- guaranteed retention is only a minimum of 28 days.
+### 15. Graypaper work errors have no service-level attribution or recovery protocol
 
-Therefore current HRMP/UMP migration, "full XCMP," and the XCM-dependent collator-set rotation flow
-cannot work yet.
+JAM can replace a work item with `WorkExecResult::Error` for out-of-gas, panic, bad exports, oversized
+output, or unavailable/oversized service code. The design deliberately skips every such result: no
+parachain log, state transition, or durable association with the affected parachain remains.
 
-References: design lines 1370-1412; Graypaper
-[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex) lines 572-587 and
-[work_packages_and_reports.tex](vendor/graypaper/text/work_packages_and_reports.tex) lines 45-57
-and 154-168.
+Some failures must be ignored because no trusted service digest exists, but operational recovery and
+any collator accountability still need a specified source of attribution, such as the report's work-item
+and authorizer trace. The protocol should classify the error codes, state which are retryable or
+slashable, and define who observes and acts on them without trusting a failed Refine result.
 
-## Other real-world correctness and liveness problems
+References: design §3.3 and §5.1; Graypaper
+[reporting_assurance.tex](vendor/graypaper/text/reporting_assurance.tex), `WorkError`.
 
-### 15. Forced management operations race with normal candidates
+### 16. The Quint model's refine and service upgrade confuse solicitation with availability
 
-A target candidate can be accepted and apply effects, followed later in the same accumulation
-invocation by Coretime forcibly overwriting its head or code. Reversing report order rejects the
-candidate instead. Cleanup and quota changes have similar order dependence.
+The model now tracks JAM request status in `preimageStatus`, but `codeAvailable` still checks only that a
+non-empty `preimageRegistry` referencer set exists. Initial codes are `Unprovided`, yet the model can
+refine with them. It also ignores the lookup-anchor timeslot needed for historical availability.
 
-Forced recovery needs a generation/epoch nonce or explicit fencing state that prevents normal
-candidate effects from being enacted concurrently with management changes.
+`UpgradeService` repeats the same issue: a registry entry is treated as a present service-code preimage
+even when its status is `Unprovided` or `Unrequested`.
 
-References: design lines 668-735 and 1147-1178.
+References: [quint/state.qnt](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state.qnt),
+[quint/refine.qnt](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/refine.qnt), and
+[quint/accumulate.qnt](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/accumulate.qnt).
 
-### 16. Upgrade timeout cleanup is lazy
+### 17. The modeled encoding-size calculations are not exact
 
-A pending validation-code upgrade is reaped only while processing another candidate whose parent
-check succeeds. A dead or idle parachain therefore holds the preimage forever, contradicting the
-stated timeout protection.
+`resultExceedsBudget` assumes a 256-byte authorizer trace, which is the stored-log truncation limit rather
+than a Graypaper authorizer-trace limit. It also omits successful-result encoding bytes such as the enum
+tag, validation-code length, lookup-anchor timeslot, and container prefixes.
 
-A deadline index processed by always-accumulate is needed. The policy must also clarify whether a
-report refined or guaranteed before the deadline should be rejected merely because availability or
-dependency processing delayed accumulation until after it.
+Graypaper limits the exact successful result blobs plus the full trace. The model should either encode
+the modeled digest exactly or conservatively include every field and permit the actual trace length as
+an input. Separately, `compactLen` treats every integer at or above `2^30` as five bytes even though
+SCALE's big-integer mode is variable-width, and `logEntrySize` hard-codes a one-byte vector prefix for
+every accumulate-event batch. These make the claimed exact 64 KiB log accounting incorrect as well.
 
-References: design lines 690-698 and 809-829.
+References: [quint/refine.qnt](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/refine.qnt),
+[quint/state.qnt](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state.qnt),
+and Graypaper [reporting_assurance.tex](vendor/graypaper/text/reporting_assurance.tex),
+`C_maxreportvarsize`.
 
-### 17. A dead parachain cannot be forcibly deregistered
+### 18. Important Graypaper failure and authorization semantics remain abstract or wrong in the model
 
-Cleanup refuses to proceed until the parachain itself has removed every KV entry and arbitrary
-solicited preimage. A bricked, malicious, or abandoned runtime cannot do so, leaving state and
-deposits locked indefinitely.
+The model is useful for the service's internal state machine, but it does not yet validate several
+boundaries relevant to the design:
 
-The storage layout has no per-para enumerable key/preimage index and no bounded administrative
-sweeper.
+- `TransferOut` is a no-op in message replay and does not model JAM transfer return codes or balance.
+- Pending and emitted authorizer queues may contain fewer than JAM's exact 80 hashes.
+- The authorization pool transition and report-admission timing are absent.
+- Modeled JAM `solicit` and `forget` effects retain only the hash, dropping the length that is part of
+  the operation's identity.
+- The modeled candidate supplies a validation-code length that is absent from the design's candidate
+  payload, avoiding the need to derive and authenticate that value.
+- Real assigner/delegator/always-accumulate privileges and host-call failures are absent.
+- The actual service balance and `FULL`, `LOW`, `CASH`, panic, out-of-gas, and checkpoint behavior are
+  absent.
+- D3L and messaging are absent, consistently with the design's TBD.
 
-References: design lines 1180-1207.
+These are legitimate abstractions, but invariants proved over the model do not cover those properties.
 
-### 18. Registration is not atomic and has no two-phase acknowledgement
+References: [quint/accumulate.qnt](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/accumulate.qnt),
+[quint/invariants.qnt](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/invariants.qnt), and
+[quint/README.md](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/README.md).
 
-The three management messages can partially succeed: quota creation can create an incomplete
-`ParaInfo`, the head can be installed, and then code solicitation/setup can fail. Coretime has
-already committed its own block and receives only a later, evictable log.
+## Low — documentation drift
 
-Registration, funding, core assignment, readiness, and refunding need an explicit state machine and
-durable operation identifiers.
+### 19. The design and Quint README still contain stale or contradictory text
 
-References: design lines 1123-1145.
+Current examples include:
 
-### 19. The preimage lifecycle has unresolved cases
+- the table of contents advertises a missing “Missing JAM / Gray Paper Features” section;
+- §7 refers to `UpwardMessage::SetAuthorizerQueue`, which was replaced by `AssignCore`;
+- the prose `UpwardMessage::Forget` and `RemoveKV` variants omit the target `para_id` now present in the
+  Quint model and required for Coretime cleanup;
+- `used_state_balance` is still commented as preimage-only despite also charging baseline and KV state;
+- §5.1 first says a Refine error does not prune the log, then says every candidate is pruned before its
+  Refine or Accumulate entry is appended;
+- the Quint README still cites the removed `testBounceOnFull` behavior, points anchor handling to a
+  missing §9, and says the top-level invariants live in `main.qnt` rather than `invariants.qnt`.
 
-- The current Parachain Service code lacks an independent service-owned pin.
-- A claimed hash with the wrong length creates a request that can never be supplied.
-- "Same hash, different lengths are different codes" is misleading. Only the request records differ;
-a hash identifies one actual blob and length.
-- Rescue and forget behavior requires explicit `query` handling, but the prose claims no bookkeeping
-and does not give a complete return-code algorithm.
-- Evicted `ForgetAgainAt` logs can strand cleanup callers.
-- Forced replacements can leave several charged tombstones that only the affected parachain can
-finish forgetting.
-- There is no maximum inner PVF length or validation policy before forced activation.
+These should be corrected upstream so the prose, model, and implementation describe one protocol.
 
-References: design lines 737-829 and 975-1015; Graypaper
-[pvm_invocations.tex](vendor/graypaper/text/pvm_invocations.tex) lines 921-998.
+## Current model verification status
 
-### 20. The authorizer does not enforce the intended work target
+With Quint 0.32.0, the current vendored model:
 
-The AURA example verifies the collator but does not require every item to target the Parachain
-Service, validate expected Refine/Accumulate gas policy, or constrain imports and exports.
+- typechecks;
+- passes all 49 scripted tests; and
+- passes both the formerly failing `parent_head_continuity` seed (`0x513689`, 10,000 samples, 30 steps)
+  and the composite `invariants` check with the same run parameters.
 
-If para-specific coretime is intended to be usable only for that para, a buyer can instead authorize
-arbitrary JAM work. If coretime is deliberately transferable to arbitrary services, that policy
-needs to be stated explicitly.
-
-References: design lines 1287-1306.
-
-### 21. The AURA example is not a complete slot protocol
-
-The design deliberately allows selecting any recent anchor and admits duplicate or consecutive
-claims. Its proposed fix depends on the missing authenticated validation inputs.
-
-It also lacks:
-
-- rejection of zero `slot_duration` and `collator_set_size`;
-- canonical Merkle-tree and non-power-of-two rules;
-- a domain-separated canonical encoding for the token-free package hash;
-- authorizer-code hosting, solicitation, and retention rules; and
-- a complete evidence, identity, bonding, dispute, and slashing protocol.
-
-References: design lines 1231-1324.
-
-### 22. The 4 KiB head cap is incompatible with all currently valid parachains
-
-The SDK's hard supported limit is 1 MiB, and configurations can use larger values such as 32 KiB. A
-migration must either prove that every target chain is below 4 KiB or use a larger or committed head
-representation.
-
-References: design lines 309-311; SDK
-[polkadot/primitives/src/v9/mod.rs](vendor/polkadot-sdk-cumulus/polkadot/primitives/src/v9/mod.rs) lines 450-456 and
-[cumulus/pallets/parachain-system/src/lib.rs](vendor/polkadot-sdk-cumulus/cumulus/pallets/parachain-system/src/lib.rs)
-lines 1643-1650.
-
-### 23. Logs cannot serve as reliable receipts or slashing evidence
-
-- Logs are capped, pruned, and evicted.
-- Authorizer traces are truncated to 256 bytes.
-- Transfer failures preserve only a memo hash.
-- Parent-head rejection and Graypaper `WorkError` produce no log.
-- Management failures from multiple target paras are grouped under the originating Coretime work
-result.
-- Several events omit the target ParaId, operation ID, and exact JAM error code.
-
-Financial, control-plane, cleanup, and slashing correctness cannot depend on this log.
-
-References: design lines 166-215, 263-301, and 711-728.
-
-### 24. Several large or shared values have no practical gas bound
-
-`incoming_transfers`, `staged_validator_keys`, logs, and especially a shared `preimage_registry`
-referencer set are monolithic encoded values. Appending or removing an entry can require reading,
-decoding, and rewriting the whole value.
-
-The referencer set is described as bounded by a protocol-wide parachain maximum, but no usable
-implementation bound is specified. These structures need benchmarks against the 10-million-gas
-report ceiling and likely need paging or per-membership storage.
-
-References: design lines 154-195 and 1060-1084.
-
-### 25. The prose contains implementation-significant contradictions
-
-- Refine failures say that no log pruning occurs, while the general rule says every candidate prunes
-before appending.
-- `used_state_balance` is documented as tracking only PVF preimages but later includes baseline
-state, logs, KV data, and global reserves.
-- `ParaInfo` has concrete non-optional fields while registration says those fields are initially
-"uninitialized."
-- `OnTransfer` is stale terminology for Graypaper 0.8.0, where deferred transfers are operands to
-the single Accumulate invocation.
-
-References: design lines 330-348, 679-728, and 952-957; Graypaper
-[accumulation.tex](vendor/graypaper/text/accumulation.tex) lines 289-341.
-
-## Quint-model defects
-
-### 26. Solicited-but-unprovided validation code is treated as available
-
-`codeAvailable` checks only that a registry referencer exists. It ignores `Unprovided`,
-`Unrequested`, and the lookup-anchor time. Initial active codes can therefore execute in the model
-before anyone provides their preimages.
-
-References: [quint/state.qnt](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint/state.qnt) lines 43-63 and
-[quint/refine.qnt](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint/refine.qnt) lines 140-158.
-
-### 27. Service upgrade repeats the same availability bug
-
-The model upgrades whenever a registry referencer exists, even when the code preimage is
-`Unprovided` or unavailable. It can therefore model a successful upgrade that would leave the real
-JAM service without executable code.
-
-Reference: [quint/accumulate.qnt](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint/accumulate.qnt) lines 296-307.
-
-### 28. Important effects are stubbed or model the wrong Graypaper API
-
-- `TransferOut` is a no-op.
-- Assignment is split into impossible queue-only and assigner-only operations.
-- The queue invariant permits fewer than 80 entries.
-- Authorization pools and their block transition are absent.
-- Actual JAM privileges and host-call return codes are absent.
-- Actual service balance, `FULL`, `LOW`, `CASH`, and related failures are absent.
-- Gas, OOG, panic, and checkpoint collapse are absent.
-- D3L and messaging are absent.
-
-References: [quint/accumulate.qnt](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint/accumulate.qnt) lines 233-285 and
-[quint/invariants.qnt](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint/invariants.qnt) lines 342-369.
-
-### 29. The 48 KiB result-budget model is incorrect
-
-It assumes a 256-byte maximum authorizer trace, confusing stored-log truncation with the full report
-trace. It also omits result fields and encoding overhead, including code length, lookup-anchor
-timeslot, and enum/container overhead.
-
-Graypaper limits the exact successful output blob plus the full authorizer trace.
-
-References: [quint/refine.qnt](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint/refine.qnt) lines 98-106; Graypaper
-[reporting_assurance.tex](vendor/graypaper/text/reporting_assurance.tex) lines 124-134.
-
-### 30. The model omits the boundaries where most protocol risk lies
-
-The model explicitly abstracts or omits cryptography, real PVF execution, D3L, AURA, anchor-state
-proofs, lookup-anchor state access, and messaging. It also omits actual JAM item deposits from its
-balance model.
-
-References: [quint/README.md](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint/README.md) lines 24-46 and
-[quint/state_balance.qnt](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint/state_balance.qnt) lines 38-48.
-
-### 31. The advertised randomized invariant does not hold
-
-The following command reproducibly exits with an invariant violation:
-
-```sh
-cd vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint
-quint run main.qnt \
-  --invariant=parent_head_continuity \
-  --max-steps=30 \
-  --max-samples=10000 \
-  --seed=0x513689 \
-  --backend=rust
-```
-
-The reproduced counterexample is primarily an invariant bug rather than proof of a service-state
-bug. The invariant replay accepts every result with a matching parent but ignores the real
-accumulator's validation-code rejection. A preceding result can force a code change, making the
-following old-code result invalid even though its parent matches.
-
-Reference: [quint/invariants.qnt](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint/invariants.qnt) lines 227-263.
-
-### 32. Passing unit tests do not establish Graypaper compatibility
-
-The model typechecks and all 39 scripted tests pass:
-
-```sh
-cd vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint
-quint typecheck main.qnt
-quint test tests.qnt
-```
-
-Those tests exercise the abstract model and therefore encode several of the incorrect or incomplete
-assumptions listed above.
-
-## Documentation drift
-
-### 33. The table of contents and model references are stale
-
-The table of contents promises "§9 Missing JAM / Gray Paper Features" and "§10 References," but §9
-is References and the missing-features section does not exist. The Quint README still refers to the
-absent §9, while the design's TODO section is empty.
-
-References: design lines 27-32 and 1416-1430; [quint/README.md](vendor/polkadot-sdk-cumulus/designs/parachain-service-on-jam/quint/README.md) lines 44-46.
-
-## Required work before implementation
-
-At minimum, implementation should not begin until the design has:
-
-1. A versioned, authenticated validation-input and child-PVM ABI.
-2. Correct `assign`, privilege, authorizer-pool, and queue-timing semantics.
-3. Real service-balance escrow, aggregate collateral accounting, and refund flows.
-4. Durable, operation-ID-based asynchronous receipts for every fallible side effect.
-5. Per-operand gas isolation and a benchmarked worst-case Accumulate path.
-6. Safe service-code and validation-code upgrade/recovery protocols.
-7. A force-cleanup path for dead parachains.
-8. A complete XCMP/D3L channel, segment, acknowledgement, and retention protocol.
-9. A repaired formal model that includes historical availability, actual Graypaper host-call
-  semantics, gas/failure behavior, privileges, and real balance constraints.
+The old reproducible-invariant finding is therefore resolved and has been removed from the gap list.

@@ -1,9 +1,10 @@
 //! Parsing and running a parachain validation function (PVF) as an inner PVM.
 
-use crate::work_digest::{RefineLog, MAX_UPWARD_MESSAGES_PER_DIGEST};
+use crate::{
+	pvf::{executor::ExecutorState, PVF_ENTRY_POINT},
+	work_digest::RefineLog,
+};
 use alloc::vec::Vec;
-use bounded_collections::{BoundedVec, ConstU32};
-use codec::DecodeAll;
 use jam_pvm_common::{refine, InvokeOutcome};
 use jam_types::{PageMode, PAGE_SIZE};
 use parachain_support::types::UpwardMessage;
@@ -26,33 +27,21 @@ pub struct ParsedPvf {
 	pub memory: polkavm::MemoryMap,
 }
 
-/// Side-effect buffer during refine invoke-PVM loop.
-#[derive(Default)]
-struct ExecutorState {
-	umps: BoundedVec<UpwardMessage, ConstU32<MAX_UPWARD_MESSAGES_PER_DIGEST>>,
-}
-
-impl ExecutorState {
-	pub fn send_upward_raw(self, handle: u64, ptr: u64, len: u64) -> Result<Self, RefineLog> {
-		let buffer = refine::peek(handle, ptr, len).map_err(|_| RefineLog::ValidationFailed)?;
-		let msg =
-			UpwardMessage::decode_all(&mut &buffer[..]).map_err(|_| RefineLog::MalformedPayload)?;
-
-		self.send_upward(msg)
-	}
-
-	fn send_upward(mut self, msg: UpwardMessage) -> Result<Self, RefineLog> {
-		self.umps.try_push(msg).map_err(|_| RefineLog::TooManyUpwardMessages)?;
-
-		Ok(self)
-	}
+pub enum PvfParseError {
+	InvalidCodeBytes,
+	InvalidMemoryMap(&'static str),
+	InvalidProgramParts,
+	/// Entry point `validate_block` not found in the program.
+	MissingEntryPoint,
 }
 
 // TODO: let the code hash already commit to this instead of the bare code
-pub fn parse_pvf(code: &[u8]) -> Option<ParsedPvf> {
+pub fn parse_pvf(code: &[u8]) -> Result<ParsedPvf, PvfParseError> {
 	use polkavm::{ArcBytes, MemoryMapBuilder, ProgramBlob, ProgramParts};
 
-	let parts = ProgramParts::from_bytes(ArcBytes::from(code)).ok()?;
+	// TODO the inner parse error is opaque for some reason?!
+	let parts = ProgramParts::from_bytes(ArcBytes::from(code))
+		.map_err(|_| PvfParseError::InvalidCodeBytes)?;
 	let code = parts.code_and_jump_table.clone();
 	let ro_data = parts.ro_data.clone();
 	let rw_data = parts.rw_data.clone();
@@ -64,12 +53,18 @@ pub fn parse_pvf(code: &[u8]) -> Option<ParsedPvf> {
 		.rw_data_size(parts.rw_data_size)
 		.stack_size(parts.stack_size)
 		.build()
-		.ok()?;
+		.map_err(|e| PvfParseError::InvalidMemoryMap(e))?;
 
-	let program = ProgramBlob::from_parts(parts).ok()?;
-	let entry_pc = program.exports().find(|export| export == "validate_block")?.program_counter().0;
+	let program = ProgramBlob::from_parts(parts).map_err(|_| PvfParseError::InvalidProgramParts)?;
+	// TODO check if there is a better way than to just search
+	let entry_pc = program
+		.exports()
+		.find(|export| export == PVF_ENTRY_POINT)
+		.ok_or(PvfParseError::MissingEntryPoint)?
+		.program_counter()
+		.0;
 
-	Some(ParsedPvf { code, entry_pc: entry_pc as u64, ro_data, rw_data, memory })
+	Ok(ParsedPvf { code, entry_pc: entry_pc as u64, ro_data, rw_data, memory })
 }
 
 /// Instantiate the parsed PVF as an inner PVM, run `validate_block` over the opaque PoV,

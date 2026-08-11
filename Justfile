@@ -82,6 +82,8 @@ build-runtime-pvm:
 lint:
 	cargo clippy --all-targets --workspace
 
+# Short for test
+t: test
 # Run the full workspace test suite
 test:
 	cargo test --all-targets --workspace

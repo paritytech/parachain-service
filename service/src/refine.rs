@@ -4,11 +4,9 @@ use crate::{
 	pvf,
 	work_digest::{ParachainWorkDigest, RefineLog, ValidationCodeHash, ValidationCodeRef},
 };
-use alloc::{vec, vec::Vec};
+use alloc::vec::Vec;
 use codec::{Decode, DecodeAll, Encode};
-use jam_pvm_common::refine::lookup as historical_lookup; // PolkaJAM somehow renamed the
-														 // export
-use jam_pvm_common::refine::{self, auth_trace};
+use jam_pvm_common::refine::{self, auth_trace, lookup as historical_lookup};
 use jam_types::{CoreIndex, ServiceId, WorkPackageHash, WorkPayload};
 use parachain_authorizer::aura;
 use parachain_support::types::ParaId;
@@ -66,10 +64,10 @@ pub fn refine(
 	let code_len: u32 = code.len().try_into().expect("PVF code must be at most 4 GiB");
 
 	// Run the PVF over the opaque PoV in an inner PVM.
-	let Some(parsed) = pvf::parse_pvf(&code) else {
+	let Ok(parsed) = pvf::pvm::parse_pvf(&code) else {
 		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidCode };
 	};
-	let head_data = match pvf::run(&parsed, &candidate.pov) {
+	let head_data = match pvf::pvm::run(&parsed, &candidate.pov) {
 		Ok(head_data) => head_data,
 		Err(error) => return ParachainWorkDigest::Err { para_id, error },
 	};
