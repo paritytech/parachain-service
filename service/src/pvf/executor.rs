@@ -1,14 +1,13 @@
 //! PVM executor state for recording side-effects of PVF refine invocation.
 
-use crate::work_digest::{RefineLog, MAX_UPWARD_MESSAGES_PER_DIGEST};
-use bounded_collections::{BoundedVec, ConstU32};
+use crate::work_digest::RefineLog;
 use jam_pvm_common::refine;
-use parachain_service_interface::types::UpwardMessage;
+use parachain_service_interface::types::{UpwardMessage, UpwardMessages};
 
 /// Side-effect buffer during refine invoke-PVM loop.
 #[derive(Default)]
 pub struct ExecutorState {
-	pub umps: BoundedVec<UpwardMessage, ConstU32<MAX_UPWARD_MESSAGES_PER_DIGEST>>,
+	pub umps: UpwardMessages,
 }
 
 impl ExecutorState {
@@ -34,7 +33,10 @@ impl ExecutorState {
 		self.kv_set(key, value)
 	}
 
-	fn kv_set(self, key: &[u8], value: &[u8]) -> Result<Self, RefineLog> {
-		Ok(self) // FIXME record the side-effect
+	fn kv_set(mut self, key: &[u8], value: &[u8]) -> Result<Self, RefineLog> {
+		self.umps
+			.try_push(UpwardMessage::SetKV { key: key.to_vec(), value: value.to_vec() })
+			.map_err(|_| RefineLog::TooManyUpwardMessages)?;
+		Ok(self)
 	}
 }

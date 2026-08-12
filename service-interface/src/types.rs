@@ -9,6 +9,7 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
+use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Decode, Encode};
 
 /// Unique identifier of a parachain.
@@ -32,3 +33,8 @@ impl From<ParaId> for u32 {
 pub enum UpwardMessage {
 	SetKV { key: Vec<u8>, value: Vec<u8> },
 }
+
+/// Maximum number of upward messages per `ParachainWorkDigest`.
+pub const MAX_UPWARD_MESSAGES_PER_DIGEST: u32 = 1024;
+
+pub type UpwardMessages = BoundedVec<UpwardMessage, ConstU32<MAX_UPWARD_MESSAGES_PER_DIGEST>>;

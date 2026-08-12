@@ -67,9 +67,8 @@ pub fn refine(
 	let Ok(parsed) = pvf::pvm::parse_pvf(&code) else {
 		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidCode };
 	};
-	let head_data = match pvf::pvm::run(&parsed, &candidate.pov) {
-		Ok(head_data) => head_data,
-		Err(error) => return ParachainWorkDigest::Err { para_id, error },
+	let Ok((head_data, upward_messages)) = pvf::pvm::run(&parsed, &candidate.pov) else {
+		return ParachainWorkDigest::Err { para_id, error: RefineLog::ValidationFailed };
 	};
 
 	ParachainWorkDigest::Ok {
@@ -77,7 +76,7 @@ pub fn refine(
 		validation_code: ValidationCodeRef { hash: code_hash, len: code_len },
 		parent_head_hash: [0; 32], // FIXME
 		head_data,
-		upward_messages: Default::default(),
+		upward_messages,
 		lookup_anchor: 123, // FIXME
 	}
 }

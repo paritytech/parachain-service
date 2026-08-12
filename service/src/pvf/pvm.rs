@@ -2,12 +2,15 @@
 
 use crate::{
 	pvf::{executor::ExecutorState, PVF_ENTRY_POINT},
-	work_digest::RefineLog,
+	work_digest::{HeadData, RefineLog},
 };
 use alloc::vec::Vec;
 use jam_pvm_common::{refine, InvokeOutcome};
 use jam_types::{PageMode, PAGE_SIZE};
-use parachain_service_interface::{host_call::HostCall, types::UpwardMessage};
+use parachain_service_interface::{
+	host_call::HostCall,
+	types::{UpwardMessage, UpwardMessages},
+};
 use polkavm::Reg;
 
 /// A parachain validation function parsed into a form ready to run as an inner PVM.
@@ -70,7 +73,7 @@ pub fn parse_pvf(code: &[u8]) -> Result<ParsedPvf, PvfParseError> {
 /// Instantiate the parsed PVF as an inner PVM, run `validate_block` over the opaque PoV,
 /// and return the head data it produces. The PoV is copied in verbatim; the runtime
 /// decodes it. `machine` spawns the VM code-only, so we lay out its memory first.
-pub fn run(pvf: &ParsedPvf, pov: &[u8]) -> Result<Vec<u8>, RefineLog> {
+pub fn run(pvf: &ParsedPvf, pov: &[u8]) -> Result<(HeadData, UpwardMessages), RefineLog> {
 	let handle =
 		refine::machine(&pvf.code[..], pvf.entry_pc).map_err(|_| RefineLog::InvalidCode)?;
 	let mem = &pvf.memory;
@@ -125,7 +128,7 @@ pub fn run(pvf: &ParsedPvf, pov: &[u8]) -> Result<Vec<u8>, RefineLog> {
 		.map_err(|_| RefineLog::ValidationFailed)?;
 
 	let _ = refine::expunge(handle);
-	Ok(head_data)
+	Ok((head_data, exe.umps))
 }
 
 /// Allocate + zero the pages spanning `[addr, addr + len)`; `addr` must be page-aligned.

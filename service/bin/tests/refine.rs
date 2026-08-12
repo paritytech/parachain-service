@@ -16,6 +16,7 @@ use parachain_service_bin::{
 	mock::{good_config, good_token, good_trace, refine_args, refine_work_item},
 	BLOB as SERVICE,
 };
+use parachain_service_interface::types::{UpwardMessage, UpwardMessages};
 
 pub const MOCK_CODE_HASH: ValidationCodeHash = ValidationCodeHash([123; 32]);
 
@@ -46,7 +47,9 @@ fn trivial_works() {
 	let outcome = pj::refine(&engine, code_hash, &mut context);
 
 	// The inner PVM decoded the PoV, executed the block, and returned the new head data.
-	let head_data = expect_ok(outcome);
+	let (head_data, upward_messages) = expect_ok(outcome);
+	assert_eq!(upward_messages, UpwardMessages::new());
+
 	let head = HeadData::decode(&mut &head_data[..]).expect("refine returned valid HeadData");
 	assert_eq!(head.number, 1);
 	assert_eq!(head.parent_hash, parent.hash());
@@ -81,7 +84,17 @@ fn send_upward_messages_works() {
 	let outcome = pj::refine(&engine, code_hash, &mut context);
 
 	// The inner PVM decoded the PoV, executed the block, and returned the new head data.
-	let head_data = expect_ok(outcome);
+	let (head_data, upward_messages) = expect_ok(outcome);
+
+	assert_eq!(
+		upward_messages,
+		UpwardMessages::try_from(vec![UpwardMessage::SetKV {
+			key: b"KEY".to_vec(),
+			value: b"VALUE".to_vec()
+		},])
+		.unwrap()
+	);
+
 	let head = HeadData::decode(&mut &head_data[..]).expect("refine returned valid HeadData");
 	assert_eq!(head.number, 1);
 	assert_eq!(head.parent_hash, parent.hash());
@@ -176,10 +189,10 @@ fn expect_log(res: anyhow::Result<RefineOutcome>) -> RefineLog {
 	log
 }
 
-fn expect_ok(res: anyhow::Result<RefineOutcome>) -> Vec<u8> {
+fn expect_ok(res: anyhow::Result<RefineOutcome>) -> (Vec<u8>, UpwardMessages) {
 	let output = res.expect("Refine failed to return a ParachainWorkDigest");
 	match output.digest {
-		ParachainWorkDigest::Ok { head_data, .. } => head_data,
+		ParachainWorkDigest::Ok { head_data, upward_messages, .. } => (head_data, upward_messages),
 		ParachainWorkDigest::Err { error, .. } => panic!("RefineLog error: {error:?}"),
 	}
 }

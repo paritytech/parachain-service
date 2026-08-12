@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Decode, Encode};
 use jam_types::Hash;
-use parachain_service_interface::types::{ParaId, UpwardMessage};
+use parachain_service_interface::types::{ParaId, UpwardMessages};
 
 #[cfg(feature = "std")]
 use jam_std_common::hash_raw;
@@ -18,9 +18,6 @@ pub type HeadData = Vec<u8>;
 /// Maximum combined encoded size of all `ParachainWorkDigest`s and the auth
 /// trace — the Gray Paper's `W_R` (`C_maxreportvarsize`).
 pub const MAX_REFINE_OUTPUT_SIZE: usize = 48 * 1024;
-
-/// Maximum number of upward messages per `ParachainWorkDigest`.
-pub const MAX_UPWARD_MESSAGES_PER_DIGEST: u32 = 1024;
 
 /// The parachain service's Refine output for one parachain candidate. Side
 /// effects from host functions are carried in `upward_messages` and applied by
@@ -38,7 +35,7 @@ pub enum ParachainWorkDigest {
 		/// New head data produced by the parachain block.
 		head_data: HeadData,
 		/// Upward messages emitted through host functions during Refine.
-		upward_messages: BoundedVec<UpwardMessage, ConstU32<MAX_UPWARD_MESSAGES_PER_DIGEST>>,
+		upward_messages: UpwardMessages,
 		/// The work package's lookup-anchor timeslot.
 		lookup_anchor: Timeslot,
 	},

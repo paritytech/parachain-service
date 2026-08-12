@@ -2903,6 +2903,7 @@ dependencies = [
 name = "parachain-service-interface"
 version = "0.1.0"
 dependencies = [
+ "bounded-collections",
  "jam-types",
  "num_enum",
  "parity-scale-codec",
