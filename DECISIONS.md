@@ -6,25 +6,8 @@ in the places where the design under-specifies, contradicts itself, or leaves an
 implementation choice open (see [SPEC_GAPS.md](./SPEC_GAPS.md)). Each entry names the gap it
 resolves (if tracked) and what should be fed back into the spec.
 
-Format: **D-n** — decision, rationale, spec feedback.
-
-## D-1: PVF result ABI is host-call based; PoV input stays register-based
-
-Relates to SPEC_GAPS #6 (child-PVF ABI not pinned).
-
-The PVF declares its results exclusively through child host calls, per design §4.2:
-`set_parent_head_hash(hash)` and `set_head(new_head)` are each **mandatory exactly once**;
-violating that fails Refine with `RefineLog::MissingHeadDeclaration`. The PVF returns no
-values through registers.
-
-Deviation from the design's literal `jam_validate_block() -> ()`: the PoV is still passed
-*in* through registers as `jam_validate_block(pov_ptr: u32, pov_len: u32)` rather than
-fetched by the PVF via a forwarded `work_item_payload` host call. Rationale: the parent
-already holds the payload; forwarding it through a fetch round-trip adds plumbing without
-changing trust or determinism.
-
-**Spec feedback**: pin the entry-point signature as `jam_validate_block(pov_ptr, pov_len)`,
-document register/stack conventions, and state that head declarations are host-call-only.
+Format: **D-n** — decision, rationale, spec feedback. Entries are deleted once a GitHub
+issue exists for them; numbering is not reused.
 
 ## D-2: Asset Hub / Coretime ParaIds are compile-time constants
 
@@ -42,26 +25,6 @@ Coretime to never mark a non-privileged para as privileged.
 **Spec feedback**: the design must state where the privileged-para identity lives. Both
 options should be listed; constants require a service self-upgrade to migrate Asset Hub or
 Coretime to a new ParaId.
-
-## D-3: State-balance accounting uses the exact §6.1 formulas, with `Balance = u64`
-
-Relates to SPEC_GAPS #4 (quotas not backed by real balance; wire types wrong).
-
-The PoC implements §6.1 literally: preimage footprint `187 + len` per referencer,
-`kv_entry_footprint(k, v) = 49 + compactLen(k) + |k| + compactLen(v) + |v|`,
-`baseline_footprint = 69 847`, the Asset Hub global reservation, delta-charging on
-overwrite, and the write-time invariant. This deliberately exercises the spec's arithmetic
-so errors surface.
-
-Wire-type correction: JAM `Balance` is `u64`, so all balance fields use `u64`
-(SCALE `Compact<u64>` on the wire where the design says `Compact<Balance>`), not the
-design's `Compact<u128>`. Worst-case compact size drops from 17 B to 9 B; the §6.1 sizing
-tables need re-deriving in the spec.
-
-**Spec feedback**: fix the `Compact<u128>` assumption throughout §3.1/§6.1 and recompute
-`baseline_footprint` (the PoC keeps the spec's published constants where they are inputs,
-and flags mismatches in tests). The missing link to the real JAM account balance remains
-open (gap #4).
 
 ## D-4: AURA authorizer implements full logic with stubbed crypto
 
@@ -85,40 +48,21 @@ matching JAM's own preimage hashing (`jam_std_common::hash_raw`).
 
 **Spec feedback**: name the function in §5.1/§4.3.
 
-## D-6: TransferOut replay looks up the destination's `min_memo_gas`, capped by `MAX_TRANSFER_GAS`
+## D-8: incoming transfers are recorded in one bucket write per block
 
-Relates to SPEC_GAPS #2 (transfer gas unspecified).
+Relates to SPEC_GAPS #2.
 
-Gray Paper `Ω_T` deducts the transfer's full `gas_limit` from the **sender's** accumulate
-gas meter on success (`g = C_gasT + l`), and `min_memo_gas` is chosen by the destination
-service itself. Passing `service_info(dest).min_memo_gas` uncapped therefore lets a hostile
-destination burn arbitrary amounts of the Parachain Service's single accumulate invocation
-(losing everything since the last checkpoint and silently dropping all later operands in
-the block).
+The Quint model records each incoming transfer individually. Since all of a block's
+transfer operands arrive at the same timeslot (one bucket), a literal port re-reads and
+re-writes the growing bucket per transfer — measured at 551M gas for 1024 same-slot
+transfers, 55x the Gray Paper's whole per-report budget `Ga = 10M`
+(`accumulate_gas.rs::incoming_transfer_flood_works`). The PoC batches: admission is checked
+per transfer in operand order (identical semantics, including the count-based cap), then
+all admitted transfers land in a single bucket write. Measured cost drops to 1.63M gas.
 
-Replay therefore: reads `service_info(dest).min_memo_gas` at replay time; if it exceeds the
-service constant `MAX_TRANSFER_GAS` (or the destination does not exist), the JAM `transfer`
-is **not** called and `AccumulateLog::TransferFailed { memo_hash }` is appended. Otherwise
-the transfer is sent with exactly `min_memo_gas`; a JAM-level failure is also logged as
-`TransferFailed`. A destination raising `min_memo_gas` above the cap can only block
-transfers to itself (funds never leave the service on failure).
-
-`MAX_TRANSFER_GAS` needs a real benchmark before production (with SPEC_GAPS #2/#3).
-
-**Spec feedback**: specify the lookup + cap in §4.3/§5.1 step 7, and note that AH cannot
-supply the value itself (Refine has no `service_info` host call, and AH state cannot read
-JAM service metadata trustlessly — gap #1).
-
-## D-7: `assign_core` queues shorter than 80 are cycle-repeated
-
-Relates to SPEC_GAPS #9.
-
-JAM `assign` takes exactly 80 authorizer hashes; the design accepts 1..=80. On replay the
-service expands a shorter queue as `queue[i mod len]` for `i in 0..80`. The steady-state
-AURA case (one hash for every slot) is exactly the 1-element cycle.
-
-**Spec feedback**: define this expansion in §4.3/§7.1 (or require exactly 80 and drop the
-shorter form).
+**Spec feedback**: the model's per-transfer processing is fine as a spec of *meaning*, but
+§5.1 should note that recording must be batched per block (or the §3.1 bucket layout must
+be chunked) — a conforming literal implementation cannot fit its own gas budget.
 
 ---
 
@@ -136,46 +80,6 @@ refinement context" (§7.1 step 3). The Gray Paper's `RefineContext` exposes onl
 `lookup_anchor_slot` behind a FIXME, which would let a collator pick any lookup anchor
 mapping to its own index. The design needs either a JAM change (anchor slot in the context)
 or a different slot source. Extends SPEC_GAPS #7.
-
-## F-2: §4.3's `import_segments() -> Vec<SegmentMeta>` has no host-call backing
-
-jam-pvm-common exposes only per-index `import(index)`; there is no segment-metadata list.
-The §4.3 data-access table needs correcting (segment counts are available via
-`work_item_summary.import_count`). Extends SPEC_GAPS #6.
-
-## F-3: no error codes for oversized `set_head` / oversized `assign_core` queues
-
-A `set_head` beyond the 4 KiB `HeadData` bound and an `assign_core` queue longer than 80
-have no specified `RefineLog`. The PoC adds `RefineLog::HeadDataTooLarge` and treats the
-oversized queue as a malformed PVF (`ValidationFailed`). §4.2/§4.3 should specify both.
-
-## F-4: the queued-transfer count needs a counter in state
-
-The §5.1 admission rule ("while the queue holds fewer than `MAX_INCOMING_TRANSFERS`")
-counts transfers, but JAM storage has no prefix iteration, so the count cannot be recovered
-from the buckets. The PoC adds `count: u32` to `IncomingTransferChain` (§3.1 layout
-change). Resolves the "unbounded scan or unspecified counter" bullet of SPEC_GAPS #2.
-
-## F-5: §6.1 sizing tables need re-deriving for the real wire types
-
-With `Balance = u64` (D-3) and JAM's `CoreIndex = u16` (the table assumes 4 B):
-`baseline_footprint = 69 831` (not 69 847), a worst-case transfer bucket costs 196 (not
-204), and the chain pointer grows 4 B for the F-4 counter. The PoC's `state_balance.rs`
-unit tests pin the recomputed values. Extends SPEC_GAPS #4.
-
-## F-6: `UpgradeService` verifies actual preimage availability, not registry membership
-
-§5.4 says "verify the preimage is present"; the Quint model checks only a non-empty
-referencer set (SPEC_GAPS #16). The PoC checks `is_available(code_hash)` — the preimage
-must actually be provided. The prose should say exactly this. (JAM `upgrade` still does not
-validate the blob shape — SPEC_GAPS #5 remains.)
-
-## F-7: no log events for failed JAM `assign` / `designate` host calls
-
-A JAM-level `assign` failure (bad core, or the service lost assigner-ship after a
-hand-off) and a `designate` failure (service is not the delegator) have no specified
-`AccumulateLog`. The PoC logs `DesignateRejected` for the latter and only a debug message
-for the former. Extends SPEC_GAPS #9/#10.
 
 ## F-8: model fidelity nits found while porting
 
@@ -198,3 +102,49 @@ for the former. Extends SPEC_GAPS #9/#10.
 To close SPEC_GAPS #7's "does not require work items to target the Parachain Service", the
 PoC adds `parachain_service: ServiceId` to the AURA `AuthorizerConfig` and rejects packages
 whose items target any other service. §7.1's config struct needs the field.
+
+## F-10: the 1024-message digest cap has no gas headroom against `Ga`
+
+A reachable worst-case digest (1024 `solicit`s, 36 KiB — fits the report bound) replays at
+7.87M gas in the unoptimized PoC, 0.79x the Gray Paper's per-report accumulate budget
+`Ga = 10M` (`accumulate_gas.rs`). Out-of-gas mid-replay reverts to the last checkpoint,
+un-enacting a candidate Refine already validated. §4.3's `MAX_UPWARD_MESSAGES_PER_DIGEST`
+needs deriving from `Ga` (with margin), not picked independently. Pinned by
+`solicit_flood_works` / `set_kv_flood_works`.
+
+## F-11: several message types cannot reach the 1024-message cap anyway
+
+The digest is part of the work-report's elective data, capped by Gray Paper
+`Wr = 48 KiB`. A `TransferOut` encodes to ~134 B (memo alone is 128 B), so at most ~345 fit
+in a report; 1024 of them encode to 137 KiB. The §4.3 cap should be stated per encoded
+size (i.e. derived from `Wr`), not as a flat message count.
+
+## F-12: the non-candidate gas budgets need sizing
+
+The design expects the service to be always-accumulate (§2) but never sizes the
+`always_acc` privileges allotment that pays for operand-less maintenance work. Measured
+worst case: flushing a due `assign` for every core (341 entries, full 80-hash queues) in
+one block costs 9.94M gas — ~29k per assign, dominated by the `assign` host call itself
+(`accumulate_gas.rs::due_assign_flood_works`); steady state is one core per slot. An
+allotment of ~10M covers the avalanche, and it is reserved on top of the block's
+accumulation pool, so it does not compete with candidate gas.
+
+Similarly, incoming-transfer recording is paid by the transfers' own `gas_limit` (the JAM
+scheduler adds it to the invocation unconditionally), so the service's `min_memo_gas` must
+cover the measured ~1.6k-per-transfer recording cost with margin — a token value like the
+mock's 100 would be under water.
+
+## F-13: forwarded transfer gas multiplies past `Ga` despite both caps
+
+Sharpens F-10. `Ω_T` charges each replayed `TransferOut`'s forwarded gas to the sender's
+meter. Both bounds are individually enforced — per-transfer `MAX_TRANSFER_GAS = Ga/100`
+(#17), per-report ~345 transfers under `Wr` (F-11) — but their product exceeds `Ga`: an
+Asset Hub digest of 345 transfers to a destination demanding `min_memo_gas =
+MAX_TRANSFER_GAS` measures 36.4M gas — 3.64x `Ga`
+(`accumulate_gas.rs::transfer_out_hostile_dest_flood_works`) — so in production it
+out-of-gasses after ~90 replays and un-enacts the validated candidate. Destinations are
+user-chosen, so this is reachable. The replay loop needs a **cumulative**
+forwarded-gas budget per digest (a fraction of `Ga`), not only a per-transfer cap — or the
+§4.3 caps must be co-derived so `count x per-transfer ≤ margin x Ga`.
+Only Asset Hub digests may carry `TransferOut`, and 345 is the most ~134-B transfers that
+fit the `Wr = 48 KiB` report bound.

@@ -40,9 +40,19 @@ pub fn is_valid_val_count(len: usize) -> bool {
 	len % 3 == 0 && len >= 6 && len <= 3 * CORE_COUNT
 }
 
-/// Cap on the gas limit a replayed `transfer_out` may carry (DECISIONS.md D-6).
-/// The destination's `min_memo_gas` is looked up at replay time; above this cap
-/// the JAM `transfer` is not called and `TransferFailed` is logged. Bounds the
-/// gas a hostile destination can burn from the service's accumulate invocation.
-/// FIXME: needs a real benchmark before production (SPEC_GAPS #2/#3).
-pub const MAX_TRANSFER_GAS: u64 = 10_000_000;
+/// Cap on the gas limit a replayed `transfer_out` may carry (D-6/D-9). The
+/// destination's `min_memo_gas` is looked up at replay time; above this cap
+/// the JAM `transfer` is not called and `TransferFailed` is logged. Gray Paper
+/// `Ω_T` charges the transfer's full gas limit to the SENDER's meter, whose
+/// whole-report budget is `Ga = 10_000_000` — so this must be a small fraction
+/// of `Ga` or one hostile destination burns the entire invocation. Set to
+/// `Ga / 100`: with 1 gas ≈ 1 reference-CPU cycle (polkajam benchmarks host
+/// costs in cycles) that is ~30-50 µs — plenty for a memo handler doing a few
+/// storage writes, while our own recording side costs ~1.6k gas. A realistic
+/// destination handler (two lookup-map writes + counter increment) measures
+/// ~1.7k gas per transfer (`accumulate_gas.rs::dest_handler_flood_works`), so
+/// the cap could drop to `Ga / 1000` — bounding a full 345-transfer digest to
+/// 0.35x `Ga` (F-13) with ~6x headroom per transfer.
+/// FIXME: pick the production value and co-derive it with the per-digest
+/// message caps so `count x cap ≤ margin x Ga` (SPEC_GAPS #2/#3).
+pub const MAX_TRANSFER_GAS: u64 = 100_000;

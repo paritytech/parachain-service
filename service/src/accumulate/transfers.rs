@@ -17,44 +17,56 @@ use jam_pvm_common::accumulate::{service_info, transfer};
 use jam_types::{Balance, Memo as JamMemo, ServiceId, Slot, TransferRecord};
 use parachain_service_interface::types::{Memo, Timeslot};
 
-/// §5.1 incoming-transfer processing. JAM credited the balance before this code
-/// runs, so handling is best effort: within the pre-provisioned portion a
-/// transfer is recorded unconditionally; beyond it only if its amount covers its
-/// own worst-case queue entry. Otherwise it is dropped — no record, no log.
-pub fn record_incoming(now: Slot, record: &TransferRecord) {
-	let chain = TransferChain::get();
-	let queued = chain.map_or(0, |c| c.count);
-	let admitted =
-		(queued as usize) < MAX_INCOMING_TRANSFERS || transfer_covers_own_slot(record.amount);
-	if !admitted {
+/// §5.1 incoming-transfer processing. JAM credited the balances before this
+/// code runs, so handling is best effort: within the pre-provisioned portion a
+/// transfer is recorded unconditionally; beyond it only if its amount covers
+/// its own worst-case queue entry. Otherwise it is dropped — no record, no log.
+///
+/// All of one block's operands arrive at the same `now`, so the admitted
+/// transfers land in a single bucket write. Per-transfer writes would re-read
+/// and re-write the growing bucket each time — measured at 55x the `Ga` budget
+/// for 1024 same-slot transfers (D-8); the resulting state is identical.
+pub fn record_incoming(now: Slot, records: &[&TransferRecord]) {
+	let mut chain = TransferChain::get();
+	let mut queued = chain.as_ref().map_or(0, |c| c.count);
+	let mut admitted: Vec<QueuedTransfer> = Vec::new();
+	for record in records {
+		if (queued as usize) < MAX_INCOMING_TRANSFERS || transfer_covers_own_slot(record.amount) {
+			queued += 1;
+			admitted.push(QueuedTransfer {
+				from: record.source,
+				amount: record.amount,
+				memo: record.memo.0,
+			});
+		}
+	}
+	if admitted.is_empty() {
 		return;
 	}
+	let added = admitted.len() as u32;
 
-	let transfer =
-		QueuedTransfer { from: record.source, amount: record.amount, memo: record.memo.0 };
-
-	match chain {
+	match &mut chain {
 		None => {
 			// Empty queue: `now` becomes the only bucket, so both endpoints.
 			TransferBuckets::set(
 				now,
-				&IncomingTransfers { transfers: alloc::vec![transfer], next_slot: None },
+				&IncomingTransfers { transfers: admitted, next_slot: None },
 			);
 			TransferChain::set(&IncomingTransferChain {
 				first_slot: now,
 				last_slot: now,
-				count: 1,
+				count: added,
 			});
 		},
-		Some(mut chain) if chain.last_slot == now => {
+		Some(chain) if chain.last_slot == now => {
 			// Same slot as the tail: append in place, no new storage item.
 			let mut bucket = TransferBuckets::get(now).expect("chain names the tail; qed");
-			bucket.transfers.push(transfer);
+			bucket.transfers.extend(admitted);
 			TransferBuckets::set(now, &bucket);
-			chain.count += 1;
-			TransferChain::set(&chain);
+			chain.count += added;
+			TransferChain::set(chain);
 		},
-		Some(mut chain) => {
+		Some(chain) => {
 			// New bucket at `now`; link the old tail to it and move `last_slot`.
 			let mut tail =
 				TransferBuckets::get(chain.last_slot).expect("chain names the tail; qed");
@@ -62,11 +74,11 @@ pub fn record_incoming(now: Slot, record: &TransferRecord) {
 			TransferBuckets::set(chain.last_slot, &tail);
 			TransferBuckets::set(
 				now,
-				&IncomingTransfers { transfers: alloc::vec![transfer], next_slot: None },
+				&IncomingTransfers { transfers: admitted, next_slot: None },
 			);
 			chain.last_slot = now;
-			chain.count += 1;
-			TransferChain::set(&chain);
+			chain.count += added;
+			TransferChain::set(chain);
 		},
 	}
 }

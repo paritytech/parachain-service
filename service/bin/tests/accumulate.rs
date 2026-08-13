@@ -145,6 +145,41 @@ fn two_packages_sequence_works() {
 }
 
 #[test]
+fn restricted_message_drops_candidate_works() {
+	use parachain_service_interface::upward_message::UpwardMessage;
+
+	// §4.3 defense-in-depth: an Asset-Hub-only message from a normal para drops
+	// the whole candidate before replay — even messages preceding it are not
+	// applied, the head does not advance, and nothing is logged.
+	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
+	let set = UpwardMessage::SetKV { key: b"k".to_vec(), value: b"v".to_vec() };
+	let restricted = UpwardMessage::ConsumeTransfersUpTo(0);
+	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![set, restricted], 0);
+
+	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+
+	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"genesis");
+	assert_eq!(kv_value(&storage, PARA, b"k"), None);
+	assert!(para_log(&storage, PARA).is_empty());
+}
+
+#[test]
+fn foreign_para_message_drops_candidate_works() {
+	use parachain_service_interface::upward_message::UpwardMessage;
+
+	// §4.3: naming a foreign para in `remove_kv` without Coretime rights drops
+	// the candidate silently.
+	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
+	let msg = UpwardMessage::RemoveKV { para_id: ParaId(2000), key: b"k".to_vec() };
+	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg], 0);
+
+	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+
+	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"genesis");
+	assert!(para_log(&storage, PARA).is_empty());
+}
+
+#[test]
 fn kv_set_works() {
 	use parachain_service::state_balance::kv_entry_footprint;
 	use parachain_service_interface::upward_message::UpwardMessage;

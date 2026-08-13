@@ -31,12 +31,16 @@ pub fn accumulate(
 	assigns::apply_due_assigns(now, service_id);
 
 	// Phase 2: incoming-transfer processing (§5.1). JAM already credited the
-	// balance unconditionally; recording is best effort.
-	for item in &items {
-		if let AccumulateItem::Transfer(transfer) = item {
-			transfers::record_incoming(now, transfer);
-		}
-	}
+	// balances unconditionally; recording is best effort. All operands share
+	// `now`, so they are recorded in one bucket write (D-8).
+	let transfers: alloc::vec::Vec<_> = items
+		.iter()
+		.filter_map(|item| match item {
+			AccumulateItem::Transfer(transfer) => Some(transfer),
+			_ => None,
+		})
+		.collect();
+	transfers::record_incoming(now, &transfers);
 
 	// The always-accumulate work is done; protect it from a later failure.
 	// TODO: the design only mandates checkpointing after each work-report; the

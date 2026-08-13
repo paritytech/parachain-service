@@ -7,6 +7,7 @@ members = [
     "service",
     "service/bin",
     "service-interface",
+    "testing/mock-dest-service",
     "tools/executor",
 ]
 exclude = [
@@ -41,6 +42,7 @@ num_enum = { version = "0.7", default-features = false }
 
 # Guest crates and their blob builder crates.
 frameless = { path = "runtimes/frameless" }
+mock-dest-service = { path = "testing/mock-dest-service" }
 parachain-service = { path = "service" }
 parachain-service-bin = { path = "service/bin" }
 parachain-authorizer = { path = "authorizer" }

@@ -44,9 +44,20 @@ pub fn run_block(
 	items: Vec<AccumulateItem>,
 	slot: Timeslot,
 ) -> (AccumulateOutcome, Storage, jam_node::vm::StateMutations) {
+	run_block_for(SERVICE, storage, items, slot)
+}
+
+/// [`run_block`] for an arbitrary service `blob` (e.g. the mock transfer
+/// destination); `storage` must hold the blob (see [`fresh_storage_for`]).
+pub fn run_block_for(
+	blob: &[u8],
+	storage: Storage,
+	items: Vec<AccumulateItem>,
+	slot: Timeslot,
+) -> (AccumulateOutcome, Storage, jam_node::vm::StateMutations) {
 	let engine = jam_node::vm::Engine::new(Some(jam_node::PvmBackend::Interpreter))
 		.expect("interpreter engine should initialize");
-	let code_hash = CodeHash(hash_raw(SERVICE));
+	let code_hash = CodeHash(hash_raw(blob));
 	let mut context = accumulate_context(storage, items, slot);
 	let outcome = pj::accumulate(&engine, code_hash, &mut context)
 		.expect("accumulate should run to completion (not trap)");
@@ -55,8 +66,12 @@ pub fn run_block(
 
 /// Fresh storage holding the service blob, seeded via `seed`.
 pub fn fresh_storage(seed: impl FnOnce(&mut Storage)) -> Storage {
-	let (_, _, context) =
-		parachain_service_bin::mock::accumulate_args_at(SERVICE, Vec::new(), 0, seed);
+	fresh_storage_for(SERVICE, seed)
+}
+
+/// [`fresh_storage`] for an arbitrary service `blob`.
+pub fn fresh_storage_for(blob: &[u8], seed: impl FnOnce(&mut Storage)) -> Storage {
+	let (_, _, context) = parachain_service_bin::mock::accumulate_args_at(blob, Vec::new(), 0, seed);
 	context.storage
 }
 

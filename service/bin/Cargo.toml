@@ -42,6 +42,7 @@ jam-types = { workspace = true, optional = true }
 [build-dependencies]
 jam-pvm-builder = { workspace = true }
 parachain-service = { workspace = true }
+mock-dest-service = { workspace = true }
 
 [dev-dependencies]
 parachain-service-bin = { path = ".", features = ["test-utils"] } # TODO clean this up

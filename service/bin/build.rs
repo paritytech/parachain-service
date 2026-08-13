@@ -10,4 +10,10 @@
 
 fn main() {
 	jam_pvm_builder::build_service(parachain_service::MANIFEST_DIR.as_ref());
+
+	// The mock transfer-destination blob is only embedded by `test-utils`
+	// consumers (gas benchmarks); plain builds skip it.
+	if std::env::var_os("CARGO_FEATURE_TEST_UTILS").is_some() {
+		jam_pvm_builder::build_service(mock_dest_service::MANIFEST_DIR.as_ref());
+	}
 }
