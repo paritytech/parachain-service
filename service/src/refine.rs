@@ -49,7 +49,7 @@ pub fn refine(
 		return ParachainWorkDigest::Err { para_id, error: RefineLog::AuthConfigMismatch };
 	};
 
-	let Ok([work_item]): Result<&[_; 1], _> = work_items.as_slice().try_into() else {
+	let Ok([_work_item]): Result<&[_; 1], _> = work_items.as_slice().try_into() else {
 		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidItemCount };
 	};
 
@@ -67,16 +67,18 @@ pub fn refine(
 	let Ok(parsed) = pvf::pvm::parse_pvf(&code) else {
 		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidCode };
 	};
-	let Ok((head_data, upward_messages)) = pvf::pvm::run(&parsed, &candidate.pov) else {
-		return ParachainWorkDigest::Err { para_id, error: RefineLog::ValidationFailed };
-	};
+	let (parent_head_hash, head_data, upward_messages) =
+		match pvf::pvm::run(&parsed, &candidate.pov, para_id) {
+			Ok(ok) => ok,
+			Err(error) => return ParachainWorkDigest::Err { para_id, error },
+		};
 
 	ParachainWorkDigest::Ok {
 		para_id,
 		validation_code: ValidationCodeRef { hash: code_hash, len: code_len },
-		parent_head_hash: [0; 32], // FIXME
+		parent_head_hash,
 		head_data,
 		upward_messages,
-		lookup_anchor: 123, // FIXME
+		lookup_anchor: refine::refine_context().lookup_anchor_slot,
 	}
 }

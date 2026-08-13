@@ -27,6 +27,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [] }
 
 [workspace.dependencies]
 jam-types = { path = "vendor/polkajam/crates/jam-types", default-features = false }
+jam-codec = { version = "0.1.1", default-features = false, features = ["derive"] }
 jam-pvm-common = { path = "vendor/polkajam/crates/jam-pvm-common", default-features = false }
 jam-std-common = { path = "vendor/polkajam/crates/jam-std-common" }
 binary-merkle-tree = { version = "16.1.1", default-features = false }

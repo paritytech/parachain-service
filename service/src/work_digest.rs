@@ -1,19 +1,18 @@
 //! Refine output of the parachain service.
 
-use alloc::vec::Vec;
-
 use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Decode, Encode};
 use jam_types::Hash;
-use parachain_service_interface::types::{ParaId, UpwardMessages};
+use parachain_service_interface::upward_message::UpwardMessages;
+
+// Shared wire types live in the interface crate; re-exported here since they are
+// part of the digest's shape.
+pub use parachain_service_interface::types::{
+	HeadData, ParaId, Timeslot, ValidationCodeHash, ValidationCodeRef,
+};
 
 #[cfg(feature = "std")]
 use jam_std_common::hash_raw;
-
-/// A JAM timeslot.
-pub type Timeslot = u32;
-/// New head data produced by a parachain block.
-pub type HeadData = Vec<u8>;
 
 /// Maximum combined encoded size of all `ParachainWorkDigest`s and the auth
 /// trace — the Gray Paper's `W_R` (`C_maxreportvarsize`).
@@ -64,8 +63,8 @@ pub enum RefineLog {
 	/// validation code preimage is not available in the service's store
 	/// at the lookup-anchor. See §4.1 step 3.
 	InvalidCodeHash,
-	/// The PVF could not be parsed as a PVM program, its `validate_block` entry point
-	/// was not found, or the inner PVM could not be instantiated from it.
+	/// The PVF could not be parsed as a PVM program, its `jam_validate_block` entry
+	/// point was not found, or the inner PVM could not be instantiated from it.
 	InvalidCode,
 	/// The PVF ran but did not validate the candidate: it panicked, trapped, ran out of
 	/// gas, or otherwise failed to return head data.
@@ -99,7 +98,14 @@ pub enum RefineLog {
 	/// The PVF exited without calling `set_parent_head_hash` and/or `set_head`
 	/// exactly once. Both head declarations are mandatory. See §4.2.
 	MissingHeadDeclaration,
+	/// The PVF called `set_head` with more than 4 KiB of head data (§3.1).
+	// TODO: not in the spec's RefineLog — §4.2/§3.1 leave an oversized `set_head`
+	// unspecified. Needs upstreaming.
+	HeadDataTooLarge,
 }
+
+/// The maximum byte length of a `report_error` payload. Spec §4.3.
+pub const MAX_REPORT_ERROR_PAYLOAD: u32 = 1024;
 
 #[cfg(feature = "test-utils")]
 impl ParachainWorkDigest {
@@ -111,20 +117,8 @@ impl ParachainWorkDigest {
 	}
 }
 
-/// Hash of a parachain's validation code (PVF) preimage.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]
-pub struct ValidationCodeHash(pub Hash); // TODO maybe use own hash type
-
+/// Hash a validation-code blob into its [`ValidationCodeHash`].
 #[cfg(feature = "std")]
-impl From<&[u8]> for ValidationCodeHash {
-	fn from(code: &[u8]) -> Self {
-		Self(hash_raw(code))
-	}
-}
-
-/// A validation code reference: its hash plus its byte length.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]
-pub struct ValidationCodeRef {
-	pub hash: ValidationCodeHash,
-	pub len: u32,
+pub fn validation_code_hash(code: &[u8]) -> ValidationCodeHash {
+	ValidationCodeHash(hash_raw(code))
 }

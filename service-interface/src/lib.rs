@@ -4,3 +4,4 @@
 
 pub mod host_call;
 pub mod types;
+pub mod upward_message;

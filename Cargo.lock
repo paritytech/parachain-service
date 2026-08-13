@@ -1563,6 +1563,7 @@ checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 name = "frameless"
 version = "0.1.0"
 dependencies = [
+ "blake2b_simd",
  "parachain-service-interface",
  "parity-scale-codec",
  "polkavm-derive 0.36.0",
@@ -2868,7 +2869,9 @@ dependencies = [
 name = "parachain-service"
 version = "0.1.0"
 dependencies = [
+ "blake2b_simd",
  "bounded-collections",
+ "jam-codec",
  "jam-pvm-common",
  "jam-std-common",
  "jam-types",

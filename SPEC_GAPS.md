@@ -20,6 +20,17 @@ reconciliation, upgrade and cleanup liveness, messaging, and fidelity of the for
 
 Gaps are ordered by severity, most impactful first — both across the tiers and within each tier.
 
+> **PoC status.** The Rust implementation now covers the full service (state layout §3.1,
+> Refine child host-call ABI §4, the complete Accumulate pipeline §5, state-balance
+> accounting §6.1, management §6.2–6.4, and the AURA authorizer skeleton §7.1 — messaging
+> §8 remains TBD). Decisions taken where the design leaves choices open, and new findings
+> that must flow back into the spec, are tracked in [DECISIONS.md](./DECISIONS.md)
+> (D-1..D-7, F-1..F-9). In particular: the child-PVF ABI of #6 is now pinned by the
+> implementation (D-1, `service/src/pvf/executor.rs`); #2's transfer-gas and queue-count
+> bullets have concrete resolutions (D-6, F-4); #4's wire types are corrected (D-3, F-5);
+> #9's queue expansion is defined (D-7); the #16 solicitation/availability confusion is
+> resolved implementation-side for the service self-upgrade (F-6).
+
 ## Critical — fund loss, silent divergence, or unrecoverable state
 
 ### 1. Refine lacks a specified authenticated service-state input

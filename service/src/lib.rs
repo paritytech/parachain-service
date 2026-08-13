@@ -11,8 +11,12 @@ use jam_types::{
 use work_digest::{ParachainWorkDigest, RefineLog, MAX_REFINE_OUTPUT_SIZE};
 
 pub mod accumulate;
+pub mod constants;
+pub mod hashing;
 pub mod pvf;
 pub mod refine;
+pub mod state;
+pub mod state_balance;
 pub mod work_digest;
 
 /// Directory of this crate's `Cargo.toml`, used by `parachain-service-bin`'s

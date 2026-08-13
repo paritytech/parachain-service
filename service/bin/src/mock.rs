@@ -19,14 +19,21 @@ const GAS_LIMIT: u64 = 5_000_000_000;
 
 pub type RefineWorkItem = (WorkItem, Vec<Vec<u8>>);
 
-/// An authorizer config whose `ParaId` prefix authorizes `para_ids` packages.
+/// An authorizer config whose `ParaId` prefix authorizes `para_ids` packages,
+/// numbering the paras `0..n`.
 pub fn good_config(para_ids: usize) -> AuthConfig {
-	let para_ids = (0..para_ids).map(|i| ParaId(i as u32)).collect::<Vec<_>>();
+	let ids = (0..para_ids).map(|i| ParaId(i as u32)).collect::<Vec<_>>();
+	good_config_for(ids)
+}
+
+/// An authorizer config binding the given `ParaId`s to the package's work items.
+pub fn good_config_for(para_ids: Vec<ParaId>) -> AuthConfig {
 	let config = aura::AuthConfig {
 		para_ids,
+		parachain_service: SERVICE_ID,
 		collator_set_root: H256::zero(),
-		collator_set_size: 0,
-		slot_duration: 0,
+		collator_set_size: 1,
+		slot_duration: 1,
 	};
 
 	AuthConfig(config.encode())
@@ -144,13 +151,37 @@ pub fn accumulate_args(
 	service_blob: &[u8],
 	items: Vec<AccumulateItem>,
 ) -> (Engine, CodeHash, AccumulateCallContext<'static>) {
-	let (storage, code_hash) = storage_with_code(service_blob);
-	let context = AccumulateCallContext {
+	accumulate_args_at(service_blob, items, 0, |_| {})
+}
+
+/// [`accumulate_args`] at a given `slot`, with `seed` applied to the storage
+/// first (e.g. `set_service_key` for genesis service state, or `provide` for
+/// preimages).
+pub fn accumulate_args_at(
+	service_blob: &[u8],
+	items: Vec<AccumulateItem>,
+	slot: u32,
+	seed: impl FnOnce(&mut Storage),
+) -> (Engine, CodeHash, AccumulateCallContext<'static>) {
+	let (mut storage, code_hash) = storage_with_code(service_blob);
+	seed(&mut storage);
+	storage.commit();
+	(engine(), code_hash, accumulate_context(storage, items, slot))
+}
+
+/// An accumulate call context over an existing storage — for sequential-block
+/// tests that thread the storage from a previous run's context.
+pub fn accumulate_context(
+	storage: Storage,
+	items: Vec<AccumulateItem>,
+	slot: u32,
+) -> AccumulateCallContext<'static> {
+	AccumulateCallContext {
 		storage,
 		mutations: StateMutations::new(0),
 		snapshot: None,
 		gas: GAS_LIMIT,
-		slot: 0,
+		slot,
 		service_id: SERVICE_ID,
 		entropy: Entropy::default(),
 		items,
@@ -162,10 +193,11 @@ pub fn accumulate_args(
 			always_acc: Default::default(),
 		},
 		cost: None,
-	};
-
-	(engine(), code_hash, context)
+	}
 }
+
+/// The mock's own service id, for tests that need to reference it.
+pub const MOCK_SERVICE_ID: ServiceId = SERVICE_ID;
 
 fn work_package(
 	authorizer_blob: &[u8],
