@@ -103,11 +103,7 @@ pub enum MockAction {
 		hash: [u8; 32],
 		len: u32,
 	},
-	TransferOut {
-		dest: u32,
-		amount: u64,
-		memo: [u8; 128],
-	},
+	TransferOut(parachain_service_interface::upward_message::TransferOutArgs),
 	AssignCore {
 		core: u32,
 		queue: Vec<[u8; 32]>,
@@ -125,7 +121,7 @@ pub enum MockAction {
 	ServiceUpgrade {
 		code_hash: [u8; 32],
 		len: u32,
-		min_item_gas: u64,
+		min_acc_gas: u64,
 		min_memo_gas: u64,
 	},
 	/// Aborts the PVF via `report_error` — nothing after it executes.
@@ -320,7 +316,7 @@ mod host {
 		#[polkavm_import(index = 19)]
 		fn kv_remove_raw(para_id: u32, key_ptr: u32, key_len: u32);
 		#[polkavm_import(index = 20)]
-		fn transfer_out_raw(dest: u32, amount: u64, memo_ptr: u32);
+		fn transfer_out_raw(args_ptr: u32, args_len: u32);
 		#[polkavm_import(index = 21)]
 		fn assign_core_raw(
 			core: u32,
@@ -338,7 +334,7 @@ mod host {
 		fn parachain_service_upgrade_raw(
 			hash_ptr: u32,
 			len: u32,
-			min_item_gas: u64,
+			min_acc_gas: u64,
 			min_memo_gas: u64,
 		);
 		#[polkavm_import(index = 25)]
@@ -406,8 +402,9 @@ mod host {
 			MockAction::RequestCodeUpgrade { hash, len } => unsafe {
 				request_code_upgrade_raw(hash.as_ptr() as u32, *len)
 			},
-			MockAction::TransferOut { dest, amount, memo } => unsafe {
-				transfer_out_raw(*dest, *amount, memo.as_ptr() as u32)
+			MockAction::TransferOut(args) => {
+				let encoded = args.encode();
+				unsafe { transfer_out_raw(encoded.as_ptr() as u32, encoded.len() as u32) }
 			},
 			MockAction::AssignCore { core, queue, assigner, jam_slot } => unsafe {
 				assign_core_raw(
@@ -429,11 +426,11 @@ mod host {
 			MockAction::ConsumeTransfersUpTo { slot } => unsafe {
 				consume_transfers_up_to_raw(*slot)
 			},
-			MockAction::ServiceUpgrade { code_hash, len, min_item_gas, min_memo_gas } => unsafe {
+			MockAction::ServiceUpgrade { code_hash, len, min_acc_gas, min_memo_gas } => unsafe {
 				parachain_service_upgrade_raw(
 					code_hash.as_ptr() as u32,
 					*len,
-					*min_item_gas,
+					*min_acc_gas,
 					*min_memo_gas,
 				)
 			},

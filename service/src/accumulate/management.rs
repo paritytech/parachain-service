@@ -5,6 +5,7 @@
 //! the sole authority on which ParaIds are live and who owns them.
 
 use crate::{
+	head_commitment::HeadTracker,
 	state::{
 		log::{AccumulateLog, ParachainLogs},
 		para_info::{ParaInfo, Parachains, ValidationCode},
@@ -22,7 +23,12 @@ use parachain_service_interface::types::{
 /// §6.1 — the sole creator of `ParaInfo`. On an unused ParaId, creates the entry
 /// with the baseline footprint pre-charged; on an existing one, overwrites
 /// `total_state_balance` iff `new_total >= used_state_balance`.
-pub fn set_state_balance(para_id: ParaId, new_total: Balance, logs: &mut Vec<AccumulateLog>) {
+pub fn set_state_balance(
+	para_id: ParaId,
+	new_total: Balance,
+	logs: &mut Vec<AccumulateLog>,
+	heads: &mut HeadTracker,
+) {
 	match Parachains::get(para_id) {
 		None => {
 			let baseline = baseline_for(para_id);
@@ -34,6 +40,9 @@ pub fn set_state_balance(para_id: ParaId, new_total: Balance, logs: &mut Vec<Acc
 				});
 				return;
 			}
+			// Registration gives the para its first head, which §5.5 counts as a
+			// change; the existing-para arm below touches no head.
+			heads.touch(para_id);
 			Parachains::set(
 				para_id,
 				&ParaInfo {
@@ -64,8 +73,9 @@ pub fn set_state_balance(para_id: ParaId, new_total: Balance, logs: &mut Vec<Acc
 
 /// §6.2/§6.3 — upsert head data. No-op on an unregistered ParaId (Coretime must
 /// call `parachain_set_state_balance` first).
-pub fn set_head(para_id: ParaId, new_head: HeadData) {
+pub fn set_head(para_id: ParaId, new_head: HeadData, heads: &mut HeadTracker) {
 	let Some(mut pi) = Parachains::get(para_id) else { return };
+	heads.touch(para_id);
 	pi.head_data = new_head;
 	Parachains::set(para_id, &pi);
 }

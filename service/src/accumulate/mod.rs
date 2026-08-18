@@ -14,6 +14,7 @@ pub mod transfers;
 pub mod upward;
 pub mod validator_keys;
 
+use crate::head_commitment::HeadTracker;
 use jam_pvm_common::accumulate::{accumulate_items, checkpoint};
 use jam_types::{AccumulateItem, Hash, ServiceId, Slot};
 
@@ -26,6 +27,9 @@ pub fn accumulate(
 	_item_count: usize,
 ) -> Result<Option<Hash>, AccumulateError> {
 	let items = accumulate_items();
+	// §5.5: every head this block moves is diffed against its pre-block value to
+	// build the commitment `accumulate` returns.
+	let mut heads = HeadTracker::new();
 
 	// Phase 1: always-accumulate — flush due authorizer-queue assigns (§5.1).
 	assigns::apply_due_assigns(now, service_id);
@@ -50,12 +54,12 @@ pub fn accumulate(
 	// Phase 3: per-work-package work, in operand order (§5.1 steps 1–7).
 	for item in items {
 		if let AccumulateItem::WorkItem(record) = item {
-			package::process(now, service_id, &record);
+			package::process(now, service_id, &record, &mut heads);
 			// §5.1: checkpoint after each work-report so its effects survive a
 			// later out-of-gas or panic (SPEC_GAPS #3).
 			checkpoint();
 		}
 	}
 
-	Ok(None)
+	Ok(heads.commitment())
 }

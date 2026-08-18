@@ -19,9 +19,23 @@ use parachain_service_bin::{
 	BLOB as SERVICE,
 };
 use parachain_service_interface::{
-	types::{ParaId, ASSET_HUB_PARA_ID},
-	upward_message::{UpwardMessage, UpwardMessages},
+	types::{Balance, ParaId, ServiceId, ASSET_HUB_PARA_ID},
+	upward_message::{TransferOutArgs, UpwardMessage, UpwardMessages},
 };
+
+/// A deferred `TransferOut` from this service's regular balance — the only shape
+/// the vendored GP 0.7.2 host can execute (§5.1).
+fn transfer_out_args(dest: ServiceId, amount: Balance) -> TransferOutArgs {
+	TransferOutArgs {
+		source: None,
+		dest,
+		amount: amount.into(),
+		id: 1.into(),
+		source_supervisor_balance: false,
+		dest_supervisor_balance: false,
+		deferred: Some(([9; 128], 500)),
+	}
+}
 
 /// Run one frameless block (`counter += add`) built on `parent` through refine.
 fn run_block(
@@ -115,8 +129,7 @@ fn report_error_works() {
 #[test]
 fn restricted_host_function_errors() {
 	// `transfer_out` is Asset-Hub-only (§4.3); para 0 is not Asset Hub.
-	let action =
-		Config::Mock(vec![MockAction::TransferOut { dest: 42, amount: 1, memo: [0; 128] }]);
+	let action = Config::Mock(vec![MockAction::TransferOut(transfer_out_args(42, 1))]);
 	let parent = genesis(action.clone());
 
 	let outcome = run_block(action, &parent, 1, vec![ParaId(0)]);
@@ -127,17 +140,14 @@ fn restricted_host_function_errors() {
 #[test]
 fn asset_hub_transfer_out_works() {
 	// The same call is fine when the config binds the item to Asset Hub.
-	let action =
-		Config::Mock(vec![MockAction::TransferOut { dest: 42, amount: 1, memo: [9; 128] }]);
+	let args = transfer_out_args(42, 1);
+	let action = Config::Mock(vec![MockAction::TransferOut(args.clone())]);
 	let parent = genesis(action.clone());
 
 	let outcome = run_block(action, &parent, 1, vec![ASSET_HUB_PARA_ID]);
 
 	let (_, _, upward_messages, _) = expect_ok(outcome);
-	assert_eq!(
-		upward_messages.into_iter().next(),
-		Some(UpwardMessage::TransferOut { dest: 42, amount: 1.into(), memo: [9; 128] })
-	);
+	assert_eq!(upward_messages.into_iter().next(), Some(UpwardMessage::TransferOut(args)));
 }
 
 #[test]

@@ -13,6 +13,7 @@ use work_digest::{ParachainWorkDigest, RefineLog, MAX_REFINE_OUTPUT_SIZE};
 pub mod accumulate;
 pub mod constants;
 pub mod hashing;
+pub mod head_commitment;
 pub mod pvf;
 pub mod refine;
 pub mod state;

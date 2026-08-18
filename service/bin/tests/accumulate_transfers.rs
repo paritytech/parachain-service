@@ -6,7 +6,7 @@ use common::*;
 use parachain_service::{
 	constants::{MAX_INCOMING_TRANSFERS, MAX_TRANSFER_GAS},
 	state::{
-		log::{AccumulateLog, LogEntry},
+		log::{AccumulateLog, LogEntry, TransferError},
 		storage_key,
 		transfers::IncomingTransferChain,
 		Tag,
@@ -127,12 +127,12 @@ fn consume_works() {
 
 #[test]
 fn transfer_out_works() {
-	// D-6: the destination's min_memo_gas is looked up at replay time.
+	// §5.1: a deferred transfer forwards the caller's own gas limit.
 	let storage = fresh_storage(|s| {
 		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
 		seed_service(s, 42, 500);
 	});
-	let msg = UpwardMessage::TransferOut { dest: 42, amount: 12345.into(), memo: [3; 128] };
+	let msg = transfer_out_msg(42, 12345, 7, Some(([3; 128], 500)));
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
 
 	let (_, storage, mutations) = run_block(storage, vec![work_item(&digest)], NOW);
@@ -146,28 +146,85 @@ fn transfer_out_works() {
 }
 
 #[test]
-fn transfer_out_unknown_dest_errors() {
-	let msg = UpwardMessage::TransferOut { dest: 999, amount: 12345.into(), memo: [3; 128] };
-	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
-
-	let (_, storage, mutations) = run_block(ah_storage(), vec![work_item(&digest)], NOW);
-
-	assert!(mutations.transfers.is_empty());
-	assert!(matches!(ah_accumulate_logs(&storage)[..], [AccumulateLog::TransferFailed { .. }]));
-}
-
-#[test]
-fn transfer_out_gas_over_cap_errors() {
-	// D-6: a destination demanding more than MAX_TRANSFER_GAS is never paid for.
+fn transfer_out_below_dest_minimum_errors() {
+	// §5.1: the caller now supplies the gas, so under-funding is its own error.
 	let storage = fresh_storage(|s| {
 		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
-		seed_service(s, 42, MAX_TRANSFER_GAS + 1);
+		seed_service(s, 42, 500);
 	});
-	let msg = UpwardMessage::TransferOut { dest: 42, amount: 12345.into(), memo: [3; 128] };
+	let msg = transfer_out_msg(42, 12345, 8, Some(([3; 128], 499)));
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
 
 	let (_, storage, mutations) = run_block(storage, vec![work_item(&digest)], NOW);
 
 	assert!(mutations.transfers.is_empty());
-	assert!(matches!(ah_accumulate_logs(&storage)[..], [AccumulateLog::TransferFailed { .. }]));
+	assert_eq!(
+		ah_accumulate_logs(&storage),
+		vec![AccumulateLog::TransferFailed {
+			id: 8.into(),
+			error: TransferError::GasBelowDestinationMinimum
+		}]
+	);
+}
+
+#[test]
+fn transfer_out_plain_move_errors() {
+	// §5.1: a plain move needs supervision of `dest`, which this service lacks.
+	let storage = fresh_storage(|s| {
+		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
+		seed_service(s, 42, 500);
+	});
+	let msg = transfer_out_msg(42, 12345, 9, None);
+	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
+
+	let (_, storage, mutations) = run_block(storage, vec![work_item(&digest)], NOW);
+
+	assert!(mutations.transfers.is_empty());
+	assert_eq!(
+		ah_accumulate_logs(&storage),
+		vec![AccumulateLog::TransferFailed {
+			id: 9.into(),
+			error: TransferError::DestinationNotSupervised
+		}]
+	);
+}
+
+#[test]
+fn transfer_out_unknown_dest_errors() {
+	let msg = transfer_out_msg(999, 12345, 3, Some(([3; 128], 500)));
+	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
+
+	let (_, storage, mutations) = run_block(ah_storage(), vec![work_item(&digest)], NOW);
+
+	assert!(mutations.transfers.is_empty());
+	assert_eq!(
+		ah_accumulate_logs(&storage),
+		vec![AccumulateLog::TransferFailed {
+			id: 3.into(),
+			error: TransferError::UnknownDestination
+		}]
+	);
+}
+
+#[test]
+fn transfer_out_gas_over_cap_errors() {
+	// D-6/F-13: forwarded gas above MAX_TRANSFER_GAS is never committed, since
+	// `Ω_T` charges it to this service's own accumulate meter.
+	let storage = fresh_storage(|s| {
+		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
+		seed_service(s, 42, MAX_TRANSFER_GAS + 1);
+	});
+	let msg = transfer_out_msg(42, 12345, 4, Some(([3; 128], MAX_TRANSFER_GAS + 1)));
+	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
+
+	let (_, storage, mutations) = run_block(storage, vec![work_item(&digest)], NOW);
+
+	assert!(mutations.transfers.is_empty());
+	assert_eq!(
+		ah_accumulate_logs(&storage),
+		vec![AccumulateLog::TransferFailed {
+			id: 4.into(),
+			error: TransferError::InsufficientServiceBalance
+		}]
+	);
 }

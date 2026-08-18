@@ -98,15 +98,25 @@ pub fn request_code_upgrade(
 	Parachains::set(para_id, &pi);
 }
 
+/// Whether `pi`'s pending upgrade has passed its deadline and so must be treated
+/// as already gone when this candidate's validation code is checked (§5.1 step 4).
+///
+/// Kept separate from [`reap_timed_out_upgrade`] so step 5 can consult the
+/// post-reap view without writing anything: a candidate rejected at step 5 must
+/// leave `pending_upgrade` untouched.
+pub fn pending_upgrade_expired(pi: &ParaInfo, now: Slot) -> bool {
+	pi.pending_upgrade.as_ref().is_some_and(|(_, deadline)| *deadline <= now)
+}
+
 /// Phase 5(b): lazy reap on the next per-work-package accumulate (§5.1 step 4).
 /// If the deadline has passed, release the pending code (unless pinned) and
 /// clear `pending_upgrade`.
 pub fn reap_timed_out_upgrade(para_id: ParaId, now: Slot, logs: &mut Vec<AccumulateLog>) {
 	let pi = Parachains::get(para_id).expect("checked live; qed");
-	let Some((pending, deadline)) = &pi.pending_upgrade else { return };
-	if *deadline > now {
+	if !pending_upgrade_expired(&pi, now) {
 		return;
 	}
+	let Some((pending, _)) = &pi.pending_upgrade else { return };
 	let pending = pending.clone();
 	release_code_if_not_pinned(para_id, &pending, now, logs);
 	let mut pi = Parachains::get(para_id).expect("still live; qed");

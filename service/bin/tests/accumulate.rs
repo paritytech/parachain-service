@@ -75,23 +75,15 @@ fn parent_head_mismatch_works() {
 
 #[test]
 fn wrong_code_errors() {
-	// §5.1 step 5: the authoritative validation-code check logs InvalidCodeHash.
+	// §5.1 step 5: the authoritative validation-code check rejects the candidate,
+	// and a rejected candidate changes nothing at all — not even a log entry.
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let digest = ok_digest(PARA, b"some-other-code", b"genesis", b"head-1", vec![], 0);
 
 	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
 
 	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"genesis");
-	let log = para_log(&storage, PARA);
-	assert_eq!(log.len(), 1);
-	let (slot, LogEntry::Accumulate { entries }) = &log[0] else {
-		panic!("expected an accumulate entry, got {log:?}")
-	};
-	assert_eq!(*slot, NOW);
-	assert_eq!(
-		entries,
-		&vec![AccumulateLog::InvalidCodeHash { hash: code_ref(b"some-other-code").hash }]
-	);
+	assert!(para_log(&storage, PARA).is_empty());
 }
 
 #[test]

@@ -28,12 +28,31 @@ use parachain_service_bin::{
 };
 use parachain_service_interface::{
 	types::{Balance, ParaId, ServiceId, Timeslot},
-	upward_message::UpwardMessage,
+	upward_message::{TransferOutArgs, UpwardMessage},
 };
 
 pub const SVC: ServiceId = MOCK_SERVICE_ID;
 /// A generously funded default `total_state_balance`.
 pub const RICH: Balance = 10_000_000;
+
+/// A `TransferOut` from this service's own regular balance into `dest`'s regular
+/// balance — the only shape the vendored GP 0.7.2 host can execute (§5.1).
+pub fn transfer_out_msg(
+	dest: ServiceId,
+	amount: Balance,
+	id: u64,
+	deferred: Option<([u8; 128], u64)>,
+) -> UpwardMessage {
+	UpwardMessage::TransferOut(TransferOutArgs {
+		source: None,
+		dest,
+		amount: amount.into(),
+		id: id.into(),
+		source_supervisor_balance: false,
+		dest_supervisor_balance: false,
+		deferred,
+	})
+}
 
 // --- Runner -----------------------------------------------------------------
 

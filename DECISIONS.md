@@ -64,6 +64,74 @@ all admitted transfers land in a single bucket write. Measured cost drops to 1.6
 §5.1 should note that recording must be batched per block (or the §3.1 bucket layout must
 be chunked) — a conforming literal implementation cannot fit its own gas budget.
 
+## D-10: `transfer_out` takes its arguments as one SCALE blob
+
+Relates to SPEC_GAPS #6 (the child-PVF ABI is not pinned by the design).
+
+§5.1's reworked `transfer_out` has seven arguments (`source`, `dest`, `amount`, `id`, two
+balance selectors, `deferred`), two of them optional. The child ABI passes arguments in
+`A0..A5`, so they do not fit. The PoC passes a single SCALE-encoded
+[`TransferOutArgs`](service-interface/src/upward_message.rs) via the usual `(ptr, len)`
+pair, and reuses that same struct as the `UpwardMessage::TransferOut` payload. Because the
+field order is the design's, the host-call encoding and the wire encoding are byte-identical,
+so there is only one definition to keep in sync.
+
+Alternative considered: pack the selectors and option tags into a flags register. That keeps
+the register convention uniform but needs a bespoke bit layout, and still leaves no register
+for the deferred gas limit.
+
+**Spec feedback**: §4.3 should state how host calls whose arity exceeds the register window
+pass arguments; this is the first such call, and more will follow as §8 messaging lands.
+
+## D-11: only the deferred transfer mode is executable on the vendored host
+
+Relates to SPEC_GAPS #4 and #2.
+
+§5.1's `transfer_out` presupposes a Gray Paper >= 0.8 `transfer`: a `source` selector, a
+regular/supervisor balance pair on each side, and a plain-move mode that runs no destination
+code. The vendored PolkaJAM host is GP 0.7.2 — its `transfer(dest, amount, gas_limit, memo)`
+always defers, always debits this service, and knows one balance per service; "supervisor"
+does not appear anywhere in `jam-types`.
+
+The PoC therefore accepts the full spec shape on the wire but executes only what the host
+can express, refusing the rest with the error the design itself assigns:
+
+| Requested shape | Outcome |
+|---|---|
+| `source = Some(_)` | `UnknownSource` / `SourceNotSupervised` |
+| either supervisor selector set | `DestinationNotSupervised` |
+| `deferred = None` (plain move) | `DestinationNotSupervised` |
+| `deferred = Some((memo, gas))` | forwarded to JAM `transfer` |
+
+This is not merely a degradation: the Quint model reaches the same verdicts, because a plain
+move requires supervision of `dest` that the Parachain Service never holds, and a foreign
+`source` always fails. The gap is confined to the self-move cases the model leaves abstract.
+
+**Spec feedback**: §5.1 should say which `transfer_out` shapes are expected to be reachable
+in practice. If only the deferred mode ever is, the selectors and `source` are dead wire
+fields for the foreseeable future and should be documented as forward-compatibility only.
+
+## D-12: the §5.5 commitment tree pairs adjacent leaves and promotes odd elements
+
+New finding. §5.5 fixes the leaf contents, the leaf ordering, and the element hash, but
+says nothing about **how leaves are paired** or **what happens to a trailing odd element at
+a level**. Both choices change the root, so no two implementations interoperate until one is
+written down — the Quint README flags this as an open question against the design.
+
+The PoC pins the Quint model's reading: hash adjacent pairs left to right, and promote a
+trailing odd element to the next level **unchanged** rather than duplicating it. This matches
+the `binary-merkle-tree` crate, which is what Polkadot already uses for its own Merkle roots
+and is already a workspace dependency, so a verifier can reuse the familiar construction.
+
+The PoC also has to pin one thing §5.5 leaves implicit: the leaf's `head_hash` is
+`blake2b-256` of the head data, per D-5, while the **tree element** hashes are `keccak_256`
+of the SCALE encoding as §5.5 requires. So the two hash functions genuinely coexist in one
+structure; §5.5's "every element's hash is `keccak_256`" refers only to the tree elements.
+
+**Spec feedback**: §5.5 must state the pairing rule and the odd-element rule, and should say
+explicitly which hash applies to `head_hash` versus to the tree elements. Until then any
+independent implementation is likely to compute a different root.
+
 ---
 
 # Implementation Findings
@@ -148,3 +216,21 @@ forwarded-gas budget per digest (a fraction of `Ga`), not only a per-transfer ca
 §4.3 caps must be co-derived so `count x per-transfer ≤ margin x Ga`.
 Only Asset Hub digests may carry `TransferOut`, and 345 is the most ~134-B transfers that
 fit the `Wr = 48 KiB` report bound.
+
+NOTE: §5.1's reworked `TransferOut` changes the arithmetic above. A deferred transfer now
+encodes to ~146 B (the memo still dominates) and a plain move to ~15 B, so the per-report
+count is no longer ~345 for every shape. The forwarded-gas conclusion is unchanged — only
+deferred transfers carry gas — but the bound must be re-derived per shape.
+
+## F-14: no error code exists for a sender-side transfer-gas cap
+
+§5.1 moved the transfer gas limit from a replay-time lookup of the destination's
+`min_memo_gas` to a caller-supplied value, and defines six `TransferError` variants. None of
+them covers the PoC's own protective refusal when the requested gas exceeds
+`MAX_TRANSFER_GAS` (D-6, F-13) — the cap that stops one digest's transfers from burning the
+whole accumulate budget. The PoC reports `InsufficientServiceBalance`, which is the closest
+available variant but describes balance rather than gas.
+
+Either `TransferError` needs a variant for a refused gas request, or §5.1 must state that the
+service may not impose such a cap and instead relies on a per-digest cumulative budget
+(F-13). The two findings should be resolved together.

@@ -153,7 +153,7 @@ fn transfer_out_flood_works() {
 		seed_service(s, 42, 500);
 	});
 	let msgs = (0..FLOOD)
-		.map(|_| UpwardMessage::TransferOut { dest: 42, amount: 1.into(), memo: [7; 128] })
+		.map(|i| transfer_out_msg(42, 1, i as u64, Some(([7; 128], 500))))
 		.collect();
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", msgs, 0);
 	let digest_len = digest.encode().len();
@@ -175,17 +175,18 @@ const WR_TRANSFER_FLOOD: u32 = 345;
 
 #[test]
 fn transfer_out_hostile_dest_flood_works() {
-	// The forwarded-gas worst case (F-13): a `Wr`-sized digest of transfers to a
-	// destination demanding `min_memo_gas = MAX_TRANSFER_GAS`. GP `Ω_T` charges
-	// each forwarded limit to the sender's meter, so this digest costs
-	// ~345 x 100k on top of the replay machinery — several times Ga, although
-	// every individual transfer respects the D-9 cap.
+	// The forwarded-gas worst case (F-13): a `Wr`-sized digest of transfers each
+	// forwarding the D-6 per-transfer maximum. GP `Ω_T` charges every forwarded
+	// limit to the sender's meter, so this digest costs ~345 x 100k on top of the
+	// replay machinery — several times Ga, although each transfer is individually
+	// capped. Since §5.1 moved the gas choice to the caller, the worst case is now
+	// Asset Hub's to cause rather than a hostile destination's.
 	let storage = fresh_storage(|s| {
 		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
 		seed_service(s, 42, MAX_TRANSFER_GAS);
 	});
 	let msgs = (0..WR_TRANSFER_FLOOD)
-		.map(|_| UpwardMessage::TransferOut { dest: 42, amount: 1.into(), memo: [7; 128] })
+		.map(|i| transfer_out_msg(42, 1, i as u64, Some(([7; 128], MAX_TRANSFER_GAS))))
 		.collect();
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", msgs, 0);
 	let digest_len = digest.encode().len();

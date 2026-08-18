@@ -2,9 +2,8 @@
 
 use crate::{
 	constants::{MAX_INCOMING_TRANSFERS, MAX_TRANSFER_GAS},
-	hashing::blake2_256,
 	state::{
-		log::AccumulateLog,
+		log::{AccumulateLog, TransferError},
 		transfers::{
 			IncomingTransferChain, IncomingTransfers, QueuedTransfer, TransferBuckets,
 			TransferChain,
@@ -14,8 +13,8 @@ use crate::{
 };
 use alloc::vec::Vec;
 use jam_pvm_common::accumulate::{service_info, transfer};
-use jam_types::{Balance, Memo as JamMemo, ServiceId, Slot, TransferRecord};
-use parachain_service_interface::types::{Memo, Timeslot};
+use jam_types::{Memo as JamMemo, Slot, TransferRecord};
+use parachain_service_interface::{types::Timeslot, upward_message::TransferOutArgs};
 
 /// §5.1 incoming-transfer processing. JAM credited the balances before this
 /// code runs, so handling is best effort: within the pre-provisioned portion a
@@ -108,27 +107,56 @@ pub fn consume_up_to(slot: Timeslot) {
 	}
 }
 
-/// Replay a `TransferOut` (Asset Hub only) via JAM `transfer` (D-6): the
-/// destination's `min_memo_gas` is looked up at replay time and the call is
-/// skipped (logged as `TransferFailed`) when it exceeds [`MAX_TRANSFER_GAS`] —
-/// the sender's accumulate pays the transfer gas, so an uncapped value would
-/// let a hostile destination burn this whole invocation's budget.
-pub fn transfer_out(dest: ServiceId, amount: Balance, memo: &Memo, logs: &mut Vec<AccumulateLog>) {
-	let failed = AccumulateLog::TransferFailed { memo_hash: blake2_256(memo) };
-	let Some(min_memo_gas) = dest_min_memo_gas(dest) else {
-		logs.push(failed);
-		return;
-	};
-	if min_memo_gas > MAX_TRANSFER_GAS {
-		logs.push(failed);
-		return;
-	}
-	if transfer(dest, amount, min_memo_gas, &JamMemo(*memo)).is_err() {
-		// WHO / LOW / CASH — only the memo hash is preserved (§5.1 step 7).
-		logs.push(failed);
-	}
-}
+/// Replay a `TransferOut` (Asset Hub only) via JAM `transfer` (§5.1 step 7).
+///
+/// The vendored JAM host is Gray Paper 0.7.2, whose `transfer` always runs the
+/// destination's accumulate (the deferred mode), always debits this service, and
+/// knows a single balance per service. Three of the spec's shapes therefore have
+/// no host support and are refused with the error the design assigns them: a
+/// foreign `source`, a plain move (`deferred: None`, which §5.1 also rejects
+/// whenever this service does not supervise `dest` — it never does), and either
+/// supervisor-balance selector.
+/// FIXME: revisit once the host exposes a GP >= 0.8 `transfer` (SPEC_GAPS #4).
+pub fn transfer_out(args: TransferOutArgs, logs: &mut Vec<AccumulateLog>) {
+	let TransferOutArgs {
+		source,
+		dest,
+		amount,
+		id,
+		source_supervisor_balance,
+		dest_supervisor_balance,
+		deferred,
+	} = args;
+	let mut fail = |error| logs.push(AccumulateLog::TransferFailed { id, error });
 
-fn dest_min_memo_gas(dest: ServiceId) -> Option<u64> {
-	service_info(dest).map(|info| info.min_memo_gas)
+	// Only this service's own regular balance is exempt from supervision, so any
+	// named source fails; which error depends on whether it exists at all.
+	if let Some(source) = source {
+		return fail(if service_info(source).is_none() {
+			TransferError::UnknownSource
+		} else {
+			TransferError::SourceNotSupervised
+		});
+	}
+	if source_supervisor_balance || dest_supervisor_balance {
+		return fail(TransferError::DestinationNotSupervised);
+	}
+	let Some((memo, gas)) = deferred else {
+		return fail(TransferError::DestinationNotSupervised);
+	};
+	let Some(info) = service_info(dest) else {
+		return fail(TransferError::UnknownDestination);
+	};
+	if gas < info.min_memo_gas {
+		return fail(TransferError::GasBelowDestinationMinimum);
+	}
+	if gas > MAX_TRANSFER_GAS {
+		// `Ω_T` charges the forwarded gas to this service's own accumulate meter,
+		// so an unbounded request burns the whole invocation (D-6, F-13).
+		// FIXME: the design defines no error for a sender-side gas cap (F-14).
+		return fail(TransferError::InsufficientServiceBalance);
+	}
+	if transfer(dest, amount.0, gas, &JamMemo(memo)).is_err() {
+		fail(TransferError::InsufficientServiceBalance);
+	}
 }

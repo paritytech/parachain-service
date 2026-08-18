@@ -6,6 +6,7 @@
 
 use crate::{
 	accumulate::{assigns, code_upgrades, management, transfers, validator_keys},
+	head_commitment::HeadTracker,
 	state::{log::AccumulateLog, para_info::Parachains},
 	state_balance,
 };
@@ -22,6 +23,7 @@ pub fn apply(
 	origin: ParaId,
 	message: UpwardMessage,
 	logs: &mut Vec<AccumulateLog>,
+	heads: &mut HeadTracker,
 ) {
 	match message {
 		UpwardMessage::RequestCodeUpgrade { hash, len } => {
@@ -89,9 +91,7 @@ pub fn apply(
 			}
 		},
 
-		UpwardMessage::TransferOut { dest, amount, memo } => {
-			transfers::transfer_out(dest, amount.0, &memo, logs)
-		},
+		UpwardMessage::TransferOut(args) => transfers::transfer_out(args, logs),
 
 		UpwardMessage::AssignCore { core, queue, new_assigner, jam_slot } => {
 			assigns::schedule(now, service_id, core, queue, new_assigner, jam_slot)
@@ -103,21 +103,21 @@ pub fn apply(
 
 		UpwardMessage::ConsumeTransfersUpTo(slot) => transfers::consume_up_to(slot),
 
-		UpwardMessage::UpgradeService { code_hash, len: _, min_item_gas, min_memo_gas } => {
+		UpwardMessage::UpgradeService { code_hash, len: _, min_acc_gas, min_memo_gas } => {
 			// §5.4: forward to JAM `upgrade` only when the new code's preimage is
 			// actually provided — a solicited-but-unprovided registry entry is
 			// not enough (SPEC_GAPS #5/#16).
 			// FIXME: consensus-critical — JAM `upgrade` does not validate that
 			// the hash decodes to a well-formed service blob (SPEC_GAPS #5).
 			if is_available(&code_hash) {
-				upgrade(&CodeHash(code_hash), min_item_gas, min_memo_gas);
+				upgrade(&CodeHash(code_hash), min_acc_gas, min_memo_gas);
 			} else {
 				logs.push(AccumulateLog::ServiceUpgradePreimageMissing { code_hash });
 			}
 		},
 
 		UpwardMessage::ParachainSetHead { para_id, new_head } => {
-			management::set_head(para_id, new_head)
+			management::set_head(para_id, new_head, heads)
 		},
 
 		UpwardMessage::ParachainSetValidationCode {
@@ -135,7 +135,7 @@ pub fn apply(
 		UpwardMessage::ParachainCleanUp(para_id) => management::clean_up(para_id, now, logs),
 
 		UpwardMessage::ParachainSetStateBalance { para_id, new_total } => {
-			management::set_state_balance(para_id, new_total.0, logs)
+			management::set_state_balance(para_id, new_total.0, logs, heads)
 		},
 	}
 }

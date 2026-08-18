@@ -137,7 +137,7 @@ fn service_upgrade_missing_preimage_errors() {
 	let msg = UpwardMessage::UpgradeService {
 		code_hash: [0xEE; 32],
 		len: 1000.into(),
-		min_item_gas: 100,
+		min_acc_gas: 100,
 		min_memo_gas: 100,
 	};
 	let digest = ok_digest(ASSET_HUB_PARA_ID, b"ah-code", b"ah-genesis", b"ah-1", vec![msg], 0);
@@ -162,7 +162,7 @@ fn service_upgrade_works() {
 	let msg = UpwardMessage::UpgradeService {
 		code_hash,
 		len: (new_service_code.len() as u32).into(),
-		min_item_gas: 100,
+		min_acc_gas: 100,
 		min_memo_gas: 100,
 	};
 	let digest = ok_digest(ASSET_HUB_PARA_ID, b"ah-code", b"ah-genesis", b"ah-1", vec![msg], 0);

@@ -25,6 +25,30 @@ pub const SET_VALIDATOR_KEYS_MAX_KEYS: usize = 30;
 /// by Accumulate.
 pub type UpwardMessages = BoundedVec<UpwardMessage, ConstU32<MAX_UPWARD_MESSAGES_PER_DIGEST>>;
 
+/// Payload of `transfer_out` / `UpwardMessage::TransferOut` (spec §5.1).
+///
+/// `source = None` means this service, matching JAM's self sentinel. The two
+/// selectors choose the balance on each side — which of `source`'s is debited and
+/// which of `dest`'s is credited; `true` means the supervisor balance. `deferred`
+/// is `None` for a plain move and `Some((memo, gas))` for a deferred transfer;
+/// the two are inseparable because JAM ignores the gas limit when no memo is
+/// supplied. `id` is caller-chosen and echoed back in
+/// `AccumulateLog::TransferFailed` so the parachain can match up the failure.
+///
+/// Doubles as the `transfer_out` host-call argument encoding: seven fields exceed
+/// the six-register window, so the guest passes this SCALE-encoded (D-10). Field
+/// order is the design doc's, so the two encodings are identical.
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
+pub struct TransferOutArgs {
+	pub source: Option<ServiceId>,
+	pub dest: ServiceId,
+	pub amount: Compact<Balance>,
+	pub id: Compact<u64>,
+	pub source_supervisor_balance: bool,
+	pub dest_supervisor_balance: bool,
+	pub deferred: Option<(Memo, u64)>,
+}
+
 /// Upward messages emitted via host functions during Refine (spec §3.3).
 ///
 /// Variant order (SCALE discriminants) follows the design doc's §3.3 listing.
@@ -44,8 +68,8 @@ pub enum UpwardMessage {
 	/// From `kv_remove`: remove `key_value_storage[(para_id, key)]` (§6.1). Same
 	/// `para_id` delegation rule as `Forget`.
 	RemoveKV { para_id: ParaId, key: Vec<u8> },
-	/// From `transfer_out`: transfer balance to another JAM service (Asset Hub only).
-	TransferOut { dest: ServiceId, amount: Compact<Balance>, memo: Memo },
+	/// From `transfer_out`: move balance between JAM services (Asset Hub only, §5.1).
+	TransferOut(TransferOutArgs),
 	/// From `assign_core`: schedule a core's `assign` — queue + assigner,
 	/// written atomically (Coretime only, §7.1).
 	///
@@ -66,7 +90,7 @@ pub enum UpwardMessage {
 	ConsumeTransfersUpTo(Timeslot),
 	/// From `parachain_service_upgrade`: replace the Parachain Service's own
 	/// service code (Asset Hub only, §5.4).
-	UpgradeService { code_hash: Hash, len: Compact<u32>, min_item_gas: u64, min_memo_gas: u64 },
+	UpgradeService { code_hash: Hash, len: Compact<u32>, min_acc_gas: u64, min_memo_gas: u64 },
 	/// From `parachain_set_head`: upsert a parachain's head data (Coretime only, §6).
 	ParachainSetHead { para_id: ParaId, new_head: HeadData },
 	/// From `parachain_set_validation_code`: upsert a parachain's validation

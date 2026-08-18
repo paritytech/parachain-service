@@ -2254,7 +2254,7 @@ dependencies = [
  "jam-codec",
  "jam-program-blob-common 0.1.28",
  "jobserver",
- "polkavm-linker",
+ "polkavm-linker 0.30.0",
  "serde",
  "serde_json",
  "toml",
@@ -2270,7 +2270,7 @@ dependencies = [
  "jam-codec",
  "jam-program-blob-common 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "jobserver",
- "polkavm-linker",
+ "polkavm-linker 0.30.0",
  "serde",
  "serde_json",
  "toml",
@@ -2889,6 +2889,7 @@ dependencies = [
  "parity-scale-codec",
  "polkavm",
  "polkavm-derive 0.36.0",
+ "tiny-keccak",
 ]
 
 [[package]]
@@ -3232,6 +3233,22 @@ dependencies = [
  "log",
  "object 0.36.7",
  "polkavm-common 0.30.0",
+ "regalloc2",
+ "rustc-demangle",
+]
+
+[[package]]
+name = "polkavm-linker"
+version = "0.36.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6ebd6af9285b272728cbb8663aacc1e56778f503150028f4109e361cc15162d"
+dependencies = [
+ "dirs",
+ "gimli 0.31.1",
+ "hashbrown 0.14.5",
+ "log",
+ "object 0.36.7",
+ "polkavm-common 0.36.0",
  "regalloc2",
  "rustc-demangle",
 ]
@@ -4490,7 +4507,7 @@ dependencies = [
  "filetime",
  "jobserver",
  "parity-wasm",
- "polkavm-linker",
+ "polkavm-linker 0.36.0",
  "shlex 1.3.0",
  "sp-maybe-compressed-blob",
  "strum 0.26.3",

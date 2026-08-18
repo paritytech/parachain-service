@@ -17,13 +17,16 @@
 
 use crate::work_digest::{HeadData, RefineLog, ValidationCodeHash, MAX_REPORT_ERROR_PAYLOAD};
 use alloc::vec::Vec;
+use codec::DecodeAll;
 use jam_codec::Encode as JamEncode;
 use jam_pvm_common::refine;
 use jam_types::Hash;
 use parachain_service_interface::{
 	host_call::HostCall,
-	types::{Memo, ParaId, ServiceId, Timeslot},
-	upward_message::{UpwardMessage, UpwardMessages, SET_VALIDATOR_KEYS_MAX_KEYS},
+	types::{ParaId, ServiceId, Timeslot},
+	upward_message::{
+		TransferOutArgs, UpwardMessage, UpwardMessages, SET_VALIDATOR_KEYS_MAX_KEYS,
+	},
 };
 use polkavm::Reg;
 
@@ -193,12 +196,12 @@ impl ExecutorState {
 				self.push(UpwardMessage::RemoveKV { para_id, key })?;
 			},
 			HostCall::TransferOut => {
-				let dest = regs[A0] as ServiceId;
-				let amount = regs[A1];
-				let memo: Memo = peek_bytes(handle, regs[A2], 128)?
-					.try_into()
-					.expect("peeked exactly 128 bytes; qed");
-				self.push(UpwardMessage::TransferOut { dest, amount: amount.into(), memo })?;
+				// Seven fields exceed the six-register window, so the guest hands
+				// over a SCALE-encoded `TransferOutArgs` blob instead (D-10).
+				let encoded = peek_bytes(handle, regs[A0], regs[A1])?;
+				let args = TransferOutArgs::decode_all(&mut &encoded[..])
+					.map_err(|_| RefineLog::MalformedPayload)?;
+				self.push(UpwardMessage::TransferOut(args))?;
 			},
 			HostCall::AssignCore => {
 				let core = regs[A0] as u16;
@@ -241,7 +244,7 @@ impl ExecutorState {
 				self.push(UpwardMessage::UpgradeService {
 					code_hash,
 					len: (regs[A1] as u32).into(),
-					min_item_gas: regs[A2],
+					min_acc_gas: regs[A2],
 					min_memo_gas: regs[A3],
 				})?;
 			},

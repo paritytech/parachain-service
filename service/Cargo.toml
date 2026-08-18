@@ -26,6 +26,7 @@ parachain-authorizer = { workspace = true }
 bounded-collections = { workspace = true }
 polkavm = { workspace = true }
 blake2b_simd = { workspace = true }
+tiny-keccak = { workspace = true }
 
 [features]
 test-utils = [
