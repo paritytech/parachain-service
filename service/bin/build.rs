@@ -9,11 +9,11 @@
 //! Set `SKIP_PVM_BUILDS=1` to emit an empty dummy blob instead (fast `cargo check`).
 
 fn main() {
-	jam_pvm_builder::build_service(parachain_service::MANIFEST_DIR.as_ref());
+	pvm_builder::build_service(parachain_service::MANIFEST_DIR.as_ref());
 
 	// The mock transfer-destination blob is only embedded by `test-utils`
 	// consumers (gas benchmarks); plain builds skip it.
 	if std::env::var_os("CARGO_FEATURE_TEST_UTILS").is_some() {
-		jam_pvm_builder::build_service(mock_dest_service::MANIFEST_DIR.as_ref());
+		pvm_builder::build_service(mock_dest_service::MANIFEST_DIR.as_ref());
 	}
 }

@@ -3,6 +3,9 @@
 mod common;
 
 use common::*;
+use executor::pj;
+use jam_std_common::{hash_raw, Privileges};
+use jam_types::{AccumulateItem, CodeHash, FixedVec};
 use parachain_service::{
 	constants::MAX_STAGED_VALIDATOR_KEYS,
 	state::{
@@ -12,6 +15,7 @@ use parachain_service::{
 		Tag,
 	},
 };
+use parachain_service_bin::{mock::accumulate_context_with_privileges, BLOB as SERVICE};
 use parachain_service_interface::{
 	types::{ValidatorKey, ASSET_HUB_PARA_ID},
 	upward_message::UpwardMessage,
@@ -40,6 +44,36 @@ fn ah_accumulate_logs(storage: &jam_node::vm::Storage) -> Vec<AccumulateLog> {
 			LogEntry::Refine { .. } => panic!("unexpected refine entry"),
 		})
 		.collect()
+}
+
+fn privileges_with_designate(designate: u32) -> Privileges {
+	Privileges {
+		bless: SVC,
+		assign: FixedVec::new(SVC),
+		designate,
+		register: SVC,
+		always_acc: Default::default(),
+	}
+}
+
+/// run_block with explicit JAM Privileges (Todo 6 fixture).
+fn run_block_with_privileges(
+	storage: jam_node::vm::Storage,
+	items: Vec<AccumulateItem>,
+	slot: u32,
+	privileges: Privileges,
+) -> (
+	executor::pj::AccumulateOutcome,
+	jam_node::vm::Storage,
+	jam_node::vm::StateMutations,
+) {
+	let engine = jam_node::vm::Engine::new(Some(jam_node::PvmBackend::Interpreter))
+		.expect("interpreter engine should initialize");
+	let code_hash = CodeHash(hash_raw(SERVICE));
+	let mut context = accumulate_context_with_privileges(storage, items, slot, privileges);
+	let outcome = pj::accumulate(&engine, code_hash, &mut context)
+		.expect("accumulate should run to completion (not trap)");
+	(outcome, context.storage, context.mutations)
 }
 
 #[test]
@@ -104,4 +138,54 @@ fn staging_overflow_errors() {
 		ah_accumulate_logs(&storage)[..],
 		[AccumulateLog::StagedValidatorKeysOverflow]
 	));
+}
+
+#[test]
+fn unprivileged_designate_errors() {
+	// A full-size finalize reaches the JAM `designate` call, but the calling
+	// service is not the delegator: the set is rejected and logged.
+	// (Staged 1000 + final 23 = 1023, the protocol's exact validator count.)
+	let storage = fresh_storage(|s| {
+		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
+		let full: StagedKeys = keys(1000, 1).try_into().unwrap();
+		set_state(s, &storage_key(Tag::StagedValidatorKeys, &()), &full);
+	});
+	let msg = UpwardMessage::SetValidatorKeys { keys: keys(23, 2), is_last: true };
+	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
+
+	let (_, storage, mutations) = run_block_with_privileges(
+		storage,
+		vec![work_item(&digest)],
+		NOW,
+		privileges_with_designate(99),
+	);
+
+	assert!(mutations.keys.is_none(), "foreign designate must not fire");
+	assert!(staged(&storage).is_empty(), "staging buffer cleared either way");
+	assert!(matches!(ah_accumulate_logs(&storage)[..], [AccumulateLog::DesignateRejected { .. }]));
+}
+
+#[test]
+fn designate_with_correct_privilege_succeeds() {
+	// Control for `unprivileged_designate_errors`: the identical inputs with
+	// the correct `designate` privilege reach JAM `designate` and succeed —
+	// proving the negative test discriminates on privilege, not input shape.
+	let storage = fresh_storage(|s| {
+		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
+		let full: StagedKeys = keys(1000, 1).try_into().unwrap();
+		set_state(s, &storage_key(Tag::StagedValidatorKeys, &()), &full);
+	});
+	let msg = UpwardMessage::SetValidatorKeys { keys: keys(23, 2), is_last: true };
+	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
+
+	let (_, storage, mutations) = run_block_with_privileges(
+		storage,
+		vec![work_item(&digest)],
+		NOW,
+		privileges_with_designate(SVC),
+	);
+
+	assert!(mutations.keys.is_some(), "JAM designate fired");
+	assert!(staged(&storage).is_empty(), "staging buffer cleared");
+	assert!(ah_accumulate_logs(&storage).is_empty(), "no DesignateRejected entry");
 }

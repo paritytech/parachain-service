@@ -26,11 +26,11 @@ std = [
 	"codec/std",
 	"parachain-service-interface/std",
 	"sp-io/std",
-	"substrate-wasm-builder",
+	"pvm-builder",
 ]
 
 [build-dependencies]
-substrate-wasm-builder = { workspace = true, optional = true }
+pvm-builder = { workspace = true, optional = true }
 
 [lints]
 workspace = true

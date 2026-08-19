@@ -234,3 +234,51 @@ available variant but describes balance rather than gas.
 Either `TransferError` needs a variant for a refused gas request, or §5.1 must state that the
 service may not impose such a cap and instead relies on a per-digest cumulative budget
 (F-13). The two findings should be resolved together.
+
+## F-15: `designate` and `assign` failures surface asymmetrically in logs
+
+Relates to SPEC_GAPS #10 (privilege hand-off and bootstrap state unspecified).
+
+When the Parachain Service calls `designate` with an unprivileged service ID, the JAM host call
+fails and the PoC logs `AccumulateLog::DesignateRejected` (service/src/accumulate/validator_keys.rs:38-45),
+making the failure observable on-chain.
+
+By contrast, when `assign` fails (e.g., due to an unprivileged assigner or a bad core), the PoC
+logs only a `jam_pvm_common::error!` diagnostic line (service/src/accumulate/assigns.rs:73-79)
+with no corresponding `AccumulateLog` entry. The failure is silent on-chain, leaving no trace
+in the parachain's own log.
+
+This asymmetry is a current regression: the two calls are semantically parallel (both are
+privilege-gated JAM operations), but only one surfaces its failure as an on-chain event. The
+PoC documents this gap with a regression test (`unprivileged_assign_leaves_no_trace_works`)
+that pins the silent-failure behavior.
+
+**Spec feedback**: the design should specify a matching `AccumulateLog` entry for a failed
+`assign`, parallel to `DesignateRejected`. Until then, the asymmetry remains a known gap
+in the PoC's observability.
+
+## Retired decisions
+
+Entries are deleted once a GitHub issue exists for them (see line 9). The identifiers below were
+retired from this file but are still cited by code/docs; each maps to its GitHub issue if one exists,
+or "issue missing" if none could be found (searched the whole non-vendor tree and all vendored
+comments; no `github.com/.../issues/NNN` URL occurs near any of them). This table keeps every `[DF]-N`
+citation in the repo resolvable — to a live `## D-n:`/`## F-n:` heading above or to a row here.
+
+| Identifier | Retired as (context) | Issue |
+|---|---|---|
+| D-1 | child-PVF result ABI is host-call based; PoV input stays register-based (SPEC_GAPS #6) | issue missing |
+| D-3 | state-balance accounting uses the exact §6.1 formulas, with `Balance = u64` (SPEC_GAPS #4) | issue missing |
+| D-6 | `TransferOut` replay looks up the destination's `min_memo_gas`, capped by `MAX_TRANSFER_GAS` (SPEC_GAPS #2, F-13) | issue missing |
+| D-7 | `assign_core` queues shorter than 80 are cycle-repeated (SPEC_GAPS #9) | issue missing |
+| D-9 | transfer-gas cap — orphan: never a DECISIONS.md heading in this repo's history; folded into D-6 (`service/src/constants.rs:43` cites "D-6/D-9") | issue missing |
+| F-4 | the queued-transfer count needs a counter in state (SPEC_GAPS #2) | issue missing |
+| F-5 | §6.1 sizing tables need re-deriving for the real wire types (SPEC_GAPS #4) | issue missing |
+| F-6 | `UpgradeService` verifies actual preimage availability, not registry membership (SPEC_GAPS #5/#16) | issue missing |
+| F-2 | §4.3's `import_segments() -> Vec<SegmentMeta>` has no host-call backing (retired; cited nowhere today) | issue missing |
+| F-3 | no error codes for oversized `set_head` / oversized `assign_core` queues (retired; cited nowhere today) | issue missing |
+| F-7 | no log events for failed JAM `assign` / `designate` host calls (retired; cited nowhere today) | issue missing |
+
+Notes: F-2, F-3, and F-7 were retired in the same pass and are cited nowhere in the tree (included as
+rows so every `[DF]-N` in the repo still resolves). The nearest upstream artifact is the design PR
+[#11883](https://github.com/paritytech/polkadot-sdk/pull/11883), which is not a per-entry issue.

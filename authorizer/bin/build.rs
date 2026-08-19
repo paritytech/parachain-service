@@ -9,5 +9,5 @@
 //! Set `SKIP_PVM_BUILDS=1` to emit an empty dummy blob instead (fast `cargo check`).
 
 fn main() {
-	jam_pvm_builder::build_authorizer(parachain_authorizer::MANIFEST_DIR.as_ref());
+	pvm_builder::build_authorizer(parachain_authorizer::MANIFEST_DIR.as_ref());
 }

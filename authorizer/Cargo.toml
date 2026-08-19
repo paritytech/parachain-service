@@ -20,7 +20,7 @@ parachain-service-interface = { workspace = true }
 jam-pvm-common = { workspace = true, features = ["authorizer", "logging"] }
 polkavm-derive = { workspace = true }
 codec = { workspace = true }
-binary-merkle-tree = { workspace = true }
+ed25519-dalek = { workspace = true, features = ["alloc"] }
 blake2b_simd = { workspace = true }
 primitive-types = { workspace = true }
 
@@ -30,7 +30,7 @@ parachain-authorizer = { path = ".", features = ["test-utils"] }
 
 [features]
 std = [
-	"binary-merkle-tree/std",
+	"ed25519-dalek/std",
 	"blake2b_simd/std",
 	"codec/std",
 	"jam-pvm-common/std",

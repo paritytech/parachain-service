@@ -57,19 +57,22 @@ fn report(name: &str, gas: u64, elapsed: std::time::Duration, digest_len: usize)
 /// the margin invariant against the new value.
 mod measured {
 	/// 1024-solicit digest — the heaviest reachable digest replay.
-	pub const SOLICIT_FLOOD: u64 = 7_869_800;
+	pub const SOLICIT_FLOOD: u64 = 7_767_371;
 	/// 1024 small KV writes.
-	pub const SET_KV_FLOOD: u64 = 6_159_006;
+	pub const SET_KV_FLOOD: u64 = 5_912_858;
 	/// 1024 outbound transfers to a friendly destination (digest exceeds `Wr`).
-	pub const TRANSFER_OUT_FLOOD: u64 = 6_133_096;
-	/// 345 outbound transfers to a destination demanding the full cap (F-13).
-	pub const HOSTILE_DEST_FLOOD: u64 = 36_399_946;
+	pub const TRANSFER_OUT_FLOOD: u64 = 3_286_907;
+	/// 331 outbound transfers to a destination demanding the full cap (F-13).
+	pub const HOSTILE_DEST_FLOOD: u64 = 34_018_632;
 	/// 1024 incoming transfers recorded in one bucket write (D-8).
-	pub const INCOMING_TRANSFER_FLOOD: u64 = 1_631_549;
+	pub const INCOMING_TRANSFER_FLOOD: u64 = 1_588_351;
 	/// Due `assign` flush for all 341 cores in one block (F-12).
-	pub const DUE_ASSIGN_FLOOD: u64 = 9_943_233;
+	pub const DUE_ASSIGN_FLOOD: u64 = 9_083_722;
 	/// Marginal cost of a realistic destination's memo handler, per transfer.
-	pub const DEST_HANDLER_PER_TRANSFER: u64 = 1_665;
+	pub const DEST_HANDLER_PER_TRANSFER: u64 = 1_638;
+	/// Gas for a single real ed25519 is_authorized call (Merkle proof + ed25519
+	/// verify_strict) — must stay under Gi/5 per the 20% margin requirement.
+	pub const IS_AUTHORIZED_ED25519: u64 = 1_019_411;
 }
 
 /// The F-10 invariant, statically: every reachable worst case must leave real
@@ -147,7 +150,7 @@ fn set_kv_flood_works() {
 fn transfer_out_flood_works() {
 	// 1024 outbound transfers. NOTE: the encoded digest exceeds `Wr`, so this
 	// flood cannot occur in a real work-report — the per-type reachable maximum
-	// is ~Wr / 142 B ≈ 345 messages. Measured anyway as the §4.3 cap's worst case.
+	// is ~Wr / 148 B ≈ 331 messages. Measured anyway as the §4.3 cap's worst case.
 	let storage = fresh_storage(|s| {
 		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
 		seed_service(s, 42, 500);
@@ -170,14 +173,16 @@ fn transfer_out_flood_works() {
 	assert_eq!(outcome.gas_used, measured::TRANSFER_OUT_FLOOD);
 }
 
-/// The largest transfer count whose digest still fits `Wr` (F-11).
-const WR_TRANSFER_FLOOD: u32 = 345;
+/// The largest transfer count whose digest still fits `Wr` (F-11). A deferred
+/// `TransferOut` encodes to ~148 B (memo alone is 128 B), so `Wr / 148 B`
+/// leaves 331 as the reachable maximum (verified against the encoded digest).
+const WR_TRANSFER_FLOOD: u32 = 331;
 
 #[test]
 fn transfer_out_hostile_dest_flood_works() {
 	// The forwarded-gas worst case (F-13): a `Wr`-sized digest of transfers each
 	// forwarding the D-6 per-transfer maximum. GP `Ω_T` charges every forwarded
-	// limit to the sender's meter, so this digest costs ~345 x 100k on top of the
+	// limit to the sender's meter, so this digest costs ~331 x 100k on top of the
 	// replay machinery — several times Ga, although each transfer is individually
 	// capped. Since §5.1 moved the gas choice to the caller, the worst case is now
 	// Asset Hub's to cause rather than a hostile destination's.
@@ -303,4 +308,35 @@ fn due_assign_flood_works() {
 		get_state(&storage, &storage_key(Tag::PendingAssigns, &(CORE_COUNT as CoreIndex - 1)));
 	assert!(gone.is_none());
 	assert_eq!(outcome.gas_used, measured::DUE_ASSIGN_FLOOD);
+}
+
+#[test]
+fn is_authorized_ed25519_gas_works() {
+	use executor::pj;
+	use parachain_authorizer_bin::BLOB as AUTHORIZER;
+	use parachain_service_bin::mock::{is_authorized_args, make_auth, work_items};
+	use parachain_service_interface::types::ParaId;
+
+	let items = work_items(1);
+	let (config, token, _) = make_auth(AUTHORIZER, vec![ParaId(0)], &items);
+	let (engine, package, storage) = is_authorized_args(AUTHORIZER, config, token, items);
+
+	let outcome = pj::is_authorized(&engine, &package, 0, &storage)
+		.expect("is_authorized must succeed with real ed25519 signature");
+
+	let gi = jam_types::max_is_authorized_gas();
+	eprintln!(
+		"is_authorized_ed25519: gas_used={} ({:.2}x Gi={gi}), elapsed={:?}",
+		outcome.gas_used,
+		outcome.gas_used as f64 / gi as f64,
+		outcome.elapsed,
+	);
+
+	assert!(
+		outcome.gas_used < gi / 5,
+		"is_authorized gas {} must be < Gi/5 = {}",
+		outcome.gas_used,
+		gi / 5,
+	);
+	assert_eq!(outcome.gas_used, measured::IS_AUTHORIZED_ED25519);
 }

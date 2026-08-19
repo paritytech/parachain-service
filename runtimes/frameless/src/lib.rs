@@ -290,6 +290,7 @@ extern "C" fn jam_validate_block(ptr: u32, len: u32) {
 mod host {
 	use super::MockAction;
 	use alloc::vec::Vec;
+	use codec::Encode;
 
 	#[polkavm_derive::polkavm_import]
 	extern "C" {

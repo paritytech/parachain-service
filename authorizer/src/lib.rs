@@ -14,6 +14,17 @@ extern crate alloc;
 
 use alloc::format;
 
+/// Bump the PVM guest stack for `curve25519-dalek`'s serial-64 `verify_strict`
+/// (its Straus double-scalar tables exceed polkavm's default 8 KiB stack).
+/// No-op on host builds (the `polkavm_derive` macro is only defined on riscv+e).
+macro_rules! min_stack_size {
+	($size:expr) => {
+		#[cfg(all(any(target_arch = "riscv32", target_arch = "riscv64"), target_feature = "e"))]
+		polkavm_derive::min_stack_size!($size);
+	};
+}
+min_stack_size!(32768); // 32 KiB guest stack.
+
 use jam_types::{AuthTrace, CoreIndex};
 pub use parachain_service_interface::types::ParaId;
 

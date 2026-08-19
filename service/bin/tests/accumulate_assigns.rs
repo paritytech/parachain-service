@@ -4,10 +4,15 @@
 mod common;
 
 use common::*;
+use executor::pj;
+use jam_std_common::{hash_raw, Privileges};
+use jam_types::{AccumulateItem, CodeHash, FixedVec};
 use parachain_service::state::{
 	assigns::{PendingAssign, PendingAssignCores},
+	log::{AccumulateLog, LogEntry},
 	storage_key, Tag,
 };
+use parachain_service_bin::{mock::accumulate_context_with_privileges, BLOB as SERVICE};
 use parachain_service_interface::{
 	types::{AuthorizerHash, CoreIndex, CORETIME_PARA_ID},
 	upward_message::UpwardMessage,
@@ -33,6 +38,46 @@ fn pending(storage: &jam_node::vm::Storage) -> Option<PendingAssign> {
 
 fn dirty_cores(storage: &jam_node::vm::Storage) -> PendingAssignCores {
 	get_state(storage, &storage_key(Tag::PendingAssignCores, &())).unwrap_or_default()
+}
+
+fn ct_accumulate_logs(storage: &jam_node::vm::Storage) -> Vec<AccumulateLog> {
+	para_log(storage, CORETIME_PARA_ID)
+		.into_iter()
+		.flat_map(|(_, e)| match e {
+			LogEntry::Accumulate { entries } => entries,
+			LogEntry::Refine { .. } => panic!("unexpected refine entry"),
+		})
+		.collect()
+}
+
+fn privileges_with_assign(assign: u32) -> Privileges {
+	Privileges {
+		bless: SVC,
+		assign: FixedVec::new(assign),
+		designate: SVC,
+		register: SVC,
+		always_acc: Default::default(),
+	}
+}
+
+/// run_block with explicit JAM Privileges (Todo 6 fixture).
+fn run_block_with_privileges(
+	storage: jam_node::vm::Storage,
+	items: Vec<AccumulateItem>,
+	slot: u32,
+	privileges: Privileges,
+) -> (
+	executor::pj::AccumulateOutcome,
+	jam_node::vm::Storage,
+	jam_node::vm::StateMutations,
+) {
+	let engine = jam_node::vm::Engine::new(Some(jam_node::PvmBackend::Interpreter))
+		.expect("interpreter engine should initialize");
+	let code_hash = CodeHash(hash_raw(SERVICE));
+	let mut context = accumulate_context_with_privileges(storage, items, slot, privileges);
+	let outcome = pj::accumulate(&engine, code_hash, &mut context)
+		.expect("accumulate should run to completion (not trap)");
+	(outcome, context.storage, context.mutations)
 }
 
 #[test]
@@ -115,4 +160,47 @@ fn reschedule_overwrites_works() {
 
 	assert_eq!(pending(&storage), Some(PendingAssign { queue: vec![HASH_B], assigner: None }));
 	assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, NOW + 20)]);
+}
+
+#[test]
+fn unprivileged_assign_leaves_no_trace_works() {
+	// A due assign whose privilege belongs to a foreign service is silently
+	// dropped by JAM (ActionInvalid): no AccumulateLog entry, no pending-assign
+	// state. Pins the CURRENT silent-failure behavior at assigns.rs:73-79
+	// (F-15: the failed assign surfaces only as a jam_pvm_common::error!).
+	let msg = assign_msg(vec![HASH_A], NOW);
+	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
+
+	let (_, storage, mutations) = run_block_with_privileges(
+		ct_storage(),
+		vec![work_item(&digest)],
+		NOW,
+		privileges_with_assign(99),
+	);
+
+	assert!(ct_accumulate_logs(&storage).is_empty(), "no AccumulateLog appended for the parachain");
+	assert!(pending(&storage).is_none(), "no pending assign cached");
+	assert!(dirty_cores(&storage).is_empty(), "no dirty-core entry");
+	assert!(mutations.auths.is_empty(), "JAM assign must not fire");
+}
+
+#[test]
+fn assign_with_correct_privilege_succeeds() {
+	// Control for `unprivileged_assign_leaves_no_trace_works`: the identical
+	// inputs with the correct `assign` privilege reach JAM `assign` and fire —
+	// proving the negative test discriminates on privilege, not input shape.
+	let msg = assign_msg(vec![HASH_A], NOW);
+	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
+
+	let (_, storage, mutations) = run_block_with_privileges(
+		ct_storage(),
+		vec![work_item(&digest)],
+		NOW,
+		privileges_with_assign(SVC),
+	);
+
+	assert!(mutations.auths.contains_key(&CORE), "JAM assign fired");
+	assert!(pending(&storage).is_none());
+	assert!(dirty_cores(&storage).is_empty());
+	assert!(ct_accumulate_logs(&storage).is_empty());
 }
