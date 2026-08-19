@@ -66,16 +66,12 @@ pub fn parse_pvf(code: &[u8]) -> Result<ParsedPvf, PvfParseError> {
 	Ok(ParsedPvf { code, entry_pc: entry_pc as u64, ro_data, rw_data, memory })
 }
 
-/// Instantiate the parsed PVF as an inner PVM and run `jam_validate_block` over the
-/// opaque PoV. The PoV is copied in verbatim and its `(ptr, len)` passed in `A0`/`A1`;
-/// the PVF declares its results exclusively through the `set_parent_head_hash` and
-/// `set_head` host calls (DECISIONS.md D-1). `machine` spawns the VM code-only, so we
-/// lay out its memory first.
-pub fn run(
-	pvf: &ParsedPvf,
-	pov: &[u8],
-	para_id: ParaId,
-) -> Result<(Hash, HeadData, UpwardMessages), RefineLog> {
+/// Instantiate the parsed PVF as an inner PVM and invoke `jam_validate_block()` (spec §4.2).
+/// The entry point takes no arguments; the PVF reads its inputs through the
+/// `work_item_payload` host call and declares its results through `set_parent_head_hash`
+/// and `set_head` (DECISIONS.md D-1). `machine` spawns the VM code-only, so we lay out
+/// its memory first.
+pub fn run(pvf: &ParsedPvf, para_id: ParaId) -> Result<(Hash, HeadData, UpwardMessages), RefineLog> {
 	let handle =
 		refine::machine(&pvf.code[..], pvf.entry_pc).map_err(|_| RefineLog::InvalidCode)?;
 	let mem = &pvf.memory;
@@ -88,17 +84,9 @@ pub fn run(
 	poke_bytes(handle, mem.rw_data_address(), &pvf.rw_data)?;
 	alloc_pages(handle, mem.stack_address_low(), mem.stack_size())?;
 
-	// Drop the opaque PoV into a page-aligned slot in the unused heap area and hand its
-	// `(ptr, len)` to `validate_block(ptr, len)`.
-	let input_ptr = align_up(mem.heap_base(), PAGE_SIZE);
-	alloc_pages(handle, input_ptr, pov.len() as u32)?;
-	poke_bytes(handle, input_ptr, pov)?;
-
 	let mut regs = [0u64; 13];
 	regs[Reg::SP as usize] = mem.stack_address_high() as u64;
 	regs[Reg::RA as usize] = polkavm::RETURN_TO_HOST;
-	regs[Reg::A0 as usize] = input_ptr as u64;
-	regs[Reg::A1 as usize] = pov.len() as u64;
 
 	let mut exe = ExecutorState::new(para_id);
 
@@ -147,6 +135,4 @@ fn poke_bytes(handle: u64, addr: u32, data: &[u8]) -> Result<(), RefineLog> {
 	refine::poke(handle, data, addr as u64).map_err(|_| RefineLog::ValidationFailed)
 }
 
-fn align_up(addr: u32, align: u32) -> u32 {
-	(addr + (align - 1)) & !(align - 1)
-}
+

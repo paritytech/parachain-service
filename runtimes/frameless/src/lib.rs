@@ -251,14 +251,19 @@ pub fn validate(input: &[u8]) -> Vec<u8> {
 
 /// PVM entry point: validate one block (DECISIONS.md D-1).
 ///
-/// Input: [`ValidationParams`] via `(ptr, len)`. Results are declared
+/// Reads inputs via `work_item_payload(0)` (spec §4.2). Results are declared
 /// exclusively through the mandatory `set_parent_head_hash` + `set_head` host
 /// calls; nothing is returned through registers.
 #[cfg(target_arch = "riscv64")]
 #[polkavm_derive::polkavm_export]
-extern "C" fn jam_validate_block(ptr: u32, len: u32) {
-	let input = unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) };
-	let params = ValidationParams::decode(&mut &input[..]).expect("invalid validation params");
+extern "C" fn jam_validate_block() {
+	use parachain_service_interface::candidate::ParachainCandidate;
+	// index 0: service/src/refine.rs enforces exactly one work item (InvalidItemCount).
+	let raw = host::work_item_payload(0).expect("work item payload present; qed");
+	let candidate =
+		ParachainCandidate::decode(&mut &raw[..]).expect("ParachainCandidate decodes; qed");
+	let params =
+		ValidationParams::decode(&mut &candidate.pov[..]).expect("invalid validation params");
 
 	let parent_head = HeadData::decode(&mut &params.parent_head[..]).expect("invalid parent head");
 	let block_data = BlockData::decode(&mut &params.block_data[..]).expect("invalid block data");
@@ -299,6 +304,8 @@ mod host {
 		fn lookup_raw(hash_ptr: u32, out_ptr: u32, out_cap: u32) -> u64;
 		#[polkavm_import(index = 2)]
 		fn gas_raw() -> u64;
+		#[polkavm_import(index = 9)]
+		fn work_item_payload_raw(index: u32, out_ptr: u32, out_cap: u32) -> u64;
 		// --- Side effects ---
 		#[polkavm_import(index = 12)]
 		fn export_raw(ptr: u32, len: u32) -> u64;
@@ -373,6 +380,30 @@ mod host {
 	#[allow(dead_code)]
 	pub fn gas() -> u64 {
 		unsafe { gas_raw() }
+	}
+
+	/// Fetch work-item payload at `index`; `None` if absent.
+	/// Probes with zero capacity to get the byte length, then retries with a
+	/// large enough buffer (buffer protocol per `executor.rs` module docs).
+	pub fn work_item_payload(index: u32) -> Option<Vec<u8>> {
+		let len = unsafe { work_item_payload_raw(index, 0, 0) };
+		if len == u64::MAX {
+			return None;
+		}
+		let mut buf = alloc::vec![0u8; len as usize];
+		loop {
+			let actual =
+				unsafe { work_item_payload_raw(index, buf.as_ptr() as u32, buf.len() as u32) };
+			if actual == u64::MAX {
+				return None;
+			}
+			let actual = actual as usize;
+			if actual <= buf.len() {
+				buf.truncate(actual);
+				return Some(buf);
+			}
+			buf.resize(actual, 0);
+		}
 	}
 
 	#[allow(dead_code)]
