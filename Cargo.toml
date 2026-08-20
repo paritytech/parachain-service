@@ -9,7 +9,6 @@ members = [
     "service-interface",
     "testing/mock-dest-service",
     "tools/executor",
-    "tools/pvm-builder",
 ]
 exclude = [
     "vendor/polkadot-sdk-companion",
@@ -52,12 +51,13 @@ parachain-authorizer-bin = { path = "authorizer/bin" }
 parachain-service-interface = { path = "service-interface", default-features = false }
 
 codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }
-# The frameless PVF is built by `tools/pvm-builder` (polkavm-linker 0.30), NOT by the vendored
-# companion's `substrate-wasm-builder` (whose workspace pins polkavm-linker 0.36): a 0.36-linked
-# blob emits `unlikely`/wide instructions the vendored polkajam host (`polkavm 0.30`) can't decode,
-# trapping the inner PVM. `sp-io` stays sourced from the vendored companion (single SDK source).
+# Sourced from the vendored companion (not a polkadot-sdk git rev) so `substrate-wasm-builder`
+# links the runtime PVF with the companion's `polkavm-linker`, pinned to 0.30 to match the JamV1
+# instruction encoding the vendored polkajam host (`polkavm 0.30`) decodes. A 0.36-linked blob is
+# misdecoded by the 0.30 VM (wide stores / memcpy / memset corrupt or trap). `sp-io` moves with it
+# to keep a single, consistent SDK source.
+substrate-wasm-builder = { path = "vendor/polkadot-sdk-companion/substrate/utils/wasm-builder" }
 executor = { path = "tools/executor" }
-pvm-builder = { path = "tools/pvm-builder" }
 tiny-keccak = { version = "2.0.2", default-features = false, features = ["keccak"] }
 sp-io = { path = "vendor/polkadot-sdk-companion/substrate/primitives/io", default-features = false }
 

@@ -14,5 +14,5 @@ workspace = true
 jam-pvm-builder = { workspace = true }
 
 [build-dependencies]
-pvm-builder = { workspace = true }
+jam-pvm-builder = { workspace = true }
 parachain-authorizer = { workspace = true }
