@@ -267,7 +267,7 @@ citation in the repo resolvable — to a live `## D-n:`/`## F-n:` heading above 
 
 | Identifier | Retired as (context) | Issue |
 |---|---|---|
-| D-1 | child-PVF result ABI is host-call based; PoV input stays register-based (SPEC_GAPS #6) | issue missing |
+| D-1 | child-PVF ABI is host-call based for both results and input; PoV arrives via `work_item_payload(0)` (spec §4.2) (SPEC_GAPS #6) | issue missing |
 | D-3 | state-balance accounting uses the exact §6.1 formulas, with `Balance = u64` (SPEC_GAPS #4) | issue missing |
 | D-6 | `TransferOut` replay looks up the destination's `min_memo_gas`, capped by `MAX_TRANSFER_GAS` (SPEC_GAPS #2, F-13) | issue missing |
 | D-7 | `assign_core` queues shorter than 80 are cycle-repeated (SPEC_GAPS #9) | issue missing |

@@ -7,7 +7,7 @@
 
 use crate::{
 	constants::{PARACHAIN_LOG_BYTE_CAP, STORED_AUTH_TRACE_CAP},
-	state::{self, Tag},
+	state::{self, StorageFull, Tag},
 	work_digest::RefineLog,
 };
 use alloc::vec::Vec;
@@ -16,6 +16,13 @@ use codec::{Compact, Decode, Encode};
 use parachain_service_interface::types::{Balance, Hash, ParaId, Timeslot};
 
 /// Why a state-balance reservation failed (spec §3.1, §6.1).
+///
+/// The first two variants are the spec's §6.1 reasons, produced by the
+/// headroom pre-checks on solicit/preimage and `kv_set` growth. The remaining
+/// variants name baseline-covered writes (validator keys, incoming transfers,
+/// `ParaInfo`); those have no §6.1 pre-check, so they are only ever produced by
+/// a backstop write failure (private headroom ≠ real JAM balance, SPEC_GAPS #4)
+/// and are kept self-describing by extending the enum beyond the spec's pair.
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub enum InsufficientBalanceReason {
 	/// A `solicit` (or code-upgrade solicit) of the preimage with `hash` and `len`.
@@ -23,6 +30,12 @@ pub enum InsufficientBalanceReason {
 	/// A `kv_set(key, value)` write. Only the hash of `key` is recorded so an
 	/// arbitrarily large user key cannot inflate `parachain_log`.
 	SetKV { key_hash: Hash },
+	/// A `staged_validator_keys` append.
+	StagedValidatorKeys,
+	/// An `incoming_transfers` bucket or chain-pointer write.
+	IncomingTransfer,
+	/// A `ParaInfo` write: head, registration, forced code, pending upgrade.
+	ParaInfo,
 }
 
 /// Why a JAM `transfer` replaying a `TransferOut` failed (spec §5.1 step 7).
@@ -98,11 +111,11 @@ pub fn truncate_auth_trace(trace: &[u8]) -> StoredAuthTrace {
 
 /// Eviction rank of a log entry (§5.1). Lower ranks are discarded first:
 ///
-/// - 0 — a refine error other than `Opaque`: a fixed structural failure carrying
-///   no parachain-supplied detail, and the rank every failure a coretime buyer
-///   can provoke falls into. The most disposable of the three.
-/// - 1 — `Opaque`: the payload the parachain's own PVF chose to report (§4.2),
-///   the only refine entry carrying context the parachain can act on.
+/// - 0 — a refine error other than `Opaque`: a fixed structural failure carrying no
+///   parachain-supplied detail, and the rank every failure a coretime buyer can provoke falls into.
+///   The most disposable of the three.
+/// - 1 — `Opaque`: the payload the parachain's own PVF chose to report (§4.2), the only refine
+///   entry carrying context the parachain can act on.
 /// - 2 — an accumulate event: an actual on-chain state change.
 pub fn entry_rank(entry: &(Timeslot, LogEntry)) -> u8 {
 	match &entry.1 {
@@ -161,7 +174,9 @@ impl ParachainLogs {
 		state::read(Tag::ParachainLog, &para_id).unwrap_or_default()
 	}
 
-	pub fn set(para_id: ParaId, log: &ParachainLog) {
+	/// Persist the log. `Err(StorageFull)` on the §6.1 backstop; see
+	/// [`crate::state::write`].
+	pub fn set(para_id: ParaId, log: &ParachainLog) -> Result<(), StorageFull> {
 		state::write(Tag::ParachainLog, &para_id, log)
 	}
 
@@ -182,7 +197,9 @@ impl ParachainLogs {
 		}
 		let mut log = Self::get(para_id);
 		push_log_entry(&mut log, (now, LogEntry::Refine { error, auth_trace }));
-		Self::set(para_id, &log);
+		// A failed write drops the entry: the log is the only channel for its own
+		// failure. Best effort; no panic (§6.1 backstop, SPEC_GAPS #4).
+		let _ = Self::set(para_id, &log);
 	}
 
 	/// Append one batched `Accumulate` entry for a live para (§5.1). No-op for an
@@ -193,7 +210,8 @@ impl ParachainLogs {
 		}
 		let mut log = Self::get(para_id);
 		push_log_entry(&mut log, (now, LogEntry::Accumulate { entries }));
-		Self::set(para_id, &log);
+		// See `append_refine`: a failed write drops the batch, no panic.
+		let _ = Self::set(para_id, &log);
 	}
 
 	/// §5.1 pruning against the candidate's lookup-anchor. No-op without a log.
@@ -203,7 +221,8 @@ impl ParachainLogs {
 			return;
 		}
 		prune_log_below(&mut log, threshold);
-		Self::set(para_id, &log);
+		// See `append_refine`: a failed write is dropped, no panic.
+		let _ = Self::set(para_id, &log);
 	}
 }
 

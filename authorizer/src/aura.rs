@@ -66,27 +66,23 @@ impl AuthToken {
 	///
 	/// - **Leaf hash**: blake2b-32 over the raw 32-byte key.
 	/// - **Node hash**: blake2b-32 over the concatenated left–right pair.
-	/// - **Sibling ordering**: LSB-first from `collator_index`; bit = 0 means the
-	///   current node is the left child (proof sibling is right), bit = 1 means
-	///   the current node is the right child (proof sibling is left).
+	/// - **Sibling ordering**: LSB-first from `collator_index`; bit = 0 means the current node is
+	///   the left child (proof sibling is right), bit = 1 means the current node is the right child
+	///   (proof sibling is left).
 	/// - **Padding**: tree is zero-hash-padded to the next power of two.
 	/// - **Proof length**: ⌈log₂(collator_set_size)⌉.
 	///
 	/// A wrong proof length or a mismatched root → `TokenError::BadCollatorSetProof`.
 	pub fn check_proof(&self, config: &AuthConfig, collator_index: u32) -> Result<(), TokenError> {
 		let n = config.collator_set_size;
-		let expected_depth =
-			(u32::BITS - n.saturating_sub(1).leading_zeros()) as usize;
+		let expected_depth = (u32::BITS - n.saturating_sub(1).leading_zeros()) as usize;
 		if self.proof.len() != expected_depth {
 			return Err(TokenError::BadCollatorSetProof);
 		}
 
 		let mut current = [0u8; 32];
 		current.copy_from_slice(
-			blake2b_simd::Params::new()
-				.hash_length(32)
-				.hash(self.key.as_ref())
-				.as_bytes(),
+			blake2b_simd::Params::new().hash_length(32).hash(self.key.as_ref()).as_bytes(),
 		);
 
 		for (level, sibling) in self.proof.iter().enumerate() {
@@ -100,10 +96,7 @@ impl AuthToken {
 				input[32..].copy_from_slice(&current);
 			}
 			current.copy_from_slice(
-				blake2b_simd::Params::new()
-					.hash_length(32)
-					.hash(&input)
-					.as_bytes(),
+				blake2b_simd::Params::new().hash_length(32).hash(&input).as_bytes(),
 			);
 		}
 
@@ -120,8 +113,8 @@ impl AuthToken {
 	/// signatures and low-order public keys — required for deterministic
 	/// validator agreement across implementations.
 	pub fn check_signature(&self, work_package_hash: H256) -> Result<(), TokenError> {
-		let vk = VerifyingKey::from_bytes(&self.key)
-			.map_err(|_| TokenError::BadCollatorSignature)?;
+		let vk =
+			VerifyingKey::from_bytes(&self.key).map_err(|_| TokenError::BadCollatorSignature)?;
 		let sig = Signature::from_bytes(&self.signature);
 		vk.verify_strict(work_package_hash.as_bytes(), &sig)
 			.map_err(|_| TokenError::BadCollatorSignature)

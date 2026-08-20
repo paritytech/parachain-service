@@ -30,8 +30,19 @@ pub fn schedule(
 		DirtyCores::remove(core);
 		return;
 	}
-	PendingAssigns::set(core, &PendingAssign { queue, assigner: new_assigner });
-	DirtyCores::upsert(core, jam_slot);
+	PendingAssigns::set(core, &PendingAssign { queue, assigner: new_assigner }).unwrap_or_else(
+		|_| {
+			// A failed cache write (baseline-covered, §6.1 backstop, SPEC_GAPS #4)
+			// drops the assign. There is no per-para log channel for the
+			// service-global assign cache (F-15, SPEC_GAPS #9/#10), so only the
+			// error is surfaced. The dirty-core index must NOT be armed: the
+			// flush would then expect a payload that was never cached.
+			jam_pvm_common::error!("assign for core {core} not cached: storage full");
+		},
+	);
+	if DirtyCores::upsert(core, jam_slot).is_err() {
+		jam_pvm_common::error!("dirty-core index not updated for core {core}: storage full");
+	}
 }
 
 /// The always-accumulate phase (§5.1): flush every due pending assign. Gating
@@ -54,7 +65,8 @@ pub fn apply_due_assigns(now: Timeslot, service_id: ServiceId) {
 		jam_assign(service_id, *core, &entry.queue, entry.assigner);
 		PendingAssigns::remove(*core);
 	}
-	DirtyCores::set(&survivors);
+	// Flushing the due cores shrinks the index; JAM never rejects it.
+	DirtyCores::set(&survivors).expect("flushing due cores shrinks the index; qed");
 }
 
 /// Call JAM `assign(core, queue, assigner)`. A queue shorter than the protocol's

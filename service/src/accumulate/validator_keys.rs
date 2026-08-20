@@ -9,7 +9,7 @@
 use crate::{
 	constants::MAX_STAGED_VALIDATOR_KEYS,
 	state::{
-		log::AccumulateLog,
+		log::{AccumulateLog, InsufficientBalanceReason},
 		validator_keys::{StagedKeys, StagedValidatorKeys},
 	},
 };
@@ -56,7 +56,14 @@ pub fn apply(chunk: Vec<ValidatorKey>, is_last: bool, logs: &mut Vec<AccumulateL
 	for key in chunk {
 		staged.try_push(key).expect("length checked against the bound above; qed");
 	}
-	StagedValidatorKeys::set(&staged);
+	// Appending grows the (baseline-covered) buffer; a backstop write failure
+	// (§6.1 invariant, SPEC_GAPS #4) logs the rejection and the chunk is dropped
+	// — accumulate continues.
+	if StagedValidatorKeys::set(&staged).is_err() {
+		logs.push(AccumulateLog::InsufficientStateBalance {
+			reason: InsufficientBalanceReason::StagedValidatorKeys,
+		});
+	}
 }
 
 /// A [`ValidatorKey`] is the 336-byte concatenation of the `OpaqueValKeyset`

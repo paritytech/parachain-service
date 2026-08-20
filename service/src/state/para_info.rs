@@ -1,6 +1,6 @@
 //! Per-parachain record (spec §3.1) and its storage accessors.
 
-use crate::state::{self, Tag};
+use crate::state::{self, StorageFull, Tag};
 use codec::{Compact, Decode, Encode};
 use parachain_service_interface::types::{Balance, HeadData, ParaId, Timeslot, ValidationCodeRef};
 
@@ -65,7 +65,9 @@ impl Parachains {
 		state::read(Tag::Parachains, &para_id)
 	}
 
-	pub fn set(para_id: ParaId, info: &ParaInfo) {
+	/// Upsert a para record. `Err(StorageFull)` on the §6.1 backstop; see
+	/// [`crate::state::write`].
+	pub fn set(para_id: ParaId, info: &ParaInfo) -> Result<(), StorageFull> {
 		state::write(Tag::Parachains, &para_id, info)
 	}
 

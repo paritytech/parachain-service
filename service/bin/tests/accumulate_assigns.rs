@@ -66,11 +66,7 @@ fn run_block_with_privileges(
 	items: Vec<AccumulateItem>,
 	slot: u32,
 	privileges: Privileges,
-) -> (
-	executor::pj::AccumulateOutcome,
-	jam_node::vm::Storage,
-	jam_node::vm::StateMutations,
-) {
+) -> (executor::pj::AccumulateOutcome, jam_node::vm::Storage, jam_node::vm::StateMutations) {
 	let engine = jam_node::vm::Engine::new(Some(jam_node::PvmBackend::Interpreter))
 		.expect("interpreter engine should initialize");
 	let code_hash = CodeHash(hash_raw(SERVICE));
@@ -185,7 +181,7 @@ fn unprivileged_assign_leaves_no_trace_works() {
 }
 
 #[test]
-fn assign_with_correct_privilege_succeeds() {
+fn assign_with_correct_privilege_works() {
 	// Control for `unprivileged_assign_leaves_no_trace_works`: the identical
 	// inputs with the correct `assign` privilege reach JAM `assign` and fire —
 	// proving the negative test discriminates on privilege, not input shape.

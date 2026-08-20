@@ -70,7 +70,10 @@ fn solicit_insufficient_balance_errors() {
 		info.total_state_balance = info.used_state_balance;
 		set_state(
 			s,
-			&parachain_service::state::storage_key(parachain_service::state::Tag::Parachains, &PARA),
+			&parachain_service::state::storage_key(
+				parachain_service::state::Tag::Parachains,
+				&PARA,
+			),
 			&info,
 		);
 	});
@@ -159,7 +162,10 @@ fn forget_before_due_works() {
 
 	let logs = accumulate_logs(&storage, PARA);
 	assert!(
-		matches!(logs[..], [AccumulateLog::ForgetAgainAt { .. }, AccumulateLog::ForgetAgainAt { .. }]),
+		matches!(
+			logs[..],
+			[AccumulateLog::ForgetAgainAt { .. }, AccumulateLog::ForgetAgainAt { .. }]
+		),
 		"both forgets logged a due slot, got {logs:?}"
 	);
 	assert!(registry_entry(&storage, code_ref(BLOB)).is_some(), "entry unchanged");

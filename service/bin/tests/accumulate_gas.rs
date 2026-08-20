@@ -13,7 +13,6 @@ mod common;
 use codec::Encode;
 use common::*;
 use jam_types::{AccumulateItem, Memo as JamMemo, TransferRecord};
-use parachain_service_bin::MOCK_DEST_BLOB;
 use parachain_service::{
 	constants::{CORE_COUNT, MAX_TRANSFER_GAS},
 	state::{
@@ -22,6 +21,7 @@ use parachain_service::{
 	},
 	work_digest::{ValidationCodeHash, ValidationCodeRef},
 };
+use parachain_service_bin::MOCK_DEST_BLOB;
 use parachain_service_interface::{
 	types::{CoreIndex, Hash, ParaId, ASSET_HUB_PARA_ID},
 	upward_message::{UpwardMessage, MAX_UPWARD_MESSAGES_PER_DIGEST},
@@ -57,17 +57,17 @@ fn report(name: &str, gas: u64, elapsed: std::time::Duration, digest_len: usize)
 /// the margin invariant against the new value.
 mod measured {
 	/// 1024-solicit digest — the heaviest reachable digest replay.
-	pub const SOLICIT_FLOOD: u64 = 7_767_371;
+	pub const SOLICIT_FLOOD: u64 = 7_784_807;
 	/// 1024 small KV writes.
-	pub const SET_KV_FLOOD: u64 = 5_912_858;
+	pub const SET_KV_FLOOD: u64 = 5_969_206;
 	/// 1024 outbound transfers to a friendly destination (digest exceeds `Wr`).
-	pub const TRANSFER_OUT_FLOOD: u64 = 3_286_907;
+	pub const TRANSFER_OUT_FLOOD: u64 = 3_288_983;
 	/// 331 outbound transfers to a destination demanding the full cap (F-13).
-	pub const HOSTILE_DEST_FLOOD: u64 = 34_018_632;
+	pub const HOSTILE_DEST_FLOOD: u64 = 34_019_322;
 	/// 1024 incoming transfers recorded in one bucket write (D-8).
-	pub const INCOMING_TRANSFER_FLOOD: u64 = 1_588_351;
+	pub const INCOMING_TRANSFER_FLOOD: u64 = 1_590_427;
 	/// Due `assign` flush for all 341 cores in one block (F-12).
-	pub const DUE_ASSIGN_FLOOD: u64 = 9_083_722;
+	pub const DUE_ASSIGN_FLOOD: u64 = 9_083_738;
 	/// Marginal cost of a realistic destination's memo handler, per transfer.
 	pub const DEST_HANDLER_PER_TRANSFER: u64 = 1_638;
 	/// Gas for a single real ed25519 is_authorized call (Merkle proof + ed25519
@@ -115,10 +115,7 @@ fn solicit_flood_works() {
 
 	report("solicit_flood", outcome.gas_used, outcome.elapsed, digest_len);
 	// All 1024 solicits applied.
-	let last = ValidationCodeRef {
-		hash: ValidationCodeHash(distinct_hash(FLOOD - 1)),
-		len: 100,
-	};
+	let last = ValidationCodeRef { hash: ValidationCodeHash(distinct_hash(FLOOD - 1)), len: 100 };
 	assert!(registry_entry(&storage, last).is_some_and(|e| e.referencers.contains(&PARA)));
 	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"head-1");
 	// A reachable worst-case digest must stay accumulable within Ga, or a valid
@@ -240,10 +237,7 @@ fn dest_handler_flood_works() {
 	eprintln!("dest_handler_flood: marginal per-transfer gas: {per_transfer}");
 	// All transfers handled: counter at FLOOD, both maps hold the last entry.
 	let last = FLOOD - 1;
-	assert_eq!(
-		storage.service_key(SVC, b"c").as_deref(),
-		Some(&(FLOOD as u64).to_le_bytes()[..])
-	);
+	assert_eq!(storage.service_key(SVC, b"c").as_deref(), Some(&(FLOOD as u64).to_le_bytes()[..]));
 	let mut fwd_key = [0u8; 33];
 	fwd_key[0] = b'f';
 	fwd_key[1..5].copy_from_slice(&last.to_le_bytes());

@@ -90,7 +90,8 @@ pub fn fresh_storage(seed: impl FnOnce(&mut Storage)) -> Storage {
 
 /// [`fresh_storage`] for an arbitrary service `blob`.
 pub fn fresh_storage_for(blob: &[u8], seed: impl FnOnce(&mut Storage)) -> Storage {
-	let (_, _, context) = parachain_service_bin::mock::accumulate_args_at(blob, Vec::new(), 0, seed);
+	let (_, _, context) =
+		parachain_service_bin::mock::accumulate_args_at(blob, Vec::new(), 0, seed);
 	context.storage
 }
 

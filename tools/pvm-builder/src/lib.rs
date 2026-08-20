@@ -197,8 +197,9 @@ pub fn build_runtime(crate_dir: &Path) {
 fn build_encoded_rustflags(crate_dir: &Path) -> String {
 	// rustc >= 1.92 turned the `panic_immediate_abort` build-std feature into a real panic
 	// strategy (`-C panic=immediate-abort`, see rust-lang/rust#146317); the old feature hard-errors
-	// there. The strategy form sets both `cfg(panic = "abort")` and `cfg(panic = "immediate-abort")`,
-	// so it is a drop-in replacement for the `-C panic=abort` + build-std-feature pair.
+	// there. The strategy form sets both `cfg(panic = "abort")` and `cfg(panic =
+	// "immediate-abort")`, so it is a drop-in replacement for the `-C panic=abort` +
+	// build-std-feature pair.
 	let mut flags: Vec<String> = if rustc_uses_new_panic_immediate_abort() {
 		vec!["-Zunstable-options".into(), "-C".into(), "panic=immediate-abort".into()]
 	} else {
@@ -327,7 +328,8 @@ fn rustc_uses_new_panic_immediate_abort() -> bool {
 /// so guard on the version. `RUSTC_BOOTSTRAP=1` is already set by the
 /// `-Z build-std` block above (Riscv always opts into `build-std`).
 ///
-/// Mirrors `vendor/polkadot-sdk-companion/substrate/utils/wasm-builder/src/wasm_project.rs:1013-1036`.
+/// Mirrors `vendor/polkadot-sdk-companion/substrate/utils/wasm-builder/src/wasm_project.rs:
+/// 1013-1036`.
 fn cargo_supports_json_target_spec() -> bool {
 	static RESULT: OnceLock<bool> = OnceLock::new();
 	*RESULT.get_or_init(|| {

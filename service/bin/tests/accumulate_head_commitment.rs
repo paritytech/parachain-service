@@ -132,10 +132,7 @@ fn three_changed_heads_promote_odd_leaf_works() {
 	assert_eq!(&para_info(&storage, PARA_A).unwrap().head_data[..], b"head-a1");
 	assert_eq!(&para_info(&storage, PARA_B).unwrap().head_data[..], b"head-b1");
 	assert_eq!(&para_info(&storage, PARA_C).unwrap().head_data[..], b"head-c1");
-	let expected = root(vec![
-		leaf(PARA_A, b"head-a1"),
-		leaf(PARA_B, b"head-b1"),
-		leaf(PARA_C, b"head-c1"),
-	]);
+	let expected =
+		root(vec![leaf(PARA_A, b"head-a1"), leaf(PARA_B, b"head-b1"), leaf(PARA_C, b"head-c1")]);
 	assert_eq!(outcome.yielded, expected);
 }

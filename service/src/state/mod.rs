@@ -51,16 +51,27 @@ pub fn read<V: Decode>(tag: Tag, key: &impl Encode) -> Option<V> {
 	Some(V::decode(&mut &raw[..]).expect("service-written state must decode; qed"))
 }
 
+/// Marker returned when a state write is rejected by JAM with `StorageFull`.
+///
+/// Per the §6.1 write-time invariant every growth is pre-checked against
+/// `total_state_balance`, so a JAM-level balance failure here means the private
+/// headroom accounting diverged from the real service balance (SPEC_GAPS #4).
+/// The failure is surfaced rather than panicked: the accumulate growth paths
+/// log `AccumulateLog::InsufficientStateBalance` and continue.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StorageFull;
+
 /// Encode + write a map entry.
 ///
-/// Panics on `StorageFull`: every growth is pre-checked against
-/// `total_state_balance` (§6.1 write-time invariant), so a JAM-level balance
-/// failure indicates a bookkeeping bug.
-/// FIXME: consensus-critical — a panic here reverts to the last checkpoint and
-/// can wedge the service until manual intervention (SPEC_GAPS #4).
-pub fn write(tag: Tag, key: &impl Encode, value: &impl Encode) {
+/// Returns `Err(StorageFull)` on a JAM-level balance failure instead of
+/// panicking. The §6.1 pre-check makes this unreachable in practice, but a
+/// panic would revert to the last checkpoint and wedge the service until
+/// manual intervention.
+/// FIXME: consensus-critical — private headroom ≠ real JAM balance (SPEC_GAPS #4).
+pub fn write(tag: Tag, key: &impl Encode, value: &impl Encode) -> Result<(), StorageFull> {
 	jam_pvm_common::accumulate::set_storage(&storage_key(tag, key), &value.encode())
-		.expect("state growth is pre-checked against the state balance; qed");
+		.map(|_| ())
+		.map_err(|_| StorageFull)
 }
 
 /// Remove a map entry (no-op if absent).
@@ -73,8 +84,8 @@ pub fn read_singleton<V: Decode>(tag: Tag) -> Option<V> {
 	read(tag, &())
 }
 
-/// Encode + write a singleton.
-pub fn write_singleton(tag: Tag, value: &impl Encode) {
+/// Encode + write a singleton. See [`write`] for the failure semantics.
+pub fn write_singleton(tag: Tag, value: &impl Encode) -> Result<(), StorageFull> {
 	write(tag, &(), value)
 }
 

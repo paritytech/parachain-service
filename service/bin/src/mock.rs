@@ -1,7 +1,7 @@
 //! Shared fixtures for the blob integration tests.
 
 use codec::Encode;
-use ed25519_dalek::{SigningKey, Signer};
+use ed25519_dalek::{Signer, SigningKey};
 use jam_node::{
 	vm::{AccumulateCallContext, Engine, RefineCallContextOwned, StateMutations, Storage},
 	PvmBackend,
@@ -9,8 +9,8 @@ use jam_node::{
 use jam_std_common::{hash_raw, Entropy, Privileges, Service};
 use jam_types::{
 	AccumulateItem, AuthConfig, AuthTrace, Authorization as AuthToken, Authorizer, CodeHash,
-	ExtrinsicHash, ExtrinsicSpec, FixedVec, ProtocolParameters, RefineContext, ServiceId,
-	WorkItem, WorkPackage, WorkPayload,
+	ExtrinsicHash, ExtrinsicSpec, FixedVec, ProtocolParameters, RefineContext, ServiceId, WorkItem,
+	WorkPackage, WorkPayload,
 };
 use parachain_authorizer::{aura, ParaId};
 use primitive_types::H256;
@@ -162,9 +162,8 @@ pub fn make_auth_with_seed(
 	};
 	let config_enc = AuthConfig(config.encode());
 
-	let dummy_token = AuthToken(
-		aura::AuthToken { proof: vec![], key: [0u8; 32], signature: [0u8; 64] }.encode(),
-	);
+	let dummy_token =
+		AuthToken(aura::AuthToken { proof: vec![], key: [0u8; 32], signature: [0u8; 64] }.encode());
 	let pkg = work_package(authorizer_blob, config_enc.clone(), dummy_token, items.to_vec());
 	let wp_hash = aura::signable_work_package_hash(&pkg);
 

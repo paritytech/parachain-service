@@ -63,13 +63,6 @@ pub enum RefineLog {
 	/// validation code preimage is not available in the service's store
 	/// at the lookup-anchor. See §4.1 step 3.
 	InvalidCodeHash,
-	/// The PVF could not be parsed as a PVM program, its `jam_validate_block` entry
-	/// point was not found, or the inner PVM could not be instantiated from it.
-	InvalidCode,
-	/// The PVF ran but did not validate the candidate: it panicked, trapped, ran out of
-	/// gas, or otherwise failed to return head data.
-	// FIXME: split into distinct causes (panic / OOG / stray host call) once needed.
-	ValidationFailed,
 	/// Opaque payload supplied by the PVF via `report_error(data)` before
 	/// failing the execution (max 1024 bytes).
 	Opaque(BoundedVec<u8, ConstU32<1024>>),
@@ -98,10 +91,6 @@ pub enum RefineLog {
 	/// The PVF exited without calling `set_parent_head_hash` and/or `set_head`
 	/// exactly once. Both head declarations are mandatory. See §4.2.
 	MissingHeadDeclaration,
-	/// The PVF called `set_head` with more than 4 KiB of head data (§3.1).
-	// TODO: not in the spec's RefineLog — §4.2/§3.1 leave an oversized `set_head`
-	// unspecified. Needs upstreaming.
-	HeadDataTooLarge,
 }
 
 /// The maximum byte length of a `report_error` payload. Spec §4.3.

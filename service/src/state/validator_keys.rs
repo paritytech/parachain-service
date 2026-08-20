@@ -1,7 +1,11 @@
 //! Validator-key staging buffer (spec §3.1, §5.3), assembled chunk by chunk by
 //! Asset Hub via `set_validator_keys` and flushed to JAM `designate` on `is_last`.
 
-use crate::{constants::MAX_STAGED_VALIDATOR_KEYS, state, state::Tag};
+use crate::{
+	constants::MAX_STAGED_VALIDATOR_KEYS,
+	state,
+	state::{StorageFull, Tag},
+};
 use bounded_collections::{BoundedVec, ConstU32};
 use parachain_service_interface::types::ValidatorKey;
 
@@ -16,7 +20,9 @@ impl StagedValidatorKeys {
 		state::read_singleton(Tag::StagedValidatorKeys).unwrap_or_default()
 	}
 
-	pub fn set(keys: &StagedKeys) {
+	/// Persist the staging buffer. `Err(StorageFull)` on the §6.1 backstop; see
+	/// [`crate::state::write`].
+	pub fn set(keys: &StagedKeys) -> Result<(), StorageFull> {
 		state::write_singleton(Tag::StagedValidatorKeys, keys)
 	}
 

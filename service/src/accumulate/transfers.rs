@@ -3,7 +3,7 @@
 use crate::{
 	constants::{MAX_INCOMING_TRANSFERS, MAX_TRANSFER_GAS},
 	state::{
-		log::{AccumulateLog, TransferError},
+		log::{AccumulateLog, InsufficientBalanceReason, TransferError},
 		transfers::{
 			IncomingTransferChain, IncomingTransfers, QueuedTransfer, TransferBuckets,
 			TransferChain,
@@ -25,7 +25,12 @@ use parachain_service_interface::{types::Timeslot, upward_message::TransferOutAr
 /// transfers land in a single bucket write. Per-transfer writes would re-read
 /// and re-write the growing bucket each time — measured at 55x the `Ga` budget
 /// for 1024 same-slot transfers (D-8); the resulting state is identical.
-pub fn record_incoming(now: Slot, records: &[&TransferRecord]) {
+///
+/// Returns the `InsufficientStateBalance` entries for bucket/chain writes that
+/// hit the §6.1 backstop (SPEC_GAPS #4); the caller routes them to Asset Hub's
+/// parachain log.
+pub fn record_incoming(now: Slot, records: &[&TransferRecord]) -> Vec<AccumulateLog> {
+	let mut logs = Vec::new();
 	let mut chain = TransferChain::get();
 	let mut queued = chain.as_ref().map_or(0, |c| c.count);
 	let mut admitted: Vec<QueuedTransfer> = Vec::new();
@@ -40,46 +45,66 @@ pub fn record_incoming(now: Slot, records: &[&TransferRecord]) {
 		}
 	}
 	if admitted.is_empty() {
-		return;
+		return logs;
 	}
 	let added = admitted.len() as u32;
+	let mut reject = || {
+		logs.push(AccumulateLog::InsufficientStateBalance {
+			reason: InsufficientBalanceReason::IncomingTransfer,
+		});
+	};
 
 	match &mut chain {
 		None => {
 			// Empty queue: `now` becomes the only bucket, so both endpoints.
-			TransferBuckets::set(
+			if TransferBuckets::set(
 				now,
 				&IncomingTransfers { transfers: admitted, next_slot: None },
-			);
-			TransferChain::set(&IncomingTransferChain {
+			)
+			.is_err() || TransferChain::set(&IncomingTransferChain {
 				first_slot: now,
 				last_slot: now,
 				count: added,
-			});
+			})
+			.is_err()
+			{
+				reject();
+			}
 		},
 		Some(chain) if chain.last_slot == now => {
 			// Same slot as the tail: append in place, no new storage item.
 			let mut bucket = TransferBuckets::get(now).expect("chain names the tail; qed");
 			bucket.transfers.extend(admitted);
-			TransferBuckets::set(now, &bucket);
+			if TransferBuckets::set(now, &bucket).is_err() {
+				reject();
+			}
 			chain.count += added;
-			TransferChain::set(chain);
+			if TransferChain::set(chain).is_err() {
+				reject();
+			}
 		},
 		Some(chain) => {
 			// New bucket at `now`; link the old tail to it and move `last_slot`.
 			let mut tail =
 				TransferBuckets::get(chain.last_slot).expect("chain names the tail; qed");
 			tail.next_slot = Some(now);
-			TransferBuckets::set(chain.last_slot, &tail);
-			TransferBuckets::set(
-				now,
-				&IncomingTransfers { transfers: admitted, next_slot: None },
-			);
+			if TransferBuckets::set(chain.last_slot, &tail).is_err() ||
+				TransferBuckets::set(
+					now,
+					&IncomingTransfers { transfers: admitted, next_slot: None },
+				)
+				.is_err()
+			{
+				reject();
+			}
 			chain.last_slot = now;
 			chain.count += added;
-			TransferChain::set(chain);
+			if TransferChain::set(chain).is_err() {
+				reject();
+			}
 		},
 	}
+	logs
 }
 
 /// §5.1 `consume_transfers_up_to(slot)`: drop whole buckets up to and including
@@ -90,7 +115,8 @@ pub fn consume_up_to(slot: Timeslot) {
 	loop {
 		if cursor > slot {
 			chain.first_slot = cursor;
-			TransferChain::set(&chain);
+			// Dropping buckets shrinks the chain pointer; JAM never rejects it.
+			TransferChain::set(&chain).expect("consuming buckets shrinks the chain; qed");
 			return;
 		}
 		let bucket = TransferBuckets::get(cursor).expect("chain links only live buckets; qed");

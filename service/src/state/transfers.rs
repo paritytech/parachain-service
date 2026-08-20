@@ -2,7 +2,7 @@
 //! arrival timeslot, chained through `next_slot` because JAM storage has no
 //! prefix iteration.
 
-use crate::state::{self, Tag};
+use crate::state::{self, StorageFull, Tag};
 use alloc::vec::Vec;
 use codec::{Compact, Decode, Encode};
 use parachain_service_interface::types::{Balance, Memo, ServiceId, Timeslot};
@@ -48,7 +48,9 @@ impl TransferBuckets {
 		state::read(Tag::IncomingTransfers, &slot)
 	}
 
-	pub fn set(slot: Timeslot, bucket: &IncomingTransfers) {
+	/// Upsert a bucket. `Err(StorageFull)` on the §6.1 backstop; see
+	/// [`crate::state::write`].
+	pub fn set(slot: Timeslot, bucket: &IncomingTransfers) -> Result<(), StorageFull> {
 		state::write(Tag::IncomingTransfers, &slot, bucket)
 	}
 
@@ -66,7 +68,9 @@ impl TransferChain {
 		state::read_singleton(Tag::IncomingTransferChain)
 	}
 
-	pub fn set(chain: &IncomingTransferChain) {
+	/// Persist the chain pointer. `Err(StorageFull)` on the §6.1 backstop; see
+	/// [`crate::state::write`].
+	pub fn set(chain: &IncomingTransferChain) -> Result<(), StorageFull> {
 		state::write_singleton(Tag::IncomingTransferChain, chain)
 	}
 

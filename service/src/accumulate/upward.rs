@@ -7,7 +7,10 @@
 use crate::{
 	accumulate::{assigns, code_upgrades, management, transfers, validator_keys},
 	head_commitment::HeadTracker,
-	state::{log::AccumulateLog, para_info::Parachains},
+	state::{
+		log::{AccumulateLog, InsufficientBalanceReason},
+		para_info::Parachains,
+	},
 	state_balance,
 };
 use alloc::vec::Vec;
@@ -38,14 +41,25 @@ pub fn apply(
 			if let Some(vc) = &mut pi.validation_code {
 				if vc.code_ref.is(&hash, len.0) {
 					vc.pinned = true;
-					Parachains::set(origin, &pi);
+					// The pinned flag is a `ParaInfo` write; a backstop failure
+					// (§6.1 invariant, SPEC_GAPS #4) logs the rejection and the
+					// solicit is dropped.
+					if Parachains::set(origin, &pi).is_err() {
+						logs.push(AccumulateLog::InsufficientStateBalance {
+							reason: InsufficientBalanceReason::ParaInfo,
+						});
+					}
 					return;
 				}
 			}
 			if let Some((vc, _)) = &mut pi.pending_upgrade {
 				if vc.code_ref.is(&hash, len.0) {
 					vc.pinned = true;
-					Parachains::set(origin, &pi);
+					if Parachains::set(origin, &pi).is_err() {
+						logs.push(AccumulateLog::InsufficientStateBalance {
+							reason: InsufficientBalanceReason::ParaInfo,
+						});
+					}
 					return;
 				}
 			}
@@ -64,14 +78,15 @@ pub fn apply(
 			if let Some(vc) = &mut pi.validation_code {
 				if vc.code_ref.is(&hash, len.0) {
 					vc.pinned = false;
-					Parachains::set(para_id, &pi);
+					// Clearing `pinned` shrinks the record; JAM never rejects it.
+					Parachains::set(para_id, &pi).expect("clearing pinned shrinks the record; qed");
 					return;
 				}
 			}
 			if let Some((vc, _)) = &mut pi.pending_upgrade {
 				if vc.code_ref.is(&hash, len.0) {
 					vc.pinned = false;
-					Parachains::set(para_id, &pi);
+					Parachains::set(para_id, &pi).expect("clearing pinned shrinks the record; qed");
 					return;
 				}
 			}
@@ -117,7 +132,7 @@ pub fn apply(
 		},
 
 		UpwardMessage::ParachainSetHead { para_id, new_head } => {
-			management::set_head(para_id, new_head, heads)
+			management::set_head(para_id, new_head, heads, logs)
 		},
 
 		UpwardMessage::ParachainSetValidationCode {

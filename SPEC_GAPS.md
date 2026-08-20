@@ -179,11 +179,12 @@ References: design §5.4; Graypaper [accounts.tex](vendor/graypaper/text/account
 ### 6. The implemented child-PVF ABI and the design do not yet agree
 
 There is now a working inner-PVM path, so the old claim that the child PVF was not implementable was
-stale. The entry-point naming now agrees — the design specifies `jam_validate_block()` (§4.2) and the
-frameless runtime exports `jam_validate_block(ptr, len)` returning nothing, with the head declared via
-the `set_parent_head_hash`/`set_head` host calls on both sides. The PoC pins the numeric child-host-call
-ABI in code (D-1, `service/src/pvf/executor.rs`), but the consensus-facing ABI still needs one
-canonical, versioned definition.
+stale. The entry-point shape now conforms to spec §4.2: the design specifies `jam_validate_block() -> ()`
+(zero-arg, no return value), and the frameless runtime exports exactly that. The PVF reads its input
+(the `ParachainCandidate` payload containing the PoV) via the `work_item_payload(0)` host call (spec
+§4.2), and declares its results exclusively through the `set_parent_head_hash` and `set_head` host
+calls. The PoC pins the numeric child-host-call ABI in code (D-1, `service/src/pvf/executor.rs`), but
+the consensus-facing ABI still needs one canonical, versioned definition.
 
 The specification should pin:
 
@@ -194,11 +195,13 @@ The specification should pin:
 - exit/error mapping; and
 - ABI version negotiation for runtime upgrades.
 
-> **Verdict (audit 2026-08-19):** CHANGED-SHAPE — the design's `jam_validate_block() -> ()` and the
-> implementation's `jam_validate_block(ptr, len)` (unit return, head via host calls) have converged on
-> the symbol name and result channel, and the PoC pins the child-host-call ABI (D-1,
-> `service/src/pvf/executor.rs:5`); §4.3 still does not specify the register/pointer conventions,
-> program-blob format, child-gas, exit/error mapping, or ABI version negotiation.
+> **Verdict (audit 2026-08-19):** CHANGED-SHAPE — the entry-point shape is now CONFORMANT to spec §4.2:
+> the design and implementation both specify/export `jam_validate_block() -> ()` (zero-arg, no return),
+> with input via `work_item_payload(0)` (spec §4.2) and results via `set_parent_head_hash`/`set_head`
+> host calls. The PoC pins the numeric child-host-call ABI (D-1, `service/src/pvf/executor.rs:5`).
+> The remaining gap is calling-convention-only: §4.3 still does not specify the register/pointer
+> conventions, program-blob format, child-gas allocation and charging, exit/error mapping, or ABI
+> version negotiation.
 > Ref: `parachain-service-on-jam.md:609-632` (§4.2), `parachain-service-on-jam.md:634-693` (§4.3),
 > `quint/refine.qnt:24-28` (candidate shape).
 

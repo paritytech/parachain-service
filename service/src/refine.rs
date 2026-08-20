@@ -33,7 +33,11 @@ pub fn refine(
 	let work_items = refine::work_items_summary();
 	assert!(item_index < work_items.len(), "Out of bounds item_index is invalid per GP");
 
-	// TODO: The quint spec uses default 0 here, but why?
+	// Default-0 mirrors the Quint model's `errParaId` (refine.qnt): when
+	// `authorized_paras` is empty there is no real para to attribute an
+	// error digest to, so the error paths use `ParaId(0)`. It is unreachable
+	// on the success path: the single-item invariant and the length check
+	// below guarantee a non-empty single-element list by then.
 	let para_id = *para_ids.get(item_index).unwrap_or(&ParaId::from(0));
 
 	if work_items.len() != para_ids.len() {
@@ -54,14 +58,15 @@ pub fn refine(
 	};
 	let code_len: u32 = code.len().try_into().expect("PVF code must be at most 4 GiB");
 
+	// An unparseable PVF is an abnormal exit: it fails the whole refine
+	// invocation, not the digest (§4.2).
 	let Ok(parsed) = pvf::pvm::parse_pvf(&code) else {
-		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidCode };
+		panic!("PVF code could not be parsed as a PVM program; §4.2 whole-refine failure")
 	};
-	let (parent_head_hash, head_data, upward_messages) =
-		match pvf::pvm::run(&parsed, para_id) {
-			Ok(ok) => ok,
-			Err(error) => return ParachainWorkDigest::Err { para_id, error },
-		};
+	let (parent_head_hash, head_data, upward_messages) = match pvf::pvm::run(&parsed, para_id) {
+		Ok(ok) => ok,
+		Err(error) => return ParachainWorkDigest::Err { para_id, error },
+	};
 
 	ParachainWorkDigest::Ok {
 		para_id,

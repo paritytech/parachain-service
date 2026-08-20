@@ -7,7 +7,7 @@
 use crate::{
 	head_commitment::HeadTracker,
 	state::{
-		log::{AccumulateLog, ParachainLogs},
+		log::{AccumulateLog, InsufficientBalanceReason, ParachainLogs},
 		para_info::{ParaInfo, Parachains, ValidationCode},
 		preimage_registry::PreimageRegistry,
 		validator_keys::StagedValidatorKeys,
@@ -43,7 +43,9 @@ pub fn set_state_balance(
 			// Registration gives the para its first head, which §5.5 counts as a
 			// change; the existing-para arm below touches no head.
 			heads.touch(para_id);
-			Parachains::set(
+			// A failed registration write (backstop, SPEC_GAPS #4) logs the
+			// rejection; the Coretime batch is not replayed.
+			if Parachains::set(
 				para_id,
 				&ParaInfo {
 					head_data: HeadData::default(),
@@ -53,7 +55,13 @@ pub fn set_state_balance(
 					used_state_balance: baseline,
 					is_deregistering: false,
 				},
-			);
+			)
+			.is_err()
+			{
+				logs.push(AccumulateLog::InsufficientStateBalance {
+					reason: InsufficientBalanceReason::ParaInfo,
+				});
+			}
 		},
 		Some(mut pi) => {
 			if new_total < pi.used_state_balance {
@@ -66,18 +74,33 @@ pub fn set_state_balance(
 				return;
 			}
 			pi.total_state_balance = new_total;
-			Parachains::set(para_id, &pi);
+			if Parachains::set(para_id, &pi).is_err() {
+				logs.push(AccumulateLog::InsufficientStateBalance {
+					reason: InsufficientBalanceReason::ParaInfo,
+				});
+			}
 		},
 	}
 }
 
 /// §6.2/§6.3 — upsert head data. No-op on an unregistered ParaId (Coretime must
 /// call `parachain_set_state_balance` first).
-pub fn set_head(para_id: ParaId, new_head: HeadData, heads: &mut HeadTracker) {
+pub fn set_head(
+	para_id: ParaId,
+	new_head: HeadData,
+	heads: &mut HeadTracker,
+	logs: &mut Vec<AccumulateLog>,
+) {
 	let Some(mut pi) = Parachains::get(para_id) else { return };
 	heads.touch(para_id);
 	pi.head_data = new_head;
-	Parachains::set(para_id, &pi);
+	// A head overwrite can grow the `ParaInfo` entry; a backstop write failure
+	// (§6.1 invariant, SPEC_GAPS #4) logs the rejection and accumulate continues.
+	if Parachains::set(para_id, &pi).is_err() {
+		logs.push(AccumulateLog::InsufficientStateBalance {
+			reason: InsufficientBalanceReason::ParaInfo,
+		});
+	}
 }
 
 /// §6.2/§6.3 — upsert validation code, bypassing the normal upgrade lifecycle
@@ -140,7 +163,13 @@ pub fn set_validation_code(
 		pinned,
 	});
 	updated.pending_upgrade = None;
-	Parachains::set(para_id, &updated);
+	// A forced-code write can grow the record; a backstop write failure (§6.1
+	// invariant, SPEC_GAPS #4) logs the rejection.
+	if Parachains::set(para_id, &updated).is_err() {
+		logs.push(AccumulateLog::InsufficientStateBalance {
+			reason: InsufficientBalanceReason::ParaInfo,
+		});
+	}
 }
 
 /// §6.4 — deregister a parachain. Rejects with `TooMuchStateHeld` unless the
@@ -177,7 +206,13 @@ pub fn clean_up(para_id: ParaId, now: Slot, logs: &mut Vec<AccumulateLog>) {
 		// reject all further work packages for this para (§5.1 step 1).
 		let mut pi = Parachains::get(para_id).expect("still live; qed");
 		pi.is_deregistering = true;
-		Parachains::set(para_id, &pi);
+		// A backstop write failure (§6.1 invariant, SPEC_GAPS #4) leaves the para
+		// live for one more block; logged and accumulate continues.
+		if Parachains::set(para_id, &pi).is_err() {
+			logs.push(AccumulateLog::InsufficientStateBalance {
+				reason: InsufficientBalanceReason::ParaInfo,
+			});
+		}
 		return;
 	}
 
