@@ -1,10 +1,13 @@
-// Disproof: the model's `Hash` is not a hash.
+// The model's `Hash` images overlap across domains.
 //
-// Defining property of a hash: distinct preimages give distinct digests.
-//   x != y  =>  h(x) != h(y)
+// Three constructors map into `Hash = { hashBytes: int }` untagged, so
+//   x != y  and yet  h(x) == h(y)
 //
-// `Hash` is `{ hashBytes: int }`, and three constructors map into it untagged,
-// so the property fails by construction.
+// This does not break the model: every `Hash`-consuming site is fed by exactly
+// one constructor (`accumulate.qnt:357` compares `headHash` to `headHash`), so
+// comparisons stay like-for-like. It does block replaying an ITF trace against
+// an implementation, which must map a digest back to real bytes and needs the
+// domain to know which bytes.
 //
 //   quint test hash_injectivity.qnt
 //   -> the three `witness` runs pass, the three `injective` runs fail.

@@ -1,11 +1,13 @@
-# F-16: the model's `Hash` is not a hash — `h(x) == h(y)` for `x != y`
-`Hash` is `{ hashBytes: int }` and three constructors map into it untagged, so head data `1`
-(`headHash`, `types.qnt:191`), validation code `{ vchBytes: 1 }` (`vchAsHash`, `types.qnt:59`)
-and KV key `List(1)` (`listHash`, `types.qnt:195`) all hash to `{ hashBytes: 1 }`. Disproof:
-drop [`f-16-hash-injectivity.qnt`](./f-16-hash-injectivity.qnt) into `quint/` and run
-`quint test hash_injectivity.qnt`. §5.1 step 3's parent-head check compares hashes, so a code
-hash equal to a head hash makes the model accept a candidate it should reject.
+# F-16: abstract hashes discard their domain, so ITF traces are not replayable
+Not a model defect — every `Hash`-consuming site is fed by one constructor (`accumulate.qnt:357`
+compares `headHash` to `headHash`), so the model's own comparisons are sound. But the images
+overlap: `headHash(1)`, `vchAsHash({ vchBytes: 1 })` and `listHash(List(1))` all yield
+`{ hashBytes: 1 }` (`types.qnt:191/59/195`, disproof in [`f-16-hash-injectivity.qnt`](./f-16-hash-injectivity.qnt)).
 
-**Spec feedback**: domain-separate the constructors, as `merkleHash` (`head_commitment.qnt:25-28`)
-already does for leaves vs nodes. Model-side only — real `hash_raw(blob)` and `hash(head_data)`
-are unprefixed and consensus-critical.
+Replay runs the other way — `{ hashBytes: 1 }` back to 32 real bytes — and the bytes depend on the
+domain the trace no longer records. In `paraRegisterOperateCleanupTest` frame 3, `{ hashBytes: 1 }`
+is both a `preimageRegistry` key (64 KiB validation code) and a `parentHeadHash` (8-byte head).
+
+**Spec feedback**: domain-tag the constructors, as `merkleHash` (`head_commitment.qnt:25-28`) already
+does for leaves vs nodes. A harness can recover the domain from the ITF field path, but that is a
+lookup table outside the spec that rots as the model grows.
