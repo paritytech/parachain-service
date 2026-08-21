@@ -24,9 +24,7 @@ use jam_types::Hash;
 use parachain_service_interface::{
 	host_call::HostCall,
 	types::{ParaId, ServiceId, Timeslot},
-	upward_message::{
-		TransferOutArgs, UpwardMessage, UpwardMessages, SET_VALIDATOR_KEYS_MAX_KEYS,
-	},
+	upward_message::{TransferOutArgs, UpwardMessage, UpwardMessages, SET_VALIDATOR_KEYS_MAX_KEYS},
 };
 use polkavm::Reg;
 

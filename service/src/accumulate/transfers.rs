@@ -47,10 +47,7 @@ pub fn record_incoming(now: Slot, records: &[&TransferRecord]) {
 	match &mut chain {
 		None => {
 			// Empty queue: `now` becomes the only bucket, so both endpoints.
-			TransferBuckets::set(
-				now,
-				&IncomingTransfers { transfers: admitted, next_slot: None },
-			);
+			TransferBuckets::set(now, &IncomingTransfers { transfers: admitted, next_slot: None });
 			TransferChain::set(&IncomingTransferChain {
 				first_slot: now,
 				last_slot: now,
@@ -71,10 +68,7 @@ pub fn record_incoming(now: Slot, records: &[&TransferRecord]) {
 				TransferBuckets::get(chain.last_slot).expect("chain names the tail; qed");
 			tail.next_slot = Some(now);
 			TransferBuckets::set(chain.last_slot, &tail);
-			TransferBuckets::set(
-				now,
-				&IncomingTransfers { transfers: admitted, next_slot: None },
-			);
+			TransferBuckets::set(now, &IncomingTransfers { transfers: admitted, next_slot: None });
 			chain.last_slot = now;
 			chain.count += added;
 			TransferChain::set(chain);

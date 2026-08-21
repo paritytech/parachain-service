@@ -62,11 +62,7 @@ fn run_block_with_privileges(
 	items: Vec<AccumulateItem>,
 	slot: u32,
 	privileges: Privileges,
-) -> (
-	executor::pj::AccumulateOutcome,
-	jam_node::vm::Storage,
-	jam_node::vm::StateMutations,
-) {
+) -> (executor::pj::AccumulateOutcome, jam_node::vm::Storage, jam_node::vm::StateMutations) {
 	let engine = jam_node::vm::Engine::new(Some(jam_node::PvmBackend::Interpreter))
 		.expect("interpreter engine should initialize");
 	let code_hash = CodeHash(hash_raw(SERVICE));

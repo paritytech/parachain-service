@@ -57,11 +57,10 @@ pub fn refine(
 	let Ok(parsed) = pvf::pvm::parse_pvf(&code) else {
 		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidCode };
 	};
-	let (parent_head_hash, head_data, upward_messages) =
-		match pvf::pvm::run(&parsed, para_id) {
-			Ok(ok) => ok,
-			Err(error) => return ParachainWorkDigest::Err { para_id, error },
-		};
+	let (parent_head_hash, head_data, upward_messages) = match pvf::pvm::run(&parsed, para_id) {
+		Ok(ok) => ok,
+		Err(error) => return ParachainWorkDigest::Err { para_id, error },
+	};
 
 	ParachainWorkDigest::Ok {
 		para_id,

@@ -16,12 +16,7 @@ use jam_types::{ServiceId, Slot, WorkItemRecord};
 
 /// Process one work item's result (§5.1). A gray-paper `WorkExecResult::Error`
 /// is skipped entirely: no `parachain_log` entry, no state change (§3.3).
-pub fn process(
-	now: Slot,
-	service_id: ServiceId,
-	record: &WorkItemRecord,
-	heads: &mut HeadTracker,
-) {
+pub fn process(now: Slot, service_id: ServiceId, record: &WorkItemRecord, heads: &mut HeadTracker) {
 	let Ok(output) = &record.result else { return };
 	let digest = ParachainWorkDigest::decode_all(&mut &output[..])
 		.expect("refine of this service produced the output; qed");

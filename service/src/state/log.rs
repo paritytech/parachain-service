@@ -98,11 +98,11 @@ pub fn truncate_auth_trace(trace: &[u8]) -> StoredAuthTrace {
 
 /// Eviction rank of a log entry (§5.1). Lower ranks are discarded first:
 ///
-/// - 0 — a refine error other than `Opaque`: a fixed structural failure carrying
-///   no parachain-supplied detail, and the rank every failure a coretime buyer
-///   can provoke falls into. The most disposable of the three.
-/// - 1 — `Opaque`: the payload the parachain's own PVF chose to report (§4.2),
-///   the only refine entry carrying context the parachain can act on.
+/// - 0 — a refine error other than `Opaque`: a fixed structural failure carrying no
+///   parachain-supplied detail, and the rank every failure a coretime buyer can provoke falls into.
+///   The most disposable of the three.
+/// - 1 — `Opaque`: the payload the parachain's own PVF chose to report (§4.2), the only refine
+///   entry carrying context the parachain can act on.
 /// - 2 — an accumulate event: an actual on-chain state change.
 pub fn entry_rank(entry: &(Timeslot, LogEntry)) -> u8 {
 	match &entry.1 {

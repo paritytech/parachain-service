@@ -71,7 +71,10 @@ pub fn parse_pvf(code: &[u8]) -> Result<ParsedPvf, PvfParseError> {
 /// `work_item_payload` host call and declares its results through `set_parent_head_hash`
 /// and `set_head` (DECISIONS.md D-1). `machine` spawns the VM code-only, so we lay out
 /// its memory first.
-pub fn run(pvf: &ParsedPvf, para_id: ParaId) -> Result<(Hash, HeadData, UpwardMessages), RefineLog> {
+pub fn run(
+	pvf: &ParsedPvf,
+	para_id: ParaId,
+) -> Result<(Hash, HeadData, UpwardMessages), RefineLog> {
 	let handle =
 		refine::machine(&pvf.code[..], pvf.entry_pc).map_err(|_| RefineLog::InvalidCode)?;
 	let mem = &pvf.memory;
@@ -134,5 +137,3 @@ fn poke_bytes(handle: u64, addr: u32, data: &[u8]) -> Result<(), RefineLog> {
 	}
 	refine::poke(handle, data, addr as u64).map_err(|_| RefineLog::ValidationFailed)
 }
-
-

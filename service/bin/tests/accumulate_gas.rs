@@ -13,7 +13,6 @@ mod common;
 use codec::Encode;
 use common::*;
 use jam_types::{AccumulateItem, Memo as JamMemo, TransferRecord};
-use parachain_service_bin::MOCK_DEST_BLOB;
 use parachain_service::{
 	constants::{CORE_COUNT, MAX_TRANSFER_GAS},
 	state::{
@@ -22,6 +21,7 @@ use parachain_service::{
 	},
 	work_digest::{ValidationCodeHash, ValidationCodeRef},
 };
+use parachain_service_bin::MOCK_DEST_BLOB;
 use parachain_service_interface::{
 	types::{CoreIndex, Hash, ParaId, ASSET_HUB_PARA_ID},
 	upward_message::{UpwardMessage, MAX_UPWARD_MESSAGES_PER_DIGEST},
@@ -115,10 +115,7 @@ fn solicit_flood_works() {
 
 	report("solicit_flood", outcome.gas_used, outcome.elapsed, digest_len);
 	// All 1024 solicits applied.
-	let last = ValidationCodeRef {
-		hash: ValidationCodeHash(distinct_hash(FLOOD - 1)),
-		len: 100,
-	};
+	let last = ValidationCodeRef { hash: ValidationCodeHash(distinct_hash(FLOOD - 1)), len: 100 };
 	assert!(registry_entry(&storage, last).is_some_and(|e| e.referencers.contains(&PARA)));
 	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"head-1");
 	// A reachable worst-case digest must stay accumulable within Ga, or a valid
@@ -240,10 +237,7 @@ fn dest_handler_flood_works() {
 	eprintln!("dest_handler_flood: marginal per-transfer gas: {per_transfer}");
 	// All transfers handled: counter at FLOOD, both maps hold the last entry.
 	let last = FLOOD - 1;
-	assert_eq!(
-		storage.service_key(SVC, b"c").as_deref(),
-		Some(&(FLOOD as u64).to_le_bytes()[..])
-	);
+	assert_eq!(storage.service_key(SVC, b"c").as_deref(), Some(&(FLOOD as u64).to_le_bytes()[..]));
 	let mut fwd_key = [0u8; 33];
 	fwd_key[0] = b'f';
 	fwd_key[1..5].copy_from_slice(&last.to_le_bytes());
