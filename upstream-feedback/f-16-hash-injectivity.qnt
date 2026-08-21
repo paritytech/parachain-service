@@ -24,12 +24,9 @@ module hash_injectivity {
   pure val hCode: Hash = vchAsHash(codeOne)  // types.qnt:59
   pure val hKey:  Hash = listHash(keyOne)    // types.qnt:195
 
-  // All three digests are the same value. These PASS.
-  run witnessHeadTest = assert(hHead == { hashBytes: 1 })
-  run witnessCodeTest = assert(hCode == { hashBytes: 1 })
-  run witnessKeyTest  = assert(hKey  == { hashBytes: 1 })
-
-  // Injectivity across the domains. These FAIL: h(x) == h(y) for x != y.
+  // Injectivity across the domains.
+  // Unpatched spec: all three FAIL — h(x) == h(y) for x != y.
+  // Domain-tagged spec: all three PASS.
   run injectiveHeadVsCodeTest = assert(hHead != hCode)
   run injectiveHeadVsKeyTest  = assert(hHead != hKey)
   run injectiveCodeVsKeyTest  = assert(hCode != hKey)

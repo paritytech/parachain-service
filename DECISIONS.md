@@ -257,6 +257,27 @@ that pins the silent-failure behavior.
 `assign`, parallel to `DesignateRejected`. Until then, the asymmetry remains a known gap
 in the PoC's observability.
 
+## F-16: the model's abstract hashes discard their domain, blocking trace replay
+
+Found while designing the Quint trace-replay harness ([QUINT_REPLAY.md](./QUINT_REPLAY.md)).
+
+Three constructors map into `Hash = { hashBytes: int }` untagged, so their images overlap:
+`headHash(1)`, `vchAsHash({ vchBytes: 1 })` and `listHash(List(1))` all yield `{ hashBytes: 1 }`
+(`types.qnt:191/59/195`; disproof in `upstream-feedback/f-16-hash-injectivity.qnt`).
+
+This is not a model defect. Every `Hash`-consuming site is fed by exactly one constructor —
+`accumulate.qnt:357` compares `headHash` against `headHash` — so the model's comparisons are
+injective and sound.
+
+It does block replay, which runs the other way: `{ hashBytes: 1 }` back to 32 real bytes, where
+the bytes depend on a domain the trace no longer records. In `paraRegisterOperateCleanupTest`
+frame 3, `{ hashBytes: 1 }` is both a `preimageRegistry` key (a 64 KiB validation code) and a
+digest's `parentHeadHash` (an 8-byte head). The PoC harness recovers the domain from the ITF
+field path, which works only because each consuming site is single-domain.
+
+**Spec feedback**: domain-tag the hash constructors, as `merkleHash` (`head_commitment.qnt:25-28`)
+already does for leaves vs nodes, so traces round-trip without an out-of-spec lookup table.
+
 ## Retired decisions
 
 Entries are deleted once a GitHub issue exists for them (see line 9). The identifiers below were
