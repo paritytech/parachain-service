@@ -1,0 +1,85 @@
+{
+  "vars": ["lastHeadRoot", "lastStepWorkResults", "now", "prevSvc", "svc"],
+  "states": [
+    {
+      "svc": {
+        "parachains": {
+          "#map": [[
+            {"tag": "MkParaId", "value": {"#bigint": "1"}},
+            {
+              "headData": {"#bigint": "0"},
+              "validationCode": {"tag": "Some", "value": {
+                "pinned": false,
+                "ref": {"hash": {"vchBytes": {"#bigint": "1"}}, "len": {"#bigint": "65536"}}
+              }},
+              "pendingUpgrade": {"tag": "None", "value": {"#tup": []}},
+              "totalStateBalance": {"#bigint": "271140"},
+              "usedStateBalance": {"#bigint": "135570"},
+              "isDeregistering": false
+            }
+          ]]
+        },
+        "incomingTransfers": {"#map": []},
+        "incomingTransferChain": {"tag": "None", "value": {"#tup": []}},
+        "parachainLog": {"#map": []},
+        "preimageRegistry": {"#map": []},
+        "pendingAssigns": {"#map": []},
+        "pendingAssignCores": {"#map": []},
+        "stagedValidatorKeys": [],
+        "serviceCodeHash": {"domain": {"#bigint": "0"}, "hashBytes": {"#bigint": "0"}},
+        "keyValueStorage": {"#map": []},
+        "preimageStatus": {"#map": []}
+      },
+      "now": {"#bigint": "0"},
+      "prevSvc": null,
+      "lastStepWorkResults": [],
+      "lastHeadRoot": {"tag": "None", "value": {"#tup": []}}
+    },
+    {
+      "svc": {
+        "parachains": {
+          "#map": [[
+            {"tag": "MkParaId", "value": {"#bigint": "1"}},
+            {
+              "headData": {"#bigint": "2"},
+              "validationCode": {"tag": "Some", "value": {
+                "pinned": false,
+                "ref": {"hash": {"vchBytes": {"#bigint": "1"}}, "len": {"#bigint": "65536"}}
+              }},
+              "pendingUpgrade": {"tag": "None", "value": {"#tup": []}},
+              "totalStateBalance": {"#bigint": "271140"},
+              "usedStateBalance": {"#bigint": "135570"},
+              "isDeregistering": false
+            }
+          ]]
+        },
+        "incomingTransfers": {"#map": []},
+        "incomingTransferChain": {"tag": "None", "value": {"#tup": []}},
+        "parachainLog": {"#map": []},
+        "preimageRegistry": {"#map": []},
+        "pendingAssigns": {"#map": []},
+        "pendingAssignCores": {"#map": []},
+        "stagedValidatorKeys": [],
+        "serviceCodeHash": {"domain": {"#bigint": "0"}, "hashBytes": {"#bigint": "0"}},
+        "keyValueStorage": {"#map": []},
+        "preimageStatus": {"#map": []}
+      },
+      "now": {"#bigint": "1"},
+      "prevSvc": null,
+      "lastStepWorkResults": [
+        {
+          "result": {"tag": "MkOk", "value": {
+            "paraId": {"tag": "MkParaId", "value": {"#bigint": "1"}},
+            "validationCode": {"hash": {"vchBytes": {"#bigint": "1"}}, "len": {"#bigint": "65536"}},
+            "parentHeadHash": {"domain": {"#bigint": "1"}, "hashBytes": {"#bigint": "0"}},
+            "headData": {"#bigint": "2"},
+            "upwardMessages": [],
+            "lookupAnchor": {"#bigint": "0"}
+          }},
+          "authTrace": {"#bigint": "0"}
+        }
+      ],
+      "lastHeadRoot": {"tag": "None", "value": {"#tup": []}}
+    }
+  ]
+}

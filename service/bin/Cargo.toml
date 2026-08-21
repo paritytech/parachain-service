@@ -56,3 +56,4 @@ parachain-service = { workspace = true, features = ["test-utils", "std"] }
 frameless = { workspace = true }
 anyhow = "1" # TODO pull up to workspace
 parachain-service-interface = { workspace = true }
+serde_json = "1"

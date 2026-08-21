@@ -2902,6 +2902,7 @@ dependencies = [
  "parachain-service-interface",
  "parity-scale-codec",
  "primitive-types",
+ "serde_json",
  "tiny-keccak",
 ]
 
