@@ -77,8 +77,13 @@ pub fn record_incoming(now: Slot, records: &[&TransferRecord]) {
 }
 
 /// §5.1 `consume_transfers_up_to(slot)`: drop whole buckets up to and including
-/// `slot`, walking the chain from `first_slot` (Asset Hub only).
-pub fn consume_up_to(slot: Timeslot) {
+/// `slot`, walking the chain from `first_slot` (Asset Hub only). `slot` is
+/// clamped to the candidate's lookup-anchor `anchor`: Asset Hub cannot have read
+/// a bucket newer than the anchor it built on, so a slot beyond it must not
+/// drain buckets it never observed. Buckets at or below the anchor are still
+/// drained normally.
+pub fn consume_up_to(slot: Timeslot, anchor: Timeslot) {
+	let slot = slot.min(anchor);
 	let Some(mut chain) = TransferChain::get() else { return };
 	let mut cursor = chain.first_slot;
 	loop {

@@ -107,7 +107,7 @@ fn consume_works() {
 	let (_, storage, _) = run_block(storage, vec![transfer_item(10, 2_000_000)], NOW + 5);
 
 	let msg = UpwardMessage::ConsumeTransfersUpTo(NOW);
-	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
+	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], NOW + 6);
 	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 6);
 
 	assert!(transfer_bucket(&storage, NOW).is_none());
@@ -119,10 +119,34 @@ fn consume_works() {
 
 	// Consuming the rest clears the chain entirely.
 	let msg = UpwardMessage::ConsumeTransfersUpTo(NOW + 5);
-	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-1", b"ah-2", vec![msg], 0);
+	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-1", b"ah-2", vec![msg], NOW + 7);
 	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 7);
 	assert!(transfer_chain(&storage).is_none());
 	assert!(transfer_bucket(&storage, NOW + 5).is_none());
+}
+
+#[test]
+fn consume_is_clamped_to_anchor_works() {
+	// §5.1: `consume_transfers_up_to` is clamped to the candidate's
+	// lookup-anchor. Asset Hub cannot have read a bucket newer than the anchor
+	// it built on, so a slot beyond it must not drain buckets it never observed.
+	// Buckets at or below the anchor are still drained normally.
+	let (_, storage, _) = run_block(ah_storage(), vec![transfer_item(9, 1_000_000)], 1);
+	let (_, storage, _) = run_block(storage, vec![transfer_item(9, 1_000_000)], 9);
+	assert_eq!(transfer_chain(&storage).unwrap().count, 2);
+
+	// A candidate anchored at 5 asking to consume everything up to 9.
+	let msg = UpwardMessage::ConsumeTransfersUpTo(9);
+	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 5);
+	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], 10);
+
+	// Clamped to 5: bucket 1 drained, bucket 9 survives.
+	assert!(transfer_bucket(&storage, 1).is_none());
+	assert!(transfer_bucket(&storage, 9).is_some());
+	assert_eq!(
+		transfer_chain(&storage).unwrap(),
+		IncomingTransferChain { first_slot: 9, last_slot: 9, count: 1 }
+	);
 }
 
 #[test]
