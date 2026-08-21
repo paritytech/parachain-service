@@ -82,6 +82,39 @@ pub const INCOMING_TRANSFER_VALUE_OCTETS: u64 = 4 + 9 + 128;
 pub const INCOMING_TRANSFER_ENTRY_FOOTPRINT: Balance =
 	ITEM_DEPOSIT + ENTRY_OVERHEAD + 5 + 1 + INCOMING_TRANSFER_VALUE_OCTETS + 5;
 
+/// §5.1: what Asset Hub is charged for the unreserved part of the transfer
+/// queue, priced per worst-case bucket as §6.1 sizes the reservation itself.
+pub fn excess_transfer_footprint(count: u64) -> Balance {
+	if count <= MAX_INCOMING_TRANSFERS as u64 {
+		0
+	} else {
+		(count - MAX_INCOMING_TRANSFERS as u64) * INCOMING_TRANSFER_ENTRY_FOOTPRINT
+	}
+}
+
+/// §5.1: apply the change in that charge after the queue's `count` moved from
+/// `old_count` to `new_count`. The transfer funds the entry, so Asset Hub's
+/// `used_state_balance` and `total_state_balance` move together by the
+/// per-bucket cost and nothing else — the available balance is unchanged by
+/// queue admission and draining, so replay order does not matter. Admission and
+/// draining both go through here, so the two cannot drift.
+pub fn reattribute_transfer_queue(old_count: u64, new_count: u64) {
+	let delta = excess_transfer_footprint(new_count) as i128 -
+		excess_transfer_footprint(old_count) as i128;
+	if delta == 0 {
+		return;
+	}
+	let Some(mut pi) = Parachains::get(ASSET_HUB_PARA_ID) else { return };
+	if delta > 0 {
+		pi.used_state_balance = pi.used_state_balance.saturating_add(delta as Balance);
+		pi.total_state_balance = pi.total_state_balance.saturating_add(delta as Balance);
+	} else {
+		pi.used_state_balance = pi.used_state_balance.saturating_sub((-delta) as Balance);
+		pi.total_state_balance = pi.total_state_balance.saturating_sub((-delta) as Balance);
+	}
+	Parachains::set(ASSET_HUB_PARA_ID, &pi);
+}
+
 /// Asset Hub's service-global reservation (§6.1 "Asset Hub baseline footprint"),
 /// pre-provisioned at registration rather than charged as the items grow.
 pub const ASSET_HUB_GLOBAL_ITEMS_FOOTPRINT: Balance = {

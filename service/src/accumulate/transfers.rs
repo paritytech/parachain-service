@@ -9,7 +9,7 @@ use crate::{
 			TransferChain,
 		},
 	},
-	state_balance::transfer_covers_own_slot,
+	state_balance::{reattribute_transfer_queue, transfer_covers_own_slot},
 };
 use alloc::vec::Vec;
 use jam_pvm_common::accumulate::{service_info, transfer};
@@ -28,9 +28,14 @@ use parachain_service_interface::{types::Timeslot, upward_message::TransferOutAr
 pub fn record_incoming(now: Slot, records: &[&TransferRecord]) {
 	let mut chain = TransferChain::get();
 	let mut queued = chain.as_ref().map_or(0, |c| c.count);
+	let old_count = queued;
 	let mut admitted: Vec<QueuedTransfer> = Vec::new();
 	for record in records {
-		if (queued as usize) < MAX_INCOMING_TRANSFERS || transfer_covers_own_slot(record.amount) {
+		// §5.1: the entry is prepaid only if the queue can still hold one more
+		// within the reservation, leaving headroom.
+		if (queued as usize) + 1 < MAX_INCOMING_TRANSFERS ||
+			transfer_covers_own_slot(record.amount)
+		{
 			queued += 1;
 			admitted.push(QueuedTransfer {
 				from: record.source,
@@ -74,6 +79,9 @@ pub fn record_incoming(now: Slot, records: &[&TransferRecord]) {
 			TransferChain::set(chain);
 		},
 	}
+	// §5.1: unreserved entries are charged to Asset Hub as they arrive, priced
+	// per worst-case bucket rather than by `amount`.
+	reattribute_transfer_queue(old_count as u64, queued as u64);
 }
 
 /// §5.1 `consume_transfers_up_to(slot)`: drop whole buckets up to and including
@@ -85,11 +93,15 @@ pub fn record_incoming(now: Slot, records: &[&TransferRecord]) {
 pub fn consume_up_to(slot: Timeslot, anchor: Timeslot) {
 	let slot = slot.min(anchor);
 	let Some(mut chain) = TransferChain::get() else { return };
+	let old_count = chain.count;
 	let mut cursor = chain.first_slot;
 	loop {
 		if cursor > slot {
 			chain.first_slot = cursor;
 			TransferChain::set(&chain);
+			// §5.1: draining refunds the per-bucket charge of the unreserved
+			// entries removed, restoring Asset Hub's allowance.
+			reattribute_transfer_queue(old_count as u64, chain.count as u64);
 			return;
 		}
 		let bucket = TransferBuckets::get(cursor).expect("chain links only live buckets; qed");
@@ -100,6 +112,7 @@ pub fn consume_up_to(slot: Timeslot, anchor: Timeslot) {
 			None => {
 				// Chain exhausted.
 				TransferChain::clear();
+				reattribute_transfer_queue(old_count as u64, 0);
 				return;
 			},
 		}

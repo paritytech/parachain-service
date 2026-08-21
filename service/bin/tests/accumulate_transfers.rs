@@ -8,10 +8,10 @@ use parachain_service::{
 	state::{
 		log::{AccumulateLog, LogEntry, TransferError},
 		storage_key,
-		transfers::IncomingTransferChain,
+		transfers::{IncomingTransferChain, IncomingTransfers, QueuedTransfer},
 		Tag,
 	},
-	state_balance::INCOMING_TRANSFER_ENTRY_FOOTPRINT,
+	state_balance::{excess_transfer_footprint, INCOMING_TRANSFER_ENTRY_FOOTPRINT},
 };
 use parachain_service_interface::{types::ASSET_HUB_PARA_ID, upward_message::UpwardMessage};
 
@@ -146,6 +146,110 @@ fn consume_is_clamped_to_anchor_works() {
 	assert_eq!(
 		transfer_chain(&storage).unwrap(),
 		IncomingTransferChain { first_slot: 9, last_slot: 9, count: 1 }
+	);
+}
+
+/// A chain holding `MAX_INCOMING_TRANSFERS` queued transfers as a single empty
+/// bucket at slot 1 (the count is what gates admission and re-attribution).
+fn full_chain_storage() -> jam_node::vm::Storage {
+	fresh_storage(|s| {
+		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
+		set_state(
+			s,
+			&storage_key(Tag::IncomingTransferChain, &()),
+			&IncomingTransferChain {
+				first_slot: 1,
+				last_slot: 1,
+				count: MAX_INCOMING_TRANSFERS as u32,
+			},
+		);
+		set_state(
+			s,
+			&storage_key(Tag::IncomingTransfers, &1u32),
+			&IncomingTransfers {
+				transfers: vec![QueuedTransfer { from: 0, amount: 0, memo: [0; 128] }],
+				next_slot: None,
+			},
+		);
+	})
+}
+
+#[test]
+fn unreserved_transfers_are_self_funded_works() {
+	// §5.1: draining refunds exactly what admission charged, so an unreserved
+	// entry cannot ratchet `used_state_balance` upward over time. Both `used`
+	// and `total` move by the per-bucket cost, never by the transfer's `amount`.
+	let storage = full_chain_storage();
+	let used0 = para_info(&storage, ASSET_HUB_PARA_ID).unwrap().used_state_balance;
+	let total0 = para_info(&storage, ASSET_HUB_PARA_ID).unwrap().total_state_balance;
+
+	// Deliberately far more than one entry costs, to pin that the surplus is
+	// not credited to the allowance.
+	let at = 2;
+	let (_, storage, _) = run_block(
+		storage,
+		vec![transfer_item(3, INCOMING_TRANSFER_ENTRY_FOOTPRINT * 100)],
+		at,
+	);
+	let pi = para_info(&storage, ASSET_HUB_PARA_ID).unwrap();
+	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32 + 1);
+	assert_eq!(pi.used_state_balance, used0 + INCOMING_TRANSFER_ENTRY_FOOTPRINT);
+	assert_eq!(pi.total_state_balance, total0 + INCOMING_TRANSFER_ENTRY_FOOTPRINT);
+
+	// Drain the whole queue back out through the real accumulate path.
+	let msg = UpwardMessage::ConsumeTransfersUpTo(at);
+	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], at);
+	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], at + 1);
+
+	assert!(transfer_chain(&storage).is_none());
+	let pi = para_info(&storage, ASSET_HUB_PARA_ID).unwrap();
+	assert_eq!(pi.used_state_balance, used0);
+	assert_eq!(pi.total_state_balance, total0);
+}
+
+#[test]
+fn draining_unreserved_restores_balance_works() {
+	// §5.1: a full queue plus three self-funded entries, then the three oldest
+	// drained on the next round. The queue is full again and the state balance
+	// is back to its pre-charge value.
+	let storage = full_chain_storage();
+	let used0 = para_info(&storage, ASSET_HUB_PARA_ID).unwrap().used_state_balance;
+	let total0 = para_info(&storage, ASSET_HUB_PARA_ID).unwrap().total_state_balance;
+	let big = INCOMING_TRANSFER_ENTRY_FOOTPRINT;
+
+	// Push three entries, each in its own fresh slot past the tail.
+	let mut storage = storage;
+	let mut now = 2;
+	for _ in 0..3 {
+		let (_, s, _) = run_block(storage, vec![transfer_item(3, big * 100)], now);
+		storage = s;
+		now += 1;
+	}
+	let pi = para_info(&storage, ASSET_HUB_PARA_ID).unwrap();
+	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32 + 3);
+	assert_eq!(pi.used_state_balance, used0 + 3 * big);
+	assert_eq!(pi.total_state_balance, total0 + 3 * big);
+
+	// Drain buckets up to slot 3 (the seed bucket plus two arrivals): three
+	// transfers gone, the queue returns to the reservation size and the charge
+	// is refunded.
+	let msg = UpwardMessage::ConsumeTransfersUpTo(3);
+	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 3);
+	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], now);
+
+	let pi = para_info(&storage, ASSET_HUB_PARA_ID).unwrap();
+	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32);
+	assert_eq!(pi.used_state_balance, used0);
+	assert_eq!(pi.total_state_balance, total0);
+}
+
+#[test]
+fn excess_transfer_footprint_works() {
+	// §5.1: the reservation itself costs nothing beyond the baseline.
+	assert_eq!(excess_transfer_footprint(MAX_INCOMING_TRANSFERS as u64), 0);
+	assert_eq!(
+		excess_transfer_footprint(MAX_INCOMING_TRANSFERS as u64 + 3),
+		3 * INCOMING_TRANSFER_ENTRY_FOOTPRINT
 	);
 }
 

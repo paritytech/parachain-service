@@ -64,8 +64,10 @@ mod measured {
 	pub const TRANSFER_OUT_FLOOD: u64 = 3_013_673;
 	/// 331 outbound transfers to a destination demanding the full cap (F-13).
 	pub const HOSTILE_DEST_FLOOD: u64 = 33_929_854;
-	/// 1024 incoming transfers recorded in one bucket write (D-8).
-	pub const INCOMING_TRANSFER_FLOOD: u64 = 1_638_929;
+	/// 1024 incoming transfers recorded in one bucket write (D-8). The
+	/// re-attribution of the unreserved portion (§5.1) adds one ParaInfo
+	/// read-modify-write per block.
+	pub const INCOMING_TRANSFER_FLOOD: u64 = 1_643_861;
 	/// Due `assign` flush for all 341 cores in one block (F-12).
 	pub const DUE_ASSIGN_FLOOD: u64 = 9_942_768;
 	/// Marginal cost of a realistic destination's memo handler, per transfer.
