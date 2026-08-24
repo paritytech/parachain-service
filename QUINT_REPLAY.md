@@ -109,8 +109,8 @@ is not: `#meta` embeds a wall-clock `timestamp` and a dated `description`.
 Therefore: strip `#meta` before committing, and commit the normalized JSON.
 
 Do **not** gate CI on "regenerate and diff". `vendor/polkadot-sdk-quint` is a
-submodule that has already been force-push re-pinned once (VENDOR.md), so that
-gate turns upstream spec churn into red CI here. Regenerate deliberately via
+submodule that has already been force-push re-pinned once, so that gate turns
+upstream spec churn into red CI here. Regenerate deliberately via
 `just quint trace-generate`, review the diff, commit.
 
 ---
@@ -218,7 +218,7 @@ This is the part that makes "compare every field" honest. Each entry is a
 The harness applies the ledger, then requires exact equality. **Any difference
 not in the ledger fails the test.**
 
-### D-1 — Balance encoding width (SPEC_GAPS #4, DECISIONS.md D-3)
+### D-1 — Balance encoding width (DECISIONS.md D-3)
 
 > **Resolved upstream in spec `459985739f`** ("Use correct balances type"). §6.1
 > and `quint/state_balance.qnt` now size balances as `u64`, matching Rust, so
@@ -295,7 +295,7 @@ checked against the model's values advanced by an out-of-band
 `applyAlwaysAccumulate`-equivalent. Flag in the ledger with the upstream issue
 link.
 
-### D-3 — Incoming-transfer chain counter (SPEC_GAPS #2)
+### D-3 — Incoming-transfer chain counter
 
 Rust's `incoming_transfer_chain` carries a 4-byte count the model does not
 (`service/src/state_balance.rs`, `transfer_chain = 34+1+1+4+4+4`; Quint
@@ -711,9 +711,9 @@ Following the existing `upstream-feedback/` convention:
 1. **`stepIncomingTransfer` / `provisionPreimage` skip always-accumulate.** JAM
    delivers transfers as accumulate operands, so a transfer-carrying block does
    run always-accumulate. See ledger **D-2**.
-2. **`state_balance.qnt:19` sizes balances as `Compact<u128>`.** The
-   implementation pins `Balance = u64` (DECISIONS.md D-3, SPEC_GAPS #4). Either
-   the §6.1 tables move to `u64` or the divergence becomes permanent. See
+2. ~~**`state_balance.qnt:19` sizes balances as `Compact<u128>`**, against the
+   implementation's `Balance = u64` (DECISIONS.md D-3).~~ **Accepted upstream**
+   in spec `459985739f`: §6.1 and the model now size balances as `u64`. See
    ledger **D-1**.
 3. **51 of 61 `tests.qnt` runs emit no state transition**, so they cannot be
    replayed despite the file's stated purpose. Converting the highest-value ones

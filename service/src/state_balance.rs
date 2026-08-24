@@ -125,7 +125,7 @@ pub const ASSET_HUB_GLOBAL_ITEMS_FOOTPRINT: Balance = {
 	// pending_assign_cores: 34 + 1 + 2 + 341 * (u16 core 2 + slot 4), 1 item.
 	let pending_assign_cores = ENTRY_OVERHEAD + 1 + 2 + (CORE_COUNT as u64) * 6;
 	// incoming_transfer_chain: 34 + 1 (key) + 1 (Option tag) + first 4 + last 4
-	// + count 4 (the counter added per SPEC_GAPS #2; see state::transfers).
+	// + count 4 (the counter this implementation adds; see state::transfers).
 	let transfer_chain = ENTRY_OVERHEAD + 1 + 1 + 4 + 4 + 4;
 	// Fixed storage items: the two singletons, the chain pointer, one per core.
 	let fixed_items = (3 + CORE_COUNT as u64) * ITEM_DEPOSIT;
@@ -237,7 +237,7 @@ pub fn remove_referencer(para_id: ParaId, hash: &Hash, len: u32, now: Timeslot) 
 	let Some(status) = query(hash, len as usize) else {
 		// Registry says referenced but JAM knows no request: bookkeeping
 		// desync. Drop our side and refund; nothing to forget.
-		// FIXME: consensus-critical — should be impossible (SPEC_GAPS #4).
+		// FIXME: consensus-critical — should be impossible.
 		expunge_entry(para_id, hash, len, delta);
 		return RemoveOutcome { retained: false, log: None };
 	};
@@ -296,7 +296,7 @@ fn refund_para(para_id: ParaId, delta: Balance) {
 fn jam_solicit(hash: &Hash, len: u32) {
 	// FIXME: consensus-critical — a JAM-level failure here (e.g. FULL: the real
 	// service balance cannot cover the request) means the internal accounting
-	// diverged from JAM's (SPEC_GAPS #4). Panic reverts to the last checkpoint.
+	// diverged from JAM's. Panic reverts to the last checkpoint.
 	solicit(hash, len as usize).expect("internal accounting covers the solicit; qed");
 }
 

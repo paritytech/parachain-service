@@ -392,7 +392,7 @@ pub fn accumulate_context(
 
 /// [`accumulate_context`] with explicit JAM `Privileges` — lets tests override
 /// e.g. the `designate`/`assign`/`bless` services to exercise negative
-/// privilege paths (SPEC_GAPS #10).
+/// privilege paths.
 pub fn accumulate_context_with_privileges(
 	storage: Storage,
 	items: Vec<AccumulateItem>,

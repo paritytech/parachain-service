@@ -125,7 +125,7 @@ pub fn consume_up_to(slot: Timeslot, anchor: Timeslot) {
 /// foreign `source`, a plain move (`deferred: None`, which §5.1 also rejects
 /// whenever this service does not supervise `dest` — it never does), and either
 /// supervisor-balance selector.
-/// FIXME: revisit once the host exposes a GP >= 0.8 `transfer` (SPEC_GAPS #4).
+/// FIXME: revisit once the host exposes a GP >= 0.8 `transfer`.
 pub fn transfer_out(args: TransferOutArgs, logs: &mut Vec<AccumulateLog>) {
 	let TransferOutArgs {
 		source,

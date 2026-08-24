@@ -2,14 +2,13 @@ This implements the parachain service that will make Polkadot Parachains work on
 
 ## Resources
 
-Specs and references (Quint, Cumulus, Gray Paper) are vendored under `vendor/` — see
-[VENDOR.md](./VENDOR.md).
+Specs and references (Quint, Cumulus, Gray Paper) are vendored as git submodules under `vendor/`; the
+pinned revisions are the gitlinks themselves. The Parachain Service design and Quint spec live in
+`vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/`, and its pin tracks the tip of
+`bkchr-parachain-service-doc` ([PR #11883](https://github.com/paritytech/polkadot-sdk/pull/11883)),
+moved forward one upstream commit at a time with the matching Rust change in the same commit.
 
 - Project Plan: https://hackmd.io/16r_PWiUQTuStKtZZx-0Bw.md (fetch manually)
-
-## Spec Gaps
-
-See [SPEC_GAPS.md](./SPEC_GAPS.md).
 
 ## Conventions
 

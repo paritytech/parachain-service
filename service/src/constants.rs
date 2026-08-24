@@ -31,7 +31,7 @@ pub const MAX_STAGED_VALIDATOR_KEYS: usize = CORE_COUNT * 3;
 
 /// §3.1 — the portion of the incoming-transfer queue Asset Hub pre-provisions in
 /// its baseline. PROVISIONAL: must be derived from a benchmarked `min_memo_gas`
-/// (§5.1); FIXME before production (SPEC_GAPS #2).
+/// (§5.1); FIXME before production.
 pub const MAX_INCOMING_TRANSFERS: usize = 1000;
 
 /// Valid `stagingset` lengths for JAM `designate` (Gray Paper Safrole `valcount`):
@@ -54,5 +54,5 @@ pub fn is_valid_val_count(len: usize) -> bool {
 /// the cap could drop to `Ga / 1000` — bounding a full 345-transfer digest to
 /// 0.35x `Ga` (F-13) with ~6x headroom per transfer.
 /// FIXME: pick the production value and co-derive it with the per-digest
-/// message caps so `count x cap ≤ margin x Ga` (SPEC_GAPS #2/#3).
+/// message caps so `count x cap ≤ margin x Ga`.
 pub const MAX_TRANSFER_GAS: u64 = 100_000;

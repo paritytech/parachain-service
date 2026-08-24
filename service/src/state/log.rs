@@ -3,7 +3,7 @@
 //!
 //! Unlike the Quint model's approximated `logEntrySize`, sizes here are the
 //! exact SCALE `encoded_size()` of the stored value, so the 64 KiB cap is
-//! enforced against real bytes (this is what SPEC_GAPS #17 asks for).
+//! enforced against real bytes.
 
 use crate::{
 	constants::{PARACHAIN_LOG_BYTE_CAP, STORED_AUTH_TRACE_CAP},

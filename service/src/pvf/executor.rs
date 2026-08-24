@@ -2,7 +2,7 @@
 //! host call (spec §4.3), buffering side effects as upward messages and
 //! forwarding data-access calls to the outer JAM refine host calls.
 //!
-//! # Child host-call ABI (DECISIONS.md D-1; SPEC_GAPS #6)
+//! # Child host-call ABI (DECISIONS.md D-1)
 //!
 //! Arguments are passed in `A0..A5`. Pointers are guest addresses; the host
 //! peeks/pokes through the `machine` handle.

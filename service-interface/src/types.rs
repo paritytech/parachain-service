@@ -68,7 +68,7 @@ impl From<ParaId> for u32 {
 ///
 /// Compile-time constant per DECISIONS.md D-2; matches the Quint model's
 /// `CoretimeParaId`. FIXME: production needs a bootstrap/governance story for
-/// migrating this identity (SPEC_GAPS #10).
+/// migrating this identity.
 pub const CORETIME_PARA_ID: ParaId = ParaId(1);
 
 /// Asset Hub's `ParaId`. Owns validator-key updates (§5.3), service self-upgrade

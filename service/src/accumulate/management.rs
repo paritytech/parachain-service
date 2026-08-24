@@ -184,7 +184,7 @@ pub fn clean_up(para_id: ParaId, now: Slot, logs: &mut Vec<AccumulateLog>) {
 	// Fully expunged — drop all per-para state. `key_value_storage` is
 	// necessarily empty here: any entry would raise `used_state_balance` above
 	// the allowed clean-up balance checked above (JAM storage has no prefix
-	// iteration, so a sweep would be impossible anyway — SPEC_GAPS #13).
+	// iteration, so a sweep would be impossible anyway).
 	Parachains::remove(para_id);
 	ParachainLogs::remove(para_id);
 	if para_id == ASSET_HUB_PARA_ID {

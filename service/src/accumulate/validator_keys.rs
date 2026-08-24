@@ -37,8 +37,8 @@ pub fn apply(chunk: Vec<ValidatorKey>, is_last: bool, logs: &mut Vec<AccumulateL
 			Ok(set) => {
 				if designate(&set).is_err() {
 					// TODO: no log is specified for a JAM-level designate
-					// failure (e.g. the service is not the delegator,
-					// SPEC_GAPS #10); reuse DesignateRejected. Needs upstreaming.
+					// failure (e.g. the service is not the delegator);
+					// reuse DesignateRejected. Needs upstreaming.
 					logs.push(AccumulateLog::DesignateRejected { len: (len as u32).into() });
 				}
 			},

@@ -56,7 +56,7 @@ pub fn accumulate(
 		if let AccumulateItem::WorkItem(record) = item {
 			package::process(now, service_id, &record, &mut heads);
 			// §5.1: checkpoint after each work-report so its effects survive a
-			// later out-of-gas or panic (SPEC_GAPS #3).
+			// later out-of-gas or panic.
 			checkpoint();
 		}
 	}

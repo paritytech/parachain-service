@@ -57,7 +57,7 @@ pub fn read<V: Decode>(tag: Tag, key: &impl Encode) -> Option<V> {
 /// `total_state_balance` (§6.1 write-time invariant), so a JAM-level balance
 /// failure indicates a bookkeeping bug.
 /// FIXME: consensus-critical — a panic here reverts to the last checkpoint and
-/// can wedge the service until manual intervention (SPEC_GAPS #4).
+/// can wedge the service until manual intervention.
 pub fn write(tag: Tag, key: &impl Encode, value: &impl Encode) {
 	jam_pvm_common::accumulate::set_storage(&storage_key(tag, key), &value.encode())
 		.expect("state growth is pre-checked against the state balance; qed");

@@ -112,9 +112,9 @@ pub fn apply(
 		UpwardMessage::UpgradeService { code_hash, len: _, min_acc_gas, min_memo_gas } => {
 			// §5.4: forward to JAM `upgrade` only when the new code's preimage is
 			// actually provided — a solicited-but-unprovided registry entry is
-			// not enough (SPEC_GAPS #5/#16).
+			// not enough.
 			// FIXME: consensus-critical — JAM `upgrade` does not validate that
-			// the hash decodes to a well-formed service blob (SPEC_GAPS #5).
+			// the hash decodes to a well-formed service blob.
 			if is_available(&code_hash) {
 				upgrade(&CodeHash(code_hash), min_acc_gas, min_memo_gas);
 			} else {

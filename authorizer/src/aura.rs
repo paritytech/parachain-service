@@ -20,7 +20,7 @@ pub struct AuthConfig {
 	/// exactly this prefix.
 	pub para_ids: Vec<ParaId>,
 	/// The JAM service every work item must target. Prevents para-specific
-	/// coretime being spent on other JAM work (SPEC_GAPS #7).
+	/// coretime being spent on other JAM work.
 	/// TODO: not yet in the design's §7.1 config; needs upstreaming.
 	pub parachain_service: ServiceId,
 	/// Root of a binary Merkle trie over the collator public keys.
@@ -61,8 +61,8 @@ pub enum TokenError {
 impl AuthToken {
 	/// Verify that `key` sits at leaf `collator_index` of the collator-set trie.
 	///
-	/// Protocol pinned here (SPEC_GAPS #7 — spec leaves hash function and bit
-	/// order undefined):
+	/// Protocol pinned here (the spec leaves the hash function and bit order
+	/// undefined):
 	///
 	/// - **Leaf hash**: blake2b-32 over the raw 32-byte key.
 	/// - **Node hash**: blake2b-32 over the concatenated left–right pair.

@@ -106,7 +106,7 @@ fn jam_assign(
 	if let Err(e) = assign(core, &auth_queue, assigner.unwrap_or(service_id)) {
 		// TODO: no AccumulateLog is specified for a failed assign (bad core, or
 		// the service is no longer the core's assigner after a hand-off);
-		// needs upstreaming (SPEC_GAPS #9/#10).
+		// needs upstreaming.
 		jam_pvm_common::error!("assign for core {core} failed: {e:?}");
 	}
 }

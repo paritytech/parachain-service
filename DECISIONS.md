@@ -3,15 +3,15 @@
 Decisions made while implementing the Proof-of-Concept of the
 [Parachain Service design](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/parachain-service-on-jam.md),
 in the places where the design under-specifies, contradicts itself, or leaves an
-implementation choice open (see [SPEC_GAPS.md](./SPEC_GAPS.md)). Each entry names the gap it
-resolves (if tracked) and what should be fed back into the spec.
+implementation choice open. Each entry names the gap it resolves and what should be fed
+back into the spec.
 
 Format: **D-n** — decision, rationale, spec feedback. Entries are deleted once a GitHub
 issue exists for them; numbering is not reused.
 
 ## D-2: Asset Hub / Coretime ParaIds are compile-time constants
 
-Relates to SPEC_GAPS #10 (privileges and bootstrap state unspecified).
+Gap: the design does not specify the required JAM privileges or bootstrap state.
 
 Refine must enforce restricted host functions (§4.3) but is stateless, so it cannot learn
 the privileged ParaIds from service storage. The PoC hard-codes
@@ -28,7 +28,7 @@ Coretime to a new ParaId.
 
 ## D-4: AURA authorizer implements full logic with stubbed crypto
 
-Relates to SPEC_GAPS #7.
+Gap: the AURA authorizer is an example in the design, not an executable protocol.
 
 The authorizer implements the complete §7.1 pipeline — config/token decoding, anchor-slot
 round-robin collator-index computation, Merkle-proof structure, and domain-separated
@@ -37,7 +37,7 @@ accept any well-formed value, behind `FIXME` markers. Rejection rules for zero
 `slot_duration` / `collator_set_size` are enforced.
 
 **Spec feedback**: unaffected; real crypto is an implementation milestone, not a spec
-question. The §7.1 canonical proof/encoding rules still need specifying (gap #7).
+question. The §7.1 canonical proof/encoding rules still need specifying.
 
 ## D-5: `hash(head_data)` is blake2b-256
 
@@ -50,7 +50,7 @@ matching JAM's own preimage hashing (`jam_std_common::hash_raw`).
 
 ## D-8: incoming transfers are recorded in one bucket write per block
 
-Relates to SPEC_GAPS #2.
+Gap: transfer gas, admission, and financial reconciliation are incomplete in the design.
 
 The Quint model records each incoming transfer individually. Since all of a block's
 transfer operands arrive at the same timeslot (one bucket), a literal port re-reads and
@@ -66,7 +66,7 @@ be chunked) — a conforming literal implementation cannot fit its own gas budge
 
 ## D-10: `transfer_out` takes its arguments as one SCALE blob
 
-Relates to SPEC_GAPS #6 (the child-PVF ABI is not pinned by the design).
+Gap: the child-PVF ABI is not pinned by the design.
 
 §5.1's reworked `transfer_out` has seven arguments (`source`, `dest`, `amount`, `id`, two
 balance selectors, `deferred`), two of them optional. The child ABI passes arguments in
@@ -85,7 +85,8 @@ pass arguments; this is the first such call, and more will follow as §8 messagi
 
 ## D-11: only the deferred transfer mode is executable on the vendored host
 
-Relates to SPEC_GAPS #4 and #2.
+Gap: per-parachain quotas are not backed by the real service balance, and transfer gas
+and admission are incomplete.
 
 §5.1's `transfer_out` presupposes a Gray Paper >= 0.8 `transfer`: a `source` selector, a
 regular/supervisor balance pair on each side, and a plain-move mode that runs no destination
@@ -147,7 +148,7 @@ refinement context" (§7.1 step 3). The Gray Paper's `RefineContext` exposes onl
 **lookup-anchor** slot; the anchor's own slot is not available in-core. The PoC uses
 `lookup_anchor_slot` behind a FIXME, which would let a collator pick any lookup anchor
 mapping to its own index. The design needs either a JAM change (anchor slot in the context)
-or a different slot source. Extends SPEC_GAPS #7.
+or a different slot source. Extends the AURA-authorizer gap.
 
 ## F-8: model fidelity nits found while porting
 
@@ -167,7 +168,7 @@ or a different slot source. Extends SPEC_GAPS #7.
 
 ## F-9: AURA config gains a target-service field
 
-To close SPEC_GAPS #7's "does not require work items to target the Parachain Service", the
+To close the AURA authorizer's "does not require work items to target the Parachain Service", the
 PoC adds `parachain_service: ServiceId` to the AURA `AuthorizerConfig` and rejects packages
 whose items target any other service. §7.1's config struct needs the field.
 
@@ -237,7 +238,7 @@ service may not impose such a cap and instead relies on a per-digest cumulative 
 
 ## F-15: `designate` and `assign` failures surface asymmetrically in logs
 
-Relates to SPEC_GAPS #10 (privilege hand-off and bootstrap state unspecified).
+Gap: privilege hand-off and bootstrap state are unspecified.
 
 When the Parachain Service calls `designate` with an unprivileged service ID, the JAM host call
 fails and the PoC logs `AccumulateLog::DesignateRejected` (service/src/accumulate/validator_keys.rs:38-45),
@@ -288,14 +289,14 @@ citation in the repo resolvable — to a live `## D-n:`/`## F-n:` heading above 
 
 | Identifier | Retired as (context) | Issue |
 |---|---|---|
-| D-1 | child-PVF result ABI is host-call based; PoV input stays register-based (SPEC_GAPS #6) | issue missing |
-| D-3 | state-balance accounting uses the exact §6.1 formulas, with `Balance = u64` (SPEC_GAPS #4) | issue missing |
-| D-6 | `TransferOut` replay looks up the destination's `min_memo_gas`, capped by `MAX_TRANSFER_GAS` (SPEC_GAPS #2, F-13) | issue missing |
-| D-7 | `assign_core` queues shorter than 80 are cycle-repeated (SPEC_GAPS #9) | issue missing |
+| D-1 | child-PVF result ABI is host-call based; PoV input stays register-based | issue missing |
+| D-3 | state-balance accounting uses the exact §6.1 formulas, with `Balance = u64` | issue missing |
+| D-6 | `TransferOut` replay looks up the destination's `min_memo_gas`, capped by `MAX_TRANSFER_GAS` (F-13) | issue missing |
+| D-7 | `assign_core` queues shorter than 80 are cycle-repeated | issue missing |
 | D-9 | transfer-gas cap — orphan: never a DECISIONS.md heading in this repo's history; folded into D-6 (`service/src/constants.rs:43` cites "D-6/D-9") | issue missing |
-| F-4 | the queued-transfer count needs a counter in state (SPEC_GAPS #2) | issue missing |
-| F-5 | §6.1 sizing tables need re-deriving for the real wire types (SPEC_GAPS #4) | issue missing |
-| F-6 | `UpgradeService` verifies actual preimage availability, not registry membership (SPEC_GAPS #5/#16) | issue missing |
+| F-4 | the queued-transfer count needs a counter in state | issue missing |
+| F-5 | §6.1 sizing tables need re-deriving for the real wire types | issue missing |
+| F-6 | `UpgradeService` verifies actual preimage availability, not registry membership | issue missing |
 | F-2 | §4.3's `import_segments() -> Vec<SegmentMeta>` has no host-call backing — **accepted upstream**: spec `931846282d` drops it from the §4.3 table | [#11883](https://github.com/paritytech/polkadot-sdk/pull/11883) |
 | F-3 | no error codes for oversized `set_head` / oversized `assign_core` queues (retired; cited nowhere today) | issue missing |
 | F-7 | no log events for failed JAM `assign` / `designate` host calls (retired; cited nowhere today) | issue missing |
