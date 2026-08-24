@@ -5,6 +5,7 @@ use serde_json::Value;
 /// A strict representation of the values emitted by Quint's ITF writer.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ItfValue {
+	Null,
 	Int(i128),
 	Bool(bool),
 	Str(String),
@@ -79,7 +80,9 @@ impl TryFrom<&Value> for ItfValue {
 					.collect::<Result<_, _>>()
 					.map(Self::Record)
 			},
-			Value::Null => Err("ITF null is not a Quint value".into()),
+			// Quint uses JSON null for an uninitialized top-level variable such as
+			// `prevSvc` in the initial frame.
+			Value::Null => Ok(Self::Null),
 			Value::Number(_) => Err("ITF integers must use the #bigint encoding".into()),
 		}
 	}
