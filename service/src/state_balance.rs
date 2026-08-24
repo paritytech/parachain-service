@@ -120,14 +120,11 @@ pub fn reattribute_transfer_queue(old_count: u64, new_count: u64) {
 pub const ASSET_HUB_GLOBAL_ITEMS_FOOTPRINT: Balance = {
 	// staged_validator_keys: 34 + 1 (key) + 2 (compact len) + 1023 * 336, 1 item.
 	let staged_keys = ENTRY_OVERHEAD + 1 + 2 + (MAX_STAGED_VALIDATOR_KEYS as u64) * 336;
-	// pending_assigns: per core 34 + 5 (tag + CoreIndex key... wait, CoreIndex is
-	// u16, so the key is 1 + 2 = 3 B, but the §6.1 table assumes a 4 B CoreIndex.
-	// We keep the table's 5 B key to stay reservation-compatible; the real entry
-	// is smaller. TODO: the design types CoreIndex = 4 B, JAM's is u16 (needs
-	// upstreaming).
-	let pending_assigns = (CORE_COUNT as u64) * (ENTRY_OVERHEAD + 5 + 2 + 79 * 32 + 5);
-	// pending_assign_cores: 34 + 1 + 2 + 341 * (core 4 + slot 4), 1 item.
-	let pending_assign_cores = ENTRY_OVERHEAD + 1 + 2 + (CORE_COUNT as u64) * 8;
+	// pending_assigns: per core 34 + 3 (tag + u16 CoreIndex key) + 2 (compact len)
+	// + the authorizer queue + 5 (Option<ServiceId>).
+	let pending_assigns = (CORE_COUNT as u64) * (ENTRY_OVERHEAD + 3 + 2 + 79 * 32 + 5);
+	// pending_assign_cores: 34 + 1 + 2 + 341 * (u16 core 2 + slot 4), 1 item.
+	let pending_assign_cores = ENTRY_OVERHEAD + 1 + 2 + (CORE_COUNT as u64) * 6;
 	// incoming_transfer_chain: 34 + 1 (key) + 1 (Option tag) + first 4 + last 4
 	// + count 4 (the counter added per SPEC_GAPS #2; see state::transfers).
 	let transfer_chain = ENTRY_OVERHEAD + 1 + 1 + 4 + 4 + 4;
@@ -398,13 +395,13 @@ mod tests {
 
 	#[test]
 	fn asset_hub_footprint_works() {
-		// §6.1 says 1 227 748 fixed + 204 × N with 17 B amounts and a 44 B
-		// chain pointer. With D-3 (9 B amounts) a bucket costs 196, and the
-		// chain pointer grows 4 B for the transfer counter (SPEC_GAPS #2).
+		// §6.1 says 1 226 388 fixed + 204 × N with 17 B `Compact<u128>` amounts;
+		// with 9 B `Compact<u64>` (D-3) a bucket costs 196 instead. The fixed
+		// part is unaffected by the balance width and must match exactly.
 		assert_eq!(INCOMING_TRANSFER_ENTRY_FOOTPRINT, 196);
 		assert_eq!(
 			ASSET_HUB_GLOBAL_ITEMS_FOOTPRINT,
-			1_227_748 + 4 + (MAX_INCOMING_TRANSFERS as u64) * 196
+			1_226_388 + (MAX_INCOMING_TRANSFERS as u64) * 196
 		);
 	}
 
