@@ -215,10 +215,15 @@ not in the ledger fails the test.**
 
 ### D-1 — Balance encoding width (SPEC_GAPS #4, DECISIONS.md D-3)
 
-Quint sizes balances as `Compact<u128>` (17 B worst case,
+> **Resolved upstream in spec `459985739f`** ("Use correct balances type"). §6.1
+> and `quint/state_balance.qnt` now size balances as `u64`, matching Rust, so
+> the two sides agree and no shift is needed. The normalization below is kept
+> only because `fixtures/quint/minimal_replay.itf.json` was generated under the
+> old pin; it goes away when the fixture is regenerated.
+
+Quint sized balances as `Compact<u128>` (17 B worst case,
 `quint/state_balance.qnt:19`); Rust uses `Balance = u64` → 9 B
-(`service/src/state_balance.rs:8-11`, which already carries
-`TODO: needs upstreaming into the §6.1 tables`).
+(`service/src/state_balance.rs:8-10`).
 
 Computed both sides:
 

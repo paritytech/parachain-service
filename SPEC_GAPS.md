@@ -133,18 +133,18 @@ invariant connecting:
 - the Parachain Service account's actual JAM balance.
 
 Consequently, private headroom can exist while a real `write` or `solicit` returns `FULL`. The funding,
-escrow, refund, and insolvency-recovery flows need to be defined. The wire-type mismatch is resolved
-implementation-side: the PoC uses `Balance = u64` with `Compact<u64>` wire encodings and compile-time
-pins (D-3), while the design's sizing tables and the Quint model still comment `Compact<u128>`
-(§6.1, `quint/state_balance.qnt`).
+escrow, refund, and insolvency-recovery flows need to be defined. The wire-type mismatch is fully
+resolved: the PoC uses `Balance = u64` with `Compact<u64>` wire encodings and compile-time pins (D-3),
+and spec `459985739f` has since sized §6.1 and `quint/state_balance.qnt` the same way.
 
-> **Verdict (audit 2026-08-19):** CHANGED-SHAPE — §6.1 now specifies the per-para accounting management
-> and write-time invariant, and the PoC resolved the wire types to `Compact<u64>` (D-3;
-> `service-interface/src/types.rs:27-29`, `service/src/state_balance.rs:8`); the design/model still size
-> balances as `Compact<u128>` and the real-balance invariant remains open.
+> **Verdict (audit 2026-08-24):** CHANGED-SHAPE — §6.1 now specifies the per-para accounting management
+> and write-time invariant, and the wire types agree on `Compact<u64>` on both sides (D-3;
+> `service-interface/src/types.rs:27-29`, `service/src/state_balance.rs:8`), so the PoC's constants
+> match the §6.1 tables verbatim (`service/src/state_balance.rs` `baseline_footprint_works` /
+> `asset_hub_footprint_works`). Only the real-balance invariant remains open.
 > Ref: `parachain-service-on-jam.md:1144-1172` (§6.1 total-balance management),
 > `parachain-service-on-jam.md:1339-1350` (write-time invariant), `parachain-service-on-jam.md:1221`
-> (`Compact<u128>` sizing), `quint/state_balance.qnt:19`; `accounts.tex:135-155` (footprint/threshold).
+> (`u64` sizing), `quint/state_balance.qnt:19`; `accounts.tex:135-155` (footprint/threshold).
 
 References: design §6.1; Graypaper [accounts.tex](vendor/graypaper/text/accounts.tex), “Account Footprint
 and Threshold Balance”; [jam-types `Balance`](vendor/polkajam/crates/jam-types/src/simple.rs).

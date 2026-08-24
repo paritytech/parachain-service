@@ -6,9 +6,8 @@
 //! `(key, value)` pair containing only its own contribution.
 //!
 //! All balances are `u64` (D-3), so the worst-case compact-encoded balance is
-//! 9 B, not the design's 17 B (`Compact<u128>`) — the derived constants below
-//! differ from the §6.1 tables accordingly and are unit-tested at the bottom.
-//! TODO: needs upstreaming into the §6.1 tables.
+//! 9 B. §6.1 sizes its tables the same way, so the derived constants below can
+//! be unit-tested against them verbatim at the bottom of this file.
 
 use crate::{
 	constants::{CORE_COUNT, MAX_INCOMING_TRANSFERS, MAX_STAGED_VALIDATOR_KEYS},
@@ -386,18 +385,15 @@ mod tests {
 
 	#[test]
 	fn baseline_footprint_works() {
-		// The design's table says 69 847 with 17 B `Compact<u128>` balances;
-		// with 9 B `Compact<u64>` (D-3) both balance fields shrink by 8 B.
-		assert_eq!(PARA_INFO_FOOTPRINT, 4_262 - 16);
+		// §6.1: 4 246 + 65 585 = 69 831.
+		assert_eq!(PARA_INFO_FOOTPRINT, 4_246);
 		assert_eq!(PARA_LOG_FOOTPRINT, 65_585);
-		assert_eq!(BASELINE_FOOTPRINT, 69_847 - 16);
+		assert_eq!(BASELINE_FOOTPRINT, 69_831);
 	}
 
 	#[test]
 	fn asset_hub_footprint_works() {
-		// §6.1 says 1 226 388 fixed + 204 × N with 17 B `Compact<u128>` amounts;
-		// with 9 B `Compact<u64>` (D-3) a bucket costs 196 instead. The fixed
-		// part is unaffected by the balance width and must match exactly.
+		// §6.1: 1 226 388 fixed + 196 × N.
 		assert_eq!(INCOMING_TRANSFER_ENTRY_FOOTPRINT, 196);
 		assert_eq!(
 			ASSET_HUB_GLOBAL_ITEMS_FOOTPRINT,
