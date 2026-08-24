@@ -3,6 +3,8 @@
 
 #![allow(dead_code)]
 
+pub mod itf;
+
 use codec::{Decode, Encode};
 use executor::pj::{self, AccumulateOutcome};
 use jam_node::vm::Storage;
