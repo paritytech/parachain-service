@@ -10,7 +10,9 @@
 //! be unit-tested against them verbatim at the bottom of this file.
 
 use crate::{
-	constants::{CORE_COUNT, MAX_INCOMING_TRANSFERS, MAX_STAGED_VALIDATOR_KEYS},
+	constants::{
+		AUTHORIZER_QUEUE_LEN, CORE_COUNT, MAX_INCOMING_TRANSFERS, MAX_STAGED_VALIDATOR_KEYS,
+	},
 	hashing::blake2_256,
 	state::{
 		kv::KeyValueStorage,
@@ -121,7 +123,8 @@ pub const ASSET_HUB_GLOBAL_ITEMS_FOOTPRINT: Balance = {
 	let staged_keys = ENTRY_OVERHEAD + 1 + 2 + (MAX_STAGED_VALIDATOR_KEYS as u64) * 336;
 	// pending_assigns: per core 34 + 3 (tag + u16 CoreIndex key) + 2 (compact len)
 	// + the authorizer queue + 5 (Option<ServiceId>).
-	let pending_assigns = (CORE_COUNT as u64) * (ENTRY_OVERHEAD + 3 + 2 + 79 * 32 + 5);
+	let pending_assigns =
+		(CORE_COUNT as u64) * (ENTRY_OVERHEAD + 3 + 2 + (AUTHORIZER_QUEUE_LEN as u64) * 32 + 5);
 	// pending_assign_cores: 34 + 1 + 2 + 341 * (u16 core 2 + slot 4), 1 item.
 	let pending_assign_cores = ENTRY_OVERHEAD + 1 + 2 + (CORE_COUNT as u64) * 6;
 	// incoming_transfer_chain: 34 + 1 (key) + 1 (Option tag) + first 4 + last 4
@@ -393,11 +396,17 @@ mod tests {
 
 	#[test]
 	fn asset_hub_footprint_works() {
-		// §6.1: 1 226 388 fixed + 196 × N.
+		// 1 237 300 fixed + 196 × N. §6.1's table charges 79 hashes per cached
+		// assign and so arrives at 1 226 388; the queue holds
+		// `AUTHORIZER_QUEUE_LEN` = 80, which is what `quint/state_balance.qnt`
+		// charges and what a hand-off to a new assigner actually writes. The
+		// doc's own prose fixes the queue length at 80, so its table is the
+		// side that is wrong — under-reserving here would let JAM answer
+		// `StorageFull` to a write this accounting believed was covered.
 		assert_eq!(INCOMING_TRANSFER_ENTRY_FOOTPRINT, 196);
 		assert_eq!(
 			ASSET_HUB_GLOBAL_ITEMS_FOOTPRINT,
-			1_226_388 + (MAX_INCOMING_TRANSFERS as u64) * 196
+			1_237_300 + (MAX_INCOMING_TRANSFERS as u64) * 196
 		);
 	}
 
