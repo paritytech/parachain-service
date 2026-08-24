@@ -101,6 +101,23 @@ fn over_reserved_portion_admission_works() {
 }
 
 #[test]
+fn reservation_edge_admission_works() {
+	// §5.1: one short of the reservation the entry is still inside it, so a
+	// zero-amount transfer is free and fills the reservation exactly. Only from
+	// `MAX_INCOMING_TRANSFERS` onwards must an entry pay for itself.
+	let storage = chain_storage(MAX_INCOMING_TRANSFERS as u32 - 1);
+	let (_, storage, _) = run_block(storage, vec![transfer_item(9, 0)], NOW);
+
+	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32);
+	assert!(transfer_bucket(&storage, NOW).is_some());
+
+	// The next one is past the reservation: a zero-amount transfer is dropped.
+	let (_, storage, _) = run_block(storage, vec![transfer_item(9, 0)], NOW + 1);
+	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32);
+	assert!(transfer_bucket(&storage, NOW + 1).is_none());
+}
+
+#[test]
 fn consume_works() {
 	// Record at two slots, then Asset Hub consumes the first only.
 	let (_, storage, _) = run_block(ah_storage(), vec![transfer_item(9, 1_000_000)], NOW);
@@ -149,19 +166,15 @@ fn consume_is_clamped_to_anchor_works() {
 	);
 }
 
-/// A chain holding `MAX_INCOMING_TRANSFERS` queued transfers as a single empty
-/// bucket at slot 1 (the count is what gates admission and re-attribution).
-fn full_chain_storage() -> jam_node::vm::Storage {
+/// A chain claiming `count` queued transfers as a single one-entry bucket at
+/// slot 1 (the count is what gates admission and re-attribution).
+fn chain_storage(count: u32) -> jam_node::vm::Storage {
 	fresh_storage(|s| {
 		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
 		set_state(
 			s,
 			&storage_key(Tag::IncomingTransferChain, &()),
-			&IncomingTransferChain {
-				first_slot: 1,
-				last_slot: 1,
-				count: MAX_INCOMING_TRANSFERS as u32,
-			},
+			&IncomingTransferChain { first_slot: 1, last_slot: 1, count },
 		);
 		set_state(
 			s,
@@ -172,6 +185,11 @@ fn full_chain_storage() -> jam_node::vm::Storage {
 			},
 		);
 	})
+}
+
+/// A chain holding exactly the reservation, so the next entry must self-fund.
+fn full_chain_storage() -> jam_node::vm::Storage {
+	chain_storage(MAX_INCOMING_TRANSFERS as u32)
 }
 
 #[test]

@@ -67,7 +67,7 @@ mod measured {
 	/// 1024 incoming transfers recorded in one bucket write (D-8). The
 	/// re-attribution of the unreserved portion (§5.1) adds one ParaInfo
 	/// read-modify-write per block.
-	pub const INCOMING_TRANSFER_FLOOD: u64 = 1_643_861;
+	pub const INCOMING_TRANSFER_FLOOD: u64 = 1_643_860;
 	/// Due `assign` flush for all 341 cores in one block (F-12).
 	pub const DUE_ASSIGN_FLOOD: u64 = 9_943_182;
 	/// Marginal cost of a realistic destination's memo handler, per transfer.

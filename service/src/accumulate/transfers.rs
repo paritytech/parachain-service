@@ -31,11 +31,8 @@ pub fn record_incoming(now: Slot, records: &[&TransferRecord]) {
 	let old_count = queued;
 	let mut admitted: Vec<QueuedTransfer> = Vec::new();
 	for record in records {
-		// §5.1: the entry is prepaid only if the queue can still hold one more
-		// within the reservation, leaving headroom.
-		if (queued as usize) + 1 < MAX_INCOMING_TRANSFERS ||
-			transfer_covers_own_slot(record.amount)
-		{
+		// §5.1: inside the reservation the entry is already paid for.
+		if (queued as usize) < MAX_INCOMING_TRANSFERS || transfer_covers_own_slot(record.amount) {
 			queued += 1;
 			admitted.push(QueuedTransfer {
 				from: record.source,
