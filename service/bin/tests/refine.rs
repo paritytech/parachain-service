@@ -19,7 +19,7 @@ use parachain_service_bin::{
 	BLOB as SERVICE,
 };
 use parachain_service_interface::{
-	types::{Balance, ParaId, ServiceId, ASSET_HUB_PARA_ID},
+	types::{Balance, ParaId, ServiceId, ASSET_HUB_PARA_ID, CORETIME_PARA_ID},
 	upward_message::{TransferOutArgs, UpwardMessage, UpwardMessages},
 };
 
@@ -148,6 +148,36 @@ fn asset_hub_transfer_out_works() {
 
 	let (_, _, upward_messages, _) = expect_ok(outcome);
 	assert_eq!(upward_messages.into_iter().next(), Some(UpwardMessage::TransferOut(args)));
+}
+
+fn assign_action(len: usize, assigner: Option<u32>) -> Config {
+	Config::Mock(vec![MockAction::AssignCore {
+		core: 0,
+		queue: vec![[3; 32]; len],
+		assigner,
+		jam_slot: 100,
+	}])
+}
+
+#[test]
+fn invalid_authorizer_queue_errors() {
+	for (len, assigner) in [(0, None), (81, None), (1, Some(7))] {
+		let action = assign_action(len, assigner);
+		let parent = genesis(action.clone());
+		let outcome = run_block(action, &parent, 1, vec![CORETIME_PARA_ID]);
+		assert_eq!(expect_log(outcome), RefineLog::InvalidAuthorizerQueue);
+	}
+}
+
+#[test]
+fn valid_authorizer_queue_works() {
+	for (len, assigner) in [(1, None), (80, None), (80, Some(7))] {
+		let action = assign_action(len, assigner);
+		let parent = genesis(action.clone());
+		let outcome = run_block(action, &parent, 1, vec![CORETIME_PARA_ID]);
+		let (_, _, messages, _) = expect_ok(outcome);
+		assert_eq!(messages.len(), 1);
+	}
 }
 
 #[test]

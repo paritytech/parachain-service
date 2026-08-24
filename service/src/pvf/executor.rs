@@ -204,19 +204,23 @@ impl ExecutorState {
 			HostCall::AssignCore => {
 				let core = regs[A0] as u16;
 				let count = regs[A2] as usize;
-				if count > crate::constants::AUTHORIZER_QUEUE_LEN {
-					// TODO: no RefineLog code is specified for an oversized
-					// assign queue (§4.3, SPEC_GAPS #9); treated as a malformed
-					// PVF. Needs upstreaming.
-					return Err(RefineLog::ValidationFailed);
+				let new_assigner = (regs[A3] != 0).then_some(regs[A4] as ServiceId);
+				let jam_slot = regs[A5] as Timeslot;
+				// §4.3: an `assign_core` queue holds 1..=AUTHORIZER_QUEUE_LEN
+				// hashes, and a handoff to a new assigner demands exactly
+				// AUTHORIZER_QUEUE_LEN — the service can no longer re-present a
+				// short queue after giving the core away.
+				let queue_len_ok = count >= 1 && count <= crate::constants::AUTHORIZER_QUEUE_LEN;
+				let handoff_ok =
+					new_assigner.is_none() || count == crate::constants::AUTHORIZER_QUEUE_LEN;
+				if !queue_len_ok || !handoff_ok {
+					return Err(RefineLog::InvalidAuthorizerQueue);
 				}
 				let raw = peek_bytes(handle, regs[A1], (count * 32) as u64)?;
 				let queue = raw
 					.chunks_exact(32)
 					.map(|c| c.try_into().expect("chunks_exact(32); qed"))
 					.collect::<Vec<[u8; 32]>>();
-				let new_assigner = (regs[A3] != 0).then_some(regs[A4] as ServiceId);
-				let jam_slot = regs[A5] as Timeslot;
 				self.push(UpwardMessage::AssignCore { core, queue, new_assigner, jam_slot })?;
 			},
 			HostCall::SetValidatorKeys => {

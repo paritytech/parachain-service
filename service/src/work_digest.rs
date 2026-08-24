@@ -83,6 +83,10 @@ pub enum RefineLog {
 	/// The PVF invoked a host function restricted to another parachain
 	/// (Asset Hub or the Coretime chain). See §4.3.
 	RestrictedHostFunction,
+	/// An `assign_core` queue outside 1..=`AUTHORIZER_QUEUE_LEN` hashes — and any
+	/// queue other than exactly `AUTHORIZER_QUEUE_LEN` when handing the core to a
+	/// new assigner. See §4.3.
+	InvalidAuthorizerQueue,
 	/// The authorizer config's `authorized_paras` prefix length does not
 	/// match the work package's item count. See §4.1 step 1.
 	AuthConfigMismatch,

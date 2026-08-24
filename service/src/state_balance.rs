@@ -125,7 +125,7 @@ pub const ASSET_HUB_GLOBAL_ITEMS_FOOTPRINT: Balance = {
 	// We keep the table's 5 B key to stay reservation-compatible; the real entry
 	// is smaller. TODO: the design types CoreIndex = 4 B, JAM's is u16 (needs
 	// upstreaming).
-	let pending_assigns = (CORE_COUNT as u64) * (ENTRY_OVERHEAD + 5 + 2 + 80 * 32 + 5);
+	let pending_assigns = (CORE_COUNT as u64) * (ENTRY_OVERHEAD + 5 + 2 + 79 * 32 + 5);
 	// pending_assign_cores: 34 + 1 + 2 + 341 * (core 4 + slot 4), 1 item.
 	let pending_assign_cores = ENTRY_OVERHEAD + 1 + 2 + (CORE_COUNT as u64) * 8;
 	// incoming_transfer_chain: 34 + 1 (key) + 1 (Option tag) + first 4 + last 4
@@ -398,13 +398,13 @@ mod tests {
 
 	#[test]
 	fn asset_hub_footprint_works() {
-		// §6.1 says 1 238 660 fixed + 204 × N with 17 B amounts and a 44 B
+		// §6.1 says 1 227 748 fixed + 204 × N with 17 B amounts and a 44 B
 		// chain pointer. With D-3 (9 B amounts) a bucket costs 196, and the
 		// chain pointer grows 4 B for the transfer counter (SPEC_GAPS #2).
 		assert_eq!(INCOMING_TRANSFER_ENTRY_FOOTPRINT, 196);
 		assert_eq!(
 			ASSET_HUB_GLOBAL_ITEMS_FOOTPRINT,
-			1_238_660 + 4 + (MAX_INCOMING_TRANSFERS as u64) * 196
+			1_227_748 + 4 + (MAX_INCOMING_TRANSFERS as u64) * 196
 		);
 	}
 

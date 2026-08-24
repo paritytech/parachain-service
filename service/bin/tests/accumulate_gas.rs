@@ -69,7 +69,7 @@ mod measured {
 	/// read-modify-write per block.
 	pub const INCOMING_TRANSFER_FLOOD: u64 = 1_643_861;
 	/// Due `assign` flush for all 341 cores in one block (F-12).
-	pub const DUE_ASSIGN_FLOOD: u64 = 9_942_768;
+	pub const DUE_ASSIGN_FLOOD: u64 = 9_943_182;
 	/// Marginal cost of a realistic destination's memo handler, per transfer.
 	pub const DEST_HANDLER_PER_TRANSFER: u64 = 1_665;
 	/// Gas for a single real ed25519 is_authorized call (Merkle proof + ed25519
