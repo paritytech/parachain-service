@@ -409,8 +409,9 @@ The model now tracks JAM request status in `preimageStatus`, but the split is on
 > **Verdict (audit 2026-08-19):** CHANGED-SHAPE — the `UpgradeService` half is RESOLVED-UPSTREAM
 > (availability is now checked via `preimageAvailable`), but the Refine `codeAvailable` half remains
 > exactly as described, so the entry is not fully RESOLVED-UPSTREAM.
-> Ref: `quint/accumulate.qnt:301-313` (UpgradeService), `quint/tests.qnt:1773-1793` (Unprovided-rejection
-> test), `quint/refine.qnt:145-151,190` (`codeAvailable`), `quint/main.qnt:44-53` (initial codes solicited
+> Ref: `quint/accumulate.qnt:301-313` (UpgradeService),
+> `quint/tests/accumulate_test.qnt:36-59` (`serviceUpgradeRequiresAvailableCodeTest`),
+> `quint/refine.qnt:145-151,190` (`codeAvailable`), `quint/main.qnt:44-53` (initial codes solicited
 > but `Unprovided`), `quint/state.qnt:187-194` (`preimageAvailable`).
 
 References: [quint/state.qnt](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state.qnt),
@@ -465,11 +466,11 @@ These are legitimate abstractions, but invariants proved over the model do not c
 > ghost `solicited` set retains `(para, hash, len)`, but JAM transfer return codes/balance, the exact
 > 80-entry queue constraint, pool transition, privileges, service balance, and checkpoint behavior remain
 > absent. Ref: `quint/accumulate.qnt:242-255` (TransferOut arm), `quint/state.qnt:85-97` (queue as
-> unbounded `List`), `quint/refine.qnt:24-28` (candidate carries `len`), `quint/README.md:38-58` (scope).
+> unbounded `List`), `quint/refine.qnt:24-28` (candidate carries `len`). The model's scope was stated in
+> `quint/README.md`, deleted by spec `cf26601615`; it is not restated anywhere.
 
-References: [quint/accumulate.qnt](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/accumulate.qnt),
-[quint/invariants.qnt](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/invariants.qnt), and
-[quint/README.md](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/README.md).
+References: [quint/accumulate.qnt](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/accumulate.qnt)
+and [quint/invariants.qnt](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/invariants.qnt).
 
 ## Low — documentation drift
 
@@ -495,7 +496,8 @@ These should be corrected upstream so the prose, model, and implementation descr
 > Ref: `parachain-service-on-jam.md:5-33` (TOC), `parachain-service-on-jam.md:503-513` (Forget/RemoveKV
 > without `para_id`), `quint/messages.qnt:136-142,286-287` (model carries `paraId`),
 > `parachain-service-on-jam.md:400-402` (used_state_balance comment), `parachain-service-on-jam.md:774-780`
-> vs `812-815` (pruning), `quint/README.md:23,52,62`.
+> vs `812-815` (pruning). The `quint/README.md` half of this entry is moot: spec `cf26601615` deleted
+> the file rather than correcting it.
 
 ## Current model verification status
 

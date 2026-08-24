@@ -134,12 +134,6 @@ impl ExecutorState {
 				let payload = refine::work_item_payload(regs[A0] as usize);
 				regs[A0] = copy_out(handle, payload.as_deref(), regs[A1], regs[A2])?;
 			},
-			HostCall::ImportSegments => {
-				// TODO: the design's `import_segments() -> Vec<SegmentMeta>` has no
-				// jam-pvm-common equivalent (only per-index `import`); needs
-				// upstreaming (SPEC_GAPS #6). Unimplemented.
-				return Err(RefineLog::ValidationFailed);
-			},
 			HostCall::ImportSegment => {
 				let segment = refine::import(regs[A0] as usize);
 				regs[A0] = copy_out(handle, segment.as_ref().map(|s| &s[..]), regs[A1], regs[A2])?;

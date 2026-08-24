@@ -30,7 +30,12 @@ Two, with different jobs.
 
 ### A. `quint test` — deterministic, named scenarios (primary)
 
-`tests.qnt` exists for exactly this. Its header (`tests.qnt:6-12`):
+`tests.qnt` exists for exactly this. Since spec `05b7f006dd` it is a thin
+aggregator — the runs live in one topic module per design-doc section under
+`quint/tests/`, with shared fixtures in `quint/tests/support.qnt` — but
+importing them all means a single `quint test tests.qnt` still drives the whole
+suite, so the command below is unchanged. The intent, from the header the split
+carried over:
 
 > *"the tests below need DETERMINISTIC scenarios — input → output relationships
 > the Rust harness can replay."*
@@ -181,7 +186,7 @@ The three step kinds in `main.qnt:312` are **not** interchangeable:
 | `stepRefineAccumulate` | yes (`accumulate.qnt:611`) | `run_block(storage, work_items, slot)` |
 | `stepIncomingTransfer` | **no** | see divergence **D-2** below |
 | `provisionPreimage` | **no** | direct `Storage::provide`, no block |
-| `expectThat` (tests.qnt only) | — | skip: exact no-op frame |
+| `expectThat` (test modules only) | — | skip: exact no-op frame |
 
 Rust's `accumulate()` runs `assigns::apply_due_assigns(now, …)` **unconditionally
 and first** (`service/src/accumulate/mod.rs:35`). Calling `run_block` on a

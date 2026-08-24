@@ -296,10 +296,12 @@ citation in the repo resolvable — to a live `## D-n:`/`## F-n:` heading above 
 | F-4 | the queued-transfer count needs a counter in state (SPEC_GAPS #2) | issue missing |
 | F-5 | §6.1 sizing tables need re-deriving for the real wire types (SPEC_GAPS #4) | issue missing |
 | F-6 | `UpgradeService` verifies actual preimage availability, not registry membership (SPEC_GAPS #5/#16) | issue missing |
-| F-2 | §4.3's `import_segments() -> Vec<SegmentMeta>` has no host-call backing (retired; cited nowhere today) | issue missing |
+| F-2 | §4.3's `import_segments() -> Vec<SegmentMeta>` has no host-call backing — **accepted upstream**: spec `931846282d` drops it from the §4.3 table | [#11883](https://github.com/paritytech/polkadot-sdk/pull/11883) |
 | F-3 | no error codes for oversized `set_head` / oversized `assign_core` queues (retired; cited nowhere today) | issue missing |
 | F-7 | no log events for failed JAM `assign` / `designate` host calls (retired; cited nowhere today) | issue missing |
 
 Notes: F-2, F-3, and F-7 were retired in the same pass and are cited nowhere in the tree (included as
 rows so every `[DF]-N` in the repo still resolves). The nearest upstream artifact is the design PR
-[#11883](https://github.com/paritytech/polkadot-sdk/pull/11883), which is not a per-entry issue.
+[#11883](https://github.com/paritytech/polkadot-sdk/pull/11883), which is not a per-entry issue. F-2 has
+since been resolved there outright: spec `931846282d` removed `import_segments()` from §4.3, so the
+host call is gone from `HostCall` too.
