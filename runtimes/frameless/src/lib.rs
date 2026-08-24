@@ -258,7 +258,7 @@ pub fn validate(input: &[u8]) -> Vec<u8> {
 #[polkavm_derive::polkavm_export]
 extern "C" fn jam_validate_block() {
 	use parachain_service_interface::candidate::ParachainCandidate;
-	// index 0: service/src/refine.rs enforces exactly one work item (InvalidItemCount).
+	// index 0: service/src/refine.rs panics unless the package has exactly one item.
 	let raw = host::work_item_payload(0).expect("work item payload present; qed");
 	let candidate =
 		ParachainCandidate::decode(&mut &raw[..]).expect("ParachainCandidate decodes; qed");

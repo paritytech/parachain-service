@@ -218,6 +218,17 @@ fn no_work_items_panicks() {
 	let _ = pj::refine(&engine, code_hash, &mut context);
 }
 
+// §4.1 step 1 / §4.2: every package-level failure panics, because none of them
+// has an authoritative `para_id` to attribute a `RefineLog` to. The panic traps
+// the PVM, so JAM sees a bare work error and there is no digest to log.
+
+/// Assert that refine trapped rather than returning a digest.
+fn expect_work_error(res: anyhow::Result<RefineOutcome>) {
+	if let Ok(outcome) = res {
+		panic!("expected a work error, got a digest: {:?}", outcome.digest);
+	}
+}
+
 #[test]
 fn two_work_items_errors() {
 	let work_items = vec![
@@ -235,8 +246,7 @@ fn two_work_items_errors() {
 		0,
 	);
 
-	let outcome = pj::refine(&engine, code_hash, &mut context);
-	assert_eq!(expect_log(outcome), RefineLog::InvalidItemCount);
+	expect_work_error(pj::refine(&engine, code_hash, &mut context));
 }
 
 #[test]
@@ -253,8 +263,7 @@ fn more_para_ids_than_work_items_errors() {
 		0,
 	);
 
-	let outcome = pj::refine(&engine, code_hash, &mut context);
-	assert_eq!(expect_log(outcome), RefineLog::AuthConfigMismatch);
+	expect_work_error(pj::refine(&engine, code_hash, &mut context));
 }
 
 #[test]
@@ -274,8 +283,7 @@ fn less_para_ids_than_work_items_errors() {
 		0,
 	);
 
-	let outcome = pj::refine(&engine, code_hash, &mut context);
-	assert_eq!(expect_log(outcome), RefineLog::AuthConfigMismatch);
+	expect_work_error(pj::refine(&engine, code_hash, &mut context));
 }
 
 /// Extract a RefineLog or panic.

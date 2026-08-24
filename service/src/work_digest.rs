@@ -57,6 +57,10 @@ impl ParachainWorkDigest {
 }
 
 /// Structured reason a `refine` invocation failed.
+///
+/// Every variant is raised only after §4.1 step 2 fixes an authoritative
+/// `para_id`, since the entry lands in `parachain_log[para_id]`. Failures before
+/// that panic instead (§4.2).
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub enum RefineLog {
 	/// `historical_lookup(validation_code_hash)` returned `None`: the
@@ -87,12 +91,6 @@ pub enum RefineLog {
 	/// queue other than exactly `AUTHORIZER_QUEUE_LEN` when handing the core to a
 	/// new assigner. See §4.3.
 	InvalidAuthorizerQueue,
-	/// The authorizer config's `authorized_paras` prefix length does not
-	/// match the work package's item count. See §4.1 step 1.
-	AuthConfigMismatch,
-	/// The work package has 0 items or more than 1 item; only single-item
-	/// packages are currently supported (§3.2).
-	InvalidItemCount,
 	/// The work package payload failed to be decoded.
 	MalformedPayload,
 	/// The encoded `ParachainWorkDigest` (head data + upward messages) would

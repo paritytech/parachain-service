@@ -30,19 +30,19 @@ pub fn refine(
 		panic!("The AuthTrace was produced by IsAuthorized, it must be valid")
 	};
 
+	// Package-level failures are all settled before step 2 below fixes an
+	// authoritative `para_id`, so none of them can name a para to log against and
+	// all panic (§4.2). A config that will not decode at all never gets here:
+	// `is_authorized` fails on it first, so it never becomes a work report.
 	let work_items = refine::work_items_summary();
 	assert!(item_index < work_items.len(), "Out of bounds item_index is invalid per GP");
-
-	// TODO: The quint spec uses default 0 here, but why?
-	let para_id = *para_ids.get(item_index).unwrap_or(&ParaId::from(0));
-
-	if work_items.len() != para_ids.len() {
-		return ParachainWorkDigest::Err { para_id, error: RefineLog::AuthConfigMismatch };
-	};
-
+	assert_eq!(work_items.len(), para_ids.len(), "AuthConfig must name one para per work item");
 	let Ok([_work_item]): Result<&[_; 1], _> = work_items.as_slice().try_into() else {
-		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidItemCount };
+		panic!("Only single-item work packages are supported")
 	};
+
+	// §4.1 step 2: from here on `para_id` is authoritative, so failures log.
+	let para_id = para_ids[item_index];
 
 	let Ok(candidate) = ParachainCandidate::decode_all(&mut &raw_payload.0[..]) else {
 		return ParachainWorkDigest::Err { para_id, error: RefineLog::MalformedPayload };

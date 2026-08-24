@@ -16,7 +16,7 @@ git submodule update --init
 | `polkajam` | `paritytech/polkajam` | `oty-parachain-service-companion` | `3c9387bf` | build: `jam-types`, `jam-pvm-common`, `jam-node`, `jam-program-blob-common`, `jam-std-common` |
 | `polkadot-sdk-companion` | `paritytech/polkadot-sdk` | `oty-parachain-companion` | `cb9f3ded8c` | build: `sc-executor`, `sp-core`, `sp-io`, `sp-runtime`, `sp-state-machine`, `sp-version` |
 | `polkadot-sdk-cumulus` | `paritytech/polkadot-sdk` | `mku-cumulus-on-jam-doc` | `3b934d1c` | reference: Cumulus-on-JAM design doc |
-| `polkadot-sdk-quint` | `paritytech/polkadot-sdk` | `bkchr-parachain-service-doc` (PR [#11883](https://github.com/paritytech/polkadot-sdk/pull/11883)) | `bda35c34dd` | reference: Parachain Service design and Quint spec |
+| `polkadot-sdk-quint` | `paritytech/polkadot-sdk` | `bkchr-parachain-service-doc` (PR [#11883](https://github.com/paritytech/polkadot-sdk/pull/11883)) | `f2017ae8c3` | reference: Parachain Service design and Quint spec |
 | `graypaper` | `gavofyork/graypaper` | `main` | `8ab35421` | reference: JAM Gray Paper |
 
 The `polkadot-sdk-quint` pin was previously `5b51b82c`; that commit was force-pushed away upstream and is
