@@ -258,7 +258,7 @@ pub fn validate(input: &[u8]) -> Vec<u8> {
 #[polkavm_derive::polkavm_export]
 extern "C" fn jam_validate_block() {
 	use parachain_service_interface::candidate::ParachainCandidate;
-	// index 0: service/src/refine.rs enforces exactly one work item (InvalidItemCount).
+	// index 0: service/src/refine.rs panics unless the package has exactly one item.
 	let raw = host::work_item_payload(0).expect("work item payload present; qed");
 	let candidate =
 		ParachainCandidate::decode(&mut &raw[..]).expect("ParachainCandidate decodes; qed");
@@ -307,25 +307,25 @@ mod host {
 		#[polkavm_import(index = 9)]
 		fn work_item_payload_raw(index: u32, out_ptr: u32, out_cap: u32) -> u64;
 		// --- Side effects ---
-		#[polkavm_import(index = 12)]
+		#[polkavm_import(index = 11)]
 		fn export_raw(ptr: u32, len: u32) -> u64;
-		#[polkavm_import(index = 13)]
+		#[polkavm_import(index = 12)]
 		fn set_parent_head_hash_raw(hash_ptr: u32);
-		#[polkavm_import(index = 14)]
+		#[polkavm_import(index = 13)]
 		fn set_head_raw(ptr: u32, len: u32);
-		#[polkavm_import(index = 15)]
+		#[polkavm_import(index = 14)]
 		fn request_code_upgrade_raw(hash_ptr: u32, len: u32);
-		#[polkavm_import(index = 16)]
+		#[polkavm_import(index = 15)]
 		fn solicit_raw(hash_ptr: u32, len: u32);
-		#[polkavm_import(index = 17)]
+		#[polkavm_import(index = 16)]
 		fn forget_raw(para_id: u32, hash_ptr: u32, len: u32);
-		#[polkavm_import(index = 18)]
+		#[polkavm_import(index = 17)]
 		fn kv_set_raw(key_ptr: u32, key_len: u32, value_ptr: u32, value_len: u32);
-		#[polkavm_import(index = 19)]
+		#[polkavm_import(index = 18)]
 		fn kv_remove_raw(para_id: u32, key_ptr: u32, key_len: u32);
-		#[polkavm_import(index = 20)]
+		#[polkavm_import(index = 19)]
 		fn transfer_out_raw(args_ptr: u32, args_len: u32);
-		#[polkavm_import(index = 21)]
+		#[polkavm_import(index = 20)]
 		fn assign_core_raw(
 			core: u32,
 			queue_ptr: u32,
@@ -334,26 +334,26 @@ mod host {
 			assigner: u32,
 			jam_slot: u32,
 		);
-		#[polkavm_import(index = 22)]
+		#[polkavm_import(index = 21)]
 		fn set_validator_keys_raw(keys_ptr: u32, count: u32, is_last: u32);
-		#[polkavm_import(index = 23)]
+		#[polkavm_import(index = 22)]
 		fn consume_transfers_up_to_raw(slot: u32);
-		#[polkavm_import(index = 24)]
+		#[polkavm_import(index = 23)]
 		fn parachain_service_upgrade_raw(
 			hash_ptr: u32,
 			len: u32,
 			min_acc_gas: u64,
 			min_memo_gas: u64,
 		);
-		#[polkavm_import(index = 25)]
+		#[polkavm_import(index = 24)]
 		fn report_error_raw(ptr: u32, len: u32);
-		#[polkavm_import(index = 26)]
+		#[polkavm_import(index = 25)]
 		fn parachain_set_head_raw(para_id: u32, head_ptr: u32, head_len: u32);
-		#[polkavm_import(index = 27)]
+		#[polkavm_import(index = 26)]
 		fn parachain_set_validation_code_raw(para_id: u32, hash_ptr: u32, len: u32);
-		#[polkavm_import(index = 28)]
+		#[polkavm_import(index = 27)]
 		fn parachain_clean_up_raw(para_id: u32);
-		#[polkavm_import(index = 29)]
+		#[polkavm_import(index = 28)]
 		fn parachain_set_state_balance_raw(para_id: u32, total: u64);
 	}
 

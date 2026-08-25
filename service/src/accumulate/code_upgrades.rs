@@ -63,7 +63,7 @@ pub fn request_code_upgrade(
 			let pending = pending.clone();
 			let mut pi = pi;
 			pi.pending_upgrade = Some((pending, deadline));
-			// A backstop write failure (§6.1 invariant, SPEC_GAPS #4) logs the
+			// A backstop write failure (§6.1 invariant) logs the
 			// rejection; the request is dropped for this block.
 			if Parachains::set(para_id, &pi).is_err() {
 				logs.push(AccumulateLog::InsufficientStateBalance {
@@ -102,7 +102,7 @@ pub fn request_code_upgrade(
 		deadline,
 	));
 	// Arming `pending_upgrade` grows the record; a backstop write failure (§6.1
-	// invariant, SPEC_GAPS #4) logs the rejection and the upgrade is not armed.
+	// invariant) logs the rejection and the upgrade is not armed.
 	if Parachains::set(para_id, &pi).is_err() {
 		logs.push(AccumulateLog::InsufficientStateBalance {
 			reason: InsufficientBalanceReason::ParaInfo,
@@ -159,8 +159,7 @@ pub fn activate_upgrade_if_match(
 	let mut pi: ParaInfo = Parachains::get(para_id).expect("still live; qed");
 	pi.validation_code = Some(pending);
 	pi.pending_upgrade = None;
-	// Activation can grow the record; a backstop write failure (§6.1 invariant,
-	// SPEC_GAPS #4) logs the rejection and the activation is deferred.
+	// Activation can grow the record; a backstop write failure (§6.1 invariant)
 	if Parachains::set(para_id, &pi).is_err() {
 		logs.push(AccumulateLog::InsufficientStateBalance {
 			reason: InsufficientBalanceReason::ParaInfo,

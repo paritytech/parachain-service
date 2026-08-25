@@ -10,8 +10,9 @@ use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Decode, Encode};
 use parachain_service_interface::types::{AuthorizerHash, CoreIndex, ServiceId, Timeslot};
 
-/// A scheduled JAM `assign` for one core (spec §3.1). JAM's `assign` writes the
-/// queue and the assigner atomically, so they are cached together.
+/// A scheduled JAM `assign` for one core (spec §3.1, §7.1). The queue is
+/// stored rotated to the beginning of its next 80-slot cycle, so no separate
+/// cursor is needed. JAM writes the queue and assigner atomically.
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub struct PendingAssign {
 	pub queue: Vec<AuthorizerHash>,
@@ -20,9 +21,8 @@ pub struct PendingAssign {
 	pub assigner: Option<ServiceId>,
 }
 
-/// Dirty-core index: each core with a pending assign, paired with the `jam_slot`
-/// at which it becomes due. Lets the always-accumulate path find and gate due
-/// entries without reading the much larger payloads.
+/// Dirty-core index: each core with a pending assign, paired with its next due
+/// timeslot. A non-tiling short queue is re-armed every 80 slots.
 pub type PendingAssignCores = BoundedVec<(CoreIndex, Timeslot), ConstU32<{ CORE_COUNT as u32 }>>;
 
 /// Storage accessors for the `pending_assigns` map (tag `0x02`).

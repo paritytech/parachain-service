@@ -9,8 +9,7 @@ pub enum AuthorizationError {
 	UndecodableAuthToken,
 	InvalidWorkItemCount,
 	/// A work item targets a service other than the configured Parachain
-	/// Service — para-specific coretime must not authorize other JAM work
-	/// (SPEC_GAPS #7).
+	/// Service — para-specific coretime must not authorize other JAM work.
 	WrongTargetService,
 	/// `collator_set_size == 0` — no collator could ever be selected.
 	ZeroCollatorSetSize,

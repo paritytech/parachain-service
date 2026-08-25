@@ -55,7 +55,7 @@ pub fn read<V: Decode>(tag: Tag, key: &impl Encode) -> Option<V> {
 ///
 /// Per the §6.1 write-time invariant every growth is pre-checked against
 /// `total_state_balance`, so a JAM-level balance failure here means the private
-/// headroom accounting diverged from the real service balance (SPEC_GAPS #4).
+/// headroom accounting diverged from the real service balance.
 /// The failure is surfaced rather than panicked: the accumulate growth paths
 /// log `AccumulateLog::InsufficientStateBalance` and continue.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -67,7 +67,7 @@ pub struct StorageFull;
 /// panicking. The §6.1 pre-check makes this unreachable in practice, but a
 /// panic would revert to the last checkpoint and wedge the service until
 /// manual intervention.
-/// FIXME: consensus-critical — private headroom ≠ real JAM balance (SPEC_GAPS #4).
+/// FIXME: consensus-critical — private headroom ≠ real JAM balance.
 pub fn write(tag: Tag, key: &impl Encode, value: &impl Encode) -> Result<(), StorageFull> {
 	jam_pvm_common::accumulate::set_storage(&storage_key(tag, key), &value.encode())
 		.map(|_| ())

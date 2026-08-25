@@ -57,22 +57,24 @@ fn report(name: &str, gas: u64, elapsed: std::time::Duration, digest_len: usize)
 /// the margin invariant against the new value.
 mod measured {
 	/// 1024-solicit digest — the heaviest reachable digest replay.
-	pub const SOLICIT_FLOOD: u64 = 7_784_807;
+	pub const SOLICIT_FLOOD: u64 = 7_764_545;
 	/// 1024 small KV writes.
-	pub const SET_KV_FLOOD: u64 = 5_969_206;
+	pub const SET_KV_FLOOD: u64 = 5_926_559;
 	/// 1024 outbound transfers to a friendly destination (digest exceeds `Wr`).
-	pub const TRANSFER_OUT_FLOOD: u64 = 3_288_983;
+	pub const TRANSFER_OUT_FLOOD: u64 = 3_013_673;
 	/// 331 outbound transfers to a destination demanding the full cap (F-13).
-	pub const HOSTILE_DEST_FLOOD: u64 = 34_019_322;
-	/// 1024 incoming transfers recorded in one bucket write (D-8).
-	pub const INCOMING_TRANSFER_FLOOD: u64 = 1_590_427;
+	pub const HOSTILE_DEST_FLOOD: u64 = 33_929_854;
+	/// 1024 incoming transfers recorded in one bucket write (D-8). The
+	/// re-attribution of the unreserved portion (§5.1) adds one ParaInfo
+	/// read-modify-write per block.
+	pub const INCOMING_TRANSFER_FLOOD: u64 = 1_643_860;
 	/// Due `assign` flush for all 341 cores in one block (F-12).
-	pub const DUE_ASSIGN_FLOOD: u64 = 9_083_738;
+	pub const DUE_ASSIGN_FLOOD: u64 = 9_943_182;
 	/// Marginal cost of a realistic destination's memo handler, per transfer.
-	pub const DEST_HANDLER_PER_TRANSFER: u64 = 1_638;
+	pub const DEST_HANDLER_PER_TRANSFER: u64 = 1_665;
 	/// Gas for a single real ed25519 is_authorized call (Merkle proof + ed25519
 	/// verify_strict) — must stay under Gi/5 per the 20% margin requirement.
-	pub const IS_AUTHORIZED_ED25519: u64 = 1_019_411;
+	pub const IS_AUTHORIZED_ED25519: u64 = 1_010_744;
 }
 
 /// The F-10 invariant, statically: every reachable worst case must leave real

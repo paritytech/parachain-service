@@ -2,7 +2,7 @@
 //! host call (spec §4.3), buffering side effects as upward messages and
 //! forwarding data-access calls to the outer JAM refine host calls.
 //!
-//! # Child host-call ABI (DECISIONS.md D-1; SPEC_GAPS #6)
+//! # Child host-call ABI (DECISIONS.md D-1)
 //!
 //! Arguments are passed in `A0..A5`. Pointers are guest addresses; the host
 //! peeks/pokes through the `machine` handle.
@@ -140,12 +140,6 @@ impl ExecutorState {
 				let payload = refine::work_item_payload(regs[A0] as usize);
 				regs[A0] = copy_out(handle, payload.as_deref(), regs[A1], regs[A2]);
 			},
-			HostCall::ImportSegments => {
-				// TODO: the design's `import_segments() -> Vec<SegmentMeta>` has no
-				// jam-pvm-common equivalent (only per-index `import`); needs
-				// upstreaming (SPEC_GAPS #6). Unimplemented.
-				panic!("PVF invoked unimplemented `import_segments`; §4.2 whole-refine failure");
-			},
 			HostCall::ImportSegment => {
 				let segment = refine::import(regs[A0] as usize);
 				regs[A0] = copy_out(handle, segment.as_ref().map(|s| &s[..]), regs[A1], regs[A2]);
@@ -217,7 +211,7 @@ impl ExecutorState {
 				let count = regs[A2] as usize;
 				if count > crate::constants::AUTHORIZER_QUEUE_LEN {
 					// TODO: no RefineLog code is specified for an oversized
-					// assign queue (§4.3, SPEC_GAPS #9); treated as an abnormal
+					// assign queue (§4.3); treated as an abnormal
 					// PVF exit failing the whole refine invocation. Needs upstreaming.
 					panic!(
 						"PVF `assign_core` queue of {count} > {}; §4.2 whole-refine failure",

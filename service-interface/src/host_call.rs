@@ -25,46 +25,46 @@ pub enum HostCall {
 	WorkItemSummary = 8,
 	/// Payload of a specific work item by index.
 	WorkItemPayload = 9,
-	/// Import segments metadata.
-	ImportSegments = 10,
-	/// A specific import segment by index.
-	ImportSegment = 11,
+	/// A specific import segment, by its index in the work item's import
+	/// manifest. Indices `0 .. import_count` enumerate the segments in
+	/// manifest order.
+	ImportSegment = 10,
 
 	// --- Side-effects ---
 	/// Write a segment to the JAM Data Lake (e.g. outbound XCMP payloads). Returns segment index.
-	Export = 12,
+	Export = 11,
 	/// Declare the parent head hash this candidate was built on.
-	SetParentHeadHash = 13,
+	SetParentHeadHash = 12,
 	/// Declare the new head data this parachain block produced.
-	SetHead = 14,
+	SetHead = 13,
 	/// Signal a PVF code upgrade request.
-	RequestCodeUpgrade = 15,
+	RequestCodeUpgrade = 14,
 	/// Mediated forward of JAM's `solicit`.
-	Solicit = 16,
+	Solicit = 15,
 	/// Mediated forward of JAM's `forget`.
-	Forget = 17,
+	Forget = 16,
 	/// Upsert key_value_storage entry.
-	KvSet = 18,
+	KvSet = 17,
 	/// Remove key_value_storage entry.
-	KvRemove = 19,
+	KvRemove = 18,
 	/// Transfer balance to another JAM service.
-	TransferOut = 20,
+	TransferOut = 19,
 	/// Schedule a core's assign.
-	AssignCore = 21,
+	AssignCore = 20,
 	/// Append a chunk of upcoming validator keys.
-	SetValidatorKeys = 22,
+	SetValidatorKeys = 21,
 	/// Drop queued transfer buckets up to a slot.
-	ConsumeTransfersUpTo = 23,
+	ConsumeTransfersUpTo = 22,
 	/// Replace the Parachain Service's own service code.
-	ParachainServiceUpgrade = 24,
+	ParachainServiceUpgrade = 23,
 	/// Abort the PVF with an opaque error payload.
-	ReportError = 25,
+	ReportError = 24,
 	/// Upsert a parachain's head data (Coretime chain only).
-	ParachainSetHead = 26,
+	ParachainSetHead = 25,
 	/// Upsert a parachain's validation code (Coretime chain only).
-	ParachainSetValidationCode = 27,
+	ParachainSetValidationCode = 26,
 	/// Remove all per-parachain state (Coretime chain only).
-	ParachainCleanUp = 28,
+	ParachainCleanUp = 27,
 	/// Overwrite a parachain's total state balance (Coretime chain only).
-	ParachainSetStateBalance = 29,
+	ParachainSetStateBalance = 28,
 }

@@ -42,7 +42,7 @@ This aspect is not modeled by the vendored GP-0.7.2 privilege type and remains u
 
 ## Not specified upstream
 
-SPEC_GAPS.md entry #10 identifies five open items that require JAM/spec-owner design decisions:
+Five open items require JAM/spec-owner design decisions:
 
 - Assigner-per-core: which service holds the `assign` privilege for each core
 - Delegator identity: which service can call `designate` for validator-key changes
@@ -50,6 +50,3 @@ SPEC_GAPS.md entry #10 identifies five open items that require JAM/spec-owner de
 - Gratis allowance: whether and how the service receives free gas for certain operations
 - Privilege recovery and hand-off: the protocol for transferring privileges between the manager,
   Coretime chain, Asset Hub, and Parachain Service across epochs
-
-See [SPEC_GAPS.md#10](./SPEC_GAPS.md#10-required-jam-privileges-and-bootstrap-state-are-not-specified)
-for the full context.

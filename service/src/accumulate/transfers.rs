@@ -9,7 +9,7 @@ use crate::{
 			TransferChain,
 		},
 	},
-	state_balance::transfer_covers_own_slot,
+	state_balance::{reattribute_transfer_queue, transfer_covers_own_slot},
 };
 use alloc::vec::Vec;
 use jam_pvm_common::accumulate::{service_info, transfer};
@@ -27,14 +27,16 @@ use parachain_service_interface::{types::Timeslot, upward_message::TransferOutAr
 /// for 1024 same-slot transfers (D-8); the resulting state is identical.
 ///
 /// Returns the `InsufficientStateBalance` entries for bucket/chain writes that
-/// hit the §6.1 backstop (SPEC_GAPS #4); the caller routes them to Asset Hub's
+/// hit the §6.1 backstop; the caller routes them to Asset Hub's
 /// parachain log.
 pub fn record_incoming(now: Slot, records: &[&TransferRecord]) -> Vec<AccumulateLog> {
 	let mut logs = Vec::new();
 	let mut chain = TransferChain::get();
 	let mut queued = chain.as_ref().map_or(0, |c| c.count);
+	let old_count = queued;
 	let mut admitted: Vec<QueuedTransfer> = Vec::new();
 	for record in records {
+		// §5.1: inside the reservation the entry is already paid for.
 		if (queued as usize) < MAX_INCOMING_TRANSFERS || transfer_covers_own_slot(record.amount) {
 			queued += 1;
 			admitted.push(QueuedTransfer {
@@ -104,19 +106,30 @@ pub fn record_incoming(now: Slot, records: &[&TransferRecord]) -> Vec<Accumulate
 			}
 		},
 	}
+	// §5.1: unreserved entries are charged to Asset Hub as they arrive, priced
+	// per worst-case bucket rather than by `amount`.
+	reattribute_transfer_queue(old_count as u64, queued as u64);
 	logs
 }
 
 /// §5.1 `consume_transfers_up_to(slot)`: drop whole buckets up to and including
-/// `slot`, walking the chain from `first_slot` (Asset Hub only).
-pub fn consume_up_to(slot: Timeslot) {
+/// `slot`, walking the chain from `first_slot` (Asset Hub only). `slot` is
+/// clamped to the candidate's lookup-anchor `anchor`: Asset Hub cannot have read
+/// a bucket newer than the anchor it built on, so a slot beyond it must not
+/// drain buckets it never observed. Buckets at or below the anchor are still
+/// drained normally.
+pub fn consume_up_to(slot: Timeslot, anchor: Timeslot) {
+	let slot = slot.min(anchor);
 	let Some(mut chain) = TransferChain::get() else { return };
+	let old_count = chain.count;
 	let mut cursor = chain.first_slot;
 	loop {
 		if cursor > slot {
 			chain.first_slot = cursor;
-			// Dropping buckets shrinks the chain pointer; JAM never rejects it.
-			TransferChain::set(&chain).expect("consuming buckets shrinks the chain; qed");
+			let _ = TransferChain::set(&chain);
+			// §5.1: draining refunds the per-bucket charge of the unreserved
+			// entries removed, restoring Asset Hub's allowance.
+			reattribute_transfer_queue(old_count as u64, chain.count as u64);
 			return;
 		}
 		let bucket = TransferBuckets::get(cursor).expect("chain links only live buckets; qed");
@@ -127,6 +140,7 @@ pub fn consume_up_to(slot: Timeslot) {
 			None => {
 				// Chain exhausted.
 				TransferChain::clear();
+				reattribute_transfer_queue(old_count as u64, 0);
 				return;
 			},
 		}
@@ -142,7 +156,7 @@ pub fn consume_up_to(slot: Timeslot) {
 /// foreign `source`, a plain move (`deferred: None`, which §5.1 also rejects
 /// whenever this service does not supervise `dest` — it never does), and either
 /// supervisor-balance selector.
-/// FIXME: revisit once the host exposes a GP >= 0.8 `transfer` (SPEC_GAPS #4).
+/// FIXME: revisit once the host exposes a GP >= 0.8 `transfer`.
 pub fn transfer_out(args: TransferOutArgs, logs: &mut Vec<AccumulateLog>) {
 	let TransferOutArgs {
 		source,

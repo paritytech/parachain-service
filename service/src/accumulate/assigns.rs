@@ -7,10 +7,10 @@ use jam_pvm_common::accumulate::assign;
 use jam_types::{auth_queue_len, AuthQueue, AuthorizerHash as JamAuthorizerHash};
 use parachain_service_interface::types::{AuthorizerHash, CoreIndex, ServiceId, Timeslot};
 
-/// Replay an `AssignCore` message (Coretime only, §4.3). An empty queue cancels
-/// any cached entry (no JAM call); an already-due `jam_slot` applies inline
-/// (always-accumulate has already run this block); otherwise the entry is
-/// cached until its slot.
+/// Replay an `AssignCore` message (Coretime only, §4.3). Refine rejects empty
+/// queues, so one is a defensive no-op here. An already-due `jam_slot` applies
+/// inline (always-accumulate has already run this block); otherwise the entry
+/// is cached until its slot.
 pub fn schedule(
 	now: Timeslot,
 	service_id: ServiceId,
@@ -20,21 +20,18 @@ pub fn schedule(
 	jam_slot: Timeslot,
 ) {
 	if queue.is_empty() {
-		PendingAssigns::remove(core);
-		DirtyCores::remove(core);
 		return;
 	}
 	if jam_slot <= now {
 		jam_assign(service_id, core, &queue, new_assigner);
-		PendingAssigns::remove(core);
-		DirtyCores::remove(core);
+		settle_after_assign(core, queue, new_assigner, now);
 		return;
 	}
 	PendingAssigns::set(core, &PendingAssign { queue, assigner: new_assigner }).unwrap_or_else(
 		|_| {
-			// A failed cache write (baseline-covered, §6.1 backstop, SPEC_GAPS #4)
+			// A failed cache write (baseline-covered, §6.1 backstop)
 			// drops the assign. There is no per-para log channel for the
-			// service-global assign cache (F-15, SPEC_GAPS #9/#10), so only the
+			// service-global assign cache (F-15), so only the
 			// error is surfaced. The dirty-core index must NOT be armed: the
 			// flush would then expect a payload that was never cached.
 			jam_pvm_common::error!("assign for core {core} not cached: storage full");
@@ -52,21 +49,57 @@ pub fn apply_due_assigns(now: Timeslot, service_id: ServiceId) {
 	if cores.is_empty() {
 		return;
 	}
-	let mut survivors = cores.clone();
-	survivors.retain(|(_, jam_slot)| now < *jam_slot);
-	if survivors.len() == cores.len() {
+	let mut next = cores.clone();
+	next.retain(|(_, jam_slot)| now < *jam_slot);
+	if next.len() == cores.len() {
 		return;
 	}
-	for (core, jam_slot) in cores.iter() {
-		if now < *jam_slot {
+	for (core, jam_slot) in cores {
+		if now < jam_slot {
 			continue;
 		}
-		let entry = PendingAssigns::get(*core).expect("dirty index names cached entries; qed");
-		jam_assign(service_id, *core, &entry.queue, entry.assigner);
-		PendingAssigns::remove(*core);
+		let entry = PendingAssigns::get(core).expect("dirty index names cached entries; qed");
+		jam_assign(service_id, core, &entry.queue, entry.assigner);
+		if fills_directly(entry.queue.len()) {
+			PendingAssigns::remove(core);
+		} else {
+			let _ = PendingAssigns::set(
+				core,
+				&PendingAssign { queue: advance_queue(entry.queue), assigner: entry.assigner },
+			);
+			next.try_push((core, now + auth_queue_len() as Timeslot))
+				.expect("re-arming cannot exceed the original number of dirty cores; qed");
+		}
 	}
 	// Flushing the due cores shrinks the index; JAM never rejects it.
-	DirtyCores::set(&survivors).expect("flushing due cores shrinks the index; qed");
+	DirtyCores::set(&next).expect("flushing due cores shrinks the index; qed");
+}
+
+/// Drop a self-sufficient queue after it fires, or retain and advance a short
+/// non-tiling queue so its endless sequence resumes 80 slots later (§7.1).
+fn settle_after_assign(
+	core: CoreIndex,
+	queue: Vec<AuthorizerHash>,
+	assigner: Option<ServiceId>,
+	now: Timeslot,
+) {
+	if fills_directly(queue.len()) {
+		PendingAssigns::remove(core);
+		DirtyCores::remove(core);
+	} else {
+		let _ = PendingAssigns::set(core, &PendingAssign { queue: advance_queue(queue), assigner });
+		let _ = DirtyCores::upsert(core, now + auth_queue_len() as Timeslot);
+	}
+}
+
+fn fills_directly(queue_len: usize) -> bool {
+	auth_queue_len() % queue_len == 0
+}
+
+fn advance_queue(mut queue: Vec<AuthorizerHash>) -> Vec<AuthorizerHash> {
+	let by = auth_queue_len() % queue.len();
+	queue.rotate_left(by);
+	queue
 }
 
 /// Call JAM `assign(core, queue, assigner)`. A queue shorter than the protocol's
@@ -85,7 +118,7 @@ fn jam_assign(
 	if let Err(e) = assign(core, &auth_queue, assigner.unwrap_or(service_id)) {
 		// TODO: no AccumulateLog is specified for a failed assign (bad core, or
 		// the service is no longer the core's assigner after a hand-off);
-		// needs upstreaming (SPEC_GAPS #9/#10).
+		// needs upstreaming.
 		jam_pvm_common::error!("assign for core {core} failed: {e:?}");
 	}
 }

@@ -151,6 +151,42 @@ fn service_upgrade_missing_preimage_errors() {
 }
 
 #[test]
+fn rejected_candidate_cannot_use_privileged_calls_works() {
+	// §5.1: rejection confines the privileged host functions of §4.3. A candidate
+	// rejected at the parent-head check never reaches the replay step, so a
+	// stale-parent candidate carrying `UpgradeService` cannot swap the service's
+	// own code. The control at the end replays the identical message from an
+	// accepted candidate and shows it does take effect, so the block is
+	// rejection and not some unrelated precondition.
+	use jam_types::CodeHash;
+
+	let new_service_code = b"the-new-parachain-service-code".to_vec();
+	let storage = fresh_storage(|s| {
+		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", b"ah-code", RICH);
+		parachain_service_bin::mock::provide_preimage(s, &new_service_code);
+	});
+	let new_code_hash = jam_std_common::hash_raw(&new_service_code);
+	let msg = UpwardMessage::UpgradeService {
+		code_hash: new_code_hash,
+		len: (new_service_code.len() as u32).into(),
+		min_acc_gas: 100,
+		min_memo_gas: 100,
+	};
+	let original = storage.service(SVC).expect("service exists").code_hash;
+
+	// A REJECTED candidate (stale parent) carrying the upgrade: nothing happens.
+	let rejected =
+		ok_digest(ASSET_HUB_PARA_ID, b"ah-code", b"not-the-parent", b"ah-1", vec![msg.clone()], 0);
+	let (_, storage, _) = run_block(storage, vec![work_item(&rejected)], NOW);
+	assert_eq!(storage.service(SVC).expect("service exists").code_hash, original);
+
+	// Control: the same message from an accepted candidate does upgrade.
+	let accepted = ok_digest(ASSET_HUB_PARA_ID, b"ah-code", b"ah-genesis", b"ah-1", vec![msg], 0);
+	let (_, storage, _) = run_block(storage, vec![work_item(&accepted)], NOW + 1);
+	assert_eq!(storage.service(SVC).expect("service exists").code_hash, CodeHash(new_code_hash));
+}
+
+#[test]
 fn service_upgrade_works() {
 	// §5.4: with the preimage present, the upgrade is forwarded to JAM.
 	let new_service_code = b"the-new-parachain-service-code".to_vec();

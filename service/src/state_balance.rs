@@ -6,12 +6,13 @@
 //! `(key, value)` pair containing only its own contribution.
 //!
 //! All balances are `u64` (D-3), so the worst-case compact-encoded balance is
-//! 9 B, not the design's 17 B (`Compact<u128>`) — the derived constants below
-//! differ from the §6.1 tables accordingly and are unit-tested at the bottom.
-//! TODO: needs upstreaming into the §6.1 tables.
+//! 9 B. §6.1 sizes its tables the same way, so the derived constants below can
+//! be unit-tested against them verbatim at the bottom of this file.
 
 use crate::{
-	constants::{CORE_COUNT, MAX_INCOMING_TRANSFERS, MAX_STAGED_VALIDATOR_KEYS},
+	constants::{
+		AUTHORIZER_QUEUE_LEN, CORE_COUNT, MAX_INCOMING_TRANSFERS, MAX_STAGED_VALIDATOR_KEYS,
+	},
 	hashing::blake2_256,
 	state::{
 		kv::KeyValueStorage,
@@ -82,20 +83,52 @@ pub const INCOMING_TRANSFER_VALUE_OCTETS: u64 = 4 + 9 + 128;
 pub const INCOMING_TRANSFER_ENTRY_FOOTPRINT: Balance =
 	ITEM_DEPOSIT + ENTRY_OVERHEAD + 5 + 1 + INCOMING_TRANSFER_VALUE_OCTETS + 5;
 
+/// §5.1: what Asset Hub is charged for the unreserved part of the transfer
+/// queue, priced per worst-case bucket as §6.1 sizes the reservation itself.
+pub fn excess_transfer_footprint(count: u64) -> Balance {
+	if count <= MAX_INCOMING_TRANSFERS as u64 {
+		0
+	} else {
+		(count - MAX_INCOMING_TRANSFERS as u64) * INCOMING_TRANSFER_ENTRY_FOOTPRINT
+	}
+}
+
+/// §5.1: apply the change in that charge after the queue's `count` moved from
+/// `old_count` to `new_count`. The transfer funds the entry, so Asset Hub's
+/// `used_state_balance` and `total_state_balance` move together by the
+/// per-bucket cost and nothing else — the available balance is unchanged by
+/// queue admission and draining, so replay order does not matter. Admission and
+/// draining both go through here, so the two cannot drift.
+pub fn reattribute_transfer_queue(old_count: u64, new_count: u64) {
+	let delta =
+		excess_transfer_footprint(new_count) as i128 - excess_transfer_footprint(old_count) as i128;
+	if delta == 0 {
+		return;
+	}
+	let Some(mut pi) = Parachains::get(ASSET_HUB_PARA_ID) else { return };
+	if delta > 0 {
+		pi.used_state_balance = pi.used_state_balance.saturating_add(delta as Balance);
+		pi.total_state_balance = pi.total_state_balance.saturating_add(delta as Balance);
+	} else {
+		pi.used_state_balance = pi.used_state_balance.saturating_sub((-delta) as Balance);
+		pi.total_state_balance = pi.total_state_balance.saturating_sub((-delta) as Balance);
+	}
+	let _ = Parachains::set(ASSET_HUB_PARA_ID, &pi);
+}
+
 /// Asset Hub's service-global reservation (§6.1 "Asset Hub baseline footprint"),
 /// pre-provisioned at registration rather than charged as the items grow.
 pub const ASSET_HUB_GLOBAL_ITEMS_FOOTPRINT: Balance = {
 	// staged_validator_keys: 34 + 1 (key) + 2 (compact len) + 1023 * 336, 1 item.
 	let staged_keys = ENTRY_OVERHEAD + 1 + 2 + (MAX_STAGED_VALIDATOR_KEYS as u64) * 336;
-	// pending_assigns: `CoreIndex` is `u16` per JAM (`jam_types::simple.rs:500`, mirror
-	// `service-interface/src/types.rs:26`), so the key is 3 B and the `(CoreIndex,
-	// Timeslot)` element is 6 B; the §6.1 sizing table still assumes 4 B and is being
-	// corrected in the spec.
-	let pending_assigns = (CORE_COUNT as u64) * (ENTRY_OVERHEAD + 3 + 2 + 80 * 32 + 5);
+	// pending_assigns: per core 34 + 3 (tag + u16 CoreIndex key) + 2 (compact len)
+	// + the authorizer queue + 5 (Option<ServiceId>).
+	let pending_assigns =
+		(CORE_COUNT as u64) * (ENTRY_OVERHEAD + 3 + 2 + (AUTHORIZER_QUEUE_LEN as u64) * 32 + 5);
 	// pending_assign_cores: 34 + 1 + 2 + 341 * (core 2 + slot 4), 1 item.
 	let pending_assign_cores = ENTRY_OVERHEAD + 1 + 2 + (CORE_COUNT as u64) * 6;
 	// incoming_transfer_chain: 34 + 1 (key) + 1 (Option tag) + first 4 + last 4
-	// + count 4 (the counter added per SPEC_GAPS #2; see state::transfers).
+	// + count 4 (the counter this implementation adds; see state::transfers).
 	let transfer_chain = ENTRY_OVERHEAD + 1 + 1 + 4 + 4 + 4;
 	// Fixed storage items: the two singletons, the chain pointer, one per core.
 	let fixed_items = (3 + CORE_COUNT as u64) * ITEM_DEPOSIT;
@@ -158,8 +191,8 @@ pub fn add_referencer(para_id: ParaId, hash: &Hash, len: u32) -> Result<(), Accu
 	let was_empty = entry.referencers.is_empty();
 
 	// The charge lands before the registry write; a failure rolls the charge
-	// back so `used_state_balance` keeps matching what is stored (§6.1 backstop,
-	// SPEC_GAPS #4). Ghost refunds are deferred until both writes have succeeded,
+	// back so `used_state_balance` keeps matching what is stored (§6.1 backstop).
+	// Ghost refunds are deferred until both writes have succeeded,
 	// so a rejection leaves no para half-updated.
 	pi.charge(delta);
 	if Parachains::set(para_id, &pi).is_err() {
@@ -234,7 +267,7 @@ pub fn remove_referencer(para_id: ParaId, hash: &Hash, len: u32, now: Timeslot) 
 	let Some(status) = query(hash, len as usize) else {
 		// Registry says referenced but JAM knows no request: bookkeeping
 		// desync. Drop our side and refund; nothing to forget.
-		// FIXME: consensus-critical — should be impossible (SPEC_GAPS #4).
+		// FIXME: consensus-critical — should be impossible.
 		expunge_entry(para_id, hash, len, delta);
 		return RemoveOutcome { retained: false, log: None };
 	};
@@ -294,7 +327,7 @@ fn refund_para(para_id: ParaId, delta: Balance) {
 fn jam_solicit(hash: &Hash, len: u32) {
 	// FIXME: consensus-critical — a JAM-level failure here (e.g. FULL: the real
 	// service balance cannot cover the request) means the internal accounting
-	// diverged from JAM's (SPEC_GAPS #4). Panic reverts to the last checkpoint.
+	// diverged from JAM's. Panic reverts to the last checkpoint.
 	solicit(hash, len as usize).expect("internal accounting covers the solicit; qed");
 }
 
@@ -325,8 +358,7 @@ pub fn apply_set_kv(para_id: ParaId, key: &[u8], value: &[u8]) -> Result<(), Acc
 	}
 	// The balance is adjusted before the writes (one read-modify-write of `pi`).
 	// A backstop write failure must not strand the adjustment: it is rolled back
-	// so `used_state_balance` matches what is actually stored (§6.1 invariant,
-	// SPEC_GAPS #4).
+	// so `used_state_balance` matches what is actually stored (§6.1 invariant).
 	if delta >= 0 {
 		pi.charge(delta as Balance);
 	} else {
@@ -418,8 +450,8 @@ mod tests {
 	fn asset_hub_footprint_works() {
 		// §6.1 says 1 238 660 fixed + 204 × N with 17 B amounts and a 44 B
 		// chain pointer. With D-3 (9 B amounts) a bucket costs 196, the chain
-		// pointer grows 4 B for the transfer counter (SPEC_GAPS #2), and the
-		// u16 `CoreIndex` (JAM) shrinks the fixed part by 341 × 4 = 1 364 B.
+		// pointer grows 4 B for the transfer counter, and the u16 `CoreIndex`
+		// (JAM) shrinks the fixed part by 341 × 4 = 1 364 B.
 		assert_eq!(INCOMING_TRANSFER_ENTRY_FOOTPRINT, 196);
 		assert_eq!(
 			ASSET_HUB_GLOBAL_ITEMS_FOOTPRINT,

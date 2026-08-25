@@ -3,7 +3,7 @@
 //!
 //! Unlike the Quint model's approximated `logEntrySize`, sizes here are the
 //! exact SCALE `encoded_size()` of the stored value, so the 64 KiB cap is
-//! enforced against real bytes (this is what SPEC_GAPS #17 asks for).
+//! enforced against real bytes.
 
 use crate::{
 	constants::{PARACHAIN_LOG_BYTE_CAP, STORED_AUTH_TRACE_CAP},
@@ -21,7 +21,7 @@ use parachain_service_interface::types::{Balance, Hash, ParaId, Timeslot};
 /// headroom pre-checks on solicit/preimage and `kv_set` growth. The remaining
 /// variants name baseline-covered writes (validator keys, incoming transfers,
 /// `ParaInfo`); those have no §6.1 pre-check, so they are only ever produced by
-/// a backstop write failure (private headroom ≠ real JAM balance, SPEC_GAPS #4)
+/// a backstop write failure (private headroom ≠ real JAM balance)
 /// and are kept self-describing by extending the enum beyond the spec's pair.
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub enum InsufficientBalanceReason {
@@ -198,7 +198,7 @@ impl ParachainLogs {
 		let mut log = Self::get(para_id);
 		push_log_entry(&mut log, (now, LogEntry::Refine { error, auth_trace }));
 		// A failed write drops the entry: the log is the only channel for its own
-		// failure. Best effort; no panic (§6.1 backstop, SPEC_GAPS #4).
+		// failure. Best effort; no panic (§6.1 backstop).
 		let _ = Self::set(para_id, &log);
 	}
 

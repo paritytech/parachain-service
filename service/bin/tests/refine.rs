@@ -19,7 +19,7 @@ use parachain_service_bin::{
 	BLOB as SERVICE,
 };
 use parachain_service_interface::{
-	types::{Balance, ParaId, ServiceId, ASSET_HUB_PARA_ID},
+	types::{Balance, ParaId, ServiceId, ASSET_HUB_PARA_ID, CORETIME_PARA_ID},
 	upward_message::{TransferOutArgs, UpwardMessage, UpwardMessages},
 };
 
@@ -150,6 +150,36 @@ fn asset_hub_transfer_out_works() {
 	assert_eq!(upward_messages.into_iter().next(), Some(UpwardMessage::TransferOut(args)));
 }
 
+fn assign_action(len: usize, assigner: Option<u32>) -> Config {
+	Config::Mock(vec![MockAction::AssignCore {
+		core: 0,
+		queue: vec![[3; 32]; len],
+		assigner,
+		jam_slot: 100,
+	}])
+}
+
+#[test]
+fn invalid_authorizer_queue_errors() {
+	for (len, assigner) in [(0, None), (81, None), (1, Some(7))] {
+		let action = assign_action(len, assigner);
+		let parent = genesis(action.clone());
+		let outcome = run_block(action, &parent, 1, vec![CORETIME_PARA_ID]);
+		assert_eq!(expect_log(outcome), RefineLog::InvalidAuthorizerQueue);
+	}
+}
+
+#[test]
+fn valid_authorizer_queue_works() {
+	for (len, assigner) in [(1, None), (80, None), (80, Some(7))] {
+		let action = assign_action(len, assigner);
+		let parent = genesis(action.clone());
+		let outcome = run_block(action, &parent, 1, vec![CORETIME_PARA_ID]);
+		let (_, _, messages, _) = expect_ok(outcome);
+		assert_eq!(messages.len(), 1);
+	}
+}
+
 #[test]
 fn skip_head_declarations_errors() {
 	let action = Config::Mock(vec![MockAction::SkipHeadDeclarations]);
@@ -188,6 +218,17 @@ fn no_work_items_panicks() {
 	let _ = pj::refine(&engine, code_hash, &mut context);
 }
 
+// §4.1 step 1 / §4.2: every package-level failure panics, because none of them
+// has an authoritative `para_id` to attribute a `RefineLog` to. The panic traps
+// the PVM, so JAM sees a bare work error and there is no digest to log.
+
+/// Assert that refine trapped rather than returning a digest.
+fn expect_work_error(res: anyhow::Result<RefineOutcome>) {
+	if let Ok(outcome) = res {
+		panic!("expected a work error, got a digest: {:?}", outcome.digest);
+	}
+}
+
 #[test]
 fn two_work_items_errors() {
 	let work_items = vec![
@@ -205,8 +246,7 @@ fn two_work_items_errors() {
 		0,
 	);
 
-	let outcome = pj::refine(&engine, code_hash, &mut context);
-	assert_eq!(expect_log(outcome), RefineLog::InvalidItemCount);
+	expect_work_error(pj::refine(&engine, code_hash, &mut context));
 }
 
 #[test]
@@ -223,8 +263,7 @@ fn more_para_ids_than_work_items_errors() {
 		0,
 	);
 
-	let outcome = pj::refine(&engine, code_hash, &mut context);
-	assert_eq!(expect_log(outcome), RefineLog::AuthConfigMismatch);
+	expect_work_error(pj::refine(&engine, code_hash, &mut context));
 }
 
 #[test]
@@ -244,8 +283,7 @@ fn less_para_ids_than_work_items_errors() {
 		0,
 	);
 
-	let outcome = pj::refine(&engine, code_hash, &mut context);
-	assert_eq!(expect_log(outcome), RefineLog::AuthConfigMismatch);
+	expect_work_error(pj::refine(&engine, code_hash, &mut context));
 }
 
 /// Extract a RefineLog or panic.

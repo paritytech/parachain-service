@@ -43,7 +43,7 @@ pub fn set_state_balance(
 			// Registration gives the para its first head, which §5.5 counts as a
 			// change; the existing-para arm below touches no head.
 			heads.touch(para_id);
-			// A failed registration write (backstop, SPEC_GAPS #4) logs the
+			// A failed registration write (backstop) logs the
 			// rejection; the Coretime batch is not replayed.
 			if Parachains::set(
 				para_id,
@@ -95,7 +95,7 @@ pub fn set_head(
 	heads.touch(para_id);
 	pi.head_data = new_head;
 	// A head overwrite can grow the `ParaInfo` entry; a backstop write failure
-	// (§6.1 invariant, SPEC_GAPS #4) logs the rejection and accumulate continues.
+	// (§6.1 invariant) logs the rejection and accumulate continues.
 	if Parachains::set(para_id, &pi).is_err() {
 		logs.push(AccumulateLog::InsufficientStateBalance {
 			reason: InsufficientBalanceReason::ParaInfo,
@@ -164,7 +164,7 @@ pub fn set_validation_code(
 	});
 	updated.pending_upgrade = None;
 	// A forced-code write can grow the record; a backstop write failure (§6.1
-	// invariant, SPEC_GAPS #4) logs the rejection.
+	// invariant) logs the rejection.
 	if Parachains::set(para_id, &updated).is_err() {
 		logs.push(AccumulateLog::InsufficientStateBalance {
 			reason: InsufficientBalanceReason::ParaInfo,
@@ -206,7 +206,7 @@ pub fn clean_up(para_id: ParaId, now: Slot, logs: &mut Vec<AccumulateLog>) {
 		// reject all further work packages for this para (§5.1 step 1).
 		let mut pi = Parachains::get(para_id).expect("still live; qed");
 		pi.is_deregistering = true;
-		// A backstop write failure (§6.1 invariant, SPEC_GAPS #4) leaves the para
+		// A backstop write failure (§6.1 invariant) leaves the para
 		// live for one more block; logged and accumulate continues.
 		if Parachains::set(para_id, &pi).is_err() {
 			logs.push(AccumulateLog::InsufficientStateBalance {
@@ -219,7 +219,7 @@ pub fn clean_up(para_id: ParaId, now: Slot, logs: &mut Vec<AccumulateLog>) {
 	// Fully expunged — drop all per-para state. `key_value_storage` is
 	// necessarily empty here: any entry would raise `used_state_balance` above
 	// the allowed clean-up balance checked above (JAM storage has no prefix
-	// iteration, so a sweep would be impossible anyway — SPEC_GAPS #13).
+	// iteration, so a sweep would be impossible anyway).
 	Parachains::remove(para_id);
 	ParachainLogs::remove(para_id);
 	if para_id == ASSET_HUB_PARA_ID {

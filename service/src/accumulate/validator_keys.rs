@@ -37,8 +37,8 @@ pub fn apply(chunk: Vec<ValidatorKey>, is_last: bool, logs: &mut Vec<AccumulateL
 			Ok(set) => {
 				if designate(&set).is_err() {
 					// TODO: no log is specified for a JAM-level designate
-					// failure (e.g. the service is not the delegator,
-					// SPEC_GAPS #10); reuse DesignateRejected. Needs upstreaming.
+					// failure (e.g. the service is not the delegator);
+					// reuse DesignateRejected. Needs upstreaming.
 					logs.push(AccumulateLog::DesignateRejected { len: (len as u32).into() });
 				}
 			},
@@ -57,7 +57,7 @@ pub fn apply(chunk: Vec<ValidatorKey>, is_last: bool, logs: &mut Vec<AccumulateL
 		staged.try_push(key).expect("length checked against the bound above; qed");
 	}
 	// Appending grows the (baseline-covered) buffer; a backstop write failure
-	// (§6.1 invariant, SPEC_GAPS #4) logs the rejection and the chunk is dropped
+	// (§6.1 invariant) logs the rejection and the chunk is dropped
 	// — accumulate continues.
 	if StagedValidatorKeys::set(&staged).is_err() {
 		logs.push(AccumulateLog::InsufficientStateBalance {

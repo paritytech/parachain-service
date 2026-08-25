@@ -45,7 +45,7 @@ pub fn accumulate(
 			_ => None,
 		})
 		.collect();
-	// A bucket/chain write that hits the §6.1 backstop (SPEC_GAPS #4) is logged
+	// A bucket/chain write that hits the §6.1 backstop is logged
 	// to Asset Hub; recording continues for the admitted transfers.
 	let transfer_logs = transfers::record_incoming(now, &transfers);
 	if !transfer_logs.is_empty() {
@@ -62,7 +62,7 @@ pub fn accumulate(
 		if let AccumulateItem::WorkItem(record) = item {
 			package::process(now, service_id, &record, &mut heads);
 			// §5.1: checkpoint after each work-report so its effects survive a
-			// later out-of-gas or panic (SPEC_GAPS #3).
+			// later out-of-gas or panic.
 			checkpoint();
 		}
 	}

@@ -1,5 +1,5 @@
-//! Scheduled JAM `assign`s: caching, inline application, cancellation, and the
-//! always-accumulate flush (§5.1, §7.1, D-7).
+//! Scheduled JAM `assign`s: caching, inline application, and recurring queue
+//! rotation (§5.1, §7.1, D-7).
 
 mod common;
 
@@ -127,20 +127,51 @@ fn inline_when_due_works() {
 }
 
 #[test]
-fn cancel_works() {
-	// An empty queue cancels the cached entry without a JAM call.
+fn empty_queue_is_noop_works() {
+	// Refine rejects an empty queue. If a crafted digest reaches Accumulate,
+	// the defensive branch leaves an existing cached assignment untouched.
 	let msg = assign_msg(vec![HASH_A], NOW + 10);
 	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
 	let (_, storage, _) = run_block(ct_storage(), vec![work_item(&digest)], NOW);
 	assert!(pending(&storage).is_some());
 
-	let cancel = assign_msg(vec![], NOW + 10);
-	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-1", b"ct-2", vec![cancel], 0);
+	let empty = assign_msg(vec![], NOW + 20);
+	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-1", b"ct-2", vec![empty], 0);
 	let (_, storage, mutations) = run_block(storage, vec![work_item(&digest)], NOW + 1);
 
 	assert!(mutations.auths.is_empty());
-	assert!(pending(&storage).is_none());
-	assert!(dirty_cores(&storage).is_empty());
+	assert_eq!(pending(&storage), Some(PendingAssign { queue: vec![HASH_A], assigner: None }));
+	assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, NOW + 10)]);
+}
+
+#[test]
+fn non_tiling_queue_rotates_works() {
+	let queue: Vec<AuthorizerHash> = (0..11).map(|i| [i; 32]).collect();
+	let msg = assign_msg(queue.clone(), NOW);
+	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
+
+	let (_, storage, first_mutations) = run_block(ct_storage(), vec![work_item(&digest)], NOW);
+	let first: Vec<_> = first_mutations.auths.get(&CORE).expect("first cycle fired").clone().into();
+	for (i, hash) in first.iter().enumerate() {
+		assert_eq!(hash.0, queue[i % queue.len()], "first cycle index {i}");
+	}
+	let rotated = queue[3..].iter().chain(&queue[..3]).copied().collect::<Vec<_>>();
+	assert_eq!(pending(&storage), Some(PendingAssign { queue: rotated.clone(), assigner: None }));
+	assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, NOW + 80)]);
+
+	let (_, before, mutations) = run_block(storage, vec![], NOW + 79);
+	assert!(mutations.auths.is_empty());
+	assert_eq!(pending(&before).unwrap().queue, rotated);
+
+	let (_, storage, second_mutations) = run_block(before, vec![], NOW + 80);
+	let second: Vec<_> =
+		second_mutations.auths.get(&CORE).expect("second cycle fired").clone().into();
+	for (i, hash) in second.iter().enumerate() {
+		assert_eq!(hash.0, rotated[i % rotated.len()], "second cycle index {i}");
+	}
+	let rotated_twice = rotated[3..].iter().chain(&rotated[..3]).copied().collect::<Vec<_>>();
+	assert_eq!(pending(&storage).unwrap().queue, rotated_twice);
+	assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, NOW + 160)]);
 }
 
 #[test]

@@ -1,0 +1,235 @@
+diff --git a/designs/parachain-service-on-jam/quint/head_commitment.qnt b/designs/parachain-service-on-jam/quint/head_commitment.qnt
+index d28e3cc70b..bbfa7c53dc 100644
+--- a/designs/parachain-service-on-jam/quint/head_commitment.qnt
++++ b/designs/parachain-service-on-jam/quint/head_commitment.qnt
+@@ -24,8 +24,8 @@ module head_commitment {
+   /// so a leaf hash can never collide with a node hash (§5.5).
+   pure def merkleHash(t: MerkleTree): Hash =
+   match t {
+-    | Leaf(l) => { hashBytes: 2 * (paraIdInt(l.paraId) * 257 + l.headHash.hashBytes) }
+-    | Node(c) => { hashBytes: 2 * (c.left.hashBytes * 257 + c.right.hashBytes) + 1 }
++    | Leaf(l) => { domain: DomainMerkle, hashBytes: 2 * (paraIdInt(l.paraId) * 257 + l.headHash.hashBytes) }
++    | Node(c) => { domain: DomainMerkle, hashBytes: 2 * (c.left.hashBytes * 257 + c.right.hashBytes) + 1 }
+   }
+ 
+   /// Set of para ids as a list ordered by ascending `para_id`, so every
+diff --git a/designs/parachain-service-on-jam/quint/main.qnt b/designs/parachain-service-on-jam/quint/main.qnt
+index 9ed3a3cb78..99a305b487 100644
+--- a/designs/parachain-service-on-jam/quint/main.qnt
++++ b/designs/parachain-service-on-jam/quint/main.qnt
+@@ -342,8 +342,8 @@ module main {
+   pure def arbitraryMessages(
+     para_id: ParaId, activeCode: ValidationCodeHash
+   ): Set[UpwardMessage] = {
+-    val anyHash: Hash = { hashBytes: 42 }
+-    val unsolicitedHash: Hash = { hashBytes: 99999 }
++    val anyHash: Hash = { domain: DomainPreimage, hashBytes: 42 }
++    val unsolicitedHash: Hash = { domain: DomainPreimage, hashBytes: 99999 }
+     val codeHashA: ValidationCodeHash = { vchBytes: 101 }
+     val codeHashB: ValidationCodeHash = { vchBytes: 102 }
+     val anyAuthHash: AuthorizerHash = { authBytes: 0 }
+diff --git a/designs/parachain-service-on-jam/quint/state.qnt b/designs/parachain-service-on-jam/quint/state.qnt
+index 54608957f6..bbf2ae2b60 100644
+--- a/designs/parachain-service-on-jam/quint/state.qnt
++++ b/designs/parachain-service-on-jam/quint/state.qnt
+@@ -124,7 +124,7 @@ module state {
+     pendingAssigns: Map(),
+     pendingAssignCores: Map(),
+     stagedValidatorKeys: List(),
+-    serviceCodeHash: { hashBytes: 0 },
++    serviceCodeHash: { domain: DomainPreimage, hashBytes: 0 },
+     keyValueStorage: Map(),
+     preimageStatus: Map()
+   }
+diff --git a/designs/parachain-service-on-jam/quint/tests.qnt b/designs/parachain-service-on-jam/quint/tests.qnt
+index 082eadc23d..31265e368e 100644
+--- a/designs/parachain-service-on-jam/quint/tests.qnt
++++ b/designs/parachain-service-on-jam/quint/tests.qnt
+@@ -536,7 +536,7 @@ module tests {
+   /// soliciting one does not affect the other, and forgetting one
+   /// leaves the other intact.
+   run differentLensAreDistinctEntriesTest = {
+-    val h: Hash = { hashBytes: 42 }
++    val h: Hash = { domain: DomainPreimage, hashBytes: 42 }
+     val p1 = CoretimeParaId
+     val p2 = AssetHubParaId
+     // Seed state: p1 registered with enough headroom.
+@@ -658,7 +658,7 @@ module tests {
+   run solicitRejectedAtBalanceCapTest = {
+     val para = MkParaId(6)
+     val paraCode: ValidationCodeHash = { vchBytes: 0x66 }
+-    val soliciteeHash: Hash = { hashBytes: 0xDD }
++    val soliciteeHash: Hash = { domain: DomainPreimage, hashBytes: 0xDD }
+     val soliciteeLen = 500
+     val cap = BaselineFootprint + preimageFootprint(FixedCodeLen)
+     init
+@@ -829,7 +829,7 @@ module tests {
+   run cleanUpTooMuchStateHeldTest = {
+     val para = MkParaId(6)
+     val code: ValidationCodeHash = { vchBytes: 0x66 }
+-    val extra: Hash = { hashBytes: 0x99 }
++    val extra: Hash = { domain: DomainPreimage, hashBytes: 0x99 }
+     val bal = BaselineFootprint + preimageFootprint(FixedCodeLen) + preimageFootprint(512)
+     val s0 = parachainSetStateBalance(initialState, para, bal).state
+     val s1 = parachainSetValidationCode(s0, para, code, FixedCodeLen, 0).state
+@@ -850,7 +850,7 @@ module tests {
+   /// no limbo, no retained referencer, refund now (JAM `ForgetImplication::Drop`).
+   run forgetUnprovidedDropsInOneStepTest = {
+     val para = CoretimeParaId
+-    val h: Hash = { hashBytes: 0x7A }
++    val h: Hash = { domain: DomainPreimage, hashBytes: 0x7A }
+     // Solicit only — the preimage is never provided, so status is `Unprovided`.
+     val d1 = initialState.addReferencer(para, h, 512)
+     val d2 = d1.state.removeReferencer(para, h, 512, 0)
+@@ -872,7 +872,7 @@ module tests {
+   /// `now == due + 1` it expunges.
+   run forgetExpungeBoundaryTest = {
+     val para = CoretimeParaId
+-    val h: Hash = { hashBytes: 0x7B }
++    val h: Hash = { domain: DomainPreimage, hashBytes: 0x7B }
+     // Solicit, provide, then first forget at now = 0 -> Unrequested(0),
+     // due = 0 + ExpungePeriod.
+     val d1 = initialState.addReferencer(para, h, 512)
+@@ -906,7 +906,7 @@ module tests {
+   /// Once p2 is the live referencer covering the single JAM entry, keeping p1
+   /// charged would double-count it, so p1 is refunded and dropped (§6.1).
+   run forgetRescueRerequestedTest = {
+-    val h: Hash = { hashBytes: 0x8A }
++    val h: Hash = { domain: DomainPreimage, hashBytes: 0x8A }
+     val p1 = CoretimeParaId
+     val p2 = AssetHubParaId
+     // p1 solicits, the blob is provided, p1 forgets (last ref) at now = 5.
+@@ -935,7 +935,7 @@ module tests {
+   /// unrequest slot, NOT `now`. Proves collapsing `Rerequested` into `Provided`
+   /// would be unfaithful (it would wrongly succeed with a shifted deadline).
+   run forgetRerequestedNotYetTest = {
+-    val h: Hash = { hashBytes: 0x8B }
++    val h: Hash = { domain: DomainPreimage, hashBytes: 0x8B }
+     val p1 = CoretimeParaId
+     val p2 = AssetHubParaId
+     // p1 solicit + provide + forget at now = 10 -> Unrequested(10).
+@@ -969,7 +969,7 @@ module tests {
+   /// `Unrequested` with itself retained) re-solicits it — the idempotent
+   /// early-return must NOT short-circuit; JAM `solicit` still fires to rescue.
+   run forgetRetainedSelfRescueTest = {
+-    val h: Hash = { hashBytes: 0x8C }
++    val h: Hash = { domain: DomainPreimage, hashBytes: 0x8C }
+     val para = CoretimeParaId
+     val d1 = initialState.addReferencer(para, h, 512)
+     val provided = markProvided(d1.state, h, 512)
+@@ -992,7 +992,7 @@ module tests {
+   /// ghost, so the referencer set stays size 1 and the footprint is charged
+   /// exactly once — never `N × footprint` across N cycles (§6.1).
+   run forgetRescueNoGhostAccumulationTest = {
+-    val h: Hash = { hashBytes: 0x8D }
++    val h: Hash = { domain: DomainPreimage, hashBytes: 0x8D }
+     val p1 = CoretimeParaId
+     val p2 = AssetHubParaId
+     // p1 solicit + provide + forget at now=5 -> Unrequested(5), p1 ghost.
+@@ -1496,7 +1496,7 @@ module tests {
+       authorizedParas: List(CoretimeParaId),
+       items: List({ validationCode: { hash: { vchBytes: 1 }, len: FixedCodeLen }, pov: 0 })
+     }
+-    val msg = Solicit({ hash: { hashBytes: 7 }, len: 1024 })
++    val msg = Solicit({ hash: { domain: DomainPreimage, hashBytes: 7 }, len: 1024 })
+     val over = range(0, MaxUpwardMessages + 1).foldl(List(), (acc, _) => acc.append(msg))
+     val atCap = range(0, MaxUpwardMessages).foldl(List(), (acc, _) => acc.append(msg))
+     val overOut = refine(initialState, pkg, false, PvfOk, Some(headHash(0)), Some(1), over, 0)[0]
+@@ -1580,7 +1580,7 @@ module tests {
+   /// refunds its footprint. Never provided → expunged in one step.
+   run coretimeForgetDrainsPreimageTest = {
+     val target = AssetHubParaId
+-    val h: Hash = { hashBytes: 4242 }
++    val h: Hash = { domain: DomainPreimage, hashBytes: 4242 }
+     val len = 1024
+     val before = initialState.paraInfo(target).usedStateBalance
+     val held = initialState.addReferencer(target, h, len).state
+@@ -1599,7 +1599,7 @@ module tests {
+   /// past that deadline expunges it and refunds.
+   run coretimeForgetTwoStepTest = {
+     val target = AssetHubParaId
+-    val h: Hash = { hashBytes: 4243 }
++    val h: Hash = { domain: DomainPreimage, hashBytes: 4243 }
+     val len = 2048
+     val before = initialState.paraInfo(target).usedStateBalance
+     val held = markProvided(initialState.addReferencer(target, h, len).state, h, len)
+@@ -1773,7 +1773,7 @@ module tests {
+   /// `Unprovided` hash would leave the service with no code to run.
+   run serviceUpgradeRequiresAvailableCodeTest = {
+     val ah = AssetHubParaId
+-    val newCode: Hash = { hashBytes: 31337 }
++    val newCode: Hash = { domain: DomainPreimage, hashBytes: 31337 }
+     val len = FixedCodeLen
+     val msg = UpgradeService({ codeHash: newCode, len: len, minAccGas: 0, minMemoGas: 0 })
+     // Solicited only: the request exists but the blob was never supplied.
+@@ -1835,7 +1835,7 @@ module tests {
+   /// `RestrictedHostFunction`, so the message never reaches Accumulate at all.
+   /// Naming itself, or being the Coretime chain, refines fine.
+   run refineRejectsForeignParaIdTest = {
+-    val h: Hash = { hashBytes: 7777 }
++    val h: Hash = { domain: DomainPreimage, hashBytes: 7777 }
+     all {
+       // Asset Hub reaching for Coretime's state — Refine rejects, for both calls.
+       assert(refineWithMsgs(initialState, AssetHubParaId,
+@@ -1860,7 +1860,7 @@ module tests {
+   /// the target does not hold.
+   run delegatedReleaseNoOpTest = {
+     val ghost = MkParaId(9)
+-    val h: Hash = { hashBytes: 5555 }
++    val h: Hash = { domain: DomainPreimage, hashBytes: 5555 }
+     all {
+       assert(replay(initialState, CoretimeParaId, 0,
+         Forget({ paraId: ghost, hash: h, len: 1024 })).state == initialState),
+@@ -1877,7 +1877,7 @@ module tests {
+   /// drain itself. Coretime drains it, after which `parachain_clean_up` succeeds.
+   run delegatedReleaseUnblocksCleanUpTest = {
+     val target = AssetHubParaId
+-    val h: Hash = { hashBytes: 6161 }
++    val h: Hash = { domain: DomainPreimage, hashBytes: 6161 }
+     val len = 1024
+     val key = List(3)
+     val withPreimage = initialState.addReferencer(target, h, len).state
+diff --git a/designs/parachain-service-on-jam/quint/types.qnt b/designs/parachain-service-on-jam/quint/types.qnt
+index 3290da218b..5c5906a8b3 100644
+--- a/designs/parachain-service-on-jam/quint/types.qnt
++++ b/designs/parachain-service-on-jam/quint/types.qnt
+@@ -15,7 +15,16 @@ module types {
+   // names; IDs use 1-constructor variants. All other domain integers stay
+   // as `int` because nothing in the spec is at risk of confusing them.
+ 
+-  type Hash = { hashBytes: int }
++  /// Which preimage space a digest lives in. Distinct domains must not share
++  /// digests: the model never compares across them, but an ITF trace has to
++  /// record the domain so a replay harness can rebuild the real bytes.
++  /// See upstream-feedback/f-16-abstract-hash-domain-separation.md.
++  pure val DomainPreimage: int = 0
++  pure val DomainHead: int = 1
++  pure val DomainKvKey: int = 2
++  pure val DomainMerkle: int = 3
++
++  type Hash = { domain: int, hashBytes: int }
+   type ValidationCodeHash = { vchBytes: int }
+   type AuthorizerHash = { authBytes: int }
+ 
+@@ -56,7 +65,7 @@ module types {
+   // validation-code hash needs an explicit conversion to the registry's key
+   // type whenever it's stored or looked up.
+ 
+-  pure def vchAsHash(vch: ValidationCodeHash): Hash = { hashBytes: vch.vchBytes }
++  pure def vchAsHash(vch: ValidationCodeHash): Hash = { domain: DomainPreimage, hashBytes: vch.vchBytes }
+ 
+   /// The wrapped integer, for the places the spec orders by `para_id` — the
+   /// head-commitment leaves (§5.5). The sentinel is never constructed.
+@@ -188,9 +197,10 @@ module types {
+   // We model `hash(head_data)` as an injective function — we only need
+   // equality semantics for the parent-head check (§5.1, step 1).
+ 
+-  pure def headHash(h: HeadData): Hash = { hashBytes: h }
++  pure def headHash(h: HeadData): Hash = { domain: DomainHead, hashBytes: h }
+ 
+   /// Abstract hash of a byte list — models blake2-256 for KV key hashing.
+   /// Injective within the model's small key space.
+-  pure def listHash(key: List[int]): Hash = { hashBytes: key.foldl(0, (acc, b) => acc * 257 + b) }
++  pure def listHash(key: List[int]): Hash =
++    { domain: DomainKvKey, hashBytes: key.foldl(0, (acc, b) => acc * 257 + b) }
+ }

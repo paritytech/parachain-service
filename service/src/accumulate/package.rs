@@ -103,7 +103,7 @@ pub fn process(now: Slot, service_id: ServiceId, record: &WorkItemRecord, heads:
 			heads.touch(para_id);
 			pi.head_data = head_data;
 			// A head overwrite can grow the `ParaInfo` entry; a backstop write
-			// failure (§6.1 invariant, SPEC_GAPS #4) logs the rejection and the
+			// failure (§6.1 invariant) logs the rejection and the
 			// rest of the candidate's effects still apply.
 			if Parachains::set(para_id, &pi).is_err() {
 				logs.push(AccumulateLog::InsufficientStateBalance {
@@ -114,7 +114,7 @@ pub fn process(now: Slot, service_id: ServiceId, record: &WorkItemRecord, heads:
 
 			// Step 7: replay the upward messages in order.
 			for message in upward_messages.into_iter() {
-				upward::apply(now, service_id, para_id, message, &mut logs, heads);
+				upward::apply(now, service_id, para_id, lookup_anchor, message, &mut logs, heads);
 			}
 
 			ParachainLogs::append_accumulate(para_id, now, logs);

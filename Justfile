@@ -12,7 +12,7 @@ help:
 # Run all checks
 ci: fmt-check check build lint
 
-# Fetch the vendored dependencies a fresh clone needs. See VENDOR.md.
+# Fetch the vendored dependencies a fresh clone needs.
 vendor:
 	git submodule update --init
 

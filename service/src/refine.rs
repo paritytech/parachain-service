@@ -40,12 +40,13 @@ pub fn refine(
 	// below guarantee a non-empty single-element list by then.
 	let para_id = *para_ids.get(item_index).unwrap_or(&ParaId::from(0));
 
-	if work_items.len() != para_ids.len() {
-		return ParachainWorkDigest::Err { para_id, error: RefineLog::AuthConfigMismatch };
-	};
-
+	// Package-level failures are all settled before the `para_id` above becomes
+	// authoritative, so none of them can name a para to log against and all
+	// panic (§4.2). A config that will not decode at all never gets here:
+	// `is_authorized` fails on it first, so it never becomes a work report.
+	assert_eq!(work_items.len(), para_ids.len(), "AuthConfig must name one para per work item");
 	let Ok([_work_item]): Result<&[_; 1], _> = work_items.as_slice().try_into() else {
-		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidItemCount };
+		panic!("Only single-item work packages are supported")
 	};
 
 	let Ok(candidate) = ParachainCandidate::decode_all(&mut &raw_payload.0[..]) else {
