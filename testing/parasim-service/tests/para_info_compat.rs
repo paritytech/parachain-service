@@ -26,7 +26,7 @@ fn parasim_para_info_is_byte_compatible() {
 		used_state_balance: 0u32.into(),
 		is_deregistering: false,
 	};
-	let lite = parasim_service::ParaInfoLite { head_data: head };
+	let lite = parasim_service::ParaInfoLite::with_head(head);
 
 	assert_eq!(lite.encode(), real.encode());
 }

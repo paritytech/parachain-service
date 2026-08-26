@@ -129,7 +129,7 @@ fn accumulate_one(result: &WorkOutput) {
 		return;
 	};
 	let key = para_head_key(output.para_id);
-	let info = ParaInfoLite { head_data: output.head_data };
+	let info = ParaInfoLite::with_head(output.head_data);
 	if jam_pvm_common::accumulate::set_storage(&key, &info.encode()).is_err() {
 		jam_pvm_common::error!("parasim: set_storage failed for para {:?}", output.para_id);
 	}
@@ -146,11 +146,35 @@ pub fn para_head_key(para_id: ParaId) -> Vec<u8> {
 
 /// A `ParaInfo` whose only meaningful field is `head_data`; SCALE layout matches
 /// `parachain_service::state::para_info::ParaInfo` byte-for-byte (the collator
-/// decodes the stored value as the real type). Kept local so parasim does not
-/// depend on the churning service crate; the byte-compat test pins the equality.
+/// decodes the stored value as the real type), so the real type's trailing
+/// fields are carried explicitly with their default values. Kept local so
+/// parasim does not depend on the churning service crate; the byte-compat test
+/// pins the equality.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ParaInfoLite {
 	pub head_data: HeadData,
+	/// Always `None` (real field: `Option<ValidationCode>`).
+	pub validation_code: Option<()>,
+	/// Always `None` (real field: `Option<(ValidationCode, Timeslot)>`).
+	pub pending_upgrade: Option<()>,
+	#[codec(compact)]
+	pub total_state_balance: u64,
+	#[codec(compact)]
+	pub used_state_balance: u64,
+	pub is_deregistering: bool,
+}
+
+impl ParaInfoLite {
+	pub fn with_head(head_data: HeadData) -> Self {
+		Self {
+			head_data,
+			validation_code: None,
+			pending_upgrade: None,
+			total_state_balance: 0,
+			used_state_balance: 0,
+			is_deregistering: false,
+		}
+	}
 }
 
 /// Structured reason `refine` failed to produce a head.
