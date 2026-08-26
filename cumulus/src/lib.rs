@@ -23,6 +23,30 @@ pub mod aura {
 	};
 }
 
+pub mod service_state {
+	//! The parachain service's per-para state entry, as read by the collator over
+	//! `serviceValue`: key `[0x00] ‖ SCALE(ParaId)` → SCALE-encoded [`ParaInfo`]
+	//! (spec §3.1; `head_data` is the para head the collator follows).
+
+	pub use parachain_service::state::{para_info::ParaInfo, storage_key, Tag};
+	use parachain_service_interface::types::ParaId;
+
+	/// Storage key of the para's [`ParaInfo`] entry in the parachain service.
+	pub fn para_info_key(para_id: ParaId) -> Vec<u8> {
+		storage_key(Tag::Parachains, &para_id)
+	}
+
+	#[cfg(test)]
+	mod tests {
+		use super::*;
+
+		#[test]
+		fn para_info_key_is_tag_then_scale_para_id() {
+			assert_eq!(para_info_key(ParaId::from(3)), vec![0x00, 3, 0, 0, 0]);
+		}
+	}
+}
+
 pub mod authorizer {
 	//! The authorizer-hash contract (contract 2).
 	//!
