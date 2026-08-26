@@ -1932,7 +1932,6 @@ version = "0.1.28"
 dependencies = [
  "jam-bootstrap-service",
  "jam-pvm-builder 0.1.28",
- "pvm-builder",
 ]
 
 [[package]]
@@ -2009,6 +2008,7 @@ dependencies = [
  "parking_lot",
  "permutation",
  "polkavm",
+ "polkavm-common 0.30.0",
  "quinn",
  "quinn-proto",
  "rand 0.8.7",
@@ -2724,6 +2724,39 @@ dependencies = [
  "jam-types",
  "num_enum",
  "parity-scale-codec",
+]
+
+[[package]]
+name = "parasim-send"
+version = "0.1.0"
+dependencies = [
+ "parachain-service-interface",
+ "parasim-service",
+ "parity-scale-codec",
+]
+
+[[package]]
+name = "parasim-service"
+version = "0.1.0"
+dependencies = [
+ "executor",
+ "jam-pvm-common",
+ "jam-types",
+ "parachain-service",
+ "parachain-service-bin",
+ "parachain-service-interface",
+ "parasim-service",
+ "parity-scale-codec",
+ "polkavm-derive 0.36.0",
+]
+
+[[package]]
+name = "parasim-service-bin"
+version = "0.1.0"
+dependencies = [
+ "jam-pvm-builder 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "parasim-service",
+ "pvm-builder",
 ]
 
 [[package]]

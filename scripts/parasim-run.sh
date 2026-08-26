@@ -20,6 +20,9 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 NUM_HEADS="${1:-3}"
 SERVICE_ID="${2:-5}"
+# Endowment funding the service's state balance, which pays for set_storage.
+# High enough to run for a very long time (each 98-byte head costs ~100).
+ENDOWMENT="${ENDOWMENT:-1000000000000000000}"
 
 cd "$ROOT"
 
@@ -31,21 +34,24 @@ test -n "$BLOB"
 SENDER="target/release/parasim-send"
 JAMT="${JAMT:-/home/miszka/parity/46-jam-cummulus-side-2/polkajam/target/release/jamt}"
 
-# 2. Register the service and capture its id (--raw prints only the hex id).
-NEW_ID="$("$JAMT" create-service "$BLOB" 0 --register=parasim --raw --id "$SERVICE_ID" 2>/dev/null)"
+# 2. Register the service with a real endowment and capture its id (--raw prints
+# only the hex id). Without the endowment set_storage fails ("Balance too low").
+NEW_ID="$("$JAMT" create-service "$BLOB" "$ENDOWMENT" --register=parasim --raw --id "$SERVICE_ID" 2>/dev/null)"
 echo "parasim service id: $NEW_ID"
 
 # The dev-genesis null authorizer (empty config) makes refine fall back to
 # `FALLBACK_PARA_ID` (0), so the head is always stored at para 0. Its key is
-# the storage tag 0x00 + SCALE(ParaId(0) as LE u32) = 0x0000000000.
+# the storage tag 0x00 (Tag::Parachains) + SCALE(ParaId(0) as LE u32) = 0x0000000000.
 KEY=0x0000000000
 
 # 3. Push a few heads and read each back after accumulate has had a moment.
+# jamt item wants the payload as a 0x-prefixed hex string (else it sends the hex
+# as literal ASCII), and --force-core is a global flag before the subcommand.
 for n in $(seq "$NUM_HEADS"); do
-	PAYLOAD="$("$SENDER" --number "$n")"
+	PAYLOAD="0x$("$SENDER" --number "$n" | grep -A1 '# work-item payload' | tail -1)"
 	echo "submitting head #$n"
-	"$JAMT" item "$NEW_ID" "$PAYLOAD" --force-core 0
-	sleep 2   # allow refine + accumulate to land
-	HEAD="$( "$JAMT" service storage "$NEW_ID" "$KEY" --raw 2>/dev/null || echo "<pending>")"
+	"$JAMT" --force-core 0 item "$NEW_ID" "$PAYLOAD"
+	sleep 12   # allow refine + accumulate + set_storage to land (a slot is ~6s)
+	HEAD="$( "$JAMT" inspect storage "$NEW_ID" "$KEY" --raw 2>/dev/null || echo "<pending>")"
 	echo "head after #$n: $HEAD"
 done

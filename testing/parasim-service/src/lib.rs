@@ -59,17 +59,30 @@ impl Service for ParasimService {
 		match refine_inner(item_index, &payload) {
 			Ok(output) => WorkOutput(output.encode()),
 			Err(error) => {
-				jam_pvm_common::error!("parasim: refine failed: {error:?}");
+				jam_pvm_common::error!(
+					"parasim: refine failed: {error:?} payload len={} head={:02x?}",
+					payload.0.len(),
+					&payload.0[..payload.0.len().min(16)]
+				);
 				WorkOutput(error.encode())
 			},
 		}
 	}
 
-	fn accumulate(_slot: Slot, _id: ServiceId, _item_count: usize) -> Option<Hash> {
+	fn accumulate(_slot: Slot, _id: ServiceId, item_count: usize) -> Option<Hash> {
+		jam_pvm_common::error!("parasim: accumulate called item_count={item_count}");
 		for item in jam_pvm_common::accumulate::accumulate_items() {
 			if let jam_types::AccumulateItem::WorkItem(record) = item {
-				let Ok(result) = record.result else { continue };
-				accumulate_one(&result);
+				match record.result {
+					Ok(result) => {
+						jam_pvm_common::error!(
+							"parasim: accumulate result ok, result len={}",
+							result.0.len()
+						);
+						accumulate_one(&result);
+					},
+					Err(e) => jam_pvm_common::error!("parasim: accumulate work-item Err: {e:?}"),
+				}
 			}
 		}
 		None
