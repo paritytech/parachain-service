@@ -43,6 +43,22 @@ impl JamRpcInterface {
 		urls: Vec<Url>,
 	) -> std::result::Result<(Self, impl Future<Output = ()> + Send), String> {
 		let (worker, to_worker, active_client) = JamRpcWorker::new(urls).await?;
+
+		// Param-sized JAM types (auth queues, work-package bounds) decode against process-global
+		// protocol parameters; apply the connected chain's parameters before anything decodes.
+		// This must go directly to the just-connected client: the worker that serves the normal
+		// request path only starts running after this constructor returns.
+		let bootstrap_client =
+			active_client.read().expect("shared client lock poisoned").clone();
+		let jam_std_common::VersionedParameters::V1(parameters) =
+			Node::parameters(&*bootstrap_client)
+				.await
+				.map_err(|error| format!("Unable to fetch the JAM chain parameters: {error}"))?;
+		tracing::info!(target: LOG_TARGET, ?parameters, "Applying the JAM chain parameters.");
+		parameters
+			.apply()
+			.map_err(|error| format!("Invalid JAM chain parameters: {error}"))?;
+
 		let client = JamRpcClient::new(to_worker, active_client);
 		Ok((Self { client }, worker.run()))
 	}

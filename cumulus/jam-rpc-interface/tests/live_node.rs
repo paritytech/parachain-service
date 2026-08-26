@@ -1,5 +1,6 @@
 //! Network tests against a locally running polkajam node. Ignored by default; run with a node
 //! up (`polkajam-testnet --num-ordinary-nodes 1`, RPC on 19800) via `cargo test -- --ignored`.
+//! Override the endpoint with `JAM_RPC_URL`.
 
 use futures::StreamExt;
 use jam_interface::{JamChainSource, JamStateSource};
@@ -7,14 +8,15 @@ use jam_rpc_interface::JamRpcInterface;
 use url::Url;
 
 async fn connect() -> JamRpcInterface {
-	let url = Url::parse("ws://127.0.0.1:19800").expect("static url");
+	let url = std::env::var("JAM_RPC_URL").unwrap_or_else(|_| "ws://127.0.0.1:19800".into());
+	let url = Url::parse(&url).expect("valid JAM_RPC_URL");
 	let (interface, worker) = JamRpcInterface::new(vec![url]).await.expect("node reachable");
 	tokio::spawn(worker);
 	interface
 }
 
 #[tokio::test]
-#[ignore = "needs a running polkajam node on ws://127.0.0.1:19800"]
+#[ignore = "needs a running polkajam node (JAM_RPC_URL)"]
 async fn chain_following_works() {
 	let interface = connect().await;
 
@@ -36,7 +38,7 @@ async fn chain_following_works() {
 }
 
 #[tokio::test]
-#[ignore = "needs a running polkajam node on ws://127.0.0.1:19800"]
+#[ignore = "needs a running polkajam node (JAM_RPC_URL)"]
 async fn auth_queues_scan_works() {
 	let interface = connect().await;
 	let best = interface.best_block().await.expect("best block");
