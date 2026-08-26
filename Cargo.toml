@@ -35,6 +35,7 @@ jam-types = { path = "vendor/polkajam/crates/jam-types", default-features = fals
 jam-codec = { version = "0.1.1", default-features = false, features = ["derive"] }
 jam-pvm-common = { path = "vendor/polkajam/crates/jam-pvm-common", default-features = false }
 jam-std-common = { path = "vendor/polkajam/crates/jam-std-common" }
+jam-null-authorizer-bin = { path = "vendor/polkajam/services/null-authorizer-bin" }
 binary-merkle-tree = { version = "16.1.1", default-features = false }
 blake2b_simd = { version = "1", default-features = false }
 ed25519-dalek = { version = "2", default-features = false }

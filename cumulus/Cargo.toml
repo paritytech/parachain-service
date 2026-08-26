@@ -15,3 +15,5 @@ parachain-authorizer = { workspace = true }
 jam-types = { workspace = true }
 parachain-service-interface = { workspace = true }
 primitive-types = { workspace = true }
+blake2b_simd = { workspace = true }
+jam-null-authorizer-bin = { workspace = true }
