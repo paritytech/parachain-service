@@ -4,6 +4,7 @@ members = [
     "authorizer/bin",
     "cumulus",
     "cumulus/jam-interface",
+    "cumulus/jam-rpc-interface",
     "runtimes/frameless",
     "service",
     "service/bin",
@@ -37,8 +38,16 @@ jam-codec = { version = "0.1.1", default-features = false, features = ["derive"]
 jam-pvm-common = { path = "vendor/polkajam/crates/jam-pvm-common", default-features = false }
 jam-std-common = { path = "vendor/polkajam/crates/jam-std-common" }
 jam-null-authorizer-bin = { path = "vendor/polkajam/services/null-authorizer-bin" }
+async-stream = "0.3"
 async-trait = "0.1"
+bytes = { version = "1.7.1", default-features = false }
 futures = "0.3"
+jsonrpsee = { version = "0.26.0", default-features = false }
+serde = { version = "1", default-features = false }
+serde_json = "1"
+tokio = { version = "1", default-features = false }
+tracing = { version = "0.1", default-features = false }
+url = "2.5"
 binary-merkle-tree = { version = "16.1.1", default-features = false }
 blake2b_simd = { version = "1", default-features = false }
 ed25519-dalek = { version = "2", default-features = false }
@@ -58,6 +67,8 @@ parachain-authorizer = { path = "authorizer" }
 parachain-authorizer-bin = { path = "authorizer/bin" }
 parachain-service-interface = { path = "service-interface", default-features = false }
 parasim-service = { path = "testing/parasim-service" }
+jam-interface = { path = "cumulus/jam-interface" }
+jam-rpc-interface = { path = "cumulus/jam-rpc-interface" }
 
 codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }
 # The frameless PVF is built by `tools/pvm-builder` (polkavm-linker 0.30), NOT by the vendored
