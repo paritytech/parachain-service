@@ -1,0 +1,41 @@
+[package]
+name = "parasim-service"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# Validation/flow tests only — pulls in the fast-churning service crates that
+# parasim exists to avoid depending on. Off for production so parasim's core
+# still builds when those crates are mid-refactor.
+test-utils = [
+	"dep:executor",
+	"dep:parachain-service-bin",
+	"parachain-service-bin?/test-utils",
+]
+
+[dependencies]
+codec = { workspace = true }
+jam-types = { workspace = true }
+jam-pvm-common = { workspace = true, features = ["service", "logging"] }
+parachain-service-interface = { workspace = true }
+polkavm-derive = { workspace = true }
+
+# test-utils only: in-memory engine + real service blob + mock fixtures.
+executor = { workspace = true, optional = true }
+parachain-service-bin = { workspace = true, optional = true }
+
+[dev-dependencies]
+parasim-service = { path = ".", features = ["test-utils"] }
+parachain-service = { workspace = true, features = ["test-utils", "std"] }
+parachain-service-interface = { workspace = true }

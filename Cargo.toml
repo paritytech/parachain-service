@@ -8,7 +8,10 @@ members = [
     "service/bin",
     "service-interface",
     "testing/mock-dest-service",
+    "testing/parasim-service",
+    "testing/parasim-service/bin",
     "tools/executor",
+    "tools/parasim-send",
     "tools/pvm-builder",
 ]
 exclude = [
@@ -50,6 +53,7 @@ parachain-service-bin = { path = "service/bin" }
 parachain-authorizer = { path = "authorizer" }
 parachain-authorizer-bin = { path = "authorizer/bin" }
 parachain-service-interface = { path = "service-interface", default-features = false }
+parasim-service = { path = "testing/parasim-service" }
 
 codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }
 # The frameless PVF is built by `tools/pvm-builder` (polkavm-linker 0.30), NOT by the vendored

@@ -1,0 +1,17 @@
+[package]
+name = "parasim-send"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "parasim-send"
+path = "src/main.rs"
+
+[dependencies]
+codec = { workspace = true }
+parachain-service-interface = { workspace = true }
+parasim-service = { workspace = true }
