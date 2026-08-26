@@ -5,7 +5,8 @@
 #
 # Prereqs:
 #   - a polkajam testnet node with RPC at ${JAM_RPC:-ws://localhost:19800}
-#   - `jamt` on PATH (build it in ./polkajam),
+#   - a built `jamt` binary at the default path below (build it in
+#     ~/parity/46-jam-cummulus-side-2/polkajam), or override via JAMT,
 #   - the parasim blob buildable in this workspace (see the .agent worklog note
 #     on vendor submodules; on a networked checkout this is just `cargo build --release`).
 #
@@ -28,7 +29,7 @@ cargo build -p parasim-send --release
 BLOB="$(find target -type f -name 'parasim-service.jam' | head -n1)"
 test -n "$BLOB"
 SENDER="target/release/parasim-send"
-JAMT="${JAMT:-jamt}"
+JAMT="${JAMT:-/home/miszka/parity/46-jam-cummulus-side-2/polkajam/target/release/jamt}"
 
 # 2. Register the service and capture its id (--raw prints only the hex id).
 NEW_ID="$("$JAMT" create-service "$BLOB" 0 --register=parasim --raw --id "$SERVICE_ID" 2>/dev/null)"
