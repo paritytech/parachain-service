@@ -104,7 +104,7 @@ fn skip_digest(input: &mut Reader) -> Result<(), PoVError> {
 			// Other(Vec<u8>)
 			0 => skip_vec_u8(input)?,
 			// Consensus / Seal / PreRuntime: ([u8;4], Vec<u8>)
-			1 | 2 | 3 => {
+			4 | 5 | 6 => {
 				if input.len() < 4 {
 					return Err(PoVError::Malformed);
 				}
@@ -112,7 +112,7 @@ fn skip_digest(input: &mut Reader) -> Result<(), PoVError> {
 				skip_vec_u8(input)?;
 			},
 			// RuntimeEnvironmentUpdated: unit
-			4 => {},
+			8 => {},
 			_ => return Err(PoVError::Malformed),
 		}
 	}
@@ -230,10 +230,10 @@ mod tests {
 		// A header with one PreRuntime and one Seal item, as a real collator
 		// header carries; the walker must consume single-byte tags.
 		let mut digest = Compact::from(2u32).encode();
-		digest.push(3); // PreRuntime
+		digest.push(6); // PreRuntime
 		digest.extend_from_slice(&[0u8; 4]); // ConsensusEngineId
 		vec![1u8, 2u8, 3u8].encode_to(&mut digest); // data
-		digest.push(2); // Seal
+		digest.push(5); // Seal
 		digest.extend_from_slice(&[0u8; 4]); // ConsensusEngineId
 		vec![0xABu8; 32].encode_to(&mut digest); // signature
 
