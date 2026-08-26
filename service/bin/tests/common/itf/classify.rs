@@ -37,7 +37,8 @@ pub fn classify(previous: &Value, current: &Value) -> Result<FrameKind, String> 
 	let now_unchanged = previous.get("now") == current.get("now");
 	let changed_svc_fields = changed_svc_fields(previous, current)?;
 
-	let block = !work_results.is_empty();
+	// Only stepRefineAccumulate advances `now`, so it catches zero-package blocks too.
+	let block = !work_results.is_empty() || !now_unchanged;
 	let provision = work_results.is_empty() &&
 		now_unchanged &&
 		changed_svc_fields == BTreeSet::from(["preimageStatus"]);
@@ -122,6 +123,13 @@ mod tests {
 	fn block_with_results_works() {
 		let previous = frame(0, svc(), json!([]));
 		let current = frame(1, svc(), json!([{"result": "anything"}]));
+		assert_eq!(classify(&previous, &current).unwrap(), FrameKind::Block);
+	}
+
+	#[test]
+	fn always_accumulate_block_works() {
+		let previous = frame(0, svc(), json!([]));
+		let current = frame(1, svc(), json!([]));
 		assert_eq!(classify(&previous, &current).unwrap(), FrameKind::Block);
 	}
 
