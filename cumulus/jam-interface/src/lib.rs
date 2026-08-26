@@ -12,8 +12,9 @@
 
 pub use futures::stream::BoxStream;
 pub use jam_std_common::{
-	AuthPool, AuthPools, AuthQueues, BlockDesc, ChainSubUpdate, NodeError as Error, NodeResult as Result,
-	RangeProof, StorageKey, SystemKey, WorkPackageStatus,
+	AuthPool, AuthPools, AuthQueues, BlockDesc, ChainSubUpdate, NodeError as Error,
+	NodeResult as Result, RangeProof, Service, ServiceKey, StorageKey, SystemKey,
+	VersionedParameters, WorkPackageStatus,
 };
 pub use jam_types::{
 	AuthorizerHash, CoreIndex, Hash, HeaderHash, MmrPeakHash, ServiceId, Slot, StateRootHash,
@@ -47,6 +48,9 @@ pub trait JamChainSource: Send + Sync {
 	/// The BEEFY root of the block with the given header hash. Part of the refine context the
 	/// builder assembles around an anchor.
 	async fn beefy_root(&self, header_hash: HeaderHash) -> Result<MmrPeakHash>;
+
+	/// The chain parameters (gas limits, recent-block window, slot period, ...).
+	async fn parameters(&self) -> Result<VersionedParameters>;
 }
 
 /// Read JAM state: raw values, per-service values, range proofs, and typed decode helpers.
@@ -96,6 +100,17 @@ pub trait JamStateSource: Send + Sync {
 		key: &[u8],
 		finalized: bool,
 	) -> Result<BoxStream<'static, ChainSubUpdate<Option<Vec<u8>>>>>;
+
+	/// The on-chain record of service `id` (code hash, balance, gas minimums), decoded from the
+	/// service-info state key. `None` if there is no such service.
+	async fn service_info(&self, at: HeaderHash, id: ServiceId) -> Result<Option<Service>> {
+		let Some(bytes) = self.state_value(at, ServiceKey::Info { id }.into()).await? else {
+			return Ok(None);
+		};
+		Ok(Some(Service::decode_all(&mut &bytes[..]).map_err(|error| {
+			Error::Other(format!("Service info decode failed: {error}"))
+		})?))
+	}
 
 	/// The authorizer pools of all cores (state key C(1)), decoded. The pool is live headroom —
 	/// a soft pre-flight check, never a per-block gate.

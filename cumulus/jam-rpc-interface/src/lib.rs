@@ -94,6 +94,10 @@ impl JamChainSource for JamRpcInterface {
 	async fn beefy_root(&self, header_hash: HeaderHash) -> Result<MmrPeakHash> {
 		self.client.beefy_root(header_hash).await
 	}
+
+	async fn parameters(&self) -> Result<jam_interface::VersionedParameters> {
+		self.client.parameters().await
+	}
 }
 
 #[async_trait]
