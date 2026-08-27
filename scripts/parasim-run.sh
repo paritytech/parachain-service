@@ -32,6 +32,9 @@ SENDER="target/release/parasim-send"
 NEW_ID="$("$JAMT" create-service "$BLOB" "$ENDOWMENT" --register=parasim --raw --id "$SERVICE_ID")"
 echo "parasim service id: $NEW_ID"
 
+# No sleep needed here: the sender waits for the service code to reach the lookup anchor, which is
+# what a fresh deploy has to wait for (otherwise JAM answers BadCode and refine never runs).
+
 # The first package proves the para has no head yet and so starts it; each later one chains onto
 # the head the previous package stored.
 for n in $(seq "$NUM_HEADS"); do

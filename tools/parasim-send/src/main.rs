@@ -37,6 +37,10 @@ use parachain_service_interface::{
 const PROOF_SIZE_LIMIT: u32 = 1024 * 1024;
 /// How long to follow a package before giving up on it.
 const FOLLOW_TIMEOUT: Duration = Duration::from_secs(60);
+/// How long to wait for a freshly created service's code to reach the lookup anchor.
+const CODE_WAIT_TIMEOUT: Duration = Duration::from_secs(120);
+/// Gap between code-availability checks; finality moves once per slot at best.
+const CODE_POLL_INTERVAL: Duration = Duration::from_secs(3);
 /// Substrate hash length.
 const HASH_LEN: usize = 32;
 
@@ -297,7 +301,7 @@ async fn build_package(
 		.map_err(|e| format!("service info: {e}"))?
 		.ok_or_else(|| format!("service {} is not registered", args.service))?;
 
-	let finalized = jam.finalized_block().await.map_err(|e| format!("finalized block: {e}"))?;
+	let finalized = wait_for_code(jam, args.service, *service.code_hash).await?;
 	let context = RefineContext {
 		anchor: anchor.header_hash,
 		state_root: jam
@@ -334,6 +338,45 @@ async fn build_package(
 		context,
 		items: vec![item].try_into().expect("one work item always fits; qed"),
 	})
+}
+
+/// Wait until the service's code is available at a finalized block, and return that block for
+/// use as the package's `lookup_anchor`.
+///
+/// JAM fetches service code as of the `lookup_anchor`, so a package naming an anchor from before
+/// the code was provided fails with `BadCode` and refine never runs — with nothing logged by the
+/// service, which makes it look as though the service was never invoked. Finality lags the head by
+/// a couple of slots, so submitting straight after `create-service` hits this every time and then
+/// mysteriously starts working. Waiting here makes a cold deploy behave like a warm one.
+async fn wait_for_code(
+	jam: &JamRpcInterface,
+	service: ServiceId,
+	code_hash: [u8; HASH_LEN],
+) -> Result<jam_interface::BlockDesc, String> {
+	use jam_std_common::Node as _;
+
+	let deadline = tokio::time::Instant::now() + CODE_WAIT_TIMEOUT;
+	loop {
+		let finalized =
+			jam.finalized_block().await.map_err(|e| format!("finalized block: {e}"))?;
+		let len = jam
+			.node()
+			.service_preimage_len(finalized.header_hash, service, code_hash)
+			.await
+			.map_err(|e| format!("looking up the service code: {e}"))?;
+		if let Some(len) = len {
+			println!("service {service} code ({len} bytes) is available at the lookup anchor");
+			return Ok(finalized);
+		}
+		if tokio::time::Instant::now() >= deadline {
+			return Err(format!(
+				"service {service} code is still unavailable at the finalized block after \
+				 {CODE_WAIT_TIMEOUT:?}; was the service created?"
+			));
+		}
+		println!("waiting for service {service} code to be available at the lookup anchor...");
+		tokio::time::sleep(CODE_POLL_INTERVAL).await;
+	}
 }
 
 /// Submit the package and print each status until JAM reports it.
