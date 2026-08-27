@@ -49,6 +49,7 @@ serde = { version = "1", default-features = false }
 serde_json = "1"
 tokio = { version = "1", default-features = false }
 tracing = { version = "0.1", default-features = false }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 url = "2.5"
 binary-merkle-tree = { version = "16.1.1", default-features = false }
 blake2b_simd = { version = "1", default-features = false }

@@ -3029,9 +3029,21 @@ dependencies = [
 name = "parasim-send"
 version = "0.1.0"
 dependencies = [
+ "futures",
+ "jam-codec",
+ "jam-interface",
+ "jam-null-authorizer-bin",
+ "jam-rpc-interface",
+ "jam-state-helpers",
+ "jam-std-common",
+ "jam-types",
  "parachain-service-interface",
  "parasim-service",
  "parity-scale-codec",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "url",
 ]
 
 [[package]]

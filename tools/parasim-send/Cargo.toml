@@ -12,6 +12,18 @@ name = "parasim-send"
 path = "src/main.rs"
 
 [dependencies]
-codec = { workspace = true }
-parachain-service-interface = { workspace = true }
+codec = { workspace = true, features = ["std"] }
+jam-codec = { workspace = true, features = ["std"] }
+futures = { workspace = true }
+jam-null-authorizer-bin = { workspace = true }
+jam-interface = { workspace = true }
+jam-rpc-interface = { workspace = true }
+jam-state-helpers = { workspace = true, features = ["std"] }
+jam-std-common = { workspace = true }
+jam-types = { workspace = true, features = ["std"] }
+parachain-service-interface = { workspace = true, features = ["std"] }
 parasim-service = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+url = { workspace = true }
