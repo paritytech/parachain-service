@@ -5,6 +5,7 @@ members = [
     "cumulus",
     "cumulus/jam-interface",
     "cumulus/jam-rpc-interface",
+    "cumulus/jam-state-helpers",
     "runtimes/frameless",
     "service",
     "service/bin",
@@ -37,6 +38,7 @@ jam-types = { path = "vendor/polkajam/crates/jam-types", default-features = fals
 jam-codec = { version = "0.1.1", default-features = false, features = ["derive"] }
 jam-pvm-common = { path = "vendor/polkajam/crates/jam-pvm-common", default-features = false }
 jam-std-common = { path = "vendor/polkajam/crates/jam-std-common" }
+polkajam-trie = { package = "trie", path = "vendor/polkajam/crates/trie" }
 jam-null-authorizer-bin = { path = "vendor/polkajam/services/null-authorizer-bin" }
 async-stream = "0.3"
 async-trait = "0.1"
@@ -69,6 +71,7 @@ parachain-service-interface = { path = "service-interface", default-features = f
 parasim-service = { path = "testing/parasim-service" }
 jam-interface = { path = "cumulus/jam-interface" }
 jam-rpc-interface = { path = "cumulus/jam-rpc-interface" }
+jam-state-helpers = { path = "cumulus/jam-state-helpers", default-features = false }
 
 codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }
 # The frameless PVF is built by `tools/pvm-builder` (polkavm-linker 0.30), NOT by the vendored

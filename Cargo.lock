@@ -2288,6 +2288,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "jam-state-helpers"
+version = "0.1.0"
+dependencies = [
+ "blake2b_simd",
+ "jam-std-common",
+ "parity-scale-codec",
+ "trie",
+]
+
+[[package]]
 name = "jam-std-common"
 version = "0.1.28"
 dependencies = [
