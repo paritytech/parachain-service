@@ -1,16 +1,19 @@
 //! parasim — a real JAM service with fake logic (spec B.0 item 8).
 //!
-//! Accepts a parachain work package without verifying the PoV, extracts the new
-//! para head from the payload (`ParachainBlockData`), and upserts it into this
-//! service's own key–value store under the real `parachain-service` storage-key
-//! layout — tag `0x00` + SCALE(`ParaId`) → a byte-exact `ParaInfo` whose only
-//! meaningful field is `head_data`. The collator code that reads the para head
-//! via `serviceValue` carries over unchanged to the real service.
+//! Accepts a parachain work package without running its PVF, extracts the new para head from the
+//! payload (`ParachainBlockData`), and upserts it into this service's own key–value store under
+//! the real `parachain-service` storage-key layout — tag `0x00` + SCALE(`ParaId`) → a byte-exact
+//! `ParaInfo` whose only meaningful field is `head_data`. The collator code that reads the para
+//! head via `serviceValue` carries over unchanged to the real service.
 //!
-//! Deliberately NOT the real service: no PVF, no log, no kv storage semantics,
-//! no transfers, no upgrade tracking, no §5.5 head commitment. Deliberately a
-//! separate crate (not a mode of `parachain-service`, which is churning on the
-//! POC branch).
+//! The PoV itself is not validated, but the *ancestry* it claims is: every package must carry a
+//! proof of the para's previous head at its anchor, and its first block must build on that head.
+//! Without this a dropped package would be papered over by the next one instead of stalling the
+//! para, so retry semantics would only appear to work.
+//!
+//! Deliberately NOT the real service: no PVF, no log, no kv storage semantics, no transfers, no
+//! upgrade tracking, no §5.5 head commitment. Deliberately a separate crate (not a mode of
+//! `parachain-service`, which is churning on the POC branch).
 
 #![cfg_attr(any(target_arch = "riscv32", target_arch = "riscv64"), no_std)]
 
@@ -19,6 +22,7 @@ extern crate alloc;
 use alloc::vec::Vec;
 use codec::{Decode, DecodeAll, Encode};
 use jam_pvm_common::{declare_service, Service};
+use jam_state_helpers::StateProof;
 use jam_types::{
 	CoreIndex, Hash, ServiceId, Slot, WorkOutput, WorkPackageHash, WorkPayload,
 };
@@ -52,11 +56,11 @@ impl Service for ParasimService {
 	fn refine(
 		_core_index: CoreIndex,
 		item_index: usize,
-		_service_id: ServiceId,
+		service_id: ServiceId,
 		payload: WorkPayload,
 		_package_hash: WorkPackageHash,
 	) -> WorkOutput {
-		match refine_inner(item_index, &payload) {
+		match refine_inner(item_index, service_id, &payload) {
 			Ok(output) => WorkOutput(output.encode()),
 			Err(error) => {
 				jam_pvm_common::error!(
@@ -89,9 +93,10 @@ impl Service for ParasimService {
 	}
 }
 
-/// Decode, extract, and re-emit the head for one work item.
+/// Decode a work item, verify the ancestry it claims, and re-emit the new head.
 fn refine_inner(
 	item_index: usize,
+	service_id: ServiceId,
 	payload: &WorkPayload,
 ) -> Result<ParasimWorkOutput, ParasimRefineError> {
 	// The para id: from the authorizer config's `Vec<ParaId>` prefix (the real
@@ -102,15 +107,60 @@ fn refine_inner(
 	let candidate =
 		parachain_service_interface::candidate::ParachainCandidate::decode_all(&mut input)
 			.map_err(|_| ParasimRefineError::MalformedPayload)?;
-	let head_data = pov::decode_para_head(&candidate.pov)
-		.map_err(|e| match e {
-			pov::PoVError::Compressed => ParasimRefineError::CompressedPoV,
-			pov::PoVError::Malformed => ParasimRefineError::MalformedPoV,
-		})?
-		.try_into()
-		.map_err(|_| ParasimRefineError::HeadTooLarge)?;
+	let pov = pov::decode_pov(&candidate.pov).map_err(|error| match error {
+		pov::PoVError::Compressed => ParasimRefineError::CompressedPoV,
+		pov::PoVError::Malformed => ParasimRefineError::MalformedPoV,
+		pov::PoVError::MissingProof => ParasimRefineError::MissingProof,
+	})?;
 
+	check_ancestry(service_id, para_id, &pov)?;
+
+	let head_data =
+		pov.head.to_vec().try_into().map_err(|_| ParasimRefineError::HeadTooLarge)?;
 	Ok(ParasimWorkOutput { para_id, head_data })
+}
+
+/// Require that this PoV builds on the para head recorded in JAM state at the anchor.
+///
+/// This is what makes a dropped work package *stall* the para rather than be papered over: the
+/// next package must still chain onto the head that is actually stored, so a gap cannot heal by
+/// overwriting. Refine has no way to read state directly, so the previous head arrives as a proof
+/// against `RefineContext::state_root` — a root JAM itself checks on-chain when the package is
+/// reported, which is what makes trusting it here sound.
+fn check_ancestry(
+	service_id: ServiceId,
+	para_id: ParaId,
+	pov: &pov::PoV,
+) -> Result<(), ParasimRefineError> {
+	let (anchor_state_root, proof) =
+		<([u8; 32], StateProof)>::decode_all(&mut &pov.anchor_state_proof[..])
+			.map_err(|_| ParasimRefineError::MalformedProof)?;
+
+	// The collator picks the anchor and proves against it; the two must be the same state, or the
+	// proof says nothing about the state this package will be reported against.
+	if anchor_state_root != *jam_pvm_common::refine::refine_context().state_root {
+		return Err(ParasimRefineError::ProofNotAtAnchor);
+	}
+
+	let state_key =
+		jam_state_helpers::service_value_state_key(service_id, &para_head_key(para_id));
+	let stored = jam_state_helpers::verify(&proof, &anchor_state_root, &state_key)
+		.map_err(|_| ParasimRefineError::InvalidProof)?;
+
+	let Some(stored) = stored else {
+		// Proven absent: nothing has been stored for this para, so this is its first block and
+		// there is no parent to match.
+		return Ok(());
+	};
+
+	let info =
+		ParaInfoLite::decode_all(&mut &stored[..]).map_err(|_| ParasimRefineError::InvalidProof)?;
+	// A substrate header's hash is the blake2b-256 of its encoding, and `parent_hash` is the
+	// first field of the header the collator built on top of it.
+	if pov.parent_hash != jam_state_helpers::blake2_256(&info.head_data) {
+		return Err(ParasimRefineError::WrongParent);
+	}
+	Ok(())
 }
 
 /// The `ParaId` for `item_index` from the package's authorizer config, if the
@@ -189,4 +239,15 @@ pub enum ParasimRefineError {
 	MalformedPoV,
 	/// The extracted head exceeds `MAX_HEAD_DATA_SIZE`.
 	HeadTooLarge,
+	/// The PoV carries no `jam/anchor_state_proof` entry, so the previous head is unknowable.
+	MissingProof,
+	/// The proof entry is not a decodable `(state_root, StateProof)`.
+	MalformedProof,
+	/// The proof was built against a different state root than this package's anchor, so it
+	/// proves nothing about the state the package will be reported against.
+	ProofNotAtAnchor,
+	/// The proof does not verify against the anchor state root.
+	InvalidProof,
+	/// The first block does not build on the para head recorded in JAM state.
+	WrongParent,
 }

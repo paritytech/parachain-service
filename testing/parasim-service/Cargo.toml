@@ -20,6 +20,7 @@ default = []
 # still builds when those crates are mid-refactor.
 test-utils = [
 	"dep:executor",
+	"dep:parachain-service",
 	"dep:parachain-service-bin",
 	"parachain-service-bin?/test-utils",
 ]
@@ -28,14 +29,17 @@ test-utils = [
 codec = { workspace = true }
 jam-types = { workspace = true }
 jam-pvm-common = { workspace = true, features = ["service", "logging"] }
+jam-state-helpers = { workspace = true }
 parachain-service-interface = { workspace = true }
 polkavm-derive = { workspace = true }
 
 # test-utils only: in-memory engine + real service blob + mock fixtures.
 executor = { workspace = true, optional = true }
+parachain-service = { workspace = true, optional = true, features = ["test-utils", "std"] }
 parachain-service-bin = { workspace = true, optional = true }
 
+# `test-utils` is deliberately not enabled from here: doing so would pull the churning service
+# crates into every `cargo test`, which is the coupling this crate exists to avoid. Run the
+# byte-compat test with `--features test-utils`.
 [dev-dependencies]
-parasim-service = { path = ".", features = ["test-utils"] }
-parachain-service = { workspace = true, features = ["test-utils", "std"] }
 parachain-service-interface = { workspace = true }

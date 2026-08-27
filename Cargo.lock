@@ -3040,11 +3040,11 @@ version = "0.1.0"
 dependencies = [
  "executor",
  "jam-pvm-common",
+ "jam-state-helpers",
  "jam-types",
  "parachain-service",
  "parachain-service-bin",
  "parachain-service-interface",
- "parasim-service",
  "parity-scale-codec",
  "polkavm-derive 0.36.0",
 ]
