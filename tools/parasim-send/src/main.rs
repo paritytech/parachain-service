@@ -41,6 +41,10 @@ const FOLLOW_TIMEOUT: Duration = Duration::from_secs(60);
 const CODE_WAIT_TIMEOUT: Duration = Duration::from_secs(120);
 /// Gap between code-availability checks; finality moves once per slot at best.
 const CODE_POLL_INTERVAL: Duration = Duration::from_secs(3);
+/// How long to wait for accumulate to store the new head after the package is reported.
+const HEAD_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
+/// Gap between head checks.
+const HEAD_POLL_INTERVAL: Duration = Duration::from_secs(3);
 /// Substrate hash length.
 const HASH_LEN: usize = 32;
 
@@ -172,21 +176,26 @@ async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 	let package = build_package(jam, args, anchor, payload).await?;
 	submit_and_follow(jam, args.core, &package).await?;
 
-	// "Done" is not a work-package status: JAM reports the package, then accumulate runs and
-	// writes the head. So read the head back rather than waiting for a status that never comes.
-	let head = jam
-		.service_value(
-			jam.best_block().await.map_err(|e| format!("best block: {e}"))?.header_hash,
-			args.service,
-			&service_local_key,
-		)
-		.await
-		.map_err(|e| format!("reading the para head back: {e}"))?;
-	match head {
-		Some(head) => println!("para head now {} bytes: {}", head.len(), hex(&head)),
-		None => println!("para head still unset"),
+	// A `Reported` status only means JAM put the work *report* on chain, and a report is produced
+	// whether refine returned a head or an error. So the real outcome is whether the stored head
+	// changed, and that takes another slot or two while accumulate runs.
+	let moved = wait_for_head_change(jam, args.service, &service_local_key, &stored).await?;
+	match (moved, args.tamper) {
+		(Some(head), false) => {
+			println!("para head advanced to {} bytes: {}", head.len(), hex(&head));
+			Ok(())
+		},
+		(None, true) => {
+			println!("para head unchanged, as expected: refine rejected the tampered proof");
+			Ok(())
+		},
+		(None, false) =>
+			Err("the para head did not change; refine rejected the package (see the node log)"
+				.to_string()),
+		(Some(_), true) =>
+			Err("the para head advanced despite a tampered proof: verification is not working"
+				.to_string()),
 	}
-	Ok(())
 }
 
 /// Convert the node's JSON-shaped proof into the SCALE-encodable one that travels in the PoV.
@@ -340,6 +349,39 @@ async fn build_package(
 	})
 }
 
+/// Wait for accumulate to store a head different from `before`, returning it, or `None` if it
+/// never changed.
+///
+/// Nothing announces that accumulate has run: `Reported` fires a slot or two earlier, and there is
+/// no "accumulated" work-package status. Polling the stored value is the only signal, and it is
+/// also the signal a real collator follows.
+async fn wait_for_head_change(
+	jam: &JamRpcInterface,
+	service: ServiceId,
+	service_local_key: &[u8],
+	before: &Option<Vec<u8>>,
+) -> Result<Option<Vec<u8>>, String> {
+	let deadline = tokio::time::Instant::now() + HEAD_WAIT_TIMEOUT;
+	loop {
+		let best = jam.best_block().await.map_err(|e| format!("best block: {e}"))?;
+		let stored = jam
+			.service_value(best.header_hash, service, service_local_key)
+			.await
+			.map_err(|e| format!("reading the para head back: {e}"))?;
+		// `stored` holds a `ParaInfo`; comparing it whole is enough to see the head move.
+		if let Some(stored) = &stored {
+			if Some(stored) != before.as_ref() {
+				let head = decode_para_info(stored)?;
+				return Ok(Some(head));
+			}
+		}
+		if tokio::time::Instant::now() >= deadline {
+			return Ok(None);
+		}
+		tokio::time::sleep(HEAD_POLL_INTERVAL).await;
+	}
+}
+
 /// Wait until the service's code is available at a finalized block, and return that block for
 /// use as the package's `lookup_anchor`.
 ///
@@ -403,10 +445,13 @@ async fn submit_and_follow(
 		while let Some(status) = statuses.next().await {
 			println!("  status: {status:?}");
 			match status {
-				// `Ready` only means "queued for accumulation"; the head moving is the real
-				// completion signal, and the caller reads it back.
-				WorkPackageStatus::Reported { .. } | WorkPackageStatus::Ready { .. } =>
-					return Ok(()),
+				// Neither status says the package *succeeded*: a report is produced whether refine
+				// returned a head or an error, and `Ready` only means "queued for accumulation".
+				// The caller decides the outcome by watching the head.
+				WorkPackageStatus::Reported { .. } | WorkPackageStatus::Ready { .. } => {
+					println!("  reported on chain; waiting to see whether the head moves");
+					return Ok(());
+				},
 				WorkPackageStatus::Failed(reason) =>
 					return Err(format!("the work package failed: {reason}")),
 				WorkPackageStatus::Reportable { .. } => {},
