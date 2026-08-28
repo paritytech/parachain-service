@@ -105,13 +105,19 @@ fn over_reserved_portion_admission_works() {
 
 #[test]
 fn reservation_edge_admission_works() {
-	// §5.1: one short of the bound the entry must pay for itself, so a
-	// zero-amount transfer is dropped.
+	// §5.1: one short of the reservation the entry is still inside it, so a
+	// zero-amount transfer is free and fills the reservation exactly. Only from
+	// `MAX_INCOMING_TRANSFERS` onwards must an entry pay for itself.
 	let storage = chain_storage(MAX_INCOMING_TRANSFERS as u32 - 1);
 	let (_, storage, _) = accumulate_block(storage, vec![transfer_item(9, 0)], NOW);
 
-	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32 - 1);
-	assert!(transfer_bucket(&storage, NOW).is_none());
+	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32);
+	assert!(transfer_bucket(&storage, NOW).is_some());
+
+	// The next one is past the reservation: a zero-amount transfer is dropped.
+	let (_, storage, _) = accumulate_block(storage, vec![transfer_item(9, 0)], NOW + 1);
+	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32);
+	assert!(transfer_bucket(&storage, NOW + 1).is_none());
 }
 
 #[test]
