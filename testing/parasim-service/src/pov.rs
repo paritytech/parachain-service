@@ -232,6 +232,16 @@ fn skip_block<'a>(input: &mut &'a [u8]) -> Result<Block<'a>, PoVError> {
 	Ok(Block { header, parent_hash })
 }
 
+/// Whether `bytes` are exactly one encoded substrate header and nothing else.
+///
+/// Used on an *imported* parent header, which arrives as opaque segment bytes rather than inside a
+/// PoV: a padded or truncated blob must not pass as a header, so the walker has to consume it
+/// exactly. Reusing the PoV walker keeps one definition of "header shape" in the service.
+pub fn is_header(bytes: &[u8]) -> bool {
+	let mut input = bytes;
+	skip_header(&mut input).is_ok() && input.is_empty()
+}
+
 /// Skip a substrate `Header<u32, BlakeTwo256>`.
 fn skip_header(input: &mut &[u8]) -> Result<(), PoVError> {
 	// parent_hash
@@ -386,6 +396,21 @@ mod tests {
 			vec![("polkadot/relay_proof", vec![1, 2, 3])],
 		);
 		assert_eq!(decode_pov(&pov), Err(PoVError::MissingProof));
+	}
+
+	/// The imported-parent guard leans on this: anything that is not exactly a header — padding
+	/// left over from a segment, a truncated header, plain garbage — must be refused.
+	#[test]
+	fn is_header_works() {
+		let header = header_bytes([9u8; 32], 3, EMPTY_DIGEST);
+		assert!(is_header(&header));
+
+		let mut padded = header.clone();
+		padded.extend_from_slice(&[0u8; 8]);
+		assert!(!is_header(&padded));
+		assert!(!is_header(&header[..header.len() - 1]));
+		assert!(!is_header(&[]));
+		assert!(!is_header(&[0xffu8; 40]));
 	}
 
 	#[test]
