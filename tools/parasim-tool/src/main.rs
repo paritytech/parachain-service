@@ -7,6 +7,7 @@ use clap::{Parser, Subcommand};
 use jam_interface::ServiceId;
 use parachain_service_interface::types::ParaId;
 
+mod bundle;
 mod chain;
 mod format;
 mod header;
@@ -63,7 +64,7 @@ enum Command {
 		#[arg(long)]
 		raw: bool,
 	},
-	/// Submit a mock work package and follow it until the head moves.
+	/// Submit mock work packages and follow them until the head moves.
 	Send {
 		/// The para to build for.
 		#[arg(long, default_value_t = 0)]
@@ -71,9 +72,16 @@ enum Command {
 		/// The core to submit to.
 		#[arg(long, default_value_t = 0)]
 		core: u16,
-		/// Corrupt the state proof, so refine must reject the package.
-		#[arg(long)]
-		tamper: bool,
+		/// How many linked packages to send. Each one after the first builds on a block that is
+		/// still in flight, so it imports its parent's header instead of proving it from state.
+		#[arg(long, default_value_t = 1)]
+		chain: usize,
+		/// Plant a defect refine must reject. Bare `--tamper` corrupts the state proof.
+		#[arg(long, value_name = "KIND", value_enum, num_args = 0..=1, default_missing_value = "proof")]
+		tamper: Option<send::Tamper>,
+		/// Which package of the chain to tamper with, counted from zero.
+		#[arg(long, value_name = "INDEX", default_value_t = 0, requires = "tamper")]
+		tamper_at: usize,
 	},
 }
 
@@ -119,8 +127,15 @@ async fn run(cli: Cli) -> Result<(), String> {
 		},
 		Command::DisplayKey { subject: Key::Parahead { para, block, raw } } =>
 			keys::display_parahead(&jam, cli.service, ParaId(para), block, raw).await,
-		Command::Send { para, core, tamper } => {
-			let args = send::Args { service: cli.service, para: ParaId(para), core, tamper };
+		Command::Send { para, core, chain, tamper, tamper_at } => {
+			let args = send::Args {
+				service: cli.service,
+				para: ParaId(para),
+				core,
+				chain,
+				tamper,
+				tamper_at,
+			};
 			send::run(&jam, &args).await
 		},
 	}

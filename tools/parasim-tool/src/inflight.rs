@@ -2,9 +2,11 @@
 //!
 //! Between "Reported" and the para head moving, a package is parked in JAM state: first in the
 //! per-core availability assignments, then in the accumulation queue. Both hold the whole work
-//! report, and a report carries refine's *output bytes* rather than a hash of them — so the reason
-//! refine rejected a package is readable over plain RPC, where it previously took the node's
-//! stdout to see.
+//! report, and a report carries refine's *output bytes* rather than a hash of them — so what a
+//! package produced is readable over plain RPC, where it previously took the node's stdout to see.
+//! A parasim *rejection* shows up here only as `BadExports`: refine exports its new head after its
+//! checks pass, so a rejected item is one export short and JAM replaces its output. The reason
+//! stays in the guarantor's log.
 //!
 //! Two codecs meet here. The state values are jam-codec (decoded by `jam-interface`); parasim's
 //! own work output nested inside them is parity-scale-codec, because that is what parasim encodes
@@ -160,8 +162,10 @@ fn collect(
 /// The `outcome` column for one work digest, or `None` if `--para` rules the row out.
 fn describe(args: &Args, digest: &WorkDigest) -> Option<String> {
 	let output = match &digest.result {
-		// A `WorkError` means refine produced no value at all: JAM refused to run it, or it died
-		// inside the PVM. parasim's own rejections do not look like this — see `decode_output`.
+		// A `WorkError` means the item produced no value at all. Since parasim exports its new
+		// head only after its checks pass, every parasim rejection lands here as `BadExports`:
+		// the item declared one export and made none, so JAM discards its output. Which check
+		// refused it is only in the guarantor's log.
 		Err(error) => return Some(format!("REFINE FAILED: {error:?}")),
 		Ok(output) => &output.0,
 	};
@@ -187,9 +191,10 @@ enum Refined {
 /// Decode parasim's work output, which is parity-scale-codec even though the report carrying it is
 /// jam-codec.
 ///
-/// A rejected package still produces a *successful* work output: refine encodes the reason where
-/// the head would have gone. Telling the two apart by trying each is unambiguous, because a
-/// `ParasimWorkOutput` is at least five bytes and a `ParasimRefineError` is exactly one.
+/// A rejection refine can still report — one that leaves the export count intact — arrives as a
+/// *successful* work output holding the reason where the head would have gone. Telling the two
+/// apart by trying each is unambiguous, because a `ParasimWorkOutput` carries a 32-byte parent
+/// hash and a `ParasimRefineError` is exactly one byte.
 fn decode_output(bytes: &[u8]) -> Refined {
 	if let Ok(output) = ParasimWorkOutput::decode_all(&mut &bytes[..]) {
 		return Refined::Head(output);
@@ -245,6 +250,7 @@ mod tests {
 		let head = ParasimWorkOutput {
 			para_id: parachain_service_interface::types::ParaId(7),
 			head_data: vec![1u8; 40].try_into().expect("40 bytes fit; qed"),
+			parent_head_hash: [2u8; 32],
 		};
 		assert!(matches!(decode_output(&head.encode()), Refined::Head(decoded) if decoded == head));
 		assert!(matches!(
@@ -270,6 +276,7 @@ mod tests {
 		let head = Refined::Head(ParasimWorkOutput {
 			para_id: parachain_service_interface::types::ParaId(0),
 			head_data: Default::default(),
+			parent_head_hash: [0u8; 32],
 		});
 		assert!(matches_para(Some(0), &head));
 		assert!(!matches_para(Some(1), &head));
