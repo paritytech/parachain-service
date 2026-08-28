@@ -161,6 +161,7 @@ fn assign_action(len: usize, assigner: Option<u32>) -> Config {
 
 #[test]
 fn invalid_authorizer_queue_errors() {
+	// TODO: Stale: Quint allows empty queues and short queues with a new assigner.
 	for (len, assigner) in [(0, None), (81, None), (1, Some(7))] {
 		let action = assign_action(len, assigner);
 		let parent = genesis(action.clone());
