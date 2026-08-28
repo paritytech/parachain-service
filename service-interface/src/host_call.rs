@@ -67,4 +67,12 @@ pub enum HostCall {
 	ParachainCleanUp = 27,
 	/// Overwrite a parachain's total state balance (Coretime chain only).
 	ParachainSetStateBalance = 28,
+	/// Delete a key from a supervised service's storage (Asset Hub only).
+	RemoveServiceStorage = 29,
+	/// Destroy an empty supervised service (Asset Hub only).
+	EjectService = 30,
+	/// Hand a supervised service to another supervisor (Asset Hub only).
+	SetServiceSupervisor = 31,
+	/// Create a service supervised by this one (Asset Hub only).
+	CreateService = 32,
 }

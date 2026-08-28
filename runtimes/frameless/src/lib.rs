@@ -91,13 +91,26 @@ pub enum MockAction {
 		key: Vec<u8>,
 	},
 	Solicit {
+		target: parachain_service_interface::upward_message::Target,
 		hash: [u8; 32],
 		len: u32,
 	},
+	EjectService {
+		service: u32,
+	},
+	SetServiceSupervisor {
+		service: u32,
+		new_supervisor: u32,
+	},
+	CreateService(parachain_service_interface::upward_message::CreateServiceArgs),
 	Forget {
-		para_id: u32,
+		target: parachain_service_interface::upward_message::Target,
 		hash: [u8; 32],
 		len: u32,
+	},
+	RemoveServiceStorage {
+		service: u32,
+		key: Vec<u8>,
 	},
 	RequestCodeUpgrade {
 		hash: [u8; 32],
@@ -316,9 +329,9 @@ mod host {
 		#[polkavm_import(index = 14)]
 		fn request_code_upgrade_raw(hash_ptr: u32, len: u32);
 		#[polkavm_import(index = 15)]
-		fn solicit_raw(hash_ptr: u32, len: u32);
+		fn solicit_raw(target_kind: u32, target_id: u32, hash_ptr: u32, len: u32);
 		#[polkavm_import(index = 16)]
-		fn forget_raw(para_id: u32, hash_ptr: u32, len: u32);
+		fn forget_raw(target_kind: u32, target_id: u32, hash_ptr: u32, len: u32);
 		#[polkavm_import(index = 17)]
 		fn kv_set_raw(key_ptr: u32, key_len: u32, value_ptr: u32, value_len: u32);
 		#[polkavm_import(index = 18)]
@@ -355,6 +368,14 @@ mod host {
 		fn parachain_clean_up_raw(para_id: u32);
 		#[polkavm_import(index = 28)]
 		fn parachain_set_state_balance_raw(para_id: u32, total: u64);
+		#[polkavm_import(index = 29)]
+		fn remove_service_storage_raw(service: u32, key_ptr: u32, key_len: u32);
+		#[polkavm_import(index = 30)]
+		fn eject_service_raw(service: u32);
+		#[polkavm_import(index = 31)]
+		fn set_service_supervisor_raw(service: u32, new_supervisor: u32);
+		#[polkavm_import(index = 32)]
+		fn create_service_raw(args_ptr: u32, args_len: u32);
 	}
 
 	pub fn set_parent_head_hash(hash: &[u8; 32]) {
@@ -411,6 +432,16 @@ mod host {
 		unsafe { export_raw(data.as_ptr() as u32, data.len() as u32) }
 	}
 
+	/// The `(kind, id)` register pair a `Target` is passed as; must agree with
+	/// `peek_target` in the service's `pvf::executor`.
+	fn target_regs(target: &parachain_service_interface::upward_message::Target) -> (u32, u32) {
+		use parachain_service_interface::upward_message::Target;
+		match target {
+			Target::Parachain(para_id) => (0, para_id.0),
+			Target::Service(service) => (1, *service),
+		}
+	}
+
 	/// Fire one scripted side-effect host call. Entry-point-level actions
 	/// (`DuplicateSetHead`, `SkipHeadDeclarations`) are handled by
 	/// `jam_validate_block` itself and are no-ops here.
@@ -427,9 +458,24 @@ mod host {
 			MockAction::KVRemove { para_id, key } => unsafe {
 				kv_remove_raw(*para_id, key.as_ptr() as u32, key.len() as u32)
 			},
-			MockAction::Solicit { hash, len } => unsafe { solicit_raw(hash.as_ptr() as u32, *len) },
-			MockAction::Forget { para_id, hash, len } => unsafe {
-				forget_raw(*para_id, hash.as_ptr() as u32, *len)
+			MockAction::Solicit { target, hash, len } => {
+				let (kind, id) = target_regs(target);
+				unsafe { solicit_raw(kind, id, hash.as_ptr() as u32, *len) }
+			},
+			MockAction::EjectService { service } => unsafe { eject_service_raw(*service) },
+			MockAction::SetServiceSupervisor { service, new_supervisor } => unsafe {
+				set_service_supervisor_raw(*service, *new_supervisor)
+			},
+			MockAction::CreateService(args) => {
+				let encoded = args.encode();
+				unsafe { create_service_raw(encoded.as_ptr() as u32, encoded.len() as u32) }
+			},
+			MockAction::Forget { target, hash, len } => {
+				let (kind, id) = target_regs(target);
+				unsafe { forget_raw(kind, id, hash.as_ptr() as u32, *len) }
+			},
+			MockAction::RemoveServiceStorage { service, key } => unsafe {
+				remove_service_storage_raw(*service, key.as_ptr() as u32, key.len() as u32)
 			},
 			MockAction::RequestCodeUpgrade { hash, len } => unsafe {
 				request_code_upgrade_raw(hash.as_ptr() as u32, *len)

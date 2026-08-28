@@ -5,7 +5,7 @@
 //! replay starts (see `package.rs`).
 
 use crate::{
-	accumulate::{assigns, code_upgrades, management, transfers, validator_keys},
+	accumulate::{assigns, code_upgrades, foreign_services, management, transfers, validator_keys},
 	head_commitment::HeadTracker,
 	state::{
 		log::{AccumulateLog, InsufficientBalanceReason},
@@ -18,7 +18,7 @@ use jam_pvm_common::accumulate::{is_available, upgrade};
 use jam_types::{CodeHash, ServiceId, Slot};
 use parachain_service_interface::{
 	types::{ParaId, Timeslot},
-	upward_message::UpwardMessage,
+	upward_message::{Target, UpwardMessage},
 };
 
 /// Apply one upward message emitted by `origin`'s PVF. Log entries are batched
@@ -37,18 +37,20 @@ pub fn apply(
 			code_upgrades::request_code_upgrade(origin, now, hash, len.0, logs)
 		},
 
-		UpwardMessage::Solicit { hash, len } => {
-			// For the para's own active/pending validation code this only sets
+		UpwardMessage::Solicit { target: Target::Parachain(target), hash, len } => {
+			// `target` names who is charged; only the Coretime chain may name a
+			// para other than itself (§6.1), and a dead target is a no-op.
+			let Some(mut pi) = Parachains::get(target) else { return };
+			// For the target's own active/pending validation code this only sets
 			// `pinned`: the code is already referenced by the service, so no
 			// extra balance is charged (§5.2).
-			let mut pi = Parachains::get(origin).expect("origin is live per step 1; qed");
 			if let Some(vc) = &mut pi.validation_code {
 				if vc.code_ref.is(&hash, len.0) {
 					vc.pinned = true;
 					// The pinned flag is a `ParaInfo` write; a backstop failure
 					// (§6.1 invariant) logs the rejection and the
 					// solicit is dropped.
-					if Parachains::set(origin, &pi).is_err() {
+					if Parachains::set(target, &pi).is_err() {
 						logs.push(AccumulateLog::InsufficientStateBalance {
 							reason: InsufficientBalanceReason::ParaInfo,
 						});
@@ -59,7 +61,7 @@ pub fn apply(
 			if let Some((vc, _)) = &mut pi.pending_upgrade {
 				if vc.code_ref.is(&hash, len.0) {
 					vc.pinned = true;
-					if Parachains::set(origin, &pi).is_err() {
+					if Parachains::set(target, &pi).is_err() {
 						logs.push(AccumulateLog::InsufficientStateBalance {
 							reason: InsufficientBalanceReason::ParaInfo,
 						});
@@ -67,12 +69,29 @@ pub fn apply(
 					return;
 				}
 			}
-			if let Err(log) = state_balance::add_referencer(origin, &hash, len.0) {
+			if let Err(log) = state_balance::add_referencer(target, &hash, len.0) {
 				logs.push(log);
 			}
 		},
 
-		UpwardMessage::Forget { para_id, hash, len } => {
+		UpwardMessage::Forget { target: Target::Service(service), .. } |
+		UpwardMessage::RemoveServiceStorage { service, .. } => foreign_services::store_op(service, logs),
+
+		UpwardMessage::Solicit { target: Target::Service(service), .. } => {
+			foreign_services::solicit(service, logs)
+		},
+
+		UpwardMessage::EjectService { service } => {
+			foreign_services::eject(service, service_id, logs)
+		},
+
+		UpwardMessage::SetServiceSupervisor { service, new_supervisor } => {
+			foreign_services::set_supervisor(service, new_supervisor, logs)
+		},
+
+		UpwardMessage::CreateService(args) => foreign_services::create(args, logs),
+
+		UpwardMessage::Forget { target: Target::Parachain(para_id), hash, len } => {
 			// `para_id` names whose reference is released (Coretime may name any
 			// para, §6.4); a dead target is a no-op.
 			let Some(mut pi) = Parachains::get(para_id) else { return };

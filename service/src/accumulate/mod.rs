@@ -8,6 +8,7 @@
 
 pub mod assigns;
 pub mod code_upgrades;
+pub mod foreign_services;
 pub mod management;
 pub mod package;
 pub mod transfers;

@@ -15,7 +15,7 @@ use parachain_service::{
 use parachain_service_bin::MOCK_DEST_BLOB;
 use parachain_service_interface::{
 	types::{CoreIndex, Hash, ParaId, ASSET_HUB_PARA_ID},
-	upward_message::{UpwardMessage, MAX_UPWARD_MESSAGES_PER_DIGEST},
+	upward_message::{Target, UpwardMessage, MAX_UPWARD_MESSAGES_PER_DIGEST},
 };
 
 const NOW: u32 = 100;
@@ -44,6 +44,8 @@ fn report(name: &str, gas: u64, elapsed: std::time::Duration, digest_len: usize)
 /// Pinned gas measurements for the benchmarks below.
 mod gas {
 	/// 1024-solicit digest — the heaviest reachable digest replay.
+	// TODO: re-measure. `Solicit` gained a `Target` (§6.5), so each of the 1024
+	// messages is 5 B larger and this pin predates the change.
 	pub const MAX_SOLICITS: u64 = 7_789_139;
 	/// 1024 KV writes filling the report's elective-data limit.
 	pub const MAX_KV_WRITES: u64 = 6_154_121;
@@ -80,7 +82,11 @@ fn worst_case_margin_works() {
 fn solicit_bench_works() {
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let msgs = (0..MAX_UMPS)
-		.map(|i| UpwardMessage::Solicit { hash: distinct_hash(i), len: 100.into() })
+		.map(|i| UpwardMessage::Solicit {
+			target: Target::Parachain(PARA),
+			hash: distinct_hash(i),
+			len: 100.into(),
+		})
 		.collect();
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", msgs, 0);
 	let digest_len = digest.encode().len();

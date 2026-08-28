@@ -150,9 +150,12 @@ Fix: delete `is_valid_val_count`.
 
 ## M-8: `UpgradeService` sits at a different SCALE discriminant
 
-`UpwardMessage::UpgradeService` is variant 9 in Rust
-(`service-interface/src/upward_message.rs:93`, ordered per the design doc's §3.3 listing) and
-variant 13 in the model (`quint/messages.qnt:192`, ordered with the privileged calls last).
+`UpwardMessage::UpgradeService` is variant 13 in Rust
+(`service-interface/src/upward_message.rs`, ordered per the design doc's §3.3 listing) and
+variant 17 in the model (`quint/messages.qnt:266`, ordered with the privileged calls last).
+The §6.5 additions narrowed this: both sides now agree on discriminants 0..12
+(`RequestCodeUpgrade` .. `ConsumeTransfersUpTo`) and differ only in the tail, where Rust
+places `UpgradeService` before the four Coretime-only calls and the model places it after.
 `RefineLog`'s ordering differs too — Rust interleaves four implementation-only variants
 (`InvalidCode`, `ValidationFailed`, `MalformedPayload`, `HeadDataTooLarge`) among the model's
 eight.
@@ -205,3 +208,34 @@ The ledger itself now mis-describes the tree. Three of its five entries are stal
 Fix: retire D-1/D-3/D-4 from the ledger, regenerate `minimal_replay.itf.json` under the current
 pin so D-1's normalization has nothing left to compensate for, and grow the harness past one
 fixture.
+
+## M-11: the model decides the §6.5 supervised-service outcomes; Rust can only refuse
+
+**Neither is wrong; the host is behind both.**
+
+Since spec `124a7362235` the model carries supervised services as real state
+(`quint/foreign_services.qnt`, the `foreignServices` var) and decides five of §6.5's
+six operations: a `Service`-targeted `forget` runs the same two-step expunge as §6.1
+and emits `ForgetAgainAt`; a `Service`-targeted `solicit` creates the request, rescues
+an `Unrequested` one, or fails `AlreadySolicited`; `remove_service_storage` shrinks the
+store idempotently; `eject_service` refuses `TargetIsSelf`/`NotEmpty`/`CreatedThisSlot`
+and otherwise deletes; `set_service_supervisor` moves the link.
+
+`service/src/accumulate/foreign_services.rs` reaches none of those verdicts. The
+vendored PolkaJAM host is Gray Paper 0.7.2 and has no supervisor relation at all, so
+the Parachain Service is never any service's effective supervisor and all five refuse
+with `UnknownService` (when JAM does not know the target) or `NotSupervised`. Only
+`create_service` agrees with the model, including `desired_id` honouring and `IdTaken`.
+
+So for any trace that exercises §6.5, the model's `foreignServices` and log diverge
+from Rust's log on every frame. This is a **host** gap, not a spec or implementation
+error on either side — see [DECISIONS.md](./DECISIONS.md) D-13 for the per-operation
+table and the two residual `create_service` gaps.
+
+Consequence for the replay harness: `foreignServices` joins `prevSvc` and friends in
+[QUINT_REPLAY.md](./QUINT_REPLAY.md)'s "not compared" list until the host gains GP >= 0.8
+supervision, and a §6.5-carrying frame must be checked for the *refusal* log rather than
+the model's outcome.
+
+**Spec feedback**: none for §6.5's semantics, which are self-consistent. The gap is
+JAM's.

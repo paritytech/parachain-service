@@ -13,7 +13,7 @@ use crate::{
 use alloc::vec::Vec;
 use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Compact, Decode, Encode};
-use parachain_service_interface::types::{Balance, Hash, ParaId, Timeslot};
+use parachain_service_interface::types::{Balance, Hash, ParaId, ServiceId, Timeslot};
 
 /// Why a state-balance reservation failed (spec §3.1, §6.1).
 ///
@@ -60,6 +60,71 @@ pub enum TransferError {
 	InsufficientServiceBalance,
 }
 
+/// Why a `forget` or `remove_service_storage` against a supervised service's
+/// store failed (spec §6.5).
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
+pub enum ServiceStoreError {
+	/// The named service does not exist.
+	UnknownService,
+	/// The Parachain Service is not its effective supervisor.
+	NotSupervised,
+	/// A `forget` naming a preimage the target never requested. JAM's transition
+	/// has no clause for an absent request, so it refuses.
+	NotRequested,
+}
+
+/// Why a `Service`-targeted `solicit` failed (spec §6.5).
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
+pub enum ServiceSolicitError {
+	/// The named service does not exist.
+	UnknownService,
+	/// The Parachain Service is not its effective supervisor.
+	NotSupervised,
+	/// The request would leave the target below its threshold balance.
+	TargetCannotAfford,
+	/// The target already has a live request for this preimage that is not
+	/// awaiting re-solicitation.
+	AlreadySolicited,
+}
+
+/// Why an `eject_service` failed (spec §6.5).
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
+pub enum ServiceEjectError {
+	/// The named service does not exist.
+	UnknownService,
+	/// The Parachain Service is not its effective supervisor.
+	NotSupervised,
+	/// The service still holds storage or preimage requests.
+	NotEmpty,
+	/// The service was created in this timeslot.
+	CreatedThisSlot,
+	/// The Parachain Service named itself.
+	TargetIsSelf,
+}
+
+/// Why a `set_service_supervisor` failed (spec §6.5).
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
+pub enum ServiceSupervisorError {
+	/// The named service does not exist.
+	UnknownService,
+	/// The proposed new supervisor does not exist.
+	UnknownNewSupervisor,
+	/// The Parachain Service is not its effective supervisor.
+	NotSupervised,
+}
+
+/// How a `create_service` turned out (spec §6.5). The only §6.5 operation that
+/// logs a success, since the caller needs the assigned id announced to it.
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
+pub enum ServiceCreationResult {
+	/// Succeeded, carrying the id JAM assigned.
+	Created(ServiceId),
+	/// The Parachain Service cannot fund the new service.
+	CannotAfford,
+	/// A `desired_id` in the protected range that is already in use.
+	IdTaken,
+}
+
 /// Events recorded while Accumulating for a parachain (spec §3.1).
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub enum AccumulateLog {
@@ -86,6 +151,17 @@ pub enum AccumulateLog {
 	/// A `forget` removed the last referencer without expunging the preimage;
 	/// `forget` again once strictly past `due`. Spec §6.1.
 	ForgetAgainAt { hash: Hash, len: Compact<u32>, due: Timeslot },
+	/// A `forget` or `remove_service_storage` on a supervised service's store
+	/// failed. Spec §6.5.
+	ServiceStoreFailed { service: ServiceId, error: ServiceStoreError },
+	/// A `Service`-targeted `solicit` failed. Spec §6.5.
+	ServiceSolicitFailed { service: ServiceId, error: ServiceSolicitError },
+	/// An `eject_service` failed. Spec §6.5.
+	ServiceEjectFailed { service: ServiceId, error: ServiceEjectError },
+	/// A `set_service_supervisor` failed. Spec §6.5.
+	ServiceSupervisorFailed { service: ServiceId, error: ServiceSupervisorError },
+	/// Announces a `create_service` outcome, echoing the caller's own `id`. Spec §6.5.
+	ServiceCreation { id: Compact<u64>, result: ServiceCreationResult },
 	/// `parachain_clean_up` rejected: state held beyond baseline + codes. Spec §6.4.
 	TooMuchStateHeld,
 }

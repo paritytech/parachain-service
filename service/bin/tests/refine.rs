@@ -20,7 +20,7 @@ use parachain_service_bin::{
 };
 use parachain_service_interface::{
 	types::{Balance, ParaId, ServiceId, ASSET_HUB_PARA_ID, CORETIME_PARA_ID},
-	upward_message::{TransferOutArgs, UpwardMessage, UpwardMessages},
+	upward_message::{CreateServiceArgs, Target, TransferOutArgs, UpwardMessage, UpwardMessages},
 };
 
 /// A deferred `TransferOut` from this service's regular balance — the only shape
@@ -148,6 +148,116 @@ fn asset_hub_transfer_out_works() {
 
 	let (_, _, upward_messages, _) = expect_ok(outcome);
 	assert_eq!(upward_messages.into_iter().next(), Some(UpwardMessage::TransferOut(args)));
+}
+
+/// The §6.5 operations on a supervised service, paired with the upward message
+/// each must produce once it clears the Asset-Hub gate.
+fn service_op_actions() -> Vec<(MockAction, UpwardMessage)> {
+	const VICTIM: ServiceId = 65_536;
+	let create = CreateServiceArgs {
+		code_hash: [7; 32],
+		len: 1024.into(),
+		min_item_gas: 0,
+		min_memo_gas: 0,
+		id: 77.into(),
+		desired_id: Some(42),
+		source_supervisor_balance: false,
+		new_supervisor_balance: false,
+	};
+	vec![
+		(
+			MockAction::Forget { target: Target::Service(VICTIM), hash: [9; 32], len: 1024 },
+			UpwardMessage::Forget {
+				target: Target::Service(VICTIM),
+				hash: [9; 32],
+				len: 1024.into(),
+			},
+		),
+		(
+			MockAction::Solicit { target: Target::Service(VICTIM), hash: [9; 32], len: 1024 },
+			UpwardMessage::Solicit {
+				target: Target::Service(VICTIM),
+				hash: [9; 32],
+				len: 1024.into(),
+			},
+		),
+		(
+			MockAction::RemoveServiceStorage { service: VICTIM, key: vec![1, 2] },
+			UpwardMessage::RemoveServiceStorage { service: VICTIM, key: vec![1, 2] },
+		),
+		(
+			MockAction::EjectService { service: VICTIM },
+			UpwardMessage::EjectService { service: VICTIM },
+		),
+		(
+			MockAction::SetServiceSupervisor { service: VICTIM, new_supervisor: VICTIM },
+			UpwardMessage::SetServiceSupervisor { service: VICTIM, new_supervisor: VICTIM },
+		),
+		(MockAction::CreateService(create.clone()), UpwardMessage::CreateService(create)),
+	]
+}
+
+#[test]
+fn service_ops_restricted_to_asset_hub_errors() {
+	// §6.5: every supervised-service operation is Asset Hub only, so para 0
+	// aborts the digest rather than emitting the message.
+	for (action, _) in service_op_actions() {
+		let config = Config::Mock(vec![action]);
+		let parent = genesis(config.clone());
+
+		let outcome = run_block(config, &parent, 1, vec![ParaId(0)]);
+
+		assert_eq!(expect_log(outcome), RefineLog::RestrictedHostFunction);
+	}
+}
+
+#[test]
+fn service_ops_from_asset_hub_works() {
+	// The same calls from Asset Hub round-trip through the child ABI unchanged.
+	for (action, expected) in service_op_actions() {
+		let config = Config::Mock(vec![action]);
+		let parent = genesis(config.clone());
+
+		let outcome = run_block(config, &parent, 1, vec![ASSET_HUB_PARA_ID]);
+
+		let (_, _, upward_messages, _) = expect_ok(outcome);
+		assert_eq!(upward_messages.into_iter().next(), Some(expected));
+	}
+}
+
+#[test]
+fn own_para_target_from_any_chain_works() {
+	// §6.1: a `Parachain` target naming the caller stays unrestricted, so the
+	// Asset-Hub gate above must not have caught the whole `forget`/`solicit` host
+	// call — only its `Service`-targeted form.
+	let cases = [
+		(
+			MockAction::Forget { target: Target::Parachain(ParaId(0)), hash: [9; 32], len: 8 },
+			UpwardMessage::Forget {
+				target: Target::Parachain(ParaId(0)),
+				hash: [9; 32],
+				len: 8.into(),
+			},
+		),
+		(
+			MockAction::Solicit { target: Target::Parachain(ParaId(0)), hash: [9; 32], len: 8 },
+			UpwardMessage::Solicit {
+				target: Target::Parachain(ParaId(0)),
+				hash: [9; 32],
+				len: 8.into(),
+			},
+		),
+	];
+
+	for (action, expected) in cases {
+		let config = Config::Mock(vec![action]);
+		let parent = genesis(config.clone());
+
+		let outcome = run_block(config, &parent, 1, vec![ParaId(0)]);
+
+		let (_, _, upward_messages, _) = expect_ok(outcome);
+		assert_eq!(upward_messages.into_iter().next(), Some(expected));
+	}
 }
 
 fn assign_action(len: usize, assigner: Option<u32>) -> Config {

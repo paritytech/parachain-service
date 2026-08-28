@@ -141,6 +141,52 @@ Spec issues surfaced while implementing the PoC that did not need a user decisio
 flow back into the design doc / Quint model. Numbered **F-n**; `TODO`/`FIXME` markers in the
 code reference the same issues.
 
+## D-13: only `create_service` of §6.5 is executable on the vendored host
+
+Gap: §6.5 presupposes JAM supervision the vendored host does not have.
+
+§6.5 adds six operations a supervisor may perform on a supervised service:
+`solicit` and `forget` with a `Service` target, `remove_service_storage`,
+`eject_service`, `set_service_supervisor` and `create_service`. All six turn on a
+per-service **supervisor** link that the supervisor may act through — a Gray Paper
+>= 0.8 concept. The vendored PolkaJAM host is GP 0.7.2 and has none of it:
+
+| §6.5 operation | Vendored GP 0.7.2 host |
+|---|---|
+| `solicit(Service(s), …)` | only `solicit(hash, len)` for the caller's own store |
+| `forget(Service(s), …)` | only `forget(hash, len)` for the caller's own store |
+| `remove_service_storage` | only `get_foreign_storage` — reads, never writes |
+| `eject_service` | `eject(target, code_hash)` needs `target` to have called `zombify` naming us as ejector, which a supervisor cannot do on its behalf |
+| `set_service_supervisor` | absent; `bless` sets the four global privileges, not a per-service link |
+| `create_service` | `create_service(…, new_service_id)` — fully supported, `desired_id` included |
+
+`ServiceInfo::parent_service` does record a creator, but no host call is gated on
+it and nothing can assert or transfer it, so it is informational only. The
+Parachain Service is therefore never any service's *effective supervisor*, and the
+five supervision-gated operations accept the full spec shape on the wire and
+refuse with the error the design itself assigns — `UnknownService` when JAM does
+not know the target, else `NotSupervised`. This is the same reasoning D-11 applies
+to `transfer_out`'s unsupported shapes, and it keeps the refusals honest rather
+than silently dropping a parachain's request.
+
+`create_service` really runs. Two residual gaps:
+
+- **The balance selectors are inexpressible.** GP 0.7.2 knows one balance per
+  service, so `source_supervisor_balance` / `new_supervisor_balance` cannot be
+  honoured. `ServiceCreationResult` has no variant for a refused-because-
+  unrepresentable request, so the PoC reports `CannotAfford` — the same missing-
+  error-code gap as F-14.
+- **A `desired_id` outside the protected range is silently allocated elsewhere.**
+  The host honours `new_service_id` only while the caller holds `registrar` *and*
+  the index is below `NEW_ID_BASE` (2^16, matching the model's
+  `MinPublicServiceIndex`); otherwise it ignores the request and allocates. §6.5
+  defines `IdTaken` for an index in use but says nothing about one out of range,
+  so such a call reports `Created(other_id)`.
+
+**Spec feedback**: §6.5 should state which of these operations are expected to be
+reachable before JAM ships GP >= 0.8 supervision, and `ServiceCreationResult`
+needs a variant for a `desired_id` outside the protected range.
+
 ## F-1: §7.1 needs the anchor timeslot, but the refinement context does not carry it
 
 The AURA authorizer computes `collator_index` from "the anchor timeslot read from the

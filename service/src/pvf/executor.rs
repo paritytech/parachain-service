@@ -25,7 +25,10 @@ use jam_types::Hash;
 use parachain_service_interface::{
 	host_call::HostCall,
 	types::{ParaId, ServiceId, Timeslot},
-	upward_message::{TransferOutArgs, UpwardMessage, UpwardMessages, SET_VALIDATOR_KEYS_MAX_KEYS},
+	upward_message::{
+		CreateServiceArgs, Target, TransferOutArgs, UpwardMessage, UpwardMessages,
+		SET_VALIDATOR_KEYS_MAX_KEYS,
+	},
 };
 use polkavm::Reg;
 
@@ -180,13 +183,36 @@ impl ExecutorState {
 				})?;
 			},
 			HostCall::Solicit => {
-				let hash = peek_hash(handle, regs[A0]);
-				self.push(UpwardMessage::Solicit { hash, len: (regs[A1] as u32).into() })?;
+				let target = peek_target(regs[A0], regs[A1])?;
+				let hash = peek_hash(handle, regs[A2]);
+				self.push(UpwardMessage::Solicit { target, hash, len: (regs[A3] as u32).into() })?;
+			},
+			HostCall::EjectService => {
+				self.push(UpwardMessage::EjectService { service: regs[A0] as ServiceId })?;
+			},
+			HostCall::SetServiceSupervisor => {
+				self.push(UpwardMessage::SetServiceSupervisor {
+					service: regs[A0] as ServiceId,
+					new_supervisor: regs[A1] as ServiceId,
+				})?;
+			},
+			HostCall::CreateService => {
+				// Eight fields exceed the six-register window, so the guest hands
+				// over a SCALE-encoded `CreateServiceArgs` blob instead (D-10).
+				let encoded = peek_bytes(handle, regs[A0], regs[A1]);
+				let args = CreateServiceArgs::decode_all(&mut &encoded[..])
+					.map_err(|_| RefineLog::MalformedPayload)?;
+				self.push(UpwardMessage::CreateService(args))?;
 			},
 			HostCall::Forget => {
-				let para_id = ParaId(regs[A0] as u32);
-				let hash = peek_hash(handle, regs[A1]);
-				self.push(UpwardMessage::Forget { para_id, hash, len: (regs[A2] as u32).into() })?;
+				let target = peek_target(regs[A0], regs[A1])?;
+				let hash = peek_hash(handle, regs[A2]);
+				self.push(UpwardMessage::Forget { target, hash, len: (regs[A3] as u32).into() })?;
+			},
+			HostCall::RemoveServiceStorage => {
+				let service = regs[A0] as ServiceId;
+				let key = peek_bytes(handle, regs[A1], regs[A2]);
+				self.push(UpwardMessage::RemoveServiceStorage { service, key })?;
 			},
 			HostCall::KvSet => {
 				let key = peek_bytes(handle, regs[A0], regs[A1]);
@@ -319,7 +345,6 @@ fn copy_out(handle: u64, data: Option<&[u8]>, out_ptr: u64, out_cap: u64) -> u64
 	data.len() as u64
 }
 
-/// Read `len` bytes of guest memory.
 fn peek_bytes(handle: u64, ptr: u64, len: u64) -> Vec<u8> {
 	if len == 0 {
 		return Vec::new();
@@ -328,7 +353,16 @@ fn peek_bytes(handle: u64, ptr: u64, len: u64) -> Vec<u8> {
 		.unwrap_or_else(|_| panic!("PVF guest memory peek failed; §4.2 whole-refine failure"))
 }
 
-/// Read a 32-byte hash from guest memory.
+/// Decode a [`Target`] from the `(kind, id)` register pair. An unknown kind is a
+/// malformed call, not an abnormal exit: the guest chose the discriminant.
+fn peek_target(kind: u64, id: u64) -> Result<Target, RefineLog> {
+	match kind {
+		0 => Ok(Target::Parachain(ParaId(id as u32))),
+		1 => Ok(Target::Service(id as ServiceId)),
+		_ => Err(RefineLog::MalformedPayload),
+	}
+}
+
 fn peek_hash(handle: u64, ptr: u64) -> Hash {
 	let bytes = peek_bytes(handle, ptr, 32);
 	bytes.try_into().expect("peeked exactly 32 bytes; qed")
