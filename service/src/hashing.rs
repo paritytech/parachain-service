@@ -1,9 +1,8 @@
 //! Guest-side hashing.
 //!
 //! JAM's standard hash is blake2b-256 (`jam_std_common::hash_raw` on the host).
-//! The design doc's `hash(head_data)` in §5.1 step 3 does not name a function;
-//! we pin blake2b-256 so the service, the PVF's `set_parent_head_hash`, and
-//! JAM's own preimage hashing all agree. TODO: needs upstreaming into the spec.
+//! The service, the PVF's `set_parent_head_hash`, and JAM's own preimage
+//! hashing therefore agree.
 
 use jam_types::Hash;
 
