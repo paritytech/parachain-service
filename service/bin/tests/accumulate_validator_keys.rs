@@ -56,7 +56,7 @@ fn privileges_with_designate(designate: u32) -> Privileges {
 	}
 }
 
-/// run_block with explicit JAM Privileges (Todo 6 fixture).
+/// accumulate_block with explicit JAM Privileges (Todo 6 fixture).
 fn run_block_with_privileges(
 	storage: jam_node::vm::Storage,
 	items: Vec<AccumulateItem>,
@@ -77,7 +77,7 @@ fn chunk_staging_works() {
 	let msg = UpwardMessage::SetValidatorKeys { keys: keys(30, 1), is_last: false };
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
 
-	let (_, storage, mutations) = run_block(ah_storage(), vec![work_item(&digest)], NOW);
+	let (_, storage, mutations) = accumulate_block(ah_storage(), vec![work_item(&digest)], NOW);
 
 	assert_eq!(staged(&storage).len(), 30);
 	assert!(mutations.keys.is_none(), "not designated until is_last");
@@ -95,7 +95,7 @@ fn designate_works() {
 	let msg = UpwardMessage::SetValidatorKeys { keys: keys(23, 2), is_last: true };
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
 
-	let (_, storage, mutations) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, mutations) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert!(mutations.keys.is_some(), "JAM designate fired");
 	assert!(staged(&storage).is_empty(), "staging buffer cleared");
@@ -109,7 +109,7 @@ fn designate_wrong_len_errors() {
 	let msg = UpwardMessage::SetValidatorKeys { keys: keys(5, 1), is_last: true };
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
 
-	let (_, storage, mutations) = run_block(ah_storage(), vec![work_item(&digest)], NOW);
+	let (_, storage, mutations) = accumulate_block(ah_storage(), vec![work_item(&digest)], NOW);
 
 	assert!(mutations.keys.is_none());
 	assert!(staged(&storage).is_empty());
@@ -127,7 +127,7 @@ fn staging_overflow_errors() {
 	let msg = UpwardMessage::SetValidatorKeys { keys: keys(1, 2), is_last: false };
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
 
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert_eq!(staged(&storage).len(), MAX_STAGED_VALIDATOR_KEYS, "buffer unchanged");
 	assert!(matches!(

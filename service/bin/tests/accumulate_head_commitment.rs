@@ -67,7 +67,7 @@ fn single_changed_head_commits_to_its_leaf_works() {
 	let storage = fresh_storage(|s| seed_para(s, PARA_A, b"genesis", CODE_A, RICH));
 	let digest = ok_digest(PARA_A, CODE_A, b"genesis", b"head-1", vec![], 0);
 
-	let (outcome, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (outcome, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert_eq!(&para_info(&storage, PARA_A).unwrap().head_data[..], b"head-1");
 	// §5.5: one changed head → the returned commitment is that leaf's own hash.
@@ -78,15 +78,15 @@ fn single_changed_head_commits_to_its_leaf_works() {
 fn no_changed_head_returns_no_commitment_works() {
 	let storage = fresh_storage(|s| seed_para(s, PARA_A, b"genesis", CODE_A, RICH));
 	let digest = ok_digest(PARA_A, CODE_A, b"genesis", b"head-1", vec![], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	// Same head again: parent check passes, but the head is unchanged → no leaf.
 	let digest = ok_digest(PARA_A, CODE_A, b"head-1", b"head-1", vec![], 0);
-	let (outcome, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 1);
+	let (outcome, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
 	assert_eq!(outcome.yielded, None);
 
 	// An operand-less block (only always-accumulate work) moves no head either.
-	let (outcome, _, _) = run_block(storage, vec![], NOW + 2);
+	let (outcome, _, _) = accumulate_block(storage, vec![], NOW + 2);
 	assert_eq!(outcome.yielded, None);
 }
 
@@ -102,7 +102,7 @@ fn multiple_changed_heads_order_by_para_id_works() {
 
 	// Touched in descending para_id order; the root must still order leaves ascending.
 	let (outcome, storage, _) =
-		run_block(storage, vec![work_item(&digest_b), work_item(&digest_a)], NOW);
+		accumulate_block(storage, vec![work_item(&digest_b), work_item(&digest_a)], NOW);
 
 	assert_eq!(&para_info(&storage, PARA_A).unwrap().head_data[..], b"head-a1");
 	assert_eq!(&para_info(&storage, PARA_B).unwrap().head_data[..], b"head-b1");
@@ -123,7 +123,7 @@ fn three_changed_heads_promote_odd_leaf_works() {
 	let digest_b = ok_digest(PARA_B, CODE_B, b"genesis-b", b"head-b1", vec![], 0);
 	let digest_c = ok_digest(PARA_C, CODE_C, b"genesis-c", b"head-c1", vec![], 0);
 
-	let (outcome, storage, _) = run_block(
+	let (outcome, storage, _) = accumulate_block(
 		storage,
 		vec![work_item(&digest_c), work_item(&digest_a), work_item(&digest_b)],
 		NOW,

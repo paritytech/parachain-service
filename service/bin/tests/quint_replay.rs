@@ -199,7 +199,7 @@ fn minimal_replay_works() {
 
 	// 3. Run accumulate.
 	let slot = bigint(&block_state["now"]) as u32;
-	let (outcome, storage, _) = run_block(storage, items, slot);
+	let (outcome, storage, _) = accumulate_block(storage, items, slot);
 	assert!(outcome.gas_used > 0, "accumulate should use gas");
 	let replayed_head = para_info(&storage, ParaId(1)).expect("replayed para exists").head_data;
 	assert_ne!(&replayed_head[..], &codex_head(init_head), "replay must change the head");

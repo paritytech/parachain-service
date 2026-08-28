@@ -60,7 +60,7 @@ fn privileges_with_assign(assign: u32) -> Privileges {
 	}
 }
 
-/// run_block with explicit JAM Privileges (Todo 6 fixture).
+/// accumulate_block with explicit JAM Privileges (Todo 6 fixture).
 fn run_block_with_privileges(
 	storage: jam_node::vm::Storage,
 	items: Vec<AccumulateItem>,
@@ -82,7 +82,7 @@ fn schedule_future_works() {
 	let msg = assign_msg(vec![HASH_A, HASH_B], NOW + 10);
 	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
 
-	let (_, storage, mutations) = run_block(ct_storage(), vec![work_item(&digest)], NOW);
+	let (_, storage, mutations) = accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
 
 	assert!(mutations.auths.is_empty());
 	assert_eq!(
@@ -98,10 +98,10 @@ fn flush_due_works() {
 	// queue to the protocol's exact length (D-7).
 	let msg = assign_msg(vec![HASH_A, HASH_B], NOW + 10);
 	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
-	let (_, storage, _) = run_block(ct_storage(), vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
 
 	// An empty block at the due slot flushes it.
-	let (_, storage, mutations) = run_block(storage, vec![], NOW + 10);
+	let (_, storage, mutations) = accumulate_block(storage, vec![], NOW + 10);
 
 	let queue: Vec<_> = mutations.auths.get(&CORE).expect("assign fired").clone().into();
 	assert_eq!(queue.len(), jam_types::auth_queue_len());
@@ -119,7 +119,7 @@ fn inline_when_due_works() {
 	let msg = assign_msg(vec![HASH_A], NOW);
 	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
 
-	let (_, storage, mutations) = run_block(ct_storage(), vec![work_item(&digest)], NOW);
+	let (_, storage, mutations) = accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
 
 	assert!(mutations.auths.contains_key(&CORE));
 	assert!(pending(&storage).is_none());
@@ -132,12 +132,12 @@ fn empty_queue_is_noop_works() {
 	// the defensive branch leaves an existing cached assignment untouched.
 	let msg = assign_msg(vec![HASH_A], NOW + 10);
 	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
-	let (_, storage, _) = run_block(ct_storage(), vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
 	assert!(pending(&storage).is_some());
 
 	let empty = assign_msg(vec![], NOW + 20);
 	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-1", b"ct-2", vec![empty], 0);
-	let (_, storage, mutations) = run_block(storage, vec![work_item(&digest)], NOW + 1);
+	let (_, storage, mutations) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
 
 	assert!(mutations.auths.is_empty());
 	assert_eq!(pending(&storage), Some(PendingAssign { queue: vec![HASH_A], assigner: None }));
@@ -150,7 +150,8 @@ fn non_tiling_queue_rotates_works() {
 	let msg = assign_msg(queue.clone(), NOW);
 	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
 
-	let (_, storage, first_mutations) = run_block(ct_storage(), vec![work_item(&digest)], NOW);
+	let (_, storage, first_mutations) =
+		accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
 	let first: Vec<_> = first_mutations.auths.get(&CORE).expect("first cycle fired").clone().into();
 	for (i, hash) in first.iter().enumerate() {
 		assert_eq!(hash.0, queue[i % queue.len()], "first cycle index {i}");
@@ -159,11 +160,11 @@ fn non_tiling_queue_rotates_works() {
 	assert_eq!(pending(&storage), Some(PendingAssign { queue: rotated.clone(), assigner: None }));
 	assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, NOW + 80)]);
 
-	let (_, before, mutations) = run_block(storage, vec![], NOW + 79);
+	let (_, before, mutations) = accumulate_block(storage, vec![], NOW + 79);
 	assert!(mutations.auths.is_empty());
 	assert_eq!(pending(&before).unwrap().queue, rotated);
 
-	let (_, storage, second_mutations) = run_block(before, vec![], NOW + 80);
+	let (_, storage, second_mutations) = accumulate_block(before, vec![], NOW + 80);
 	let second: Vec<_> =
 		second_mutations.auths.get(&CORE).expect("second cycle fired").clone().into();
 	for (i, hash) in second.iter().enumerate() {
@@ -179,11 +180,11 @@ fn reschedule_overwrites_works() {
 	// A second assign for the same core replaces the cached one.
 	let first = assign_msg(vec![HASH_A], NOW + 10);
 	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![first], 0);
-	let (_, storage, _) = run_block(ct_storage(), vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
 
 	let second = assign_msg(vec![HASH_B], NOW + 20);
 	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-1", b"ct-2", vec![second], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 1);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
 
 	assert_eq!(pending(&storage), Some(PendingAssign { queue: vec![HASH_B], assigner: None }));
 	assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, NOW + 20)]);
@@ -194,7 +195,7 @@ fn unprivileged_assign_leaves_no_trace_works() {
 	// A due assign whose privilege belongs to a foreign service is silently
 	// dropped by JAM (ActionInvalid): no AccumulateLog entry, no pending-assign
 	// state. Pins the CURRENT silent-failure behavior at assigns.rs:73-79
-	// (F-15: the failed assign surfaces only as a jam_pvm_common::error!).
+	// The failed assign surfaces only as a jam_pvm_common::error!.
 	let msg = assign_msg(vec![HASH_A], NOW);
 	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
 

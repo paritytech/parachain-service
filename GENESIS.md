@@ -21,7 +21,7 @@ gas allotment; the mock's `Default::default()` (empty map) is insufficient for p
 
 The service performs housekeeping work without candidate operands (e.g., flushing due `assign` calls).
 The worst case is flushing a due `assign` for every core (341 entries, full 80-hash queues) in one block,
-measured at `DUE_ASSIGN_FLOOD = 9_943_233` gas (from `service/bin/tests/accumulate_gas.rs:70`).
+measured at `gas::ALL_DUE_ASSIGNS = 9_943_182` (from `service/bin/tests/accumulate_gas.rs`).
 
 An allotment of approximately 10M gas covers this avalanche and is reserved on top of the block's
 accumulation pool, so it does not compete with candidate gas.

@@ -41,7 +41,7 @@ fn solicited_storage() -> jam_node::vm::Storage {
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let msg = UpwardMessage::Solicit { hash: blob_hash(), len: blob_len().into() };
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 	storage
 }
 
@@ -80,7 +80,7 @@ fn solicit_insufficient_balance_errors() {
 	let msg = UpwardMessage::Solicit { hash: blob_hash(), len: blob_len().into() };
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg], 0);
 
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert!(registry_entry(&storage, code_ref(BLOB)).is_none());
 	assert!(matches!(
@@ -99,7 +99,7 @@ fn forget_unprovided_works() {
 
 	let msg = UpwardMessage::Forget { para_id: PARA, hash: blob_hash(), len: blob_len().into() };
 	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![msg], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 1);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
 
 	assert!(registry_entry(&storage, code_ref(BLOB)).is_none());
 	let info = para_info(&storage, PARA).unwrap();
@@ -123,7 +123,7 @@ fn forget_provided_works() {
 
 	let msg = UpwardMessage::Forget { para_id: PARA, hash: blob_hash(), len: blob_len().into() };
 	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![msg], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 1);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
 
 	let logs = accumulate_logs(&storage, PARA);
 	let [AccumulateLog::ForgetAgainAt { due, .. }] = logs[..] else {
@@ -135,7 +135,7 @@ fn forget_provided_works() {
 	// Second forget, strictly past the turnaround: expunged and refunded.
 	let msg = UpwardMessage::Forget { para_id: PARA, hash: blob_hash(), len: blob_len().into() };
 	let digest = ok_digest(PARA, CODE, b"head-2", b"head-3", vec![msg], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], due + 2);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], due + 2);
 
 	assert!(registry_entry(&storage, code_ref(BLOB)).is_none());
 	assert_eq!(
@@ -153,12 +153,12 @@ fn forget_before_due_works() {
 
 	let msg = UpwardMessage::Forget { para_id: PARA, hash: blob_hash(), len: blob_len().into() };
 	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![msg], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 1);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
 
 	// Too early: the retry must be rejected without state change.
 	let msg = UpwardMessage::Forget { para_id: PARA, hash: blob_hash(), len: blob_len().into() };
 	let digest = ok_digest(PARA, CODE, b"head-2", b"head-3", vec![msg], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 2);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 2);
 
 	let logs = accumulate_logs(&storage, PARA);
 	assert!(
@@ -184,15 +184,15 @@ fn shared_referencer_leaves_works() {
 	// Both paras solicit the same blob.
 	let msg = UpwardMessage::Solicit { hash: blob_hash(), len: blob_len().into() };
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg.clone()], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 	let digest = ok_digest(OTHER, b"para-2000-code", b"genesis-2", b"head-2-1", vec![msg], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 	let used_charged = para_info(&storage, PARA).unwrap().used_state_balance;
 
 	// PARA leaves; OTHER remains.
 	let msg = UpwardMessage::Forget { para_id: PARA, hash: blob_hash(), len: blob_len().into() };
 	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![msg], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 1);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
 
 	let entry = registry_entry(&storage, code_ref(BLOB)).expect("entry stays for OTHER");
 	assert!(!entry.referencers.contains(&PARA));
@@ -214,7 +214,7 @@ fn solicit_active_code_pins_works() {
 
 	let msg = UpwardMessage::Solicit { hash: cref.hash.0, len: cref.len.into() };
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	let info = para_info(&storage, PARA).unwrap();
 	assert!(info.validation_code.as_ref().unwrap().pinned);
@@ -231,7 +231,7 @@ fn forget_active_code_unpins_works() {
 	let pin = UpwardMessage::Solicit { hash: cref.hash.0, len: cref.len.into() };
 	let unpin = UpwardMessage::Forget { para_id: PARA, hash: cref.hash.0, len: cref.len.into() };
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![pin, unpin], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	let info = para_info(&storage, PARA).unwrap();
 	assert!(!info.validation_code.as_ref().unwrap().pinned);
@@ -252,12 +252,12 @@ fn pinned_code_survives_upgrade_works() {
 	let pin = UpwardMessage::Solicit { hash: old_ref.hash.0, len: old_ref.len.into() };
 	let request = UpwardMessage::RequestCodeUpgrade { hash: new_ref.hash, len: new_ref.len.into() };
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![pin, request], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 	let used_both = para_info(&storage, PARA).unwrap().used_state_balance;
 
 	// First candidate validated with the new code activates it.
 	let digest = ok_digest(PARA, NEW_CODE, b"head-1", b"head-2", vec![], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 1);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
 
 	let info = para_info(&storage, PARA).unwrap();
 	assert_eq!(info.validation_code.as_ref().unwrap().code_ref, new_ref);

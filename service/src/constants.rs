@@ -50,9 +50,9 @@ pub fn is_valid_val_count(len: usize) -> bool {
 /// costs in cycles) that is ~30-50 µs — plenty for a memo handler doing a few
 /// storage writes, while our own recording side costs ~1.6k gas. A realistic
 /// destination handler (two lookup-map writes + counter increment) measures
-/// ~1.7k gas per transfer (`accumulate_gas.rs::dest_handler_flood_works`), so
+/// ~1.7k gas per transfer (`accumulate_gas.rs::dest_handler_bench_works`), so
 /// the cap could drop to `Ga / 1000` — bounding a full 345-transfer digest to
-/// 0.35x `Ga` (F-13) with ~6x headroom per transfer.
+/// 0.35x `Ga` with ~6x headroom per transfer.
 /// FIXME: pick the production value and co-derive it with the per-digest
 /// message caps so `count x cap ≤ margin x Ga`.
 pub const MAX_TRANSFER_GAS: u64 = 100_000;

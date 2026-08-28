@@ -34,7 +34,7 @@ fn request_upgrade_block(
 	let new_ref = code_ref(NEW_CODE);
 	let msg = UpwardMessage::RequestCodeUpgrade { hash: new_ref.hash, len: new_ref.len.into() };
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 	(storage, new_ref)
 }
 
@@ -65,7 +65,7 @@ fn activation_works() {
 	let (storage, new_ref) = request_upgrade_block(storage);
 
 	let digest = ok_digest(PARA, NEW_CODE, b"head-1", b"head-2", vec![], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 10);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 10);
 
 	let info = para_info(&storage, PARA).unwrap();
 	assert_eq!(info.validation_code.as_ref().unwrap().code_ref, new_ref);
@@ -84,7 +84,7 @@ fn old_code_during_transition_works() {
 	let (storage, new_ref) = request_upgrade_block(storage);
 
 	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 10);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 10);
 
 	let info = para_info(&storage, PARA).unwrap();
 	assert_eq!(&info.head_data[..], b"head-2");
@@ -103,7 +103,7 @@ fn timeout_reap_works() {
 
 	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![], 0);
 	let (_, storage, _) =
-		run_block(storage, vec![work_item(&digest)], NOW + UPGRADE_TIMEOUT_TIMESLOTS);
+		accumulate_block(storage, vec![work_item(&digest)], NOW + UPGRADE_TIMEOUT_TIMESLOTS);
 
 	let info = para_info(&storage, PARA).unwrap();
 	assert!(info.pending_upgrade.is_none(), "timed-out upgrade reaped");
@@ -121,7 +121,7 @@ fn supersede_works() {
 	let third_ref = code_ref(b"para-1000-code-v3");
 	let msg = UpwardMessage::RequestCodeUpgrade { hash: third_ref.hash, len: third_ref.len.into() };
 	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![msg], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 1);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
 
 	let info = para_info(&storage, PARA).unwrap();
 	assert_eq!(info.pending_upgrade.as_ref().unwrap().0.code_ref, third_ref);
@@ -142,7 +142,7 @@ fn service_upgrade_missing_preimage_errors() {
 	};
 	let digest = ok_digest(ASSET_HUB_PARA_ID, b"ah-code", b"ah-genesis", b"ah-1", vec![msg], 0);
 
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert_eq!(
 		accumulate_logs(&storage, ASSET_HUB_PARA_ID),
@@ -177,12 +177,12 @@ fn rejected_candidate_cannot_use_privileged_calls_works() {
 	// A REJECTED candidate (stale parent) carrying the upgrade: nothing happens.
 	let rejected =
 		ok_digest(ASSET_HUB_PARA_ID, b"ah-code", b"not-the-parent", b"ah-1", vec![msg.clone()], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&rejected)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&rejected)], NOW);
 	assert_eq!(storage.service(SVC).expect("service exists").code_hash, original);
 
 	// Control: the same message from an accepted candidate does upgrade.
 	let accepted = ok_digest(ASSET_HUB_PARA_ID, b"ah-code", b"ah-genesis", b"ah-1", vec![msg], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&accepted)], NOW + 1);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&accepted)], NOW + 1);
 	assert_eq!(storage.service(SVC).expect("service exists").code_hash, CodeHash(new_code_hash));
 }
 
@@ -203,7 +203,7 @@ fn service_upgrade_works() {
 	};
 	let digest = ok_digest(ASSET_HUB_PARA_ID, b"ah-code", b"ah-genesis", b"ah-1", vec![msg], 0);
 
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert!(accumulate_logs(&storage, ASSET_HUB_PARA_ID).is_empty());
 }

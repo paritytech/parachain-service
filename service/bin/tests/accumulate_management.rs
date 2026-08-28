@@ -62,7 +62,7 @@ fn registration_works() {
 		],
 	);
 
-	let (_, storage, _) = run_block(coretime_storage(), vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(coretime_storage(), vec![work_item(&digest)], NOW);
 
 	let info = para_info(&storage, NEW_PARA).expect("registration created the ParaInfo");
 	assert_eq!(&info.head_data[..], b"para-genesis");
@@ -84,7 +84,7 @@ fn registration_below_baseline_errors() {
 		vec![UpwardMessage::ParachainSetStateBalance { para_id: NEW_PARA, new_total: 10.into() }],
 	);
 
-	let (_, storage, _) = run_block(coretime_storage(), vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(coretime_storage(), vec![work_item(&digest)], NOW);
 
 	assert!(para_info(&storage, NEW_PARA).is_none());
 	assert!(matches!(
@@ -110,7 +110,7 @@ fn lower_total_than_used_errors() {
 		}],
 	);
 
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert_eq!(para_info(&storage, NEW_PARA).unwrap().total_state_balance, RICH);
 	assert!(matches!(
@@ -134,7 +134,7 @@ fn forced_set_head_works() {
 		}],
 	);
 
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert_eq!(&para_info(&storage, NEW_PARA).unwrap().head_data[..], b"recovered");
 }
@@ -158,7 +158,7 @@ fn forced_set_validation_code_works() {
 		}],
 	);
 
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	let info = para_info(&storage, NEW_PARA).unwrap();
 	assert_eq!(info.validation_code.as_ref().unwrap().code_ref, forced_ref);
@@ -193,7 +193,7 @@ fn cleanup_with_extra_state_errors() {
 	let digest =
 		coretime_digest(b"ct-genesis", b"ct-1", vec![UpwardMessage::ParachainCleanUp(NEW_PARA)]);
 
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert!(para_info(&storage, NEW_PARA).is_some());
 	assert!(matches!(coretime_accumulate_logs(&storage)[..], [AccumulateLog::TooMuchStateHeld]));
@@ -209,7 +209,7 @@ fn cleanup_unprovided_code_works() {
 	let digest =
 		coretime_digest(b"ct-genesis", b"ct-1", vec![UpwardMessage::ParachainCleanUp(NEW_PARA)]);
 
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert!(para_info(&storage, NEW_PARA).is_none());
 	assert!(para_log(&storage, NEW_PARA).is_empty());
@@ -227,7 +227,7 @@ fn cleanup_two_step_works() {
 	});
 	let digest =
 		coretime_digest(b"ct-genesis", b"ct-1", vec![UpwardMessage::ParachainCleanUp(NEW_PARA)]);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	let info = para_info(&storage, NEW_PARA).expect("still present, deregistering");
 	assert!(info.is_deregistering);
@@ -238,7 +238,7 @@ fn cleanup_two_step_works() {
 
 	// Retry strictly after `due` completes the expunge and drops everything.
 	let retry = coretime_digest(b"ct-1", b"ct-2", vec![UpwardMessage::ParachainCleanUp(NEW_PARA)]);
-	let (_, storage, _) = run_block(storage, vec![work_item(&retry)], due + 2);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&retry)], due + 2);
 
 	assert!(para_info(&storage, NEW_PARA).is_none());
 	assert!(registry_entry(&storage, code_ref(NEW_CODE)).is_none());

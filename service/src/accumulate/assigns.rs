@@ -31,7 +31,7 @@ pub fn schedule(
 		|_| {
 			// A failed cache write (baseline-covered, §6.1 backstop)
 			// drops the assign. There is no per-para log channel for the
-			// service-global assign cache (F-15), so only the
+			// service-global assign cache, so only the
 			// error is surfaced. The dirty-core index must NOT be armed: the
 			// flush would then expect a payload that was never cached.
 			jam_pvm_common::error!("assign for core {core} not cached: storage full");

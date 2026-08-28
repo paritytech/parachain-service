@@ -349,7 +349,7 @@ pub fn apply_set_kv(para_id: ParaId, key: &[u8], value: &[u8]) -> Result<(), Acc
 		None => kv_entry_footprint(key.len(), value.len()) as i128,
 		Some(old_v) => vec_bytes(value.len()) as i128 - vec_bytes(old_v.len()) as i128,
 	};
-	// `blake2_256` is computed lazily in each rejection branch: the flood path
+	// `blake2_256` is computed lazily in each rejection branch: the rejection path
 	// must not pay for hashing a key it never rejects (§6.1 pre-check).
 	if delta > 0 && !pi.has_headroom(delta as Balance) {
 		return Err(AccumulateLog::InsufficientStateBalance {

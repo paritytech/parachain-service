@@ -18,7 +18,7 @@ fn enact_works() {
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![], 0);
 
-	let (outcome, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (outcome, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert!(outcome.gas_used > 0);
 	let info = para_info(&storage, PARA).expect("para stays registered");
@@ -32,7 +32,7 @@ fn unregistered_para_works() {
 	let storage = fresh_storage(|_| {});
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![], 0);
 
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert!(para_info(&storage, PARA).is_none());
 	assert!(para_log(&storage, PARA).is_empty());
@@ -56,7 +56,7 @@ fn deregistering_para_works() {
 	});
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![], 0);
 
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"genesis");
 }
@@ -67,7 +67,7 @@ fn parent_head_mismatch_works() {
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let digest = ok_digest(PARA, CODE, b"not-the-parent", b"head-1", vec![], 0);
 
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"genesis");
 	assert!(para_log(&storage, PARA).is_empty());
@@ -80,7 +80,7 @@ fn wrong_code_errors() {
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let digest = ok_digest(PARA, b"some-other-code", b"genesis", b"head-1", vec![], 0);
 
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"genesis");
 	assert!(para_log(&storage, PARA).is_empty());
@@ -112,7 +112,7 @@ fn rejected_candidate_does_not_prune_works() {
 	// A stale-parent (rejected) candidate with a lookup-anchor far above the
 	// seeded entry's timeslot: were it to prune, the entry would be gone.
 	let digest = ok_digest(PARA, CODE, b"not-the-parent", b"head-1", vec![], 500);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert_eq!(para_log(&storage, PARA).len(), 1, "rejected candidate must not prune");
 	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"genesis");
@@ -124,7 +124,7 @@ fn refine_error_logged_works() {
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let digest = err_digest(PARA, RefineLog::InvalidCodeHash);
 
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	let log = para_log(&storage, PARA);
 	assert_eq!(log.len(), 1);
@@ -144,12 +144,12 @@ fn log_pruning_works() {
 
 	// Block 1: a refine failure lands in the log at slot NOW.
 	let bad = err_digest(PARA, RefineLog::InvalidCodeHash);
-	let (_, storage, _) = run_block(storage, vec![work_item(&bad)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&bad)], NOW);
 	assert_eq!(para_log(&storage, PARA).len(), 1);
 
 	// Block 2: an enacting candidate whose lookup-anchor is past that entry.
 	let good = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![], NOW + 1);
-	let (_, storage, _) = run_block(storage, vec![work_item(&good)], NOW + 50);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&good)], NOW + 50);
 
 	assert!(para_log(&storage, PARA).is_empty(), "stale entries pruned");
 	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"head-1");
@@ -163,7 +163,8 @@ fn two_packages_sequence_works() {
 	let first = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![], 0);
 	let second = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![], 0);
 
-	let (_, storage, _) = run_block(storage, vec![work_item(&first), work_item(&second)], NOW);
+	let (_, storage, _) =
+		accumulate_block(storage, vec![work_item(&first), work_item(&second)], NOW);
 
 	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"head-2");
 }
@@ -180,7 +181,7 @@ fn restricted_message_drops_candidate_works() {
 	let restricted = UpwardMessage::ConsumeTransfersUpTo(0);
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![set, restricted], 0);
 
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"genesis");
 	assert_eq!(kv_value(&storage, PARA, b"k"), None);
@@ -197,7 +198,7 @@ fn foreign_para_message_drops_candidate_works() {
 	let msg = UpwardMessage::RemoveKV { para_id: ParaId(2000), key: b"k".to_vec() };
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg], 0);
 
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"genesis");
 	assert!(para_log(&storage, PARA).is_empty());
@@ -213,7 +214,7 @@ fn kv_set_works() {
 	let msg = UpwardMessage::SetKV { key: b"k".to_vec(), value: b"value".to_vec() };
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg], 0);
 
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert_eq!(kv_value(&storage, PARA, b"k"), Some(b"value".to_vec()));
 	let info = para_info(&storage, PARA).unwrap();
@@ -229,11 +230,11 @@ fn kv_remove_works() {
 
 	let set = UpwardMessage::SetKV { key: b"k".to_vec(), value: b"value".to_vec() };
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![set], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	let remove = UpwardMessage::RemoveKV { para_id: PARA, key: b"k".to_vec() };
 	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![remove], 0);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 1);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
 
 	assert_eq!(kv_value(&storage, PARA, b"k"), None);
 	// The full footprint was refunded.
@@ -262,7 +263,7 @@ fn kv_insufficient_balance_errors() {
 	let msg = UpwardMessage::SetKV { key: b"k".to_vec(), value: b"value".to_vec() };
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg], 0);
 
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert_eq!(kv_value(&storage, PARA, b"k"), None);
 	let log = para_log(&storage, PARA);

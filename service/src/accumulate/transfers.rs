@@ -192,8 +192,8 @@ pub fn transfer_out(args: TransferOutArgs, logs: &mut Vec<AccumulateLog>) {
 	}
 	if gas > MAX_TRANSFER_GAS {
 		// `Ω_T` charges the forwarded gas to this service's own accumulate meter,
-		// so an unbounded request burns the whole invocation (D-6, F-13).
-		// FIXME: the design defines no error for a sender-side gas cap (F-14).
+		// so an unbounded request burns the whole invocation (D-6).
+		// FIXME: the design defines no error for a sender-side gas cap.
 		return fail(TransferError::InsufficientServiceBalance);
 	}
 	if transfer(dest, amount.0, gas, &JamMemo(memo)).is_err() {

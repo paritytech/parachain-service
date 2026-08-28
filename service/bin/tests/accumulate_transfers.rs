@@ -34,7 +34,7 @@ fn ah_accumulate_logs(storage: &jam_node::vm::Storage) -> Vec<AccumulateLog> {
 
 #[test]
 fn record_works() {
-	let (_, storage, _) = run_block(ah_storage(), vec![transfer_item(9, 1_000_000)], NOW);
+	let (_, storage, _) = accumulate_block(ah_storage(), vec![transfer_item(9, 1_000_000)], NOW);
 
 	let chain = transfer_chain(&storage).expect("chain created");
 	assert_eq!(chain, IncomingTransferChain { first_slot: NOW, last_slot: NOW, count: 1 });
@@ -49,7 +49,7 @@ fn record_works() {
 fn same_slot_bucket_append_works() {
 	// Two arrivals in one slot share the bucket — no new storage item (§5.1).
 	let items = vec![transfer_item(9, 1_000_000), transfer_item(10, 2_000_000)];
-	let (_, storage, _) = run_block(ah_storage(), items, NOW);
+	let (_, storage, _) = accumulate_block(ah_storage(), items, NOW);
 
 	let chain = transfer_chain(&storage).unwrap();
 	assert_eq!(chain.count, 2);
@@ -59,8 +59,8 @@ fn same_slot_bucket_append_works() {
 #[test]
 fn chained_buckets_works() {
 	// Arrivals in different slots link buckets through `next_slot`.
-	let (_, storage, _) = run_block(ah_storage(), vec![transfer_item(9, 1_000_000)], NOW);
-	let (_, storage, _) = run_block(storage, vec![transfer_item(10, 2_000_000)], NOW + 5);
+	let (_, storage, _) = accumulate_block(ah_storage(), vec![transfer_item(9, 1_000_000)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![transfer_item(10, 2_000_000)], NOW + 5);
 
 	let chain = transfer_chain(&storage).unwrap();
 	assert_eq!(chain, IncomingTransferChain { first_slot: NOW, last_slot: NOW + 5, count: 2 });
@@ -89,13 +89,16 @@ fn over_reserved_portion_admission_works() {
 
 	// Too small to pay for its own bucket: dropped without a trace.
 	let small = INCOMING_TRANSFER_ENTRY_FOOTPRINT - 1;
-	let (_, storage, _) = run_block(storage, vec![transfer_item(9, small)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![transfer_item(9, small)], NOW);
 	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32);
 	assert!(transfer_bucket(&storage, NOW).is_none());
 
 	// Self-funding: recorded.
-	let (_, storage, _) =
-		run_block(storage, vec![transfer_item(9, INCOMING_TRANSFER_ENTRY_FOOTPRINT)], NOW + 1);
+	let (_, storage, _) = accumulate_block(
+		storage,
+		vec![transfer_item(9, INCOMING_TRANSFER_ENTRY_FOOTPRINT)],
+		NOW + 1,
+	);
 	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32 + 1);
 	assert!(transfer_bucket(&storage, NOW + 1).is_some());
 }
@@ -106,13 +109,13 @@ fn reservation_edge_admission_works() {
 	// zero-amount transfer is free and fills the reservation exactly. Only from
 	// `MAX_INCOMING_TRANSFERS` onwards must an entry pay for itself.
 	let storage = chain_storage(MAX_INCOMING_TRANSFERS as u32 - 1);
-	let (_, storage, _) = run_block(storage, vec![transfer_item(9, 0)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![transfer_item(9, 0)], NOW);
 
 	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32);
 	assert!(transfer_bucket(&storage, NOW).is_some());
 
 	// The next one is past the reservation: a zero-amount transfer is dropped.
-	let (_, storage, _) = run_block(storage, vec![transfer_item(9, 0)], NOW + 1);
+	let (_, storage, _) = accumulate_block(storage, vec![transfer_item(9, 0)], NOW + 1);
 	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32);
 	assert!(transfer_bucket(&storage, NOW + 1).is_none());
 }
@@ -120,12 +123,12 @@ fn reservation_edge_admission_works() {
 #[test]
 fn consume_works() {
 	// Record at two slots, then Asset Hub consumes the first only.
-	let (_, storage, _) = run_block(ah_storage(), vec![transfer_item(9, 1_000_000)], NOW);
-	let (_, storage, _) = run_block(storage, vec![transfer_item(10, 2_000_000)], NOW + 5);
+	let (_, storage, _) = accumulate_block(ah_storage(), vec![transfer_item(9, 1_000_000)], NOW);
+	let (_, storage, _) = accumulate_block(storage, vec![transfer_item(10, 2_000_000)], NOW + 5);
 
 	let msg = UpwardMessage::ConsumeTransfersUpTo(NOW);
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], NOW + 6);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 6);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 6);
 
 	assert!(transfer_bucket(&storage, NOW).is_none());
 	assert!(transfer_bucket(&storage, NOW + 5).is_some());
@@ -137,7 +140,7 @@ fn consume_works() {
 	// Consuming the rest clears the chain entirely.
 	let msg = UpwardMessage::ConsumeTransfersUpTo(NOW + 5);
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-1", b"ah-2", vec![msg], NOW + 7);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 7);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 7);
 	assert!(transfer_chain(&storage).is_none());
 	assert!(transfer_bucket(&storage, NOW + 5).is_none());
 }
@@ -148,14 +151,14 @@ fn consume_is_clamped_to_anchor_works() {
 	// lookup-anchor. Asset Hub cannot have read a bucket newer than the anchor
 	// it built on, so a slot beyond it must not drain buckets it never observed.
 	// Buckets at or below the anchor are still drained normally.
-	let (_, storage, _) = run_block(ah_storage(), vec![transfer_item(9, 1_000_000)], 1);
-	let (_, storage, _) = run_block(storage, vec![transfer_item(9, 1_000_000)], 9);
+	let (_, storage, _) = accumulate_block(ah_storage(), vec![transfer_item(9, 1_000_000)], 1);
+	let (_, storage, _) = accumulate_block(storage, vec![transfer_item(9, 1_000_000)], 9);
 	assert_eq!(transfer_chain(&storage).unwrap().count, 2);
 
 	// A candidate anchored at 5 asking to consume everything up to 9.
 	let msg = UpwardMessage::ConsumeTransfersUpTo(9);
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 5);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], 10);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], 10);
 
 	// Clamped to 5: bucket 1 drained, bucket 9 survives.
 	assert!(transfer_bucket(&storage, 1).is_none());
@@ -204,8 +207,11 @@ fn unreserved_transfers_are_self_funded_works() {
 	// Deliberately far more than one entry costs, to pin that the surplus is
 	// not credited to the allowance.
 	let at = 2;
-	let (_, storage, _) =
-		run_block(storage, vec![transfer_item(3, INCOMING_TRANSFER_ENTRY_FOOTPRINT * 100)], at);
+	let (_, storage, _) = accumulate_block(
+		storage,
+		vec![transfer_item(3, INCOMING_TRANSFER_ENTRY_FOOTPRINT * 100)],
+		at,
+	);
 	let pi = para_info(&storage, ASSET_HUB_PARA_ID).unwrap();
 	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32 + 1);
 	assert_eq!(pi.used_state_balance, used0 + INCOMING_TRANSFER_ENTRY_FOOTPRINT);
@@ -214,7 +220,7 @@ fn unreserved_transfers_are_self_funded_works() {
 	// Drain the whole queue back out through the real accumulate path.
 	let msg = UpwardMessage::ConsumeTransfersUpTo(at);
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], at);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], at + 1);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], at + 1);
 
 	assert!(transfer_chain(&storage).is_none());
 	let pi = para_info(&storage, ASSET_HUB_PARA_ID).unwrap();
@@ -236,7 +242,7 @@ fn draining_unreserved_restores_balance_works() {
 	let mut storage = storage;
 	let mut now = 2;
 	for _ in 0..3 {
-		let (_, s, _) = run_block(storage, vec![transfer_item(3, big * 100)], now);
+		let (_, s, _) = accumulate_block(storage, vec![transfer_item(3, big * 100)], now);
 		storage = s;
 		now += 1;
 	}
@@ -250,7 +256,7 @@ fn draining_unreserved_restores_balance_works() {
 	// is refunded.
 	let msg = UpwardMessage::ConsumeTransfersUpTo(3);
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 3);
-	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], now);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], now);
 
 	let pi = para_info(&storage, ASSET_HUB_PARA_ID).unwrap();
 	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32);
@@ -278,7 +284,7 @@ fn transfer_out_works() {
 	let msg = transfer_out_msg(42, 12345, 7, Some(([3; 128], 500)));
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
 
-	let (_, storage, mutations) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, mutations) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert_eq!(mutations.transfers.len(), 1);
 	let record = &mutations.transfers[0];
@@ -298,7 +304,7 @@ fn transfer_out_below_dest_minimum_errors() {
 	let msg = transfer_out_msg(42, 12345, 8, Some(([3; 128], 499)));
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
 
-	let (_, storage, mutations) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, mutations) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert!(mutations.transfers.is_empty());
 	assert_eq!(
@@ -320,7 +326,7 @@ fn transfer_out_plain_move_errors() {
 	let msg = transfer_out_msg(42, 12345, 9, None);
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
 
-	let (_, storage, mutations) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, mutations) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert!(mutations.transfers.is_empty());
 	assert_eq!(
@@ -337,7 +343,7 @@ fn transfer_out_unknown_dest_errors() {
 	let msg = transfer_out_msg(999, 12345, 3, Some(([3; 128], 500)));
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
 
-	let (_, storage, mutations) = run_block(ah_storage(), vec![work_item(&digest)], NOW);
+	let (_, storage, mutations) = accumulate_block(ah_storage(), vec![work_item(&digest)], NOW);
 
 	assert!(mutations.transfers.is_empty());
 	assert_eq!(
@@ -351,7 +357,7 @@ fn transfer_out_unknown_dest_errors() {
 
 #[test]
 fn transfer_out_gas_over_cap_errors() {
-	// D-6/F-13: forwarded gas above MAX_TRANSFER_GAS is never committed, since
+	// D-6: forwarded gas above MAX_TRANSFER_GAS is never committed, since
 	// `Ω_T` charges it to this service's own accumulate meter.
 	let storage = fresh_storage(|s| {
 		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
@@ -360,7 +366,7 @@ fn transfer_out_gas_over_cap_errors() {
 	let msg = transfer_out_msg(42, 12345, 4, Some(([3; 128], MAX_TRANSFER_GAS + 1)));
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
 
-	let (_, storage, mutations) = run_block(storage, vec![work_item(&digest)], NOW);
+	let (_, storage, mutations) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert!(mutations.transfers.is_empty());
 	assert_eq!(

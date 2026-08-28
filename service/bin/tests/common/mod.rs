@@ -60,7 +60,7 @@ pub fn transfer_out_msg(
 
 /// Run one accumulate block over `storage`; returns the outcome and the
 /// post-state storage for follow-up blocks/assertions.
-pub fn run_block(
+pub fn accumulate_block(
 	storage: Storage,
 	items: Vec<AccumulateItem>,
 	slot: Timeslot,
@@ -68,7 +68,7 @@ pub fn run_block(
 	run_block_for(SERVICE, storage, items, slot)
 }
 
-/// [`run_block`] for an arbitrary service `blob` (e.g. the mock transfer
+/// [`accumulate_block`] for an arbitrary service `blob` (e.g. the mock transfer
 /// destination); `storage` must hold the blob (see [`fresh_storage_for`]).
 pub fn run_block_for(
 	blob: &[u8],

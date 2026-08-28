@@ -56,7 +56,7 @@ The Quint model records each incoming transfer individually. Since all of a bloc
 transfer operands arrive at the same timeslot (one bucket), a literal port re-reads and
 re-writes the growing bucket per transfer — measured at 551M gas for 1024 same-slot
 transfers, 55x the Gray Paper's whole per-report budget `Ga = 10M`
-(`accumulate_gas.rs::incoming_transfer_flood_works`). The PoC batches: admission is checked
+(`accumulate_gas.rs::incoming_transfer_bench_works`). The PoC batches: admission is checked
 per transfer in operand order (identical semantics, including the count-based cap), then
 all admitted transfers land in a single bucket write. Measured cost drops to 1.63M gas.
 
@@ -179,7 +179,7 @@ A reachable worst-case digest (1024 `solicit`s, 36 KiB — fits the report bound
 `Ga = 10M` (`accumulate_gas.rs`). Out-of-gas mid-replay reverts to the last checkpoint,
 un-enacting a candidate Refine already validated. §4.3's `MAX_UPWARD_MESSAGES_PER_DIGEST`
 needs deriving from `Ga` (with margin), not picked independently. Pinned by
-`solicit_flood_works` / `set_kv_flood_works`.
+`solicit_bench_works` / `set_kv_bench_works`.
 
 ## F-11: several message types cannot reach the 1024-message cap anyway
 
@@ -194,7 +194,7 @@ The design expects the service to be always-accumulate (§2) but never sizes the
 `always_acc` privileges allotment that pays for operand-less maintenance work. Measured
 worst case: flushing a due `assign` for every core (341 entries, full 80-hash queues) in
 one block costs 9.94M gas — ~29k per assign, dominated by the `assign` host call itself
-(`accumulate_gas.rs::due_assign_flood_works`); steady state is one core per slot. An
+(`accumulate_gas.rs::due_assign_bench_works`); steady state is one core per slot. An
 allotment of ~10M covers the avalanche, and it is reserved on top of the block's
 accumulation pool, so it does not compete with candidate gas.
 
@@ -210,7 +210,7 @@ meter. Both bounds are individually enforced — per-transfer `MAX_TRANSFER_GAS 
 (#17), per-report ~345 transfers under `Wr` (F-11) — but their product exceeds `Ga`: an
 Asset Hub digest of 345 transfers to a destination demanding `min_memo_gas =
 MAX_TRANSFER_GAS` measures 36.4M gas — 3.64x `Ga`
-(`accumulate_gas.rs::transfer_out_hostile_dest_flood_works`) — so in production it
+(`accumulate_gas.rs::transfer_out_max_gas_bench_works`) — so in production it
 out-of-gasses after ~90 replays and un-enacts the validated candidate. Destinations are
 user-chosen, so this is reachable. The replay loop needs a **cumulative**
 forwarded-gas budget per digest (a fraction of `Ga`), not only a per-transfer cap — or the
