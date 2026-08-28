@@ -48,13 +48,9 @@ mod gas {
 	/// 1024 KV writes filling the report's elective-data limit.
 	pub const MAX_KV_WRITES: u64 = 6_154_121;
 	/// 331 outbound transfers to a friendly destination.
-	///
-	/// TODO: This contains the 165.5K forwarded gas and we need to subtract that.
-	pub const MAX_TRANSFER_OUTS: u64 = 1_002_182;
+	pub const MAX_TRANSFER_OUTS: u64 = 836_682;
 	/// 331 outbound transfers to a destination demanding the full cap.
-	///
-	/// TODO: This contains the 33.1M forwarded gas and we need to subtract that.
-	pub const MAX_GAS_TRANSFER_OUTS: u64 = 33_931_527;
+	pub const MAX_GAS_TRANSFER_OUTS: u64 = 831_527;
 	/// Gas for 1024 incoming transfers recorded in one bucket write.
 	pub const MAX_INCOMING_TRANSFERS: u64 = 1_647_997;
 	/// Due `assign` flush for all 341 cores in one block.
@@ -72,10 +68,11 @@ fn worst_case_margin_works() {
 	let budget = ga - ga / 5;
 	assert!(gas::MAX_SOLICITS <= budget);
 	assert!(gas::MAX_KV_WRITES <= budget);
+	assert!(gas::MAX_TRANSFER_OUTS <= budget);
+	assert!(gas::MAX_GAS_TRANSFER_OUTS <= budget);
 	assert!(gas::MAX_INCOMING_TRANSFERS <= budget);
 	assert!(gas::ALL_DUE_ASSIGNS <= ga);
 	assert!(gas::DEST_HANDLER_PER_TRANSFER <= MAX_TRANSFER_GAS / 10);
-	assert!(gas::MAX_GAS_TRANSFER_OUTS > ga);
 }
 
 /// Benchmarks a maximum-size digest of validation-code solicitations.
@@ -121,12 +118,14 @@ fn set_kv_bench_works() {
 /// Benchmarks the gas used to process the maximum number of outbound transfers.
 #[test]
 fn transfer_out_bench_works() {
+	const TRANSFER_GAS: u64 = 500;
+
 	let storage = fresh_storage(|s| {
 		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
-		seed_service(s, 42, 500);
+		seed_service(s, 42, TRANSFER_GAS);
 	});
-	let msgs = (0..331)
-		.map(|i| transfer_out_msg(42, 1, i as u64, Some(([7; 128], 500))))
+	let msgs = (0..WR_TRANSFER_BENCH)
+		.map(|i| transfer_out_msg(42, 1, i as u64, Some(([7; 128], TRANSFER_GAS))))
 		.collect();
 	let head = [0; 147];
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", &head, msgs, 0);
@@ -134,9 +133,10 @@ fn transfer_out_bench_works() {
 	assert_eq!(digest_len, MAX_REPORT_ELECTIVE_DATA);
 
 	let (outcome, _, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+	let gas_used = outcome.gas_used - u64::from(WR_TRANSFER_BENCH) * TRANSFER_GAS;
 
-	report("transfer_out_bench", outcome.gas_used, outcome.elapsed, digest_len);
-	assert_eq!(outcome.gas_used, gas::MAX_TRANSFER_OUTS);
+	report("transfer_out_bench", gas_used, outcome.elapsed, digest_len);
+	assert_eq!(gas_used, gas::MAX_TRANSFER_OUTS);
 }
 
 /// Maximum transfers fitting in `Wr`.
@@ -157,9 +157,10 @@ fn transfer_out_max_gas_bench_works() {
 	assert!(digest_len <= MAX_REPORT_ELECTIVE_DATA, "fits into the WR size limit");
 
 	let (outcome, _, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+	let gas_used = outcome.gas_used - u64::from(WR_TRANSFER_BENCH) * MAX_TRANSFER_GAS;
 
-	report("transfer_out_max_gas_bench", outcome.gas_used, outcome.elapsed, digest_len);
-	assert_eq!(outcome.gas_used, gas::MAX_GAS_TRANSFER_OUTS);
+	report("transfer_out_max_gas_bench", gas_used, outcome.elapsed, digest_len);
+	assert_eq!(gas_used, gas::MAX_GAS_TRANSFER_OUTS);
 }
 
 /// Builds a mock destination transfer.
