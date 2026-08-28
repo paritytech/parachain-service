@@ -58,7 +58,7 @@ mod gas {
 	/// Marginal cost of a realistic destination's memo handler, per transfer.
 	pub const DEST_HANDLER_PER_TRANSFER: u64 = 1_665;
 	/// Gas for one Ed25519 authorization.
-	pub const IS_AUTHORIZED_ED25519: u64 = 1_008_259;
+	pub const IS_AUTHORIZED_ED25519: u64 = 1_010_744;
 }
 
 /// Checks the pinned gas measurements against their budgets.
