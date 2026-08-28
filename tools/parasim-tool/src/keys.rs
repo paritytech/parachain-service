@@ -9,10 +9,10 @@ use jam_interface::{JamChainSource, JamStateSource, ServiceId};
 use jam_rpc_interface::JamRpcInterface;
 use parachain_service_interface::types::ParaId;
 
-use crate::format::hex;
-
-/// Substrate hash length, and so the size of a header's leading `parent_hash`.
-const HASH_LEN: usize = 32;
+use crate::{
+	format::{hex, parse_header_hash},
+	header,
+};
 
 /// Print the para head stored for `para` by `service`, decoded unless `raw`.
 pub async fn display_parahead(
@@ -67,7 +67,7 @@ fn print_para_info(stored: &[u8]) -> Result<(), String> {
 
 	println!("\nhead (substrate header)");
 	println!("  hash        0x{}", hex(&jam_state_helpers::blake2_256(&head)));
-	match decode_header(&head) {
+	match header::decode(&head) {
 		Ok(header) => {
 			println!("  parent_hash 0x{}", hex(&header.parent_hash));
 			println!("  number      {}", header.number);
@@ -77,44 +77,4 @@ fn print_para_info(stored: &[u8]) -> Result<(), String> {
 	}
 	println!("  encoded     0x{}", hex(&head));
 	Ok(())
-}
-
-/// The fields of a substrate `Header` worth showing.
-struct Header {
-	parent_hash: [u8; HASH_LEN],
-	number: u32,
-	state_root: [u8; HASH_LEN],
-}
-
-/// `Header` = parent_hash(32) ++ compact number ++ state_root(32) ++ extrinsics_root(32) ++ digest.
-fn decode_header(head: &[u8]) -> Result<Header, String> {
-	let mut rest = head;
-	let parent_hash = take_hash(&mut rest)?;
-	let codec::Compact(number) =
-		codec::Compact::<u32>::decode(&mut rest).map_err(|e| format!("block number: {e}"))?;
-	let state_root = take_hash(&mut rest)?;
-	Ok(Header { parent_hash, number, state_root })
-}
-
-fn take_hash(input: &mut &[u8]) -> Result<[u8; HASH_LEN], String> {
-	if input.len() < HASH_LEN {
-		return Err("truncated".into());
-	}
-	let (hash, rest) = input.split_at(HASH_LEN);
-	*input = rest;
-	Ok(hash.try_into().expect("split at HASH_LEN; qed"))
-}
-
-/// Parse a `0x`-prefixed or bare 32-byte hex header hash.
-pub fn parse_header_hash(text: &str) -> Result<jam_interface::HeaderHash, String> {
-	let text = text.strip_prefix("0x").unwrap_or(text);
-	if text.len() != HASH_LEN * 2 {
-		return Err(format!("expected a {}-hex-digit block hash, got {}", HASH_LEN * 2, text.len()));
-	}
-	let mut hash = [0u8; HASH_LEN];
-	for (index, byte) in hash.iter_mut().enumerate() {
-		*byte = u8::from_str_radix(&text[index * 2..index * 2 + 2], 16)
-			.map_err(|e| format!("bad hex in block hash: {e}"))?;
-	}
-	Ok(hash.into())
 }

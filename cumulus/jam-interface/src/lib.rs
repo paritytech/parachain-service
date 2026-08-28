@@ -12,9 +12,9 @@
 
 pub use futures::stream::BoxStream;
 pub use jam_std_common::{
-	AuthPool, AuthPools, AuthQueues, BlockDesc, ChainSubUpdate, NodeError as Error,
-	NodeResult as Result, RangeProof, Service, ServiceKey, StorageKey, SystemKey,
-	VersionedParameters, WorkPackageStatus,
+	AuthPool, AuthPools, AuthQueues, AvailabilityAssignment, AvailabilityAssignments, BlockDesc,
+	ChainSubUpdate, NodeError as Error, NodeResult as Result, RangeProof, ReadyQueue, ReadyRecord,
+	Service, ServiceKey, StorageKey, SystemKey, VersionedParameters, WorkPackageStatus, WorkReport,
 };
 pub use jam_types::{
 	AuthorizerHash, CoreIndex, Hash, HeaderHash, MmrPeakHash, ServiceId, Slot, StateRootHash,
@@ -126,6 +126,37 @@ pub trait JamStateSource: Send + Sync {
 			"AuthQueues",
 		)
 	}
+
+	/// The slot the block at `at` was authored in (state key C(11)).
+	///
+	/// No RPC maps a header hash back to its slot — `BlockDesc` only comes from the chain tips and
+	/// from `parent` — so state is the way to date an arbitrary block.
+	async fn current_time(&self, at: HeaderHash) -> Result<Slot> {
+		decode_system_value(
+			self.state_value(at, SystemKey::CurrentTime.into()).await?,
+			"CurrentTime",
+		)
+	}
+
+	/// The availability assignments of all cores (state key C(10)), decoded. One entry per core,
+	/// holding the report guaranteed on that core while its data is still being made available.
+	/// This is where a just-reported work package first becomes visible on chain.
+	async fn availability(&self, at: HeaderHash) -> Result<AvailabilityAssignments> {
+		decode_system_value(
+			self.state_value(at, SystemKey::Availability.into()).await?,
+			"AvailabilityAssignments",
+		)
+	}
+
+	/// The accumulation queue (state key C(14)), decoded. Indexed by epoch phase rather than by
+	/// core: each entry holds the reports that became available in that phase and are still
+	/// waiting on their dependencies.
+	async fn ready_queue(&self, at: HeaderHash) -> Result<ReadyQueue> {
+		decode_system_value(
+			self.state_value(at, SystemKey::ReadyQueue.into()).await?,
+			"ReadyQueue",
+		)
+	}
 }
 
 /// Submit work packages and follow their status.
@@ -232,6 +263,8 @@ mod tests {
 		let queues_key: StorageKey = SystemKey::AuthQueues.into();
 		assert_eq!(pools_key.0[0], 1);
 		assert_eq!(queues_key.0[0], 2);
+		assert_eq!(StorageKey::from(SystemKey::Availability).0[0], 10);
+		assert_eq!(StorageKey::from(SystemKey::ReadyQueue).0[0], 14);
 		assert_eq!(&pools_key.0[1..], &[0u8; 30]);
 	}
 
@@ -246,6 +279,20 @@ mod tests {
 		)
 		.expect("queues decode");
 		assert!(decoded.iter().all(|queue| queue.iter().all(|hash| *hash == authorizer_hash)));
+	}
+
+	#[test]
+	fn availability_default_impl_decodes_scale() {
+		// An all-empty assignment is the common case, and it still has to round-trip: an empty
+		// `FixedVec` is one entry per core, not zero bytes.
+		let empty: AvailabilityAssignments = FixedVec::new(None);
+		let source = FixedState(empty.encode());
+
+		let decoded = futures::executor::block_on(
+			source.availability(HeaderHash::from([0u8; 32])),
+		)
+		.expect("availability decode");
+		assert!(decoded.iter().all(Option::is_none));
 	}
 
 	#[test]

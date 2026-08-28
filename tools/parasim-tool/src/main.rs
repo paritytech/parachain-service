@@ -9,6 +9,8 @@ use parachain_service_interface::types::ParaId;
 
 mod chain;
 mod format;
+mod header;
+mod inflight;
 mod keys;
 mod rpc;
 mod send;
@@ -41,6 +43,25 @@ enum Command {
 	DisplayKey {
 		#[command(subcommand)]
 		subject: Key,
+	},
+	/// Show work packages JAM has reported but not yet accumulated.
+	///
+	/// Two things this cannot do: state for older blocks may have been pruned, and each read is a
+	/// snapshot, so a package reported and accumulated between two samples never shows up. Use
+	/// `--watch` alongside `send` in another terminal.
+	DisplayInflight {
+		/// Read at this block instead of the current best.
+		#[arg(long, value_name = "HASH", conflicts_with = "watch")]
+		block: Option<String>,
+		/// Only show packages for this para.
+		#[arg(long)]
+		para: Option<u32>,
+		/// Sample every slot and print packages as they arrive and leave.
+		#[arg(long)]
+		watch: bool,
+		/// Print the undecoded refine output instead of interpreting it.
+		#[arg(long)]
+		raw: bool,
 	},
 	/// Submit a mock work package and follow it until the head moves.
 	Send {
@@ -92,6 +113,10 @@ async fn run(cli: Cli) -> Result<(), String> {
 	match cli.command {
 		Command::DisplayChain { count, finalized } =>
 			chain::display(&jam, count, finalized).await,
+		Command::DisplayInflight { block, para, watch, raw } => {
+			let args = inflight::Args { service: cli.service, para, block, watch, raw };
+			inflight::run(&jam, &args).await
+		},
 		Command::DisplayKey { subject: Key::Parahead { para, block, raw } } =>
 			keys::display_parahead(&jam, cli.service, ParaId(para), block, raw).await,
 		Command::Send { para, core, tamper } => {
