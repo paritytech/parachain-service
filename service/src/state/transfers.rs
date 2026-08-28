@@ -32,8 +32,7 @@ pub struct IncomingTransferChain {
 	pub last_slot: Timeslot,
 	/// Total transfers held across every bucket. The §5.1 admission rule counts
 	/// transfers, but JAM storage has no prefix iteration, so the count cannot
-	/// be recovered by scanning buckets. TODO: this counter is a
-	/// deviation from the §3.1 layout; needs upstreaming.
+	/// be recovered by scanning buckets.
 	pub count: u32,
 }
 
