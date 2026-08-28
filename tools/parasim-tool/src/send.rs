@@ -1,24 +1,20 @@
-//! Submit a mock parachain work package to parasim on a running JAM testnet.
+//! `send`: submit a mock parachain work package to parasim.
 //!
-//! This stands in for a real collator so that parasim's refine/accumulate path can be exercised
-//! by hand. It does the parts of collation that matter for that: pick an anchor, fetch a state
-//! proof of the para's current head at that anchor, build a block that chains onto it, submit the
-//! package, and follow it until JAM reports it.
+//! This stands in for a real collator so that parasim's refine/accumulate path can be exercised by
+//! hand. It does the parts of collation that matter for that: pick an anchor, fetch a state proof
+//! of the para's current head at that anchor, build a block that chains onto it, submit the
+//! package, and follow it until the stored head moves.
 //!
 //! The proof is the point. parasim refuses any package that cannot prove what the para's previous
-//! head was (see `parasim_service::pov`), so this tool has to talk to a node — there is no
-//! offline payload that parasim will accept.
-//!
-//! ```text
-//! parasim-send --service 9              # chain onto whatever head is stored (or start the para)
-//! parasim-send --service 9 --tamper     # prove the wrong thing; refine must reject
-//! ```
+//! head was, so there is no offline payload it will accept.
 
 use std::time::Duration;
 
 use futures::StreamExt as _;
 
 use codec::Encode as _;
+
+use crate::format::hex;
 use jam_interface::{
 	JamChainSource, JamStateSource, JamWorkPackageSubmission, StorageKey, WorkPackageStatus,
 };
@@ -48,74 +44,15 @@ const HEAD_POLL_INTERVAL: Duration = Duration::from_secs(3);
 /// Substrate hash length.
 const HASH_LEN: usize = 32;
 
-struct Args {
-	rpc: String,
-	service: ServiceId,
-	para: ParaId,
-	core: u16,
-	tamper: bool,
+/// What `send` needs to know.
+pub struct Args {
+	pub service: ServiceId,
+	pub para: ParaId,
+	pub core: u16,
+	pub tamper: bool,
 }
 
-fn parse_args() -> Args {
-	let mut args = Args {
-		rpc: std::env::var("JAM_RPC").unwrap_or_else(|_| "ws://127.0.0.1:19800".into()),
-		service: 0,
-		para: ParaId(0),
-		core: 0,
-		tamper: false,
-	};
-	let mut argv = std::env::args().skip(1);
-	while let Some(flag) = argv.next() {
-		if flag == "--tamper" {
-			args.tamper = true;
-			continue;
-		}
-		let Some(value) = argv.next() else {
-			fatal(&format!("{flag} needs a value"));
-		};
-		match flag.as_str() {
-			"--rpc" => args.rpc = value,
-			"--service" => args.service = parse(&flag, &value),
-			"--para" => args.para = ParaId(parse(&flag, &value)),
-			"--core" => args.core = parse(&flag, &value),
-			_ => fatal(&format!("unknown argument {flag}")),
-		}
-	}
-	args
-}
-
-fn parse<T: std::str::FromStr>(flag: &str, value: &str) -> T {
-	value.parse().unwrap_or_else(|_| fatal(&format!("{flag}: cannot parse {value:?}")))
-}
-
-fn fatal(message: &str) -> ! {
-	eprintln!("error: {message}");
-	std::process::exit(2);
-}
-
-#[tokio::main]
-async fn main() {
-	tracing_subscriber::fmt()
-		.with_env_filter(
-			tracing_subscriber::EnvFilter::try_from_default_env()
-				.unwrap_or_else(|_| "info".into()),
-		)
-		.init();
-
-	let args = parse_args();
-	let url = args.rpc.parse().unwrap_or_else(|error| fatal(&format!("bad --rpc: {error}")));
-	let (jam, worker) = JamRpcInterface::new(vec![url])
-		.await
-		.unwrap_or_else(|error| fatal(&format!("cannot reach the JAM node: {error}")));
-	// The worker drives the connection; without it every request would hang forever.
-	tokio::spawn(worker);
-
-	if let Err(error) = run(&jam, &args).await {
-		fatal(&error);
-	}
-}
-
-async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
+pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 	// The anchor is chosen at build time and the proof is fetched at that same anchor, so that the
 	// state root parasim sees in its refine context is the one the proof was built against.
 	let anchor = jam.best_block().await.map_err(|e| format!("best block: {e}"))?;
@@ -464,12 +401,4 @@ async fn submit_and_follow(
 		Ok(result) => result,
 		Err(_) => Err(format!("gave up after {FOLLOW_TIMEOUT:?}")),
 	}
-}
-
-fn hex(bytes: &[u8]) -> String {
-	use std::fmt::Write as _;
-	bytes.iter().fold(String::with_capacity(bytes.len() * 2), |mut out, byte| {
-		let _ = write!(out, "{byte:02x}");
-		out
-	})
 }

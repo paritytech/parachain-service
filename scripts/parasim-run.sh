@@ -24,10 +24,10 @@ ENDOWMENT="${ENDOWMENT:-1000000000000000000}"
 
 cd "$ROOT"
 
-cargo build --release -p parasim-service-bin -p parasim-send
+cargo build --release -p parasim-service-bin -p parasim-tool
 BLOB="$(find target -type f -name 'parasim-service.jam' | head -n1)"
 test -s "$BLOB" || { echo "no parasim blob built (was SKIP_PVM_BUILDS set?)" >&2; exit 1; }
-SENDER="target/release/parasim-send"
+TOOL="target/release/parasim-tool"
 
 NEW_ID="$("$JAMT" create-service "$BLOB" "$ENDOWMENT" --register=parasim --raw --id "$SERVICE_ID")"
 echo "parasim service id: $NEW_ID"
@@ -40,9 +40,9 @@ echo "parasim service id: $NEW_ID"
 for n in $(seq "$NUM_HEADS"); do
 	echo
 	echo "=== package $n ==="
-	"$SENDER" --service "$SERVICE_ID"
+	"$TOOL" --service "$SERVICE_ID" send
 done
 
 echo
 echo "=== tampered proof: refine must reject, and the head must not move ==="
-"$SENDER" --service "$SERVICE_ID" --tamper || echo "(rejected, as expected)"
+"$TOOL" --service "$SERVICE_ID" send --tamper || echo "(rejected, as expected)"

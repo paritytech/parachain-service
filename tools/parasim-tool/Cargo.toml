@@ -1,5 +1,5 @@
 [package]
-name = "parasim-send"
+name = "parasim-tool"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -8,15 +8,16 @@ license.workspace = true
 publish = false
 
 [[bin]]
-name = "parasim-send"
+name = "parasim-tool"
 path = "src/main.rs"
 
 [dependencies]
+clap = { workspace = true }
 codec = { workspace = true, features = ["std"] }
-jam-codec = { workspace = true, features = ["std"] }
 futures = { workspace = true }
-jam-null-authorizer-bin = { workspace = true }
+jam-codec = { workspace = true, features = ["std"] }
 jam-interface = { workspace = true }
+jam-null-authorizer-bin = { workspace = true }
 jam-rpc-interface = { workspace = true }
 jam-state-helpers = { workspace = true, features = ["std"] }
 jam-std-common = { workspace = true }

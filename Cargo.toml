@@ -14,7 +14,7 @@ members = [
     "testing/parasim-service",
     "testing/parasim-service/bin",
     "tools/executor",
-    "tools/parasim-send",
+    "tools/parasim-tool",
     "tools/pvm-builder",
 ]
 exclude = [
@@ -50,6 +50,7 @@ serde_json = "1"
 tokio = { version = "1", default-features = false }
 tracing = { version = "0.1", default-features = false }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4.5", features = ["derive", "env"] }
 url = "2.5"
 binary-merkle-tree = { version = "16.1.1", default-features = false }
 blake2b_simd = { version = "1", default-features = false }
