@@ -33,14 +33,7 @@ pub fn refine(
 	let work_items = refine::work_items_summary();
 	assert!(item_index < work_items.len(), "Out of bounds item_index is invalid per GP");
 
-	// Default-0 mirrors the Quint model's `errParaId` (refine.qnt): when
-	// `authorized_paras` is empty there is no real para to attribute an
-	// error digest to, so the error paths use `ParaId(0)`. It is unreachable
-	// on the success path: the single-item invariant and the length check
-	// below guarantee a non-empty single-element list by then.
-	let para_id = *para_ids.get(item_index).unwrap_or(&ParaId::from(0));
-
-	// Package-level failures are all settled before the `para_id` above becomes
+	// Package-level failures are all settled before a `para_id` becomes
 	// authoritative, so none of them can name a para to log against and all
 	// panic (§4.2). A config that will not decode at all never gets here:
 	// `is_authorized` fails on it first, so it never becomes a work report.
@@ -48,6 +41,7 @@ pub fn refine(
 	let Ok([_work_item]): Result<&[_; 1], _> = work_items.as_slice().try_into() else {
 		panic!("Only single-item work packages are supported")
 	};
+	let para_id = para_ids[item_index];
 
 	let Ok(candidate) = ParachainCandidate::decode_all(&mut &raw_payload.0[..]) else {
 		return ParachainWorkDigest::Err { para_id, error: RefineLog::MalformedPayload };
