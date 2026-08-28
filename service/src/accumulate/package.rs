@@ -5,7 +5,7 @@ use crate::{
 	hashing::blake2_256,
 	head_commitment::HeadTracker,
 	state::{
-		log::{truncate_auth_trace, AccumulateLog, ParachainLogs},
+		log::{truncate_auth_trace, AccumulateLog, InsufficientBalanceReason, ParachainLogs},
 		para_info::Parachains,
 	},
 	work_digest::ParachainWorkDigest,
@@ -102,7 +102,14 @@ pub fn process(now: Slot, service_id: ServiceId, record: &WorkItemRecord, heads:
 			let mut pi = Parachains::get(para_id).expect("checked live above; qed");
 			heads.touch(para_id);
 			pi.head_data = head_data;
-			Parachains::set(para_id, &pi);
+			// A head overwrite can grow the `ParaInfo` entry; a backstop write
+			// failure (§6.1 invariant) logs the rejection and the
+			// rest of the candidate's effects still apply.
+			if Parachains::set(para_id, &pi).is_err() {
+				logs.push(AccumulateLog::InsufficientStateBalance {
+					reason: InsufficientBalanceReason::ParaInfo,
+				});
+			}
 			code_upgrades::activate_upgrade_if_match(para_id, validation_code.hash, now, &mut logs);
 
 			// Step 7: replay the upward messages in order.

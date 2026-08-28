@@ -100,8 +100,8 @@ pub fn excess_transfer_footprint(count: u64) -> Balance {
 /// queue admission and draining, so replay order does not matter. Admission and
 /// draining both go through here, so the two cannot drift.
 pub fn reattribute_transfer_queue(old_count: u64, new_count: u64) {
-	let delta = excess_transfer_footprint(new_count) as i128 -
-		excess_transfer_footprint(old_count) as i128;
+	let delta =
+		excess_transfer_footprint(new_count) as i128 - excess_transfer_footprint(old_count) as i128;
 	if delta == 0 {
 		return;
 	}
@@ -113,7 +113,7 @@ pub fn reattribute_transfer_queue(old_count: u64, new_count: u64) {
 		pi.used_state_balance = pi.used_state_balance.saturating_sub((-delta) as Balance);
 		pi.total_state_balance = pi.total_state_balance.saturating_sub((-delta) as Balance);
 	}
-	Parachains::set(ASSET_HUB_PARA_ID, &pi);
+	let _ = Parachains::set(ASSET_HUB_PARA_ID, &pi);
 }
 
 /// Asset Hub's service-global reservation (§6.1 "Asset Hub baseline footprint"),
@@ -125,7 +125,7 @@ pub const ASSET_HUB_GLOBAL_ITEMS_FOOTPRINT: Balance = {
 	// + the authorizer queue + 5 (Option<ServiceId>).
 	let pending_assigns =
 		(CORE_COUNT as u64) * (ENTRY_OVERHEAD + 3 + 2 + (AUTHORIZER_QUEUE_LEN as u64) * 32 + 5);
-	// pending_assign_cores: 34 + 1 + 2 + 341 * (u16 core 2 + slot 4), 1 item.
+	// pending_assign_cores: 34 + 1 + 2 + 341 * (core 2 + slot 4), 1 item.
 	let pending_assign_cores = ENTRY_OVERHEAD + 1 + 2 + (CORE_COUNT as u64) * 6;
 	// incoming_transfer_chain: 34 + 1 (key) + 1 (Option tag) + first 4 + last 4
 	// + count 4 (the counter this implementation adds; see state::transfers).
@@ -189,6 +189,30 @@ pub fn add_referencer(para_id: ParaId, hash: &Hash, len: u32) -> Result<(), Accu
 	}
 
 	let was_empty = entry.referencers.is_empty();
+
+	// The charge lands before the registry write; a failure rolls the charge
+	// back so `used_state_balance` keeps matching what is stored (§6.1 backstop).
+	// Ghost refunds are deferred until both writes have succeeded,
+	// so a rejection leaves no para half-updated.
+	pi.charge(delta);
+	if Parachains::set(para_id, &pi).is_err() {
+		return Err(AccumulateLog::InsufficientStateBalance {
+			reason: InsufficientBalanceReason::Solicit { hash: *hash, len: len.into() },
+		});
+	}
+	entry.referencers.insert(para_id);
+	if PreimageRegistry::set(hash, len, &entry).is_err() {
+		// Restore the pre-charge record (a strictly smaller write, which JAM
+		// never rejects) so the rejected para is not billed for a reference it
+		// does not hold.
+		let mut rollback = pi;
+		rollback.refund(delta);
+		let _ = Parachains::set(para_id, &rollback);
+		return Err(AccumulateLog::InsufficientStateBalance {
+			reason: InsufficientBalanceReason::Solicit { hash: *hash, len: len.into() },
+		});
+	}
+
 	if is_rescue {
 		// The existing referencers are only retained ghosts from the two-step
 		// forget (`Unrequested` has no live referencer). The soliciting para
@@ -200,15 +224,16 @@ pub fn add_referencer(para_id: ParaId, hash: &Hash, len: u32) -> Result<(), Accu
 			}
 			if let Some(mut ghost_pi) = Parachains::get(ghost) {
 				ghost_pi.refund(delta);
-				Parachains::set(ghost, &ghost_pi);
+				// A refund shrinks the record; JAM never rejects the write.
+				Parachains::set(ghost, &ghost_pi)
+					.expect("refunding a ghost shrinks its record; qed");
 			}
 		}
+		entry.referencers.insert(para_id);
+		// Dropping the ghosts shrinks the entry; JAM never rejects the write.
+		PreimageRegistry::set(hash, len, &entry)
+			.expect("removing ghost referencers shrinks the entry; qed");
 	}
-
-	entry.referencers.insert(para_id);
-	PreimageRegistry::set(hash, len, &entry);
-	pi.charge(delta);
-	Parachains::set(para_id, &pi);
 
 	if was_empty || is_rescue {
 		jam_solicit(hash, len);
@@ -229,7 +254,9 @@ pub fn remove_referencer(para_id: ParaId, hash: &Hash, len: u32, now: Timeslot) 
 		// A non-last referencer leaves immediately: the rest still cover the
 		// live JAM request. Refund now, no JAM forget.
 		entry.referencers.remove(&para_id);
-		PreimageRegistry::set(hash, len, &entry);
+		// A non-last referencer leaves: the entry only shrinks.
+		PreimageRegistry::set(hash, len, &entry)
+			.expect("removing a referencer shrinks the entry; qed");
 		refund_para(para_id, delta);
 		return RemoveOutcome { retained: false, log: None };
 	}
@@ -292,7 +319,8 @@ fn expunge_entry(para_id: ParaId, hash: &Hash, len: u32, delta: Balance) {
 fn refund_para(para_id: ParaId, delta: Balance) {
 	if let Some(mut pi) = Parachains::get(para_id) {
 		pi.refund(delta);
-		Parachains::set(para_id, &pi);
+		// A refund shrinks the record; JAM never rejects the write.
+		Parachains::set(para_id, &pi).expect("refund shrinks the record; qed");
 	}
 }
 
@@ -321,18 +349,41 @@ pub fn apply_set_kv(para_id: ParaId, key: &[u8], value: &[u8]) -> Result<(), Acc
 		None => kv_entry_footprint(key.len(), value.len()) as i128,
 		Some(old_v) => vec_bytes(value.len()) as i128 - vec_bytes(old_v.len()) as i128,
 	};
+	// `blake2_256` is computed lazily in each rejection branch: the flood path
+	// must not pay for hashing a key it never rejects (§6.1 pre-check).
 	if delta > 0 && !pi.has_headroom(delta as Balance) {
 		return Err(AccumulateLog::InsufficientStateBalance {
 			reason: InsufficientBalanceReason::SetKV { key_hash: blake2_256(key) },
 		});
 	}
+	// The balance is adjusted before the writes (one read-modify-write of `pi`).
+	// A backstop write failure must not strand the adjustment: it is rolled back
+	// so `used_state_balance` matches what is actually stored (§6.1 invariant).
 	if delta >= 0 {
 		pi.charge(delta as Balance);
 	} else {
 		pi.refund((-delta) as Balance);
 	}
-	Parachains::set(para_id, &pi);
-	KeyValueStorage::set(para_id, key, value);
+	if Parachains::set(para_id, &pi).is_err() {
+		// Neither the charge nor the entry persisted; the in-memory bump is
+		// discarded.
+		return Err(AccumulateLog::InsufficientStateBalance {
+			reason: InsufficientBalanceReason::SetKV { key_hash: blake2_256(key) },
+		});
+	}
+	if KeyValueStorage::set(para_id, key, value).is_err() {
+		// The charge persisted but the entry did not: reverse the adjustment.
+		// Restoring the smaller record cannot itself fail.
+		if delta >= 0 {
+			pi.refund(delta as Balance);
+		} else {
+			pi.charge((-delta) as Balance);
+		}
+		let _ = Parachains::set(para_id, &pi);
+		return Err(AccumulateLog::InsufficientStateBalance {
+			reason: InsufficientBalanceReason::SetKV { key_hash: blake2_256(key) },
+		});
+	}
 	Ok(())
 }
 
@@ -388,21 +439,19 @@ mod tests {
 
 	#[test]
 	fn baseline_footprint_works() {
-		// §6.1: 4 246 + 65 585 = 69 831.
-		assert_eq!(PARA_INFO_FOOTPRINT, 4_246);
+		// The design's table says 69 847 with 17 B `Compact<u128>` balances;
+		// with 9 B `Compact<u64>` (D-3) both balance fields shrink by 8 B.
+		assert_eq!(PARA_INFO_FOOTPRINT, 4_262 - 16);
 		assert_eq!(PARA_LOG_FOOTPRINT, 65_585);
-		assert_eq!(BASELINE_FOOTPRINT, 69_831);
+		assert_eq!(BASELINE_FOOTPRINT, 69_847 - 16);
 	}
 
 	#[test]
 	fn asset_hub_footprint_works() {
-		// 1 237 300 fixed + 196 × N. §6.1's table charges 79 hashes per cached
-		// assign and so arrives at 1 226 388; the queue holds
-		// `AUTHORIZER_QUEUE_LEN` = 80, which is what `quint/state_balance.qnt`
-		// charges and what a hand-off to a new assigner actually writes. The
-		// doc's own prose fixes the queue length at 80, so its table is the
-		// side that is wrong — under-reserving here would let JAM answer
-		// `StorageFull` to a write this accounting believed was covered.
+		// §6.1 says 1 238 660 fixed + 204 × N with 17 B amounts and a 44 B
+		// chain pointer. With D-3 (9 B amounts) a bucket costs 196, the chain
+		// pointer grows 4 B for the transfer counter, and the u16 `CoreIndex`
+		// (JAM) shrinks the fixed part by 341 × 4 = 1 364 B.
 		assert_eq!(INCOMING_TRANSFER_ENTRY_FOOTPRINT, 196);
 		assert_eq!(
 			ASSET_HUB_GLOBAL_ITEMS_FOOTPRINT,

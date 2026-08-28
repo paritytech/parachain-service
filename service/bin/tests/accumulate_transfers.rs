@@ -204,11 +204,8 @@ fn unreserved_transfers_are_self_funded_works() {
 	// Deliberately far more than one entry costs, to pin that the surplus is
 	// not credited to the allowance.
 	let at = 2;
-	let (_, storage, _) = run_block(
-		storage,
-		vec![transfer_item(3, INCOMING_TRANSFER_ENTRY_FOOTPRINT * 100)],
-		at,
-	);
+	let (_, storage, _) =
+		run_block(storage, vec![transfer_item(3, INCOMING_TRANSFER_ENTRY_FOOTPRINT * 100)], at);
 	let pi = para_info(&storage, ASSET_HUB_PARA_ID).unwrap();
 	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32 + 1);
 	assert_eq!(pi.used_state_balance, used0 + INCOMING_TRANSFER_ENTRY_FOOTPRINT);

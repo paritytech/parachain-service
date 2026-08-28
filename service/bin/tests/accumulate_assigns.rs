@@ -212,7 +212,7 @@ fn unprivileged_assign_leaves_no_trace_works() {
 }
 
 #[test]
-fn assign_with_correct_privilege_succeeds() {
+fn assign_with_correct_privilege_works() {
 	// Control for `unprivileged_assign_leaves_no_trace_works`: the identical
 	// inputs with the correct `assign` privilege reach JAM `assign` and fire —
 	// proving the negative test discriminates on privilege, not input shape.

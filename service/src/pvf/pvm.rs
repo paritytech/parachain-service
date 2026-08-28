@@ -1,4 +1,9 @@
 //! Parsing and running a parachain validation function (PVF) as an inner PVM.
+//!
+//! Abnormal PVF exits (spawn/invoke failures, page faults, panics, out of gas)
+//! are deliberately not caught: they panic the whole refine invocation (§4.2),
+//! so no `ParachainWorkDigest` is produced. The returned `Err(RefineLog)` only
+//! carries structured spec errors from the child host calls.
 
 use crate::{
 	pvf::{executor::ExecutorState, PVF_ENTRY_POINT},
@@ -71,21 +76,26 @@ pub fn parse_pvf(code: &[u8]) -> Result<ParsedPvf, PvfParseError> {
 /// `work_item_payload` host call and declares its results through `set_parent_head_hash`
 /// and `set_head` (DECISIONS.md D-1). `machine` spawns the VM code-only, so we lay out
 /// its memory first.
+///
+/// Machine failures (spawn, invoke, page faults, panic, out of gas) panic the whole
+/// refine invocation (§4.2); the returned `Err` carries only structured spec errors.
 pub fn run(
 	pvf: &ParsedPvf,
 	para_id: ParaId,
 ) -> Result<(Hash, HeadData, UpwardMessages), RefineLog> {
-	let handle =
-		refine::machine(&pvf.code[..], pvf.entry_pc).map_err(|_| RefineLog::InvalidCode)?;
+	let handle = match refine::machine(&pvf.code[..], pvf.entry_pc) {
+		Ok(h) => h,
+		Err(_) => panic!("PVF inner PVM machine spawn failed; §4.2 whole-refine failure"),
+	};
 	let mem = &pvf.memory;
 
 	// Map + fill the guest's RO, RW (incl. zeroed BSS + heap arena) and stack regions.
 	// TODO: map the RO region read-only once poking into protected pages is confirmed.
-	alloc_pages(handle, mem.ro_data_address(), mem.ro_data_size())?;
-	poke_bytes(handle, mem.ro_data_address(), &pvf.ro_data)?;
-	alloc_pages(handle, mem.rw_data_address(), mem.rw_data_size())?;
-	poke_bytes(handle, mem.rw_data_address(), &pvf.rw_data)?;
-	alloc_pages(handle, mem.stack_address_low(), mem.stack_size())?;
+	alloc_pages(handle, mem.ro_data_address(), mem.ro_data_size());
+	poke_bytes(handle, mem.ro_data_address(), &pvf.ro_data);
+	alloc_pages(handle, mem.rw_data_address(), mem.rw_data_size());
+	poke_bytes(handle, mem.rw_data_address(), &pvf.rw_data);
+	alloc_pages(handle, mem.stack_address_low(), mem.stack_size());
 
 	let mut regs = [0u64; 13];
 	regs[Reg::SP as usize] = mem.stack_address_high() as u64;
@@ -93,11 +103,9 @@ pub fn run(
 
 	let mut exe = ExecutorState::new(para_id);
 
-	let result = loop {
-		let (outcome, _gas, out_regs) = match refine::invoke(handle, refine::gas() as i64, regs) {
-			Ok(r) => r,
-			Err(_) => break Err(RefineLog::ValidationFailed),
-		};
+	let result: Result<(), RefineLog> = loop {
+		let (outcome, _gas, out_regs) = refine::invoke(handle, refine::gas() as i64, regs)
+			.unwrap_or_else(|_| panic!("PVF inner PVM invoke failed; §4.2 whole-refine failure"));
 		regs = out_regs;
 
 		match outcome {
@@ -107,10 +115,10 @@ pub fn run(
 					break Err(e);
 				}
 			},
-			// A PVF that page-faults, panics, or runs out of gas failed to
-			// validate the candidate (§4.2).
+			// An abnormal PVF exit is deliberately not caught (§4.2): it fails
+			// the whole refine invocation instead of producing a digest.
 			InvokeOutcome::PageFault(_) | InvokeOutcome::Panic | InvokeOutcome::OutOfGas => {
-				break Err(RefineLog::ValidationFailed)
+				panic!("PVF abnormal exit (page fault / panic / out of gas); §4.2 whole-refine failure")
 			},
 		}
 	};
@@ -121,19 +129,21 @@ pub fn run(
 }
 
 /// Allocate + zero the pages spanning `[addr, addr + len)`; `addr` must be page-aligned.
-fn alloc_pages(handle: u64, addr: u32, len: u32) -> Result<(), RefineLog> {
+fn alloc_pages(handle: u64, addr: u32, len: u32) {
 	if len == 0 {
-		return Ok(());
+		return;
 	}
 	let page = (addr / PAGE_SIZE) as u64;
 	let count = len.div_ceil(PAGE_SIZE) as u64;
-	refine::zero(handle, page, count, PageMode::ReadWrite).map_err(|_| RefineLog::ValidationFailed)
+	refine::zero(handle, page, count, PageMode::ReadWrite)
+		.unwrap_or_else(|_| panic!("PVF page allocation failed; §4.2 whole-refine failure"));
 }
 
 /// Copy `data` into the inner PVM at `addr` (whose page must already be allocated).
-fn poke_bytes(handle: u64, addr: u32, data: &[u8]) -> Result<(), RefineLog> {
+fn poke_bytes(handle: u64, addr: u32, data: &[u8]) {
 	if data.is_empty() {
-		return Ok(());
+		return;
 	}
-	refine::poke(handle, data, addr as u64).map_err(|_| RefineLog::ValidationFailed)
+	refine::poke(handle, data, addr as u64)
+		.unwrap_or_else(|_| panic!("PVF memory poke failed; §4.2 whole-refine failure"));
 }

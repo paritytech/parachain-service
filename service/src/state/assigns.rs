@@ -1,6 +1,10 @@
 //! Scheduled-but-unapplied JAM `assign` payloads (spec §3.1, §5.1, §7.1).
 
-use crate::{constants::CORE_COUNT, state, state::Tag};
+use crate::{
+	constants::CORE_COUNT,
+	state,
+	state::{StorageFull, Tag},
+};
 use alloc::vec::Vec;
 use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Decode, Encode};
@@ -29,7 +33,9 @@ impl PendingAssigns {
 		state::read(Tag::PendingAssigns, &core)
 	}
 
-	pub fn set(core: CoreIndex, assign: &PendingAssign) {
+	/// Cache a pending assign. `Err(StorageFull)` on the §6.1 backstop; see
+	/// [`crate::state::write`].
+	pub fn set(core: CoreIndex, assign: &PendingAssign) -> Result<(), StorageFull> {
 		state::write(Tag::PendingAssigns, &core, assign)
 	}
 
@@ -46,13 +52,15 @@ impl DirtyCores {
 		state::read_singleton(Tag::PendingAssignCores).unwrap_or_default()
 	}
 
-	pub fn set(cores: &PendingAssignCores) {
+	/// Persist the dirty-core index. `Err(StorageFull)` on the §6.1 backstop;
+	/// see [`crate::state::write`].
+	pub fn set(cores: &PendingAssignCores) -> Result<(), StorageFull> {
 		state::write_singleton(Tag::PendingAssignCores, cores)
 	}
 
 	/// Upsert the `(core, jam_slot)` pair. Panics if more than [`CORE_COUNT`]
 	/// cores are dirty, which is impossible: the index is keyed by core.
-	pub fn upsert(core: CoreIndex, jam_slot: Timeslot) {
+	pub fn upsert(core: CoreIndex, jam_slot: Timeslot) -> Result<(), StorageFull> {
 		let mut cores = Self::get();
 		if let Some(entry) = cores.iter_mut().find(|(c, _)| *c == core) {
 			entry.1 = jam_slot;
@@ -61,12 +69,13 @@ impl DirtyCores {
 				.try_push((core, jam_slot))
 				.expect("at most CORE_COUNT distinct cores can be dirty; qed");
 		}
-		Self::set(&cores);
+		Self::set(&cores)
 	}
 
 	pub fn remove(core: CoreIndex) {
 		let mut cores = Self::get();
 		cores.retain(|(c, _)| *c != core);
-		Self::set(&cores);
+		// Removal shrinks the entry, which JAM never rejects.
+		Self::set(&cores).expect("removing a dirty core shrinks the index; qed");
 	}
 }

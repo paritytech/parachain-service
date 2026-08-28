@@ -1,6 +1,6 @@
 //! Per-parachain key/value store (spec §3.1, §6.1), keyed `(ParaId, user_key)`.
 
-use crate::state::{self, Tag};
+use crate::state::{self, StorageFull, Tag};
 use alloc::vec::Vec;
 use parachain_service_interface::types::ParaId;
 
@@ -15,7 +15,9 @@ impl KeyValueStorage {
 		state::read(Tag::KeyValueStorage, &(para_id, key))
 	}
 
-	pub fn set(para_id: ParaId, key: &[u8], value: &[u8]) {
+	/// Upsert a value. `Err(StorageFull)` on the §6.1 backstop; see
+	/// [`state::write`].
+	pub fn set(para_id: ParaId, key: &[u8], value: &[u8]) -> Result<(), StorageFull> {
 		state::write(Tag::KeyValueStorage, &(para_id, key), &value)
 	}
 

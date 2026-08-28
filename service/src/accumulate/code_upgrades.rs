@@ -10,7 +10,7 @@
 use crate::{
 	constants::UPGRADE_TIMEOUT_TIMESLOTS,
 	state::{
-		log::AccumulateLog,
+		log::{AccumulateLog, InsufficientBalanceReason},
 		para_info::{ParaInfo, Parachains, ValidationCode},
 	},
 	state_balance,
@@ -63,7 +63,13 @@ pub fn request_code_upgrade(
 			let pending = pending.clone();
 			let mut pi = pi;
 			pi.pending_upgrade = Some((pending, deadline));
-			Parachains::set(para_id, &pi);
+			// A backstop write failure (§6.1 invariant) logs the
+			// rejection; the request is dropped for this block.
+			if Parachains::set(para_id, &pi).is_err() {
+				logs.push(AccumulateLog::InsufficientStateBalance {
+					reason: InsufficientBalanceReason::ParaInfo,
+				});
+			}
 			return;
 		}
 	}
@@ -95,7 +101,13 @@ pub fn request_code_upgrade(
 		},
 		deadline,
 	));
-	Parachains::set(para_id, &pi);
+	// Arming `pending_upgrade` grows the record; a backstop write failure (§6.1
+	// invariant) logs the rejection and the upgrade is not armed.
+	if Parachains::set(para_id, &pi).is_err() {
+		logs.push(AccumulateLog::InsufficientStateBalance {
+			reason: InsufficientBalanceReason::ParaInfo,
+		});
+	}
 }
 
 /// Whether `pi`'s pending upgrade has passed its deadline and so must be treated
@@ -121,7 +133,8 @@ pub fn reap_timed_out_upgrade(para_id: ParaId, now: Slot, logs: &mut Vec<Accumul
 	release_code_if_not_pinned(para_id, &pending, now, logs);
 	let mut pi = Parachains::get(para_id).expect("still live; qed");
 	pi.pending_upgrade = None;
-	Parachains::set(para_id, &pi);
+	// Clearing `pending_upgrade` shrinks the record; JAM never rejects it.
+	Parachains::set(para_id, &pi).expect("clearing pending_upgrade shrinks the record; qed");
 }
 
 /// Phase 5(a): activate the new code when this candidate was validated with the
@@ -146,5 +159,10 @@ pub fn activate_upgrade_if_match(
 	let mut pi: ParaInfo = Parachains::get(para_id).expect("still live; qed");
 	pi.validation_code = Some(pending);
 	pi.pending_upgrade = None;
-	Parachains::set(para_id, &pi);
+	// Activation can grow the record; a backstop write failure (§6.1 invariant)
+	if Parachains::set(para_id, &pi).is_err() {
+		logs.push(AccumulateLog::InsufficientStateBalance {
+			reason: InsufficientBalanceReason::ParaInfo,
+		});
+	}
 }

@@ -7,8 +7,6 @@ use codec::{Decode, Encode};
 
 use crate::types::ValidationCodeHash;
 
-// TODO: No requirement to have this type here. Parachain service does not need to provide this
-// type.
 /// Work-item payload for a parachain candidate.
 ///
 /// Decoded from the raw work-item payload bytes by both:

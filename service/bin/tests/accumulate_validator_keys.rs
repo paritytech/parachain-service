@@ -162,7 +162,7 @@ fn unprivileged_designate_errors() {
 }
 
 #[test]
-fn designate_with_correct_privilege_succeeds() {
+fn designate_with_correct_privilege_works() {
 	// Control for `unprivileged_designate_errors`: the identical inputs with
 	// the correct `designate` privilege reach JAM `designate` and succeed —
 	// proving the negative test discriminates on privilege, not input shape.

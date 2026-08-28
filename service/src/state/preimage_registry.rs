@@ -6,7 +6,7 @@
 //! `forget` on the reverse. The registry is keyed by `(hash, len)`: the same
 //! hash at a different length is a distinct preimage.
 
-use crate::state::{self, Tag};
+use crate::state::{self, StorageFull, Tag};
 use alloc::collections::BTreeSet;
 use codec::{Decode, Encode};
 use parachain_service_interface::types::{Hash, ParaId};
@@ -31,7 +31,9 @@ impl PreimageRegistry {
 		state::read(Tag::PreimageRegistry, &(*hash, len))
 	}
 
-	pub fn set(hash: &Hash, len: u32, entry: &PreimageEntry) {
+	/// Upsert an entry. `Err(StorageFull)` on the §6.1 backstop; see
+	/// [`crate::state::write`].
+	pub fn set(hash: &Hash, len: u32, entry: &PreimageEntry) -> Result<(), StorageFull> {
 		state::write(Tag::PreimageRegistry, &(*hash, len), entry)
 	}
 

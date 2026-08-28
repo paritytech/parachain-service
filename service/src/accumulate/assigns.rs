@@ -27,8 +27,19 @@ pub fn schedule(
 		settle_after_assign(core, queue, new_assigner, now);
 		return;
 	}
-	PendingAssigns::set(core, &PendingAssign { queue, assigner: new_assigner });
-	DirtyCores::upsert(core, jam_slot);
+	PendingAssigns::set(core, &PendingAssign { queue, assigner: new_assigner }).unwrap_or_else(
+		|_| {
+			// A failed cache write (baseline-covered, §6.1 backstop)
+			// drops the assign. There is no per-para log channel for the
+			// service-global assign cache (F-15), so only the
+			// error is surfaced. The dirty-core index must NOT be armed: the
+			// flush would then expect a payload that was never cached.
+			jam_pvm_common::error!("assign for core {core} not cached: storage full");
+		},
+	);
+	if DirtyCores::upsert(core, jam_slot).is_err() {
+		jam_pvm_common::error!("dirty-core index not updated for core {core}: storage full");
+	}
 }
 
 /// The always-accumulate phase (§5.1): flush every due pending assign. Gating
@@ -52,7 +63,7 @@ pub fn apply_due_assigns(now: Timeslot, service_id: ServiceId) {
 		if fills_directly(entry.queue.len()) {
 			PendingAssigns::remove(core);
 		} else {
-			PendingAssigns::set(
+			let _ = PendingAssigns::set(
 				core,
 				&PendingAssign { queue: advance_queue(entry.queue), assigner: entry.assigner },
 			);
@@ -60,7 +71,8 @@ pub fn apply_due_assigns(now: Timeslot, service_id: ServiceId) {
 				.expect("re-arming cannot exceed the original number of dirty cores; qed");
 		}
 	}
-	DirtyCores::set(&next);
+	// Flushing the due cores shrinks the index; JAM never rejects it.
+	DirtyCores::set(&next).expect("flushing due cores shrinks the index; qed");
 }
 
 /// Drop a self-sufficient queue after it fires, or retain and advance a short
@@ -75,8 +87,8 @@ fn settle_after_assign(
 		PendingAssigns::remove(core);
 		DirtyCores::remove(core);
 	} else {
-		PendingAssigns::set(core, &PendingAssign { queue: advance_queue(queue), assigner });
-		DirtyCores::upsert(core, now + auth_queue_len() as Timeslot);
+		let _ = PendingAssigns::set(core, &PendingAssign { queue: advance_queue(queue), assigner });
+		let _ = DirtyCores::upsert(core, now + auth_queue_len() as Timeslot);
 	}
 }
 

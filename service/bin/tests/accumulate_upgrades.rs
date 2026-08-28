@@ -181,8 +181,7 @@ fn rejected_candidate_cannot_use_privileged_calls_works() {
 	assert_eq!(storage.service(SVC).expect("service exists").code_hash, original);
 
 	// Control: the same message from an accepted candidate does upgrade.
-	let accepted =
-		ok_digest(ASSET_HUB_PARA_ID, b"ah-code", b"ah-genesis", b"ah-1", vec![msg], 0);
+	let accepted = ok_digest(ASSET_HUB_PARA_ID, b"ah-code", b"ah-genesis", b"ah-1", vec![msg], 0);
 	let (_, storage, _) = run_block(storage, vec![work_item(&accepted)], NOW + 1);
 	assert_eq!(storage.service(SVC).expect("service exists").code_hash, CodeHash(new_code_hash));
 }
