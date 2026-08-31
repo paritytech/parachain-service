@@ -78,10 +78,9 @@ pub const INCOMING_TRANSFER_VALUE_OCTETS: u64 = 4 + 9 + 128;
 
 /// Full balance-unit cost of one worst-case `incoming_transfers` bucket — a
 /// bucket holding a single transfer (maximal fragmentation): 1 item + JAM
-/// overhead 34 + key (1 B tag + 4 B slot) + `Vec` prefix 1 + the transfer +
-/// `Some(next_slot)` 5.
+/// overhead 34 + key (1 B tag + 8 B bucket id) + `Vec` prefix 1 + the transfer.
 pub const INCOMING_TRANSFER_ENTRY_FOOTPRINT: Balance =
-	ITEM_DEPOSIT + ENTRY_OVERHEAD + 5 + 1 + INCOMING_TRANSFER_VALUE_OCTETS + 5;
+	ITEM_DEPOSIT + ENTRY_OVERHEAD + 9 + 1 + INCOMING_TRANSFER_VALUE_OCTETS;
 
 /// §5.1: what Asset Hub is charged for the unreserved part of the transfer
 /// queue, priced per worst-case bucket as §6.1 sizes the reservation itself.
@@ -127,15 +126,14 @@ pub const ASSET_HUB_GLOBAL_ITEMS_FOOTPRINT: Balance = {
 		(CORE_COUNT as u64) * (ENTRY_OVERHEAD + 3 + 2 + (AUTHORIZER_QUEUE_LEN as u64) * 32 + 5);
 	// pending_assign_cores: 34 + 1 + 2 + 341 * (core 2 + slot 4), 1 item.
 	let pending_assign_cores = ENTRY_OVERHEAD + 1 + 2 + (CORE_COUNT as u64) * 6;
-	// incoming_transfer_chain: 34 + 1 (key) + 1 (Option tag) + first 4 + last 4
-	// + count 4 (the counter this implementation adds; see state::transfers).
-	let transfer_chain = ENTRY_OVERHEAD + 1 + 1 + 4 + 4 + 4;
-	// Fixed storage items: the two singletons, the chain pointer, one per core.
+	// incoming_transfer_buckets: overhead + key + Option tag + two u64 ids + count.
+	let transfer_buckets = ENTRY_OVERHEAD + 1 + 1 + 8 + 8 + 4;
+	// Fixed storage items: the two singletons, endpoint pointer, one per core.
 	let fixed_items = (3 + CORE_COUNT as u64) * ITEM_DEPOSIT;
 	staged_keys +
 		pending_assigns +
 		pending_assign_cores +
-		transfer_chain +
+		transfer_buckets +
 		fixed_items +
 		(MAX_INCOMING_TRANSFERS as u64) * INCOMING_TRANSFER_ENTRY_FOOTPRINT
 };
@@ -449,13 +447,13 @@ mod tests {
 	#[test]
 	fn asset_hub_footprint_works() {
 		// §6.1 says 1 238 660 fixed + 204 × N with 17 B amounts and a 44 B
-		// chain pointer. With D-3 (9 B amounts) a bucket costs 196, the chain
-		// pointer grows 4 B for the transfer counter, and the u16 `CoreIndex`
+		// endpoint pointer. With D-3 (9 B amounts) a bucket costs 195, the pointer
+		// grows 12 B for u64 endpoints and the counter, and the u16 `CoreIndex`
 		// (JAM) shrinks the fixed part by 341 × 4 = 1 364 B.
-		assert_eq!(INCOMING_TRANSFER_ENTRY_FOOTPRINT, 196);
+		assert_eq!(INCOMING_TRANSFER_ENTRY_FOOTPRINT, 195);
 		assert_eq!(
 			ASSET_HUB_GLOBAL_ITEMS_FOOTPRINT,
-			1_237_300 + (MAX_INCOMING_TRANSFERS as u64) * 196
+			1_237_308 + (MAX_INCOMING_TRANSFERS as u64) * 195
 		);
 	}
 

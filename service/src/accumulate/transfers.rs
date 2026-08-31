@@ -1,12 +1,12 @@
 //! Incoming-transfer processing and outbound-transfer replay (spec §5.1).
 
 use crate::{
-	constants::{MAX_INCOMING_TRANSFERS, MAX_TRANSFER_GAS},
+	constants::{MAX_INCOMING_TRANSFERS, MAX_TRANSFERS_PER_BUCKET, MAX_TRANSFER_GAS},
 	state::{
 		log::{AccumulateLog, InsufficientBalanceReason, TransferError},
 		transfers::{
-			IncomingTransferChain, IncomingTransfers, QueuedTransfer, TransferBuckets,
-			TransferChain,
+			IncomingTransferBuckets, IncomingTransfers, QueuedTransfer, TransferBuckets,
+			TransferQueue,
 		},
 	},
 	state_balance::{reattribute_transfer_queue, transfer_covers_own_slot},
@@ -14,27 +14,25 @@ use crate::{
 use alloc::vec::Vec;
 use jam_pvm_common::accumulate::{service_info, transfer};
 use jam_types::{Memo as JamMemo, Slot, TransferRecord};
-use parachain_service_interface::{types::Timeslot, upward_message::TransferOutArgs};
+use parachain_service_interface::upward_message::{BucketId, TransferOutArgs};
 
 /// §5.1 incoming-transfer processing. JAM credited the balances before this
 /// code runs, so handling is best effort: within the pre-provisioned portion a
 /// transfer is recorded unconditionally; beyond it only if its amount covers
 /// its own worst-case queue entry. Otherwise it is dropped — no record, no log.
 ///
-/// All of one block's operands arrive at the same `now`, so the admitted
-/// transfers land in a single bucket write. Per-transfer writes would re-read
-/// and re-write the growing bucket each time — measured at 55x the `Ga` budget
-/// for 1024 same-slot transfers (D-8); the resulting state is identical.
+/// Each invocation opens fresh contiguous buckets, packing at most
+/// `MAX_TRANSFERS_PER_BUCKET` admitted transfers into each one.
 ///
-/// Returns the `InsufficientStateBalance` entries for bucket/chain writes that
+/// Returns the `InsufficientStateBalance` entries for bucket/endpoint writes that
 /// hit the §6.1 backstop; the caller routes them to Asset Hub's
 /// parachain log.
-pub fn record_incoming(now: Slot, records: &[&TransferRecord]) -> Vec<AccumulateLog> {
+pub fn record_incoming(_now: Slot, records: &[&TransferRecord]) -> Vec<AccumulateLog> {
 	let mut logs = Vec::new();
-	let mut chain = TransferChain::get();
-	let mut queued = chain.as_ref().map_or(0, |c| c.count);
+	let mut queue = TransferQueue::get();
+	let mut queued = queue.as_ref().map_or(0, |q| q.count);
 	let old_count = queued;
-	let mut admitted: Vec<QueuedTransfer> = Vec::new();
+	let mut admitted = Vec::new();
 	for record in records {
 		// §5.1: inside the reservation the entry is already paid for.
 		if (queued as usize) < MAX_INCOMING_TRANSFERS || transfer_covers_own_slot(record.amount) {
@@ -49,62 +47,25 @@ pub fn record_incoming(now: Slot, records: &[&TransferRecord]) -> Vec<Accumulate
 	if admitted.is_empty() {
 		return logs;
 	}
-	let added = admitted.len() as u32;
 	let mut reject = || {
 		logs.push(AccumulateLog::InsufficientStateBalance {
 			reason: InsufficientBalanceReason::IncomingTransfer,
 		});
 	};
 
-	match &mut chain {
-		None => {
-			// Empty queue: `now` becomes the only bucket, so both endpoints.
-			if TransferBuckets::set(
-				now,
-				&IncomingTransfers { transfers: admitted, next_slot: None },
-			)
-			.is_err() || TransferChain::set(&IncomingTransferChain {
-				first_slot: now,
-				last_slot: now,
-				count: added,
-			})
-			.is_err()
-			{
-				reject();
-			}
-		},
-		Some(chain) if chain.last_slot == now => {
-			// Same slot as the tail: append in place, no new storage item.
-			let mut bucket = TransferBuckets::get(now).expect("chain names the tail; qed");
-			bucket.transfers.extend(admitted);
-			if TransferBuckets::set(now, &bucket).is_err() {
-				reject();
-			}
-			chain.count += added;
-			if TransferChain::set(chain).is_err() {
-				reject();
-			}
-		},
-		Some(chain) => {
-			// New bucket at `now`; link the old tail to it and move `last_slot`.
-			let mut tail =
-				TransferBuckets::get(chain.last_slot).expect("chain names the tail; qed");
-			tail.next_slot = Some(now);
-			if TransferBuckets::set(chain.last_slot, &tail).is_err() ||
-				TransferBuckets::set(
-					now,
-					&IncomingTransfers { transfers: admitted, next_slot: None },
-				)
-				.is_err()
-			{
-				reject();
-			}
-			chain.last_slot = now;
-			chain.count += added;
-			if TransferChain::set(chain).is_err() {
-				reject();
-			}
-		},
+	let first_new = queue.as_ref().map_or(0, |q| q.last_bucket.saturating_add(1));
+	let mut last_new = first_new;
+	for (offset, chunk) in admitted.chunks(MAX_TRANSFERS_PER_BUCKET).enumerate() {
+		let id = first_new.saturating_add(offset as BucketId);
+		last_new = id;
+		if TransferBuckets::set(id, &IncomingTransfers { transfers: chunk.to_vec() }).is_err() {
+			reject();
+		}
+	}
+	let first_bucket = queue.as_ref().map_or(first_new, |q| q.first_bucket);
+	queue = Some(IncomingTransferBuckets { first_bucket, last_bucket: last_new, count: queued });
+	if TransferQueue::set(queue.as_ref().expect("just set")).is_err() {
+		reject();
 	}
 	// §5.1: unreserved entries are charged to Asset Hub as they arrive, priced
 	// per worst-case bucket rather than by `amount`.
@@ -112,39 +73,27 @@ pub fn record_incoming(now: Slot, records: &[&TransferRecord]) -> Vec<Accumulate
 	logs
 }
 
-/// §5.1 `consume_transfers_up_to(slot)`: drop whole buckets up to and including
-/// `slot`, walking the chain from `first_slot` (Asset Hub only). `slot` is
-/// clamped to the candidate's lookup-anchor `anchor`: Asset Hub cannot have read
-/// a bucket newer than the anchor it built on, so a slot beyond it must not
-/// drain buckets it never observed. Buckets at or below the anchor are still
-/// drained normally.
-pub fn consume_up_to(slot: Timeslot, anchor: Timeslot) {
-	let slot = slot.min(anchor);
-	let Some(mut chain) = TransferChain::get() else { return };
-	let old_count = chain.count;
-	let mut cursor = chain.first_slot;
-	loop {
-		if cursor > slot {
-			chain.first_slot = cursor;
-			let _ = TransferChain::set(&chain);
-			// §5.1: draining refunds the per-bucket charge of the unreserved
-			// entries removed, restoring Asset Hub's allowance.
-			reattribute_transfer_queue(old_count as u64, chain.count as u64);
-			return;
-		}
-		let bucket = TransferBuckets::get(cursor).expect("chain links only live buckets; qed");
-		chain.count = chain.count.saturating_sub(bucket.transfers.len() as u32);
-		TransferBuckets::remove(cursor);
-		match bucket.next_slot {
-			Some(next) => cursor = next,
-			None => {
-				// Chain exhausted.
-				TransferChain::clear();
-				reattribute_transfer_queue(old_count as u64, 0);
-				return;
-			},
-		}
+/// §5.1 `clean_up_buckets_up_to(id)`: remove whole contiguous buckets up to and
+/// including `id` (Asset Hub only).
+pub fn clean_up_buckets_up_to(id: BucketId) {
+	let Some(mut queue) = TransferQueue::get() else { return };
+	let old_count = queue.count;
+	let last_removed = id.min(queue.last_bucket);
+	if last_removed < queue.first_bucket {
+		return;
 	}
+	for bucket_id in queue.first_bucket..=last_removed {
+		let bucket = TransferBuckets::get(bucket_id).expect("queue ids are contiguous; qed");
+		queue.count = queue.count.saturating_sub(bucket.transfers.len() as u32);
+		TransferBuckets::remove(bucket_id);
+	}
+	if last_removed == queue.last_bucket {
+		TransferQueue::clear();
+	} else {
+		queue.first_bucket = last_removed + 1;
+		let _ = TransferQueue::set(&queue);
+	}
+	reattribute_transfer_queue(old_count as u64, queue.count as u64);
 }
 
 /// Replay a `TransferOut` (Asset Hub only) via JAM `transfer` (§5.1 step 7).

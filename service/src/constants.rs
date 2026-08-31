@@ -33,6 +33,8 @@ pub const MAX_STAGED_VALIDATOR_KEYS: usize = CORE_COUNT * 3;
 /// its baseline. PROVISIONAL: must be derived from a benchmarked `min_memo_gas`
 /// (§5.1); FIXME before production.
 pub const MAX_INCOMING_TRANSFERS: usize = 1000;
+/// Maximum transfers held in one incoming-transfer bucket (§3.1).
+pub const MAX_TRANSFERS_PER_BUCKET: usize = 512;
 
 /// Valid `stagingset` lengths for JAM `designate` (Gray Paper Safrole `valcount`):
 /// `3 * c` for `c` in `2 ..= CORE_COUNT`.

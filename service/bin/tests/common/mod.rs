@@ -18,7 +18,7 @@ use parachain_service::{
 		para_info::{ParaInfo, ValidationCode},
 		preimage_registry::PreimageEntry,
 		storage_key,
-		transfers::{IncomingTransferChain, IncomingTransfers},
+		transfers::{IncomingTransferBuckets, IncomingTransfers},
 		Tag,
 	},
 	state_balance::{baseline_for, preimage_footprint},
@@ -125,12 +125,12 @@ pub fn kv_value(storage: &Storage, para: ParaId, key: &[u8]) -> Option<Vec<u8>> 
 	get_state(storage, &storage_key(Tag::KeyValueStorage, &(para, key)))
 }
 
-pub fn transfer_chain(storage: &Storage) -> Option<IncomingTransferChain> {
-	get_state(storage, &storage_key(Tag::IncomingTransferChain, &()))
+pub fn transfer_queue(storage: &Storage) -> Option<IncomingTransferBuckets> {
+	get_state(storage, &storage_key(Tag::IncomingTransferBuckets, &()))
 }
 
-pub fn transfer_bucket(storage: &Storage, slot: Timeslot) -> Option<IncomingTransfers> {
-	get_state(storage, &storage_key(Tag::IncomingTransfers, &slot))
+pub fn transfer_bucket(storage: &Storage, id: u64) -> Option<IncomingTransfers> {
+	get_state(storage, &storage_key(Tag::IncomingTransfers, &id))
 }
 
 // --- Seeding ----------------------------------------------------------------

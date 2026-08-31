@@ -30,7 +30,7 @@ pub enum Tag {
 	PreimageRegistry = 0x04,
 	StagedValidatorKeys = 0x05,
 	IncomingTransfers = 0x06,
-	IncomingTransferChain = 0x07,
+	IncomingTransferBuckets = 0x07,
 	KeyValueStorage = 0x08,
 }
 

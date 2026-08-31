@@ -25,6 +25,9 @@ pub const SET_VALIDATOR_KEYS_MAX_KEYS: usize = 30;
 /// by Accumulate.
 pub type UpwardMessages = BoundedVec<UpwardMessage, ConstU32<MAX_UPWARD_MESSAGES_PER_DIGEST>>;
 
+/// Key allocated by the service for an incoming-transfer bucket (§3.1).
+pub type BucketId = u64;
+
 /// What a `forget` acts on: a registered parachain's share of this service's own
 /// preimage store, or a supervised service's store (§6.1, §6.5).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]
@@ -136,9 +139,9 @@ pub enum UpwardMessage {
 	/// From `set_validator_keys`: append a chunk of upcoming validator keys
 	/// (Asset Hub only, §5.3).
 	SetValidatorKeys { keys: Vec<ValidatorKey>, is_last: bool },
-	/// From `consume_transfers_up_to`: drop every queued transfer bucket up to
-	/// and including this slot (Asset Hub only, §5.1).
-	ConsumeTransfersUpTo(Timeslot),
+	/// From `clean_up_buckets_up_to`: remove every queued transfer bucket up to
+	/// and including this bucket id (Asset Hub only, §5.1).
+	CleanUpBucketsUpTo(BucketId),
 	/// From `parachain_service_upgrade`: replace the Parachain Service's own
 	/// service code (Asset Hub only, §5.4).
 	UpgradeService { code_hash: Hash, len: Compact<u32>, min_acc_gas: u64, min_memo_gas: u64 },
@@ -171,9 +174,13 @@ impl UpwardMessage {
 				Self::RemoveServiceStorage { .. } |
 				Self::EjectService { .. } |
 				Self::SetServiceSupervisor { .. } |
-				Self::CreateService { .. } |
-				// Only a `Service` target; a `Parachain` target keeps the §6.1 rules.
-				Self::Forget { target: Target::Service(_), .. } |
+				Self::CreateService(_) |
+				Self::SetValidatorKeys { .. } |
+				Self::CleanUpBucketsUpTo(_) |
+				Self::UpgradeService { .. }
+		) || matches!(
+			self,
+			Self::Forget { target: Target::Service(_), .. } |
 				Self::Solicit { target: Target::Service(_), .. }
 		)
 	}

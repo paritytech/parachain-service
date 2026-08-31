@@ -128,8 +128,8 @@ pub enum MockAction {
 		keys: Vec<u8>,
 		is_last: bool,
 	},
-	ConsumeTransfersUpTo {
-		slot: u32,
+	CleanUpBucketsUpTo {
+		bucket_id: u64,
 	},
 	ServiceUpgrade {
 		code_hash: [u8; 32],
@@ -350,7 +350,7 @@ mod host {
 		#[polkavm_import(index = 21)]
 		fn set_validator_keys_raw(keys_ptr: u32, count: u32, is_last: u32);
 		#[polkavm_import(index = 22)]
-		fn consume_transfers_up_to_raw(slot: u32);
+		fn clean_up_buckets_up_to_raw(bucket_id: u64);
 		#[polkavm_import(index = 23)]
 		fn parachain_service_upgrade_raw(
 			hash_ptr: u32,
@@ -501,8 +501,8 @@ mod host {
 					*is_last as u32,
 				)
 			},
-			MockAction::ConsumeTransfersUpTo { slot } => unsafe {
-				consume_transfers_up_to_raw(*slot)
+			MockAction::CleanUpBucketsUpTo { bucket_id } => unsafe {
+				clean_up_buckets_up_to_raw(*bucket_id)
 			},
 			MockAction::ServiceUpgrade { code_hash, len, min_acc_gas, min_memo_gas } => unsafe {
 				parachain_service_upgrade_raw(

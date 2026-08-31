@@ -265,8 +265,8 @@ impl ExecutorState {
 				let is_last = regs[A2] != 0;
 				self.push(UpwardMessage::SetValidatorKeys { keys, is_last })?;
 			},
-			HostCall::ConsumeTransfersUpTo => {
-				self.push(UpwardMessage::ConsumeTransfersUpTo(regs[A0] as Timeslot))?;
+			HostCall::CleanUpBucketsUpTo => {
+				self.push(UpwardMessage::CleanUpBucketsUpTo(regs[A0]))?;
 			},
 			HostCall::ParachainServiceUpgrade => {
 				let code_hash = peek_hash(handle, regs[A0]);

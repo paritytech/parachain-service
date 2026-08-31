@@ -53,8 +53,8 @@ pub enum HostCall {
 	AssignCore = 20,
 	/// Append a chunk of upcoming validator keys.
 	SetValidatorKeys = 21,
-	/// Drop queued transfer buckets up to a slot.
-	ConsumeTransfersUpTo = 22,
+	/// Remove queued transfer buckets up to a bucket id.
+	CleanUpBucketsUpTo = 22,
 	/// Replace the Parachain Service's own service code.
 	ParachainServiceUpgrade = 23,
 	/// Abort the PVF with an opaque error payload.

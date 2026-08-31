@@ -178,7 +178,7 @@ fn restricted_message_drops_candidate_works() {
 	// applied, the head does not advance, and nothing is logged.
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let set = UpwardMessage::SetKV { key: b"k".to_vec(), value: b"v".to_vec() };
-	let restricted = UpwardMessage::ConsumeTransfersUpTo(0);
+	let restricted = UpwardMessage::CleanUpBucketsUpTo(0);
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![set, restricted], 0);
 
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
