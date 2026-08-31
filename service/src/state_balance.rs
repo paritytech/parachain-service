@@ -126,8 +126,9 @@ pub const ASSET_HUB_GLOBAL_ITEMS_FOOTPRINT: Balance = {
 		(CORE_COUNT as u64) * (ENTRY_OVERHEAD + 3 + 2 + (AUTHORIZER_QUEUE_LEN as u64) * 32 + 5);
 	// pending_assign_cores: 34 + 1 + 2 + 341 * (core 2 + slot 4), 1 item.
 	let pending_assign_cores = ENTRY_OVERHEAD + 1 + 2 + (CORE_COUNT as u64) * 6;
-	// incoming_transfer_buckets: overhead + key + Option tag + two u64 ids + count.
-	let transfer_buckets = ENTRY_OVERHEAD + 1 + 1 + 8 + 8 + 4;
+	// incoming_transfer_buckets: overhead + key + two u64 ids + count. Absence
+	// represents `None`, so the stored value has no encoded Option tag.
+	let transfer_buckets = ENTRY_OVERHEAD + 1 + 8 + 8 + 4;
 	// Fixed storage items: the two singletons, endpoint pointer, one per core.
 	let fixed_items = (3 + CORE_COUNT as u64) * ITEM_DEPOSIT;
 	staged_keys +
@@ -448,12 +449,12 @@ mod tests {
 	fn asset_hub_footprint_works() {
 		// §6.1 says 1 238 660 fixed + 204 × N with 17 B amounts and a 44 B
 		// endpoint pointer. With D-3 (9 B amounts) a bucket costs 195, the pointer
-		// grows 12 B for u64 endpoints and the counter, and the u16 `CoreIndex`
+		// grows 11 B for bare u64 endpoints and the counter, and the u16 `CoreIndex`
 		// (JAM) shrinks the fixed part by 341 × 4 = 1 364 B.
 		assert_eq!(INCOMING_TRANSFER_ENTRY_FOOTPRINT, 195);
 		assert_eq!(
 			ASSET_HUB_GLOBAL_ITEMS_FOOTPRINT,
-			1_237_308 + (MAX_INCOMING_TRANSFERS as u64) * 195
+			1_237_307 + (MAX_INCOMING_TRANSFERS as u64) * 195
 		);
 	}
 
