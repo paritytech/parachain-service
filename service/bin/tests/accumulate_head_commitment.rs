@@ -11,7 +11,7 @@ mod common;
 
 use codec::Encode;
 use common::*;
-use parachain_service::hashing::blake2_256;
+use parachain_service::hashing::keccak_256;
 use parachain_service_interface::types::{Hash, ParaId};
 use tiny_keccak::{Hasher as _, Keccak};
 
@@ -41,7 +41,7 @@ fn element_hash(element: &MerkleTree) -> Hash {
 }
 
 fn leaf(para_id: ParaId, head: &[u8]) -> Hash {
-	element_hash(&MerkleTree::Leaf { para_id, head_hash: blake2_256(head) })
+	element_hash(&MerkleTree::Leaf { para_id, head_hash: keccak_256(head) })
 }
 
 fn node(left: Hash, right: Hash) -> Hash {

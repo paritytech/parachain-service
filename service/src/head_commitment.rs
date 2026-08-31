@@ -4,12 +4,14 @@
 //! the block: a binary Merkle tree over one leaf per changed head, ordered by
 //! ascending `para_id`, with the root returned. No head changed means no hash.
 
-use crate::{hashing::blake2_256, state::para_info::Parachains};
+use crate::{
+	hashing::{blake2_256, keccak_256},
+	state::para_info::Parachains,
+};
 use alloc::vec::Vec;
 use codec::Encode;
 use jam_types::Hash;
 use parachain_service_interface::types::ParaId;
-use tiny_keccak::{Hasher as _, Keccak};
 
 /// An element of the commitment tree (§5.5).
 ///
@@ -25,11 +27,7 @@ enum MerkleTree {
 
 impl MerkleTree {
 	fn hash(&self) -> Hash {
-		let mut keccak = Keccak::v256();
-		keccak.update(&self.encode());
-		let mut out = Hash::default();
-		keccak.finalize(&mut out);
-		out
+		keccak_256(&self.encode())
 	}
 }
 
@@ -60,6 +58,10 @@ fn merkle_root(leaves: Vec<Hash>) -> Option<Hash> {
 
 fn head_hash_of(para_id: ParaId) -> Option<Hash> {
 	Parachains::get(para_id).map(|pi| blake2_256(&pi.head_data))
+}
+
+fn current_head_hashes_of(para_id: ParaId) -> Option<(Hash, Hash)> {
+	Parachains::get(para_id).map(|pi| (blake2_256(&pi.head_data), keccak_256(&pi.head_data)))
 }
 
 /// Tracks the parachains whose head this block may have moved, so the §5.5
@@ -94,7 +96,7 @@ impl HeadTracker {
 		let touched = self
 			.prior
 			.into_iter()
-			.map(|(para_id, prior)| (para_id, prior, head_hash_of(para_id)))
+			.map(|(para_id, prior)| (para_id, prior, current_head_hashes_of(para_id)))
 			.collect();
 		merkle_root(changed_leaves(touched))
 	}
@@ -106,14 +108,14 @@ impl HeadTracker {
 /// A para touched but left on its original value contributes nothing, as does one
 /// removed by `parachain_clean_up` — it has no ending value. A newly registered
 /// para counts as changed, since it had no prior head.
-fn changed_leaves(mut touched: Vec<(ParaId, Option<Hash>, Option<Hash>)>) -> Vec<Hash> {
+fn changed_leaves(mut touched: Vec<(ParaId, Option<Hash>, Option<(Hash, Hash)>)>) -> Vec<Hash> {
 	touched.sort_unstable_by_key(|(para_id, _, _)| para_id.0);
 	touched
 		.iter()
 		.filter_map(|(para_id, prior, current)| {
-			let current = (*current)?;
-			(Some(current) != *prior)
-				.then(|| MerkleTree::Leaf { para_id: *para_id, head_hash: current }.hash())
+			let (current_head, leaf_head) = (*current)?;
+			(Some(current_head) != *prior)
+				.then(|| MerkleTree::Leaf { para_id: *para_id, head_hash: leaf_head }.hash())
 		})
 		.collect()
 }
@@ -178,14 +180,14 @@ mod tests {
 	#[test]
 	fn unchanged_head_contributes_no_leaf_works() {
 		let h: Hash = [5; 32];
-		assert!(changed_leaves(alloc::vec![(ParaId(1), Some(h), Some(h))]).is_empty());
+		assert!(changed_leaves(alloc::vec![(ParaId(1), Some(h), Some((h, [6; 32])))]).is_empty());
 	}
 
 	#[test]
 	fn newly_registered_para_contributes_leaf_works() {
 		let h: Hash = [5; 32];
 		assert_eq!(
-			changed_leaves(alloc::vec![(ParaId(1), None, Some(h))]),
+			changed_leaves(alloc::vec![(ParaId(1), None, Some(([4; 32], h)))]),
 			alloc::vec![leaf(1, h)]
 		);
 	}
@@ -202,9 +204,9 @@ mod tests {
 		let (h1, h4, h7): (Hash, Hash, Hash) = ([1; 32], [4; 32], [7; 32]);
 		assert_eq!(
 			changed_leaves(alloc::vec![
-				(ParaId(7), None, Some(h7)),
-				(ParaId(1), None, Some(h1)),
-				(ParaId(4), None, Some(h4)),
+				(ParaId(7), None, Some(([3; 32], h7))),
+				(ParaId(1), None, Some(([2; 32], h1))),
+				(ParaId(4), None, Some(([3; 32], h4))),
 			]),
 			alloc::vec![leaf(1, h1), leaf(4, h4), leaf(7, h7)]
 		);
@@ -214,8 +216,8 @@ mod tests {
 	fn single_changed_head_root_is_its_leaf_works() {
 		let h: Hash = [9; 32];
 		let leaves = changed_leaves(alloc::vec![
-			(ParaId(2), Some([1; 32]), Some(h)),
-			(ParaId(3), Some([2; 32]), Some([2; 32])),
+			(ParaId(2), Some([1; 32]), Some(([8; 32], h))),
+			(ParaId(3), Some([2; 32]), Some(([2; 32], [8; 32]))),
 		]);
 		assert_eq!(merkle_root(leaves), Some(leaf(2, h)));
 	}
