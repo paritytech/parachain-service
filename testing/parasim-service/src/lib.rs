@@ -6,13 +6,14 @@
 //! `ParaInfo` whose only meaningful field is `head_data`. The collator code that reads the para
 //! head via `serviceValue` carries over unchanged to the real service.
 //!
-//! The PoV itself is not validated, but the *ancestry* it claims is. A package either builds on
-//! the head proven to be in JAM state at its anchor, or — under pipelining — on a block that has
-//! been refined but not yet accumulated, whose header it imports as segment 0 of its parent's
-//! package. Refine exports the new head as its own segment 0 once, and only once, that check
-//! passes. Accumulate then has the last word: it writes the head only if the package still builds
-//! on the head that is stored. Without all this a dropped package would be papered over by the
-//! next one instead of stalling the para, so retry semantics would only appear to work.
+//! The PoV itself is not validated, but the *ancestry* it claims is — and accumulate is the only
+//! authority on it. Refine declares the parent the block was built on and verifies the anchor-state
+//! proof that carries the accumulated head, but it cannot reject a block for building on something
+//! else: under pipelining the parent is usually a block that has been refined and not yet
+//! accumulated, so refine has no way to see it. Accumulate applies a head only if its parent is the
+//! head that is stored, and parks it in the reorder buffer (`buffer.rs`) if the parent is plausibly
+//! still on its way. Without that a dropped package would be papered over by the next one instead
+//! of stalling the para, so retry semantics would only appear to work.
 //!
 //! Deliberately NOT the real service: no PVF, no log, no kv storage semantics, no transfers, no
 //! upgrade tracking, no §5.5 head commitment. Deliberately a separate crate (not a mode of
@@ -23,7 +24,7 @@
 extern crate alloc;
 
 use alloc::vec::Vec;
-use codec::{Compact, Decode, DecodeAll, Encode};
+use codec::{Decode, DecodeAll, Encode};
 use jam_pvm_common::{declare_service, Service};
 use jam_state_helpers::StateProof;
 use jam_types::{
@@ -31,6 +32,9 @@ use jam_types::{
 };
 use parachain_service_interface::types::{HeadData, ParaId};
 
+use buffer::{BufferedCandidate, HeadStore, Outcome, ReorderBuffer, StoredHead};
+
+pub mod buffer;
 pub mod pov;
 
 /// Directory of this crate's `Cargo.toml`, used by `parasim-service/bin`'s
@@ -39,6 +43,17 @@ pub const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
 
 /// Length of a substrate hash, and so of a head hash.
 const HASH_LEN: usize = 32;
+
+/// Storage tag of the para-head map (the real service's `Tag::Parachains`).
+const PARA_HEAD_TAG: u8 = 0x00;
+
+/// Storage tag of the reorder buffer.
+///
+/// Deliberately outside the real service's `0x00..=0x08` tag range: the buffer is parasim-only
+/// scratch state, and every tag in that range is a map the collator or a future version of this
+/// service reads under the same key shape. FIXME: needs a tag agreed with `parachain-service` if
+/// the reorder buffer ever becomes part of the spec.
+const BUFFER_TAG: u8 = 0xf0;
 
 /// Longest SCALE compact-`u32` length prefix, so an exported segment is built in one allocation.
 const MAX_LENGTH_PREFIX_LEN: usize = 5;
@@ -59,6 +74,9 @@ pub struct ParasimWorkOutput {
 	/// blake2b-256 of the head this block was refined against. Accumulate compares it with the
 	/// head actually stored, which is the only place the para's lineage is decided on-chain.
 	pub parent_head_hash: [u8; HASH_LEN],
+	/// The new head's block number, which is what bounds the reorder buffer to a plausible
+	/// horizon. Refine reads it out of the header bytes it already holds.
+	pub number: u32,
 }
 
 pub struct ParasimService;
@@ -85,8 +103,8 @@ impl Service for ParasimService {
 		}
 	}
 
-	fn accumulate(_slot: Slot, _id: ServiceId, item_count: usize) -> Option<Hash> {
-		jam_pvm_common::error!("parasim: accumulate called item_count={item_count}");
+	fn accumulate(slot: Slot, _id: ServiceId, item_count: usize) -> Option<Hash> {
+		jam_pvm_common::error!("parasim: accumulate called item_count={item_count} slot={slot}");
 		for item in jam_pvm_common::accumulate::accumulate_items() {
 			if let jam_types::AccumulateItem::WorkItem(record) = item {
 				match record.result {
@@ -95,7 +113,7 @@ impl Service for ParasimService {
 							"parasim: accumulate result ok, result len={}",
 							result.0.len()
 						);
-						accumulate_one(&result);
+						accumulate_one(slot, &result);
 					},
 					Err(e) => jam_pvm_common::error!("parasim: accumulate work-item Err: {e:?}"),
 				}
@@ -105,7 +123,7 @@ impl Service for ParasimService {
 	}
 }
 
-/// Decode a work item, verify the ancestry it claims, and re-emit the new head.
+/// Decode a work item, declare the parent it builds on, and re-emit the new head.
 fn refine_inner(
 	item_index: usize,
 	service_id: ServiceId,
@@ -124,16 +142,49 @@ fn refine_inner(
 		pov::PoVError::Malformed => ParasimRefineError::MalformedPoV,
 		pov::PoVError::MissingProof => ParasimRefineError::MissingProof,
 	})?;
-
-	let parent_head_hash = resolve_parent(service_id, para_id, &pov)?;
-
-	let head_data =
-		pov.head.to_vec().try_into().map_err(|_| ParasimRefineError::HeadTooLarge)?;
-	// Export last: a child imports this segment as proof its parent was refined, so it must only
-	// exist once every check above has passed. Returning early instead leaves the item's export
-	// count short, and JAM then zeroes the exports and replaces this output with `BadExports`.
+	// TODO: remove once the collator ships `export_count = 0`. Nothing imports this segment any
+	// more, but a package that declares an export and produces none is replaced by `BadExports`,
+	// so the export has to stay — and unconditionally, or a rejected item would trip that instead
+	// of reporting its reason.
 	export_head(pov.head)?;
-	Ok(ParasimWorkOutput { para_id, head_data, parent_head_hash })
+
+	log_parent_relationship(&pov, proven_head(service_id, para_id, &pov)?.as_deref());
+
+	let head_data = pov.head.to_vec().try_into().map_err(|_| ParasimRefineError::HeadTooLarge)?;
+	Ok(ParasimWorkOutput {
+		para_id,
+		head_data,
+		parent_head_hash: pov.parent_hash,
+		number: pov.number,
+	})
+}
+
+/// Record how the block's parent relates to the head proven at the anchor.
+///
+/// Refine cannot make a decision out of this: a block at depth two or more legitimately builds on
+/// a head accumulate has not applied yet, so a mismatch is the normal pipelined case rather than
+/// an error. It is still the cheapest way to tell a root-case block from a pipelined one when a
+/// para stops advancing, which is why it is logged rather than dropped.
+fn log_parent_relationship(pov: &pov::PoV, proven: Option<&[u8]>) {
+	match proven {
+		None => {
+			jam_pvm_common::debug!(
+				"parasim: refine: number={} parent={:02x?}, no head proven at the anchor",
+				pov.number,
+				pov.parent_hash,
+			);
+		},
+		Some(head) => {
+			let proven_hash = jam_state_helpers::blake2_256(head);
+			jam_pvm_common::debug!(
+				"parasim: refine: number={} parent={:02x?} proven head={:02x?} on_proven_head={}",
+				pov.number,
+				pov.parent_hash,
+				proven_hash,
+				pov.parent_hash == proven_hash,
+			);
+		},
+	}
 }
 
 /// Publish the new head as segment 0, the only segment parasim exports.
@@ -148,72 +199,6 @@ fn export_head(head: &[u8]) -> Result<(), ParasimRefineError> {
 	jam_pvm_common::refine::export_slice(&segment)
 		.map(|_| ())
 		.map_err(|_| ParasimRefineError::ExportFailed)
-}
-
-/// Establish which head this PoV builds on, and return that head's hash.
-///
-/// Under pipelining the parent is usually a block that has been refined but not yet accumulated,
-/// so it is in no state parasim can read. It arrives instead as an imported segment exported by
-/// the parent's own package — authenticated by JAM, which resolves and validates the import's
-/// segment root on-chain when the package is reported.
-fn resolve_parent(
-	service_id: ServiceId,
-	para_id: ParaId,
-	pov: &pov::PoV,
-) -> Result<[u8; HASH_LEN], ParasimRefineError> {
-	let accumulated = proven_head(service_id, para_id, pov)?;
-	if let Some(head) = &accumulated {
-		let head_hash = jam_state_helpers::blake2_256(head);
-		if pov.parent_hash == head_hash {
-			return Ok(head_hash);
-		}
-	}
-
-	let Some(segment) = jam_pvm_common::refine::import(0) else {
-		// Nothing is stored for this para and nothing was imported: its first block, which has no
-		// parent to match. Accumulate stays the authority — it accepts an unparented head only
-		// while the store is still empty.
-		return match accumulated {
-			None => Ok(pov.parent_hash),
-			Some(_) => Err(ParasimRefineError::MissingImport),
-		};
-	};
-	// The convention is one segment, so a second one means the item was not built for parasim and
-	// the extra segments are unaccounted for.
-	if jam_pvm_common::refine::import(1).is_some() {
-		return Err(ParasimRefineError::TooManyImports);
-	}
-
-	let header = imported_header(segment.as_slice())?;
-	let header_hash = jam_state_helpers::blake2_256(header);
-	if pov.parent_hash != header_hash {
-		return Err(ParasimRefineError::ParentHashMismatch);
-	}
-	Ok(header_hash)
-}
-
-/// The parent header carried by segment 0 of the parent's package.
-///
-/// The segment is the SCALE length-prefixed header, zero-padded to `SEGMENT_LEN` on export.
-/// Public so the collator side can pin the byte contract it has to build segments against.
-pub fn imported_header(segment: &[u8]) -> Result<&[u8], ParasimRefineError> {
-	let mut input = segment;
-	let len = u32::from(
-		Compact::<u32>::decode(&mut input)
-			.map_err(|_| ParasimRefineError::UndecodableImportedHeader)?,
-	) as usize;
-	if len == 0 {
-		// JAM replaces a *failed* item's exports with zero-segments and keeps the package valid,
-		// so an all-zero segment is what a parent that never passed refine exports. Its hash is a
-		// public constant, so treating it as an empty parent header would hand anyone a parent
-		// they could name in a crafted block.
-		return Err(ParasimRefineError::EmptyImportedHeader);
-	}
-	let header = input.get(..len).ok_or(ParasimRefineError::UndecodableImportedHeader)?;
-	if !pov::is_header(header) {
-		return Err(ParasimRefineError::UndecodableImportedHeader);
-	}
-	Ok(header)
 }
 
 /// The para head proven to be in JAM state at this package's anchor, or `None` if the proof shows
@@ -258,58 +243,129 @@ fn work_package_para_id(item_index: usize) -> Option<ParaId> {
 	para_ids.get(item_index).copied()
 }
 
-/// Upsert the head for one accumulated work item, if it still builds on the head that is stored.
-fn accumulate_one(result: &WorkOutput) {
-	let mut input: &[u8] = &result.0;
-	let Ok(output) = ParasimWorkOutput::decode_all(&mut input) else {
+/// Apply one accumulated work item to its para's head, park it, or drop it.
+fn accumulate_one(slot: Slot, result: &WorkOutput) {
+	let Ok(output) = ParasimWorkOutput::decode_all(&mut &result.0[..]) else {
 		// A stray/incompatible refine result should never wedge accumulate.
 		return;
 	};
-	let key = para_head_key(output.para_id);
-	// Read the stored head per item rather than once for the call: a chain of packages can
-	// accumulate together, and each one's parent is the head its predecessor just wrote.
-	let stored = jam_pvm_common::accumulate::get_storage(&key);
-	if !builds_on_stored_head(stored.as_deref(), &output.parent_head_hash) {
-		jam_pvm_common::error!(
-			"parasim: stale package for para {:?}: built on {:02x?}, stored head is {:02x?}",
-			output.para_id,
-			output.parent_head_hash,
-			stored.as_deref().and_then(stored_head_hash),
-		);
+	let para_id = output.para_id;
+	let buffer_key = buffer_key(para_id);
+	let stored_buffer = jam_pvm_common::accumulate::get_storage(&buffer_key);
+	let mut buffer = ReorderBuffer::decode_or_empty(stored_buffer.as_deref());
+	let arriving = BufferedCandidate {
+		parent_head_hash: output.parent_head_hash,
+		head_data: output.head_data,
+		number: output.number,
+		arrived_slot: slot,
+	};
+
+	let outcome = buffer.accept(
+		&mut ParaHeadStore { para_id, key: para_head_key(para_id) },
+		arriving,
+		slot,
+		jam_types::epoch_period(),
+	);
+
+	log_outcome(para_id, &outcome);
+	store_buffer(&buffer_key, &buffer, stored_buffer.as_deref());
+	jam_pvm_common::error!("parasim: buffer depth for para {para_id:?}: {}", buffer.depth());
+}
+
+/// A para's head in this service's storage.
+struct ParaHeadStore {
+	para_id: ParaId,
+	key: Vec<u8>,
+}
+
+impl HeadStore for ParaHeadStore {
+	fn head(&self) -> StoredHead {
+		StoredHead::read(jam_pvm_common::accumulate::get_storage(&self.key).as_deref())
+	}
+
+	fn set_head(&mut self, candidate: &BufferedCandidate) -> bool {
+		let info = ParaInfoLite::with_head(candidate.head_data.clone());
+		if jam_pvm_common::accumulate::set_storage(&self.key, &info.encode()).is_err() {
+			jam_pvm_common::error!("parasim: set_storage failed for para {:?}", self.para_id);
+			return false;
+		}
+		// Gas exhaustion rolls accumulation back to the most recent checkpoint rather than to its
+		// start, so checkpointing here is what lets a long drain keep the heads it already applied
+		// and finish the rest on a later invocation.
+		jam_pvm_common::accumulate::checkpoint();
+		true
+	}
+}
+
+/// Persist the buffer, skipping the write when it did not change.
+fn store_buffer(key: &[u8], buffer: &ReorderBuffer, stored: Option<&[u8]>) {
+	if buffer.is_empty() {
+		if stored.is_some() {
+			jam_pvm_common::accumulate::remove_storage(key);
+		}
 		return;
 	}
-	let info = ParaInfoLite::with_head(output.head_data);
-	if jam_pvm_common::accumulate::set_storage(&key, &info.encode()).is_err() {
-		jam_pvm_common::error!("parasim: set_storage failed for para {:?}", output.para_id);
+	let encoded = buffer.encode();
+	if stored != Some(&encoded[..]) &&
+		jam_pvm_common::accumulate::set_storage(key, &encoded).is_err()
+	{
+		jam_pvm_common::error!("parasim: buffer set_storage failed for key {key:02x?}");
 	}
 }
 
-/// Whether a work item's parent is still the head the para is at.
-///
-/// The only on-chain authority on the para's lineage. Refine's checks run in-core against a parent
-/// the chain has not agreed on yet, so a package refined against a stale or fabricated head has to
-/// be caught here — and by then a sibling may already have taken the slot.
-fn builds_on_stored_head(stored: Option<&[u8]>, parent_head_hash: &[u8; HASH_LEN]) -> bool {
-	let Some(stored) = stored else {
-		// Nothing stored: the para's first block, which has no parent to be fresh against.
-		return true;
-	};
-	// Undecodable stored bytes are not "no head": overwriting them is exactly the papering-over
-	// this check exists to prevent.
-	stored_head_hash(stored) == Some(*parent_head_hash)
-}
-
-/// The hash of the head inside a stored `ParaInfo`.
-fn stored_head_hash(stored: &[u8]) -> Option<[u8; HASH_LEN]> {
-	let info = ParaInfoLite::decode_all(&mut &stored[..]).ok()?;
-	Some(jam_state_helpers::blake2_256(&info.head_data))
+/// Log every decision the buffer made. A drop or eviction whose reason is not here is a bug.
+fn log_outcome(para_id: ParaId, outcome: &Outcome) {
+	for applied in &outcome.applied {
+		jam_pvm_common::error!(
+			"parasim: applied head for para {para_id:?}: number={} head={:02x?} parent={:02x?}",
+			applied.number,
+			applied.head_hash(),
+			applied.parent_head_hash,
+		);
+	}
+	if let Some(buffered) = &outcome.buffered {
+		jam_pvm_common::error!(
+			"parasim: buffered head for para {para_id:?}: number={} head={:02x?} parent={:02x?}",
+			buffered.number,
+			buffered.head_hash(),
+			buffered.parent_head_hash,
+		);
+	}
+	if let Some((dropped, reason)) = &outcome.dropped {
+		jam_pvm_common::error!(
+			"parasim: dropped head for para {para_id:?}: {reason:?} number={} head={:02x?} \
+			 parent={:02x?}",
+			dropped.number,
+			dropped.head_hash(),
+			dropped.parent_head_hash,
+		);
+	}
+	for (evicted, reason) in &outcome.evicted {
+		jam_pvm_common::error!(
+			"parasim: evicted head for para {para_id:?}: {reason:?} number={} head={:02x?} \
+			 parent={:02x?}",
+			evicted.number,
+			evicted.head_hash(),
+			evicted.parent_head_hash,
+		);
+	}
 }
 
 /// The storage key of a para's head: tag `0x00` + SCALE(`ParaId`) — the real
 /// service's `parachains` map layout (`Tag::Parachains`).
 pub fn para_head_key(para_id: ParaId) -> Vec<u8> {
+	storage_key(PARA_HEAD_TAG, para_id)
+}
+
+/// The storage key of a para's reorder buffer.
+pub fn buffer_key(para_id: ParaId) -> Vec<u8> {
+	storage_key(BUFFER_TAG, para_id)
+}
+
+/// `[tag] || SCALE(para_id)`, the real service's storage-key layout.
+fn storage_key(tag: u8, para_id: ParaId) -> Vec<u8> {
 	let mut key = Vec::with_capacity(1 + para_id.encoded_size());
-	key.push(0x00);
+	key.push(tag);
 	para_id.encode_to(&mut key);
 	key
 }
@@ -368,25 +424,15 @@ pub enum ParasimRefineError {
 	ProofNotAtAnchor,
 	/// The proof does not verify against the anchor state root.
 	InvalidProof,
-	/// The block builds on neither the accumulated head nor any imported parent: nothing was
-	/// imported, so there is no candidate parent to check it against.
-	MissingImport,
-	/// More than one segment was imported; parasim's convention is exactly one.
-	TooManyImports,
-	/// The imported segment's header is empty — what JAM exports for an item that *failed*
-	/// refine, never a real parent.
-	EmptyImportedHeader,
-	/// The imported segment is not a length-prefixed substrate header.
-	UndecodableImportedHeader,
-	/// The block names a parent that is not the imported header it was submitted with.
-	ParentHashMismatch,
-	/// The new head could not be exported, so no child could ever chain onto this block.
+	/// The head could not be exported. Nothing imports it any more, but a work item that declares
+	/// an export and produces none is replaced by `BadExports`, so it is still a refine failure.
 	ExportFailed,
 }
 #[cfg(test)]
 mod tests {
 	use super::*;
 	use alloc::vec;
+	use codec::Compact;
 
 	/// Encode a substrate `Header<u32>` with an empty digest.
 	fn header_bytes(parent: [u8; HASH_LEN], number: u32) -> Vec<u8> {
@@ -398,63 +444,6 @@ mod tests {
 		header
 	}
 
-	/// What the host writes when `export_head` exports `head`: the length-prefixed header,
-	/// zero-padded to a full segment.
-	fn exported_segment(head: &[u8]) -> Vec<u8> {
-		let mut segment = head.encode();
-		segment.resize(SEGMENT_LEN, 0);
-		segment
-	}
-
-	/// The byte contract between a parent's export and its child's import: whatever `export_head`
-	/// writes, `imported_header` must hand back unchanged, padding and all.
-	#[test]
-	fn exported_head_round_trips_works() {
-		let head = header_bytes([4u8; HASH_LEN], 7);
-		assert_eq!(imported_header(&exported_segment(&head)), Ok(&head[..]));
-	}
-
-	/// The guard the phase turns on: a failed parent's export is a zero-segment, which reads as a
-	/// zero-length header whose hash is a constant anyone can name as their parent.
-	#[test]
-	fn zero_segment_errors() {
-		assert_eq!(
-			imported_header(&[0u8; SEGMENT_LEN]),
-			Err(ParasimRefineError::EmptyImportedHeader)
-		);
-	}
-
-	#[test]
-	fn undecodable_imported_header_errors() {
-		// Length prefix present, contents not a header.
-		let mut segment = vec![0xffu8; 40].encode();
-		segment.resize(SEGMENT_LEN, 0);
-		assert_eq!(
-			imported_header(&segment),
-			Err(ParasimRefineError::UndecodableImportedHeader)
-		);
-
-		// A prefix claiming more bytes than the segment holds.
-		let mut truncated = Compact::from(SEGMENT_LEN as u32).encode();
-		truncated.resize(SEGMENT_LEN, 0);
-		assert_eq!(
-			imported_header(&truncated),
-			Err(ParasimRefineError::UndecodableImportedHeader)
-		);
-
-		// A header with the padding folded into its declared length: the walker must not stop
-		// early and call the trailing zeroes part of the header.
-		let head = header_bytes([5u8; HASH_LEN], 1);
-		let mut padded = head.clone();
-		padded.extend_from_slice(&[0u8; 8]);
-		let mut segment = padded.encode();
-		segment.resize(SEGMENT_LEN, 0);
-		assert_eq!(
-			imported_header(&segment),
-			Err(ParasimRefineError::UndecodableImportedHeader)
-		);
-	}
-
 	/// A head at the interface's maximum still fits a segment with its length prefix, which is
 	/// what lets refine export it at all.
 	#[test]
@@ -464,18 +453,32 @@ mod tests {
 		assert!(head.encode().len() <= SEGMENT_LEN);
 	}
 
+	/// The buffer's rules are all measured against the stored head, so reading it wrong would
+	/// silently change every one of them.
 	#[test]
-	fn freshness_check_works() {
-		let head = header_bytes([1u8; HASH_LEN], 1);
+	fn stored_head_works() {
+		let head = header_bytes([1u8; HASH_LEN], 7);
 		let stored = ParaInfoLite::with_head(head.clone().try_into().expect("fits; qed")).encode();
-		let head_hash = jam_state_helpers::blake2_256(&head);
 
-		assert!(builds_on_stored_head(Some(&stored), &head_hash));
-		// A package refined against an older head must not overwrite the newer one.
-		assert!(!builds_on_stored_head(Some(&stored), &[0u8; HASH_LEN]));
+		assert_eq!(
+			StoredHead::read(Some(&stored)),
+			StoredHead::At { hash: jam_state_helpers::blake2_256(&head), number: 7 }
+		);
 		// Nothing stored yet: the para's first block has no parent to be fresh against.
-		assert!(builds_on_stored_head(None, &[0u8; HASH_LEN]));
-		// Bytes that are not a `ParaInfo` are not an empty store.
-		assert!(!builds_on_stored_head(Some(&[0xffu8; 3]), &[0u8; HASH_LEN]));
+		assert_eq!(StoredHead::read(None), StoredHead::Empty);
+		// Bytes that are not a `ParaInfo`, and a `ParaInfo` whose head is not a header, are both
+		// something other than an empty store: applying over them is the papering-over the
+		// freshness check exists to prevent.
+		assert_eq!(StoredHead::read(Some(&[0xffu8; 3])), StoredHead::Unreadable);
+		let junk = ParaInfoLite::with_head(vec![0xffu8; 40].try_into().expect("fits; qed"));
+		assert_eq!(StoredHead::read(Some(&junk.encode())), StoredHead::Unreadable);
+	}
+
+	/// The head map and the buffer must never collide: they are keyed by the same `ParaId`, and
+	/// the buffer's tag is the one thing in this service that is not the real layout.
+	#[test]
+	fn storage_keys_are_distinct_works() {
+		assert_eq!(para_head_key(ParaId(3)), vec![0x00, 3, 0, 0, 0]);
+		assert_eq!(buffer_key(ParaId(3)), vec![0xf0, 3, 0, 0, 0]);
 	}
 }

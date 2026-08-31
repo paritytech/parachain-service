@@ -63,6 +63,8 @@ pub struct PoV<'a> {
 	pub head: &'a [u8],
 	/// The first block's `parent_hash`: the head this PoV claims to build on.
 	pub parent_hash: [u8; HASH_LEN],
+	/// The last block's number, which is the number the new head is at.
+	pub number: u32,
 	/// The SCALE-encoded `(anchor_state_root, StateProof)` the collator attached.
 	pub anchor_state_proof: &'a [u8],
 }
@@ -83,13 +85,13 @@ pub fn decode_pov(pov: &[u8]) -> Result<PoV<'_>, PoVError> {
 
 	let block_count = read_compact_len(&mut input)?;
 	let mut first_parent_hash = None;
-	let mut head = None;
+	let mut last = None;
 	for _ in 0..block_count {
 		let block = skip_block(&mut input)?;
 		first_parent_hash.get_or_insert(block.parent_hash);
-		head = Some(block.header);
+		last = Some(block);
 	}
-	let (Some(head), Some(parent_hash)) = (head, first_parent_hash) else {
+	let (Some(last), Some(parent_hash)) = (last, first_parent_hash) else {
 		// A PoV with no blocks moves no head.
 		return Err(PoVError::Malformed);
 	};
@@ -98,7 +100,7 @@ pub fn decode_pov(pov: &[u8]) -> Result<PoV<'_>, PoVError> {
 	skip_scheduling_proof(&mut input)?;
 	let anchor_state_proof = read_anchor_state_proof(&mut input)?;
 
-	Ok(PoV { head, parent_hash, anchor_state_proof })
+	Ok(PoV { head: last.header, parent_hash, number: last.number, anchor_state_proof })
 }
 
 /// Find the `jam/anchor_state_proof` entry in `Vec<Option<AdditionalData>>`.
@@ -206,16 +208,17 @@ fn skip_digest(input: &mut &[u8]) -> Result<(), PoVError> {
 	Ok(())
 }
 
-/// One walked block: its encoded header and the parent it names.
+/// One walked block: its encoded header, the parent it names, and its number.
 struct Block<'a> {
 	header: &'a [u8],
 	parent_hash: [u8; HASH_LEN],
+	number: u32,
 }
 
 /// Walk one substrate `Block`, leaving `input` past the block's body.
 fn skip_block<'a>(input: &mut &'a [u8]) -> Result<Block<'a>, PoVError> {
 	let start = *input;
-	skip_header(input)?;
+	let number = skip_header(input)?;
 	let header_len = start.len() - input.len();
 	// `Vec<OpaqueExtrinsic>`: each extrinsic is its own length-prefixed blob.
 	let extrinsics = read_compact_len(input)?;
@@ -229,28 +232,31 @@ fn skip_block<'a>(input: &mut &'a [u8]) -> Result<Block<'a>, PoVError> {
 	}
 	let parent_hash =
 		header[..HASH_LEN].try_into().expect("skip_header consumed at least a hash; qed");
-	Ok(Block { header, parent_hash })
+	Ok(Block { header, parent_hash, number })
 }
 
-/// Whether `bytes` are exactly one encoded substrate header and nothing else.
+/// The block number of `bytes`, if they are exactly one encoded substrate header and nothing else.
 ///
-/// Used on an *imported* parent header, which arrives as opaque segment bytes rather than inside a
-/// PoV: a padded or truncated blob must not pass as a header, so the walker has to consume it
-/// exactly. Reusing the PoV walker keeps one definition of "header shape" in the service.
-pub fn is_header(bytes: &[u8]) -> bool {
+/// Accumulate needs it for a bare header rather than a PoV: the para head it has stored is one,
+/// and the buffer's number window is measured against that head's number. Consuming the bytes
+/// exactly is what keeps a padded or truncated blob from passing as a header, and reusing the PoV
+/// walker keeps one definition of "header shape" in the service.
+pub fn header_number(bytes: &[u8]) -> Option<u32> {
 	let mut input = bytes;
-	skip_header(&mut input).is_ok() && input.is_empty()
+	let number = skip_header(&mut input).ok()?;
+	input.is_empty().then_some(number)
 }
 
-/// Skip a substrate `Header<u32, BlakeTwo256>`.
-fn skip_header(input: &mut &[u8]) -> Result<(), PoVError> {
+/// Skip a substrate `Header<u32, BlakeTwo256>`, returning its block number.
+fn skip_header(input: &mut &[u8]) -> Result<u32, PoVError> {
 	// parent_hash
 	skip(input, HASH_LEN)?;
 	// number, compact-encoded
-	read_compact_len(input)?;
+	let number = read_compact_len(input)? as u32;
 	// state_root + extrinsics_root
 	skip(input, 2 * HASH_LEN)?;
-	skip_digest(input)
+	skip_digest(input)?;
+	Ok(number)
 }
 
 #[cfg(test)]
@@ -324,6 +330,7 @@ mod tests {
 		let decoded = decode_pov(&pov).expect("valid V3 parses");
 		assert_eq!(decoded.head, &header[..]);
 		assert_eq!(decoded.parent_hash, [7u8; 32]);
+		assert_eq!(decoded.number, 1);
 		assert_eq!(decoded.anchor_state_proof, &[0xaa, 0xbb, 0xcc]);
 	}
 
@@ -344,6 +351,9 @@ mod tests {
 		let decoded = decode_pov(&pov).expect("valid V3 parses");
 		assert_eq!(decoded.head, &last[..]);
 		assert_eq!(decoded.parent_hash, [1u8; 32]);
+		// Accumulate's number window is measured against the head, so the number must come from
+		// the last block, not the first.
+		assert_eq!(decoded.number, 2);
 	}
 
 	/// Real headers carry seals and pre-runtime digests, so the walker must consume the tag bytes
@@ -398,19 +408,20 @@ mod tests {
 		assert_eq!(decode_pov(&pov), Err(PoVError::MissingProof));
 	}
 
-	/// The imported-parent guard leans on this: anything that is not exactly a header — padding
-	/// left over from a segment, a truncated header, plain garbage — must be refused.
+	/// Accumulate's number window leans on this: a stored head must yield its number, and
+	/// anything that is not exactly a header — trailing padding, a truncated header, plain
+	/// garbage — must yield nothing rather than a number read out of the wrong bytes.
 	#[test]
-	fn is_header_works() {
+	fn header_number_works() {
 		let header = header_bytes([9u8; 32], 3, EMPTY_DIGEST);
-		assert!(is_header(&header));
+		assert_eq!(header_number(&header), Some(3));
 
 		let mut padded = header.clone();
 		padded.extend_from_slice(&[0u8; 8]);
-		assert!(!is_header(&padded));
-		assert!(!is_header(&header[..header.len() - 1]));
-		assert!(!is_header(&[]));
-		assert!(!is_header(&[0xffu8; 40]));
+		assert_eq!(header_number(&padded), None);
+		assert_eq!(header_number(&header[..header.len() - 1]), None);
+		assert_eq!(header_number(&[]), None);
+		assert_eq!(header_number(&[0xffu8; 40]), None);
 	}
 
 	#[test]
