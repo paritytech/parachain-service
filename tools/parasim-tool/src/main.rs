@@ -98,14 +98,24 @@ enum Key {
 		#[arg(long)]
 		raw: bool,
 	},
+	/// The para's reorder buffer: heads accumulate has parked until their parent arrives.
+	Buffer {
+		/// Which para.
+		para: u32,
+		/// Read at this block instead of the current best.
+		#[arg(long, value_name = "HASH")]
+		block: Option<String>,
+		/// Print the stored bytes without decoding them.
+		#[arg(long)]
+		raw: bool,
+	},
 }
 
 #[tokio::main]
 async fn main() {
 	tracing_subscriber::fmt()
 		.with_env_filter(
-			tracing_subscriber::EnvFilter::try_from_default_env()
-				.unwrap_or_else(|_| "warn".into()),
+			tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "warn".into()),
 		)
 		.init();
 
@@ -119,14 +129,19 @@ async fn main() {
 async fn run(cli: Cli) -> Result<(), String> {
 	let jam = rpc::connect(&cli.rpc).await?;
 	match cli.command {
-		Command::DisplayChain { count, finalized } =>
-			chain::display(&jam, count, finalized).await,
+		Command::DisplayChain { count, finalized } => chain::display(&jam, count, finalized).await,
 		Command::DisplayInflight { block, para, watch, raw } => {
 			let args = inflight::Args { service: cli.service, para, block, watch, raw };
 			inflight::run(&jam, &args).await
 		},
-		Command::DisplayKey { subject: Key::Parahead { para, block, raw } } =>
-			keys::display_parahead(&jam, cli.service, ParaId(para), block, raw).await,
+		Command::DisplayKey { subject } => match subject {
+			Key::Parahead { para, block, raw } => {
+				keys::display_parahead(&jam, cli.service, ParaId(para), block, raw).await
+			},
+			Key::Buffer { para, block, raw } => {
+				keys::display_buffer(&jam, cli.service, ParaId(para), block, raw).await
+			},
+		},
 		Command::Send { para, core, chain, tamper, tamper_at } => {
 			let args = send::Args {
 				service: cli.service,
