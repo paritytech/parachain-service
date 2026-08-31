@@ -251,6 +251,7 @@ mod tests {
 			para_id: parachain_service_interface::types::ParaId(7),
 			head_data: vec![1u8; 40].try_into().expect("40 bytes fit; qed"),
 			parent_head_hash: [2u8; 32],
+			number: 9,
 		};
 		assert!(matches!(decode_output(&head.encode()), Refined::Head(decoded) if decoded == head));
 		assert!(matches!(
@@ -277,6 +278,7 @@ mod tests {
 			para_id: parachain_service_interface::types::ParaId(0),
 			head_data: Default::default(),
 			parent_head_hash: [0u8; 32],
+			number: 0,
 		});
 		assert!(matches_para(Some(0), &head));
 		assert!(!matches_para(Some(1), &head));

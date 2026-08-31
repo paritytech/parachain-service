@@ -10,6 +10,10 @@
 //! No trust is added by it. The guarantor still verifies each inline segment's proof against a
 //! segment root, and for an `Indirect` root the chain then validates that root against the parent
 //! package's own report.
+//!
+//! Since phase 5a parasim ignores imports entirely — accumulate's reorder buffer carries the
+//! lineage — so what is left here only keeps the current package format guaranteeable. It goes
+//! away with the collator's `export_count = 0`.
 
 use codec::Encode as _;
 use jam_std_common::{build_encoded_bundle, import_proofs, ImportData};
@@ -50,10 +54,10 @@ pub fn build(package: &WorkPackage, imports: Vec<ImportData>) -> (WorkPackageHas
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use codec::Decode as _;
 
-	/// The one byte contract between this tool and the service: whatever `head_segment` builds,
-	/// parasim's importer must read back as exactly that header. Pinned against parasim's own
-	/// decoder so a change to either side cannot drift unnoticed.
+	/// The segment still has to be a well-formed one — a full-length segment holding the
+	/// length-prefixed header — or the guarantor rejects the bundle before parasim ever runs.
 	#[test]
 	fn head_segment_round_trips_works() {
 		let mut header = [7u8; 32].to_vec();
@@ -63,13 +67,6 @@ mod tests {
 
 		let segment = head_segment(&header);
 		assert_eq!(segment.len(), SEGMENT_LEN);
-		assert_eq!(parasim_service::imported_header(&segment), Ok(&header[..]));
-	}
-
-	/// What a failed parent exports must not read as a header at all — that guard is the reason
-	/// the tool can simulate a failed parent by handing its child zeroes.
-	#[test]
-	fn zero_segment_is_not_a_header_errors() {
-		assert!(parasim_service::imported_header(&zero_segment()).is_err());
+		assert_eq!(Vec::<u8>::decode(&mut &segment[..]), Ok(header));
 	}
 }
