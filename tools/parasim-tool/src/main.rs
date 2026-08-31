@@ -7,7 +7,6 @@ use clap::{Parser, Subcommand};
 use jam_interface::ServiceId;
 use parachain_service_interface::types::ParaId;
 
-mod bundle;
 mod chain;
 mod format;
 mod header;
@@ -73,10 +72,10 @@ enum Command {
 		#[arg(long, default_value_t = 0)]
 		core: u16,
 		/// How many linked packages to send. Each one after the first builds on a block that is
-		/// still in flight, so it imports its parent's header instead of proving it from state.
+		/// still in flight, so only accumulate's reorder buffer can put it back in order.
 		#[arg(long, default_value_t = 1)]
 		chain: usize,
-		/// Plant a defect refine must reject. Bare `--tamper` corrupts the state proof.
+		/// Plant a defect the para must not accept. Bare `--tamper` corrupts the state proof.
 		#[arg(long, value_name = "KIND", value_enum, num_args = 0..=1, default_missing_value = "proof")]
 		tamper: Option<send::Tamper>,
 		/// Which package of the chain to tamper with, counted from zero.

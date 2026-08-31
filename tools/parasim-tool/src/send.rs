@@ -9,10 +9,10 @@
 //! head was, so there is no offline payload it will accept.
 //!
 //! With `--chain N` the run submits N packages in one go, each building on the block the previous
-//! one carried. Only the first can prove its parent from JAM state: the rest have parents that are
-//! still in flight — refined but not accumulated — so their headers travel as imported segments.
-//! That is the pipelining case, and it is only testable from a single invocation, because the
-//! parent's `wp_hash` has to be linked while it is still in flight.
+//! one carried. Only the first can prove its parent from JAM state; the rest name a parent that is
+//! still in flight — refined but not accumulated — and nothing but accumulate's reorder buffer
+//! puts them back in order. That is the pipelining case, and it is only testable from a single
+//! invocation, because the packages have to overlap in flight.
 
 use std::time::Duration;
 
@@ -20,16 +20,15 @@ use futures::StreamExt as _;
 
 use codec::Encode as _;
 
-use crate::{bundle, format::hex};
+use crate::format::hex;
 use jam_interface::{
 	JamChainSource, JamStateSource, JamWorkPackageSubmission, StorageKey, WorkPackageStatus,
 };
 use jam_rpc_interface::JamRpcInterface;
 use jam_state_helpers::StateProof;
-use jam_std_common::ImportData;
 use jam_types::{
-	Authorization, Authorizer, CodeHash, ImportSpec, RefineContext, RootIdentifier, ServiceId,
-	WorkItem, WorkPackage, WorkPackageHash, WorkPayload,
+	Authorization, Authorizer, CodeHash, RefineContext, ServiceId, WorkItem, WorkPackage,
+	WorkPackageHash, WorkPayload,
 };
 use parachain_service_interface::{
 	candidate::ParachainCandidate,
@@ -64,19 +63,15 @@ pub struct Args {
 }
 
 /// A deliberate defect to plant in one package of the chain, so that the rejection it should draw
-/// can be watched for. Every kind but `Proof` attacks the import path.
+/// can be watched for. `Proof` is refused by refine; the other two are accepted there and dealt
+/// with by accumulate, which is the only authority on lineage.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
 pub enum Tamper {
 	/// Corrupt the anchor state proof.
 	Proof,
-	/// Build on a parent that is neither the accumulated head nor anything imported.
-	NoImport,
-	/// Import the true parent header, but name a different parent in the block.
+	/// Name a parent no package in the run ever built, so accumulate has nothing to apply the
+	/// block onto. This is the only way to park a buffer entry on demand.
 	WrongParent,
-	/// Import a zero-segment — what a parent whose own refine failed exports.
-	EmptyImport,
-	/// Import a segment that is not a decodable header.
-	GarbageImport,
 	/// Build a sibling of the package before it rather than its child: refine accepts it, because
 	/// at the anchor its parent really is the accumulated head, but by the time it accumulates
 	/// that head has moved on.
@@ -88,19 +83,9 @@ impl Tamper {
 	fn expected_rejection(self) -> &'static str {
 		match self {
 			Tamper::Proof => "refine: InvalidProof",
-			Tamper::NoImport => "refine: MissingImport",
-			Tamper::WrongParent => "refine: ParentHashMismatch",
-			Tamper::EmptyImport => "refine: EmptyImportedHeader",
-			Tamper::GarbageImport => "refine: UndecodableImportedHeader",
+			Tamper::WrongParent => "accumulate: a buffer park, for a parent that never comes",
 			Tamper::Stale => "accumulate: a stale-head drop (refine accepts the package)",
 		}
-	}
-
-	/// Whether refine itself refuses the package. A refused item exports nothing, so its
-	/// successors import zero-segments; a package refine accepts still exports its head even if
-	/// accumulate later drops it.
-	fn fails_refine(self) -> bool {
-		self != Tamper::Stale
 	}
 }
 
@@ -109,31 +94,10 @@ fn forged_parent_hash() -> [u8; HASH_LEN] {
 	jam_state_helpers::blake2_256(b"parasim-tool: a parent nobody built")
 }
 
-/// The bytes a `garbage-import` plants where a header should be.
-const GARBAGE_HEADER: &[u8] = b"not a header";
-
 /// The package built for one position in the chain, as far as the next one needs to know it.
 struct Link {
-	wp_hash: WorkPackageHash,
 	header: Vec<u8>,
 	number: u32,
-	/// Whether this package's refine is expected to fail. JAM replaces a failed item's exports
-	/// with zero-segments, so the next package imports zeroes rather than this header.
-	refine_failed: bool,
-}
-
-/// What a package imports, and how the chain is asked to authenticate it.
-enum Import {
-	/// Nothing: the block must build directly on the head proven from JAM state.
-	None,
-	/// Segment 0 of the parent package, named by the parent's work-package hash. The chain
-	/// resolves that hash to the parent's export root and validates the mapping, which is what
-	/// makes an imported header worth trusting.
-	Parent { wp_hash: WorkPackageHash, segment: Vec<u8> },
-	/// A segment of our own making, committed to by a root we compute ourselves. A `Direct` root
-	/// is an unauthenticated claim by the submitter, so this is how a forged parent header would
-	/// really reach refine — which is the case the empty/undecodable-header guard exists for.
-	Forged { segment: Vec<u8> },
 }
 
 pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
@@ -147,10 +111,10 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 		));
 	}
 	if args.tamper == Some(Tamper::WrongParent) && args.tamper_at == 0 {
-		return Err(
-			"--tamper wrong-parent needs a parent package to import: use --tamper-at 1 or more"
-				.to_string(),
-		);
+		return Err("--tamper wrong-parent needs an earlier package to be parked behind: a para \
+		            with no stored head accepts its first block whatever parent it names, so use \
+		            --tamper-at 1 or more"
+			.to_string());
 	}
 	if args.tamper == Some(Tamper::Stale) && args.tamper_at == 0 {
 		return Err(
@@ -162,8 +126,8 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 	// One anchor for the whole chain, chosen at build time, with the proof fetched at that same
 	// anchor: the state root parasim sees in its refine context must be the one the proof was
 	// built against. Holding it fixed across the chain is also what makes the run meaningful —
-	// every package after the first proves a head that predates its own parent, so its parent can
-	// only come from the import.
+	// every package after the first proves a head that predates its own parent, so accumulate is
+	// the only place its lineage can be settled.
 	let anchor = jam.best_block().await.map_err(|e| format!("best block: {e}"))?;
 	let anchor_state_root =
 		jam.state_root(anchor.header_hash).await.map_err(|e| format!("state root: {e}"))?;
@@ -189,12 +153,6 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 		.map_err(|e| format!("the node's own proof does not verify: {e:?}"))?;
 	let accumulated = stored.as_deref().map(decode_para_info).transpose()?;
 
-	if args.tamper == Some(Tamper::NoImport) && accumulated.is_none() {
-		return Err("--tamper no-import needs a head to already be stored: parasim accepts an \
-		            unparented first block, so there would be nothing to reject"
-			.to_string());
-	}
-
 	match &accumulated {
 		Some(head) => println!(
 			"para {} head is {} bytes at number {}",
@@ -208,8 +166,8 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 	let template = Template::fetch(jam, args, anchor).await?;
 	let mut link: Option<Link> = None;
 	// The head the para should end at: whatever the last package that is *expected to succeed*
-	// carried. Packages from the tampered one onwards fail, and a failed package exports nothing
-	// its successors can chain onto, so the whole tail falls with it.
+	// carried. The tampered package never applies, and its successors name its head as their
+	// parent — a head that never lands — so the whole tail falls with it.
 	let mut expected_head = accumulated.clone();
 
 	for index in 0..args.chain {
@@ -230,18 +188,10 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 				None => ([0u8; HASH_LEN], 0),
 			},
 		};
-		let honest_import = match parent_link {
-			None => Import::None,
-			Some(parent) => Import::Parent {
-				wp_hash: parent.wp_hash,
-				segment: if parent.refine_failed {
-					bundle::zero_segment()
-				} else {
-					bundle::head_segment(&parent.header)
-				},
-			},
+		let parent_hash = match tamper {
+			Some(Tamper::WrongParent) => forged_parent_hash(),
+			_ => parent_hash,
 		};
-		let (parent_hash, import) = plan_link(tamper, parent_hash, honest_import);
 
 		let mut proof = proof.clone();
 		if tamper == Some(Tamper::Proof) {
@@ -257,20 +207,14 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 		// was meant to extend — from being the same block, and so the same work package.
 		let header = header_bytes(parent_hash, number, args.para, index as u32);
 		let payload = build_payload(&anchor_state_root, &proof, &header);
-		let (specs, imports, prerequisites) = import_fields(import);
-		println!("block number {number} parent 0x{} imports {}", hex(&parent_hash), specs.len());
-		let package = template.package(args, payload, specs, prerequisites)?;
-		let (wp_hash, encoded) = bundle::build(&package, imports);
-		// A package with no imports needs no bundle, and submitting it the plain way keeps the
-		// pre-pipelining path in use as well.
-		let inline = (package.items[0].import_segments.len() > 0).then_some(encoded);
-		submit_and_follow(jam, args.core, &package, wp_hash, inline).await?;
+		println!("block number {number} parent 0x{}", hex(&parent_hash));
+		let package = template.package(args, payload)?;
+		submit_and_follow(jam, args.core, &package).await?;
 
 		if !doomed {
 			expected_head = Some(header.clone());
 		}
-		let refine_failed = args.tamper.is_some_and(Tamper::fails_refine) && doomed;
-		link = Some(Link { wp_hash, header, number, refine_failed });
+		link = Some(Link { header, number });
 	}
 
 	// A `Reported` status only means JAM put the work *report* on chain, and a report is produced
@@ -282,54 +226,6 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 		wait_for_head(jam, args.service, &service_local_key, expected_head.as_deref(), timeout)
 			.await?;
 	report(&accumulated, expected_head.as_deref(), observed.as_deref())
-}
-
-/// Apply a tamper kind to the parent a package names and the segment it imports.
-fn plan_link(
-	tamper: Option<Tamper>,
-	parent_hash: [u8; HASH_LEN],
-	honest: Import,
-) -> ([u8; HASH_LEN], Import) {
-	match tamper {
-		None | Some(Tamper::Proof) | Some(Tamper::Stale) => (parent_hash, honest),
-		Some(Tamper::NoImport) => (forged_parent_hash(), Import::None),
-		Some(Tamper::WrongParent) => (forged_parent_hash(), honest),
-		// The parent hashes below are the ones the forged segment *would* hash to, so the block
-		// passes the parent-hash check and the header guard is the only thing left to stop it.
-		// `blake2(<empty>)` in particular is a public constant: without the guard, a zero-segment
-		// exported by a failed package would be a parent anyone could name.
-		Some(Tamper::EmptyImport) =>
-			(jam_state_helpers::blake2_256(&[]), Import::Forged { segment: bundle::zero_segment() }),
-		Some(Tamper::GarbageImport) => (
-			jam_state_helpers::blake2_256(GARBAGE_HEADER),
-			Import::Forged { segment: bundle::head_segment(GARBAGE_HEADER) },
-		),
-	}
-}
-
-/// The work item's import specs, the bundle's inline import data, and the package's prerequisites.
-fn import_fields(import: Import) -> (Vec<ImportSpec>, Vec<ImportData>, Vec<WorkPackageHash>) {
-	match import {
-		Import::None => (Vec::new(), Vec::new(), Vec::new()),
-		Import::Parent { wp_hash, segment } => {
-			let (data, _) = bundle::import_data(segment);
-			// The prerequisite is what orders accumulation; the import is what carries the parent
-			// header. Both name the same package, and together they cost 2 of the 8 dependencies.
-			(
-				vec![ImportSpec { root: RootIdentifier::Indirect(wp_hash), index: 0 }],
-				vec![data],
-				vec![wp_hash],
-			)
-		},
-		Import::Forged { segment } => {
-			let (data, root) = bundle::import_data(segment);
-			(
-				vec![ImportSpec { root: RootIdentifier::Direct(root), index: 0 }],
-				vec![data],
-				Vec::new(),
-			)
-		},
-	}
 }
 
 /// Say whether the run ended where it should have.
@@ -348,7 +244,7 @@ fn report(
 	match expected {
 		Some(head) if Some(head) != before.as_deref() =>
 			println!("para head advanced to {} bytes: {}", head.len(), hex(head)),
-		_ => println!("para head unchanged, as expected: refine rejected the package"),
+		_ => println!("para head unchanged, as expected: the package never applied"),
 	}
 	Ok(())
 }
@@ -504,29 +400,19 @@ impl Template {
 	}
 
 	/// Wrap one payload in a single-item work package.
-	fn package(
-		&self,
-		args: &Args,
-		payload: Vec<u8>,
-		import_segments: Vec<ImportSpec>,
-		prerequisites: Vec<WorkPackageHash>,
-	) -> Result<WorkPackage, String> {
+	fn package(&self, args: &Args, payload: Vec<u8>) -> Result<WorkPackage, String> {
 		let item = WorkItem {
 			service: args.service,
 			code_hash: self.code_hash,
 			payload: WorkPayload(payload),
 			refine_gas_limit: self.refine_gas_limit,
 			accumulate_gas_limit: self.accumulate_gas_limit,
-			import_segments: import_segments
-				.try_into()
-				.map_err(|_| "too many import segments")?,
+			import_segments: Default::default(),
 			extrinsics: Default::default(),
-			// parasim always exports its new head on success. Declaring 0 would make even a
-			// successful refine over-export, which JAM answers with `BadExports`.
-			export_count: 1,
+			// parasim exports nothing since phase 5a. A count that does not match what refine
+			// produces is answered with `BadExports`, whichever way it differs.
+			export_count: 0,
 		};
-		let mut context = self.context.clone();
-		context.prerequisites = prerequisites.into();
 		Ok(WorkPackage {
 			authorization: Authorization::default(),
 			auth_code_host: 0,
@@ -536,7 +422,7 @@ impl Template {
 				code_hash: jam_null_authorizer_bin::HASH.into(),
 				config: Default::default(),
 			},
-			context,
+			context: self.context.clone(),
 			items: vec![item].try_into().expect("one work item always fits; qed"),
 		})
 	}
@@ -608,33 +494,27 @@ async fn wait_for_code(
 	}
 }
 
+/// The hash JAM identifies a work package by: blake2b-256 of its jam-codec encoding, which is what
+/// `jam_std_common::build_encoded_bundle` puts at the front of a bundle.
+fn work_package_hash(package: &WorkPackage) -> WorkPackageHash {
+	jam_std_common::hash_raw(&jam_codec::Encode::encode(package)).into()
+}
+
 /// Submit the package and print each status until JAM reports it.
 ///
 /// Returning at `Reported` rather than at accumulation is what keeps a chain pipelined: the parent
-/// is on chain as a report — which is what lets a guarantor resolve the child's `Indirect` import
-/// — while its head is still nowhere in state, so the child really must import it.
+/// is on chain as a report while its head is still nowhere in state, so the child's lineage really
+/// does have to be settled by accumulate's reorder buffer.
 async fn submit_and_follow(
 	jam: &JamRpcInterface,
 	core: u16,
 	package: &WorkPackage,
-	package_hash: WorkPackageHash,
-	bundle: Option<Vec<u8>>,
 ) -> Result<(), String> {
-	match bundle {
-		Some(bundle) => {
-			let size = bundle.len();
-			jam.submit_bundle(core, bundle)
-				.await
-				.map_err(|e| format!("submitting the bundle: {e}"))?;
-			println!("submitted bundle {package_hash:?} ({size} bytes) to core {core}");
-		},
-		None => {
-			jam.submit_work_package(core, package, Vec::new())
-				.await
-				.map_err(|e| format!("submitting the work package: {e}"))?;
-			println!("submitted {package_hash:?} to core {core}");
-		},
-	}
+	let package_hash = work_package_hash(package);
+	jam.submit_work_package(core, package, Vec::new())
+		.await
+		.map_err(|e| format!("submitting the work package: {e}"))?;
+	println!("submitted {package_hash:?} to core {core}");
 
 	let mut statuses = jam
 		.work_package_status_stream(package_hash, package.context.anchor, false)

@@ -27,9 +27,7 @@ use alloc::vec::Vec;
 use codec::{Decode, DecodeAll, Encode};
 use jam_pvm_common::{declare_service, Service};
 use jam_state_helpers::StateProof;
-use jam_types::{
-	CoreIndex, Hash, ServiceId, Slot, WorkOutput, WorkPackageHash, WorkPayload, SEGMENT_LEN,
-};
+use jam_types::{CoreIndex, Hash, ServiceId, Slot, WorkOutput, WorkPackageHash, WorkPayload};
 use parachain_service_interface::types::{HeadData, ParaId};
 
 use buffer::{BufferedCandidate, HeadStore, Outcome, ReorderBuffer, StoredHead};
@@ -54,9 +52,6 @@ const PARA_HEAD_TAG: u8 = 0x00;
 /// service reads under the same key shape. FIXME: needs a tag agreed with `parachain-service` if
 /// the reorder buffer ever becomes part of the spec.
 const BUFFER_TAG: u8 = 0xf0;
-
-/// Longest SCALE compact-`u32` length prefix, so an exported segment is built in one allocation.
-const MAX_LENGTH_PREFIX_LEN: usize = 5;
 
 /// The `ParaId` parasim falls back to when the authorizer config does not pin
 /// one. Phases 1–2 run under the null authorizer (empty config), which decodes
@@ -142,12 +137,6 @@ fn refine_inner(
 		pov::PoVError::Malformed => ParasimRefineError::MalformedPoV,
 		pov::PoVError::MissingProof => ParasimRefineError::MissingProof,
 	})?;
-	// TODO: remove once the collator ships `export_count = 0`. Nothing imports this segment any
-	// more, but a package that declares an export and produces none is replaced by `BadExports`,
-	// so the export has to stay — and unconditionally, or a rejected item would trip that instead
-	// of reporting its reason.
-	export_head(pov.head)?;
-
 	log_parent_relationship(&pov, proven_head(service_id, para_id, &pov)?.as_deref());
 
 	let head_data = pov.head.to_vec().try_into().map_err(|_| ParasimRefineError::HeadTooLarge)?;
@@ -185,20 +174,6 @@ fn log_parent_relationship(pov: &pov::PoV, proven: Option<&[u8]>) {
 			);
 		},
 	}
-}
-
-/// Publish the new head as segment 0, the only segment parasim exports.
-fn export_head(head: &[u8]) -> Result<(), ParasimRefineError> {
-	let mut segment = Vec::with_capacity(head.len() + MAX_LENGTH_PREFIX_LEN);
-	head.encode_to(&mut segment);
-	// A head is already bounded well below a segment, so this can only fire if that bound moves;
-	// it is here so such a change surfaces as a parasim error rather than a bare host-call failure.
-	if segment.len() > SEGMENT_LEN {
-		return Err(ParasimRefineError::HeadTooLarge);
-	}
-	jam_pvm_common::refine::export_slice(&segment)
-		.map(|_| ())
-		.map_err(|_| ParasimRefineError::ExportFailed)
 }
 
 /// The para head proven to be in JAM state at this package's anchor, or `None` if the proof shows
@@ -424,9 +399,6 @@ pub enum ParasimRefineError {
 	ProofNotAtAnchor,
 	/// The proof does not verify against the anchor state root.
 	InvalidProof,
-	/// The head could not be exported. Nothing imports it any more, but a work item that declares
-	/// an export and produces none is replaced by `BadExports`, so it is still a refine failure.
-	ExportFailed,
 }
 #[cfg(test)]
 mod tests {
@@ -442,15 +414,6 @@ mod tests {
 		header.extend_from_slice(&[0u8; HASH_LEN]); // extrinsics_root
 		header.push(0); // empty Digest
 		header
-	}
-
-	/// A head at the interface's maximum still fits a segment with its length prefix, which is
-	/// what lets refine export it at all.
-	#[test]
-	fn maximal_head_fits_a_segment_works() {
-		let max = parachain_service_interface::types::MAX_HEAD_DATA_SIZE as usize;
-		let head = vec![0u8; max];
-		assert!(head.encode().len() <= SEGMENT_LEN);
 	}
 
 	/// The buffer's rules are all measured against the stored head, so reading it wrong would
