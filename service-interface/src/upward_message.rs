@@ -1,8 +1,8 @@
 //! The upward-message vocabulary a PVF can emit during Refine (spec §3.3, §4.3).
 //!
-//! Each variant corresponds 1:1 to a side-effect host function in §4.3. Refine
-//! buffers them in emission order into the work digest; Accumulate replays the
-//! list in order (§5.1 step 7).
+//! A PVF SCALE-encodes each variant into the generic `send_upward_message` host
+//! call. Refine buffers them in emission order into the work digest; Accumulate
+//! replays the list in order (§5.1 step 7).
 
 extern crate alloc;
 
@@ -17,6 +17,10 @@ use codec::{Compact, Decode, Encode};
 /// Maximum number of upward messages per Refine invocation / `ParachainWorkDigest`.
 /// Spec §4.3.
 pub const MAX_UPWARD_MESSAGES_PER_DIGEST: u32 = 1024;
+
+/// Maximum summed SCALE-encoded size of the upward messages emitted by one
+/// Refine invocation. The enclosing vector prefix is not included. Spec §4.3.
+pub const MAX_UPWARD_MESSAGES_SIZE: usize = 40 * 1024;
 
 /// Per-call cap on `set_validator_keys` chunks. Spec §4.3, §5.3.
 pub const SET_VALIDATOR_KEYS_MAX_KEYS: usize = 30;
@@ -46,9 +50,7 @@ pub enum Target {
 /// supplied. `id` is caller-chosen and echoed back in
 /// `AccumulateLog::TransferFailed` so the parachain can match up the failure.
 ///
-/// Doubles as the `transfer_out` host-call argument encoding: seven fields exceed
-/// the six-register window, so the guest passes this SCALE-encoded (D-10). Field
-/// order is the design doc's, so the two encodings are identical.
+/// Field order is part of the stable upward-message SCALE ABI.
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub struct TransferOutArgs {
 	pub source: Option<ServiceId>,
@@ -169,15 +171,12 @@ impl UpwardMessage {
 			self,
 			Self::TransferOut { .. } |
 				Self::SetValidatorKeys { .. } |
-				Self::ConsumeTransfersUpTo(_) |
+				Self::CleanUpBucketsUpTo(_) |
 				Self::UpgradeService { .. } |
 				Self::RemoveServiceStorage { .. } |
 				Self::EjectService { .. } |
 				Self::SetServiceSupervisor { .. } |
-				Self::CreateService(_) |
-				Self::SetValidatorKeys { .. } |
-				Self::CleanUpBucketsUpTo(_) |
-				Self::UpgradeService { .. }
+				Self::CreateService(_)
 		) || matches!(
 			self,
 			Self::Forget { target: Target::Service(_), .. } |

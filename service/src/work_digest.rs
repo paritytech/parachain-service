@@ -70,13 +70,15 @@ pub enum RefineLog {
 	/// Opaque payload supplied by the PVF via `report_error(data)` before
 	/// failing the execution (max 1024 bytes).
 	Opaque(BoundedVec<u8, ConstU32<1024>>),
-	/// A `set_validator_keys` chunk contained more than 30 keys, or
-	/// `set_validator_keys` was called more than once in a single Refine
-	/// invocation. See §4.3, §5.3.
-	SetValidatorKeysTooManyKeys,
+	/// `set_validator_keys` was called more than once in one Refine invocation.
+	SetValidatorKeysRepeated,
+	/// A `SetValidatorKeys` message carried more than 30 keys.
+	TooManyValidatorKeys,
 	/// The PVF emitted more than 1024 upward messages in a single Refine
 	/// invocation. See §4.3.
 	TooManyUpwardMessages,
+	/// The summed SCALE encoding of the upward messages exceeded 40 KiB.
+	UpwardMessagesTooLarge,
 	/// The PVF invoked a host function restricted to another parachain
 	/// (Asset Hub or the Coretime chain). See §4.3.
 	RestrictedHostFunction,

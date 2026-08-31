@@ -16,17 +16,17 @@
 //! structured [`RefineLog`] error, or — on an abnormal PVF exit — panic the
 //! whole Refine invocation (§4.2).
 
-use crate::work_digest::{HeadData, RefineLog, ValidationCodeHash, MAX_REPORT_ERROR_PAYLOAD};
+use crate::work_digest::{HeadData, RefineLog, MAX_REPORT_ERROR_PAYLOAD};
 use alloc::vec::Vec;
-use codec::DecodeAll;
+use codec::{DecodeAll, Encode as ScaleEncode};
 use jam_codec::Encode as JamEncode;
 use jam_pvm_common::refine;
 use jam_types::Hash;
 use parachain_service_interface::{
 	host_call::HostCall,
-	types::{ParaId, ServiceId, Timeslot},
+	types::{ParaId, ServiceId},
 	upward_message::{
-		CreateServiceArgs, Target, TransferOutArgs, UpwardMessage, UpwardMessages,
+		UpwardMessage, UpwardMessages, MAX_UPWARD_MESSAGES_PER_DIGEST, MAX_UPWARD_MESSAGES_SIZE,
 		SET_VALIDATOR_KEYS_MAX_KEYS,
 	},
 };
@@ -39,8 +39,6 @@ const A0: usize = Reg::A0 as usize;
 const A1: usize = Reg::A1 as usize;
 const A2: usize = Reg::A2 as usize;
 const A3: usize = Reg::A3 as usize;
-const A4: usize = Reg::A4 as usize;
-const A5: usize = Reg::A5 as usize;
 
 /// Side-effect buffer during the refine invoke-PVM loop.
 pub struct ExecutorState {
@@ -55,6 +53,8 @@ pub struct ExecutorState {
 	head_data: Option<HeadData>,
 	/// `set_validator_keys` may be called at most once per Refine (§4.3).
 	set_validator_keys_called: bool,
+	/// Sum of each message's SCALE encoding, excluding the vector prefix.
+	upward_messages_size: usize,
 }
 
 impl ExecutorState {
@@ -65,6 +65,7 @@ impl ExecutorState {
 			parent_head_hash: None,
 			head_data: None,
 			set_validator_keys_called: false,
+			upward_messages_size: 0,
 		}
 	}
 
@@ -175,107 +176,12 @@ impl ExecutorState {
 					Err(_) => panic!("PVF `set_head` >4 KiB head data; §4.2 whole-refine failure"),
 				});
 			},
-			HostCall::RequestCodeUpgrade => {
-				let hash = ValidationCodeHash(peek_hash(handle, regs[A0]));
-				self.push(UpwardMessage::RequestCodeUpgrade {
-					hash,
-					len: (regs[A1] as u32).into(),
-				})?;
-			},
-			HostCall::Solicit => {
-				let target = peek_target(regs[A0], regs[A1])?;
-				let hash = peek_hash(handle, regs[A2]);
-				self.push(UpwardMessage::Solicit { target, hash, len: (regs[A3] as u32).into() })?;
-			},
-			HostCall::EjectService => {
-				self.push(UpwardMessage::EjectService { service: regs[A0] as ServiceId })?;
-			},
-			HostCall::SetServiceSupervisor => {
-				self.push(UpwardMessage::SetServiceSupervisor {
-					service: regs[A0] as ServiceId,
-					new_supervisor: regs[A1] as ServiceId,
-				})?;
-			},
-			HostCall::CreateService => {
-				// Eight fields exceed the six-register window, so the guest hands
-				// over a SCALE-encoded `CreateServiceArgs` blob instead (D-10).
+			HostCall::SendUpwardMessage => {
 				let encoded = peek_bytes(handle, regs[A0], regs[A1]);
-				let args = CreateServiceArgs::decode_all(&mut &encoded[..])
-					.map_err(|_| RefineLog::MalformedPayload)?;
-				self.push(UpwardMessage::CreateService(args))?;
-			},
-			HostCall::Forget => {
-				let target = peek_target(regs[A0], regs[A1])?;
-				let hash = peek_hash(handle, regs[A2]);
-				self.push(UpwardMessage::Forget { target, hash, len: (regs[A3] as u32).into() })?;
-			},
-			HostCall::RemoveServiceStorage => {
-				let service = regs[A0] as ServiceId;
-				let key = peek_bytes(handle, regs[A1], regs[A2]);
-				self.push(UpwardMessage::RemoveServiceStorage { service, key })?;
-			},
-			HostCall::KvSet => {
-				let key = peek_bytes(handle, regs[A0], regs[A1]);
-				let value = peek_bytes(handle, regs[A2], regs[A3]);
-				self.push(UpwardMessage::SetKV { key, value })?;
-			},
-			HostCall::KvRemove => {
-				let para_id = ParaId(regs[A0] as u32);
-				let key = peek_bytes(handle, regs[A1], regs[A2]);
-				self.push(UpwardMessage::RemoveKV { para_id, key })?;
-			},
-			HostCall::TransferOut => {
-				// Seven fields exceed the six-register window, so the guest hands
-				// over a SCALE-encoded `TransferOutArgs` blob instead (D-10).
-				let encoded = peek_bytes(handle, regs[A0], regs[A1]);
-				let args = TransferOutArgs::decode_all(&mut &encoded[..])
-					.map_err(|_| RefineLog::MalformedPayload)?;
-				self.push(UpwardMessage::TransferOut(args))?;
-			},
-			HostCall::AssignCore => {
-				let core = regs[A0] as u16;
-				let count = regs[A2] as usize;
-				let new_assigner = (regs[A3] != 0).then_some(regs[A4] as ServiceId);
-				let queue_len_ok = count >= 1 && count <= crate::constants::AUTHORIZER_QUEUE_LEN;
-				let handoff_ok =
-					new_assigner.is_none() || count == crate::constants::AUTHORIZER_QUEUE_LEN;
-				if !queue_len_ok || !handoff_ok {
-					return Err(RefineLog::InvalidAuthorizerQueue);
-				}
-				let raw = peek_bytes(handle, regs[A1], (count * 32) as u64);
-				let queue = raw
-					.chunks_exact(32)
-					.map(|c| c.try_into().expect("chunks_exact(32); qed"))
-					.collect::<Vec<[u8; 32]>>();
-				let jam_slot = regs[A5] as Timeslot;
-				self.push(UpwardMessage::AssignCore { core, queue, new_assigner, jam_slot })?;
-			},
-			HostCall::SetValidatorKeys => {
-				let count = regs[A1] as usize;
-				// At most once per Refine, at most 30 keys per chunk (§4.3, §5.3).
-				if self.set_validator_keys_called || count > SET_VALIDATOR_KEYS_MAX_KEYS {
-					return Err(RefineLog::SetValidatorKeysTooManyKeys);
-				}
-				self.set_validator_keys_called = true;
-				let raw = peek_bytes(handle, regs[A0], (count * 336) as u64);
-				let keys = raw
-					.chunks_exact(336)
-					.map(|c| c.try_into().expect("chunks_exact(336); qed"))
-					.collect::<Vec<[u8; 336]>>();
-				let is_last = regs[A2] != 0;
-				self.push(UpwardMessage::SetValidatorKeys { keys, is_last })?;
-			},
-			HostCall::CleanUpBucketsUpTo => {
-				self.push(UpwardMessage::CleanUpBucketsUpTo(regs[A0]))?;
-			},
-			HostCall::ParachainServiceUpgrade => {
-				let code_hash = peek_hash(handle, regs[A0]);
-				self.push(UpwardMessage::UpgradeService {
-					code_hash,
-					len: (regs[A1] as u32).into(),
-					min_acc_gas: regs[A2],
-					min_memo_gas: regs[A3],
-				})?;
+				let msg = UpwardMessage::decode_all(&mut &encoded[..]).unwrap_or_else(|_| {
+					panic!("PVF sent malformed upward message; §4.2 whole-refine failure")
+				});
+				self.push(msg)?;
 			},
 			HostCall::ReportError => {
 				// Abort the PVF, failing Refine with the opaque payload; bytes
@@ -286,50 +192,44 @@ impl ExecutorState {
 					payload.try_into().expect("truncated to the bound; qed"),
 				));
 			},
-			HostCall::ParachainSetHead => {
-				let para_id = ParaId(regs[A0] as u32);
-				let bytes = peek_bytes(handle, regs[A1], regs[A2]);
-				// An oversized head is an abnormal PVF exit: it fails the whole
-				// refine invocation, not the digest (§4.2).
-				let new_head =
-					match bytes.try_into() {
-						Ok(head) => head,
-						Err(_) => {
-							panic!("PVF `parachain_set_head` >4 KiB head data; §4.2 whole-refine failure")
-						},
-					};
-				self.push(UpwardMessage::ParachainSetHead { para_id, new_head })?;
-			},
-			HostCall::ParachainSetValidationCode => {
-				let para_id = ParaId(regs[A0] as u32);
-				let hash = ValidationCodeHash(peek_hash(handle, regs[A1]));
-				self.push(UpwardMessage::ParachainSetValidationCode {
-					para_id,
-					new_validation_code_hash: hash,
-					new_validation_code_len: (regs[A2] as u32).into(),
-				})?;
-			},
-			HostCall::ParachainCleanUp => {
-				self.push(UpwardMessage::ParachainCleanUp(ParaId(regs[A0] as u32)))?;
-			},
-			HostCall::ParachainSetStateBalance => {
-				let para_id = ParaId(regs[A0] as u32);
-				self.push(UpwardMessage::ParachainSetStateBalance {
-					para_id,
-					new_total: regs[A1].into(),
-				})?;
-			},
 		}
 		Ok(())
 	}
 
 	/// Buffer an upward message, aborting on a parachain-restriction violation
-	/// (§4.3) or overflow of the 1024-message cap.
+	/// (§4.3), the 1024-message cap, or the 40 KiB encoded-size budget.
 	fn push(&mut self, msg: UpwardMessage) -> Result<(), RefineLog> {
+		if self.umps.len() == MAX_UPWARD_MESSAGES_PER_DIGEST as usize {
+			return Err(RefineLog::TooManyUpwardMessages);
+		}
+		if let UpwardMessage::SetValidatorKeys { keys, .. } = &msg {
+			if self.set_validator_keys_called {
+				return Err(RefineLog::SetValidatorKeysRepeated);
+			}
+			if keys.len() > SET_VALIDATOR_KEYS_MAX_KEYS {
+				return Err(RefineLog::TooManyValidatorKeys);
+			}
+			self.set_validator_keys_called = true;
+		}
+		if let UpwardMessage::AssignCore { queue, new_assigner, .. } = &msg {
+			let queue_len_ok =
+				!queue.is_empty() && queue.len() <= crate::constants::AUTHORIZER_QUEUE_LEN;
+			let handoff_ok =
+				new_assigner.is_none() || queue.len() == crate::constants::AUTHORIZER_QUEUE_LEN;
+			if !queue_len_ok || !handoff_ok {
+				return Err(RefineLog::InvalidAuthorizerQueue);
+			}
+		}
 		if !msg.allowed_for(self.para_id) {
 			return Err(RefineLog::RestrictedHostFunction);
 		}
-		self.umps.try_push(msg).map_err(|_| RefineLog::TooManyUpwardMessages)
+		let encoded_size = msg.encoded_size();
+		if self.upward_messages_size.saturating_add(encoded_size) > MAX_UPWARD_MESSAGES_SIZE {
+			return Err(RefineLog::UpwardMessagesTooLarge);
+		}
+		self.umps.try_push(msg).map_err(|_| RefineLog::TooManyUpwardMessages)?;
+		self.upward_messages_size += encoded_size;
+		Ok(())
 	}
 }
 
@@ -345,6 +245,7 @@ fn copy_out(handle: u64, data: Option<&[u8]>, out_ptr: u64, out_cap: u64) -> u64
 	data.len() as u64
 }
 
+/// Read `len` bytes of guest memory.
 fn peek_bytes(handle: u64, ptr: u64, len: u64) -> Vec<u8> {
 	if len == 0 {
 		return Vec::new();
@@ -353,16 +254,7 @@ fn peek_bytes(handle: u64, ptr: u64, len: u64) -> Vec<u8> {
 		.unwrap_or_else(|_| panic!("PVF guest memory peek failed; §4.2 whole-refine failure"))
 }
 
-/// Decode a [`Target`] from the `(kind, id)` register pair. An unknown kind is a
-/// malformed call, not an abnormal exit: the guest chose the discriminant.
-fn peek_target(kind: u64, id: u64) -> Result<Target, RefineLog> {
-	match kind {
-		0 => Ok(Target::Parachain(ParaId(id as u32))),
-		1 => Ok(Target::Service(id as ServiceId)),
-		_ => Err(RefineLog::MalformedPayload),
-	}
-}
-
+/// Read a 32-byte hash from guest memory.
 fn peek_hash(handle: u64, ptr: u64) -> Hash {
 	let bytes = peek_bytes(handle, ptr, 32);
 	bytes.try_into().expect("peeked exactly 32 bytes; qed")

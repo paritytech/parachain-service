@@ -81,8 +81,8 @@ pub enum Config {
 }
 
 /// One scripted side-effect host call, driven from the block body in tests via
-/// [`Config::Mock`]. Mirrors the §4.3 side-effect host functions with primitive
-/// field types so the test crate composes them freely.
+/// [`Config::Mock`]. Mirrors the upward-message variants with primitive field
+/// types so the test crate composes them freely.
 #[derive(Clone, Encode, Decode, Debug, PartialEq, Eq)]
 pub enum MockAction {
 	KVSet(Vec<u8>, Vec<u8>),
@@ -327,55 +327,9 @@ mod host {
 		#[polkavm_import(index = 13)]
 		fn set_head_raw(ptr: u32, len: u32);
 		#[polkavm_import(index = 14)]
-		fn request_code_upgrade_raw(hash_ptr: u32, len: u32);
+		fn send_upward_message_raw(ptr: u32, len: u32);
 		#[polkavm_import(index = 15)]
-		fn solicit_raw(target_kind: u32, target_id: u32, hash_ptr: u32, len: u32);
-		#[polkavm_import(index = 16)]
-		fn forget_raw(target_kind: u32, target_id: u32, hash_ptr: u32, len: u32);
-		#[polkavm_import(index = 17)]
-		fn kv_set_raw(key_ptr: u32, key_len: u32, value_ptr: u32, value_len: u32);
-		#[polkavm_import(index = 18)]
-		fn kv_remove_raw(para_id: u32, key_ptr: u32, key_len: u32);
-		#[polkavm_import(index = 19)]
-		fn transfer_out_raw(args_ptr: u32, args_len: u32);
-		#[polkavm_import(index = 20)]
-		fn assign_core_raw(
-			core: u32,
-			queue_ptr: u32,
-			queue_count: u32,
-			has_assigner: u32,
-			assigner: u32,
-			jam_slot: u32,
-		);
-		#[polkavm_import(index = 21)]
-		fn set_validator_keys_raw(keys_ptr: u32, count: u32, is_last: u32);
-		#[polkavm_import(index = 22)]
-		fn clean_up_buckets_up_to_raw(bucket_id: u64);
-		#[polkavm_import(index = 23)]
-		fn parachain_service_upgrade_raw(
-			hash_ptr: u32,
-			len: u32,
-			min_acc_gas: u64,
-			min_memo_gas: u64,
-		);
-		#[polkavm_import(index = 24)]
 		fn report_error_raw(ptr: u32, len: u32);
-		#[polkavm_import(index = 25)]
-		fn parachain_set_head_raw(para_id: u32, head_ptr: u32, head_len: u32);
-		#[polkavm_import(index = 26)]
-		fn parachain_set_validation_code_raw(para_id: u32, hash_ptr: u32, len: u32);
-		#[polkavm_import(index = 27)]
-		fn parachain_clean_up_raw(para_id: u32);
-		#[polkavm_import(index = 28)]
-		fn parachain_set_state_balance_raw(para_id: u32, total: u64);
-		#[polkavm_import(index = 29)]
-		fn remove_service_storage_raw(service: u32, key_ptr: u32, key_len: u32);
-		#[polkavm_import(index = 30)]
-		fn eject_service_raw(service: u32);
-		#[polkavm_import(index = 31)]
-		fn set_service_supervisor_raw(service: u32, new_supervisor: u32);
-		#[polkavm_import(index = 32)]
-		fn create_service_raw(args_ptr: u32, args_len: u32);
 	}
 
 	pub fn set_parent_head_hash(hash: &[u8; 32]) {
@@ -432,101 +386,108 @@ mod host {
 		unsafe { export_raw(data.as_ptr() as u32, data.len() as u32) }
 	}
 
-	/// The `(kind, id)` register pair a `Target` is passed as; must agree with
-	/// `peek_target` in the service's `pvf::executor`.
-	fn target_regs(target: &parachain_service_interface::upward_message::Target) -> (u32, u32) {
-		use parachain_service_interface::upward_message::Target;
-		match target {
-			Target::Parachain(para_id) => (0, para_id.0),
-			Target::Service(service) => (1, *service),
-		}
-	}
-
 	/// Fire one scripted side-effect host call. Entry-point-level actions
 	/// (`DuplicateSetHead`, `SkipHeadDeclarations`) are handled by
 	/// `jam_validate_block` itself and are no-ops here.
 	pub fn run_action(action: &MockAction) {
-		match action {
-			MockAction::KVSet(key, value) => unsafe {
-				kv_set_raw(
-					key.as_ptr() as u32,
-					key.len() as u32,
-					value.as_ptr() as u32,
-					value.len() as u32,
-				)
+		use parachain_service_interface::{
+			types::{HeadData as ServiceHeadData, ParaId, ValidationCodeHash},
+			upward_message::{Target, UpwardMessage},
+		};
+
+		let message = match action {
+			MockAction::KVSet(key, value) => {
+				Some(UpwardMessage::SetKV { key: key.clone(), value: value.clone() })
 			},
-			MockAction::KVRemove { para_id, key } => unsafe {
-				kv_remove_raw(*para_id, key.as_ptr() as u32, key.len() as u32)
+			MockAction::KVRemove { para_id, key } => {
+				Some(UpwardMessage::RemoveKV { para_id: ParaId(*para_id), key: key.clone() })
 			},
-			MockAction::Solicit { target, hash, len } => {
-				let (kind, id) = target_regs(target);
-				unsafe { solicit_raw(kind, id, hash.as_ptr() as u32, *len) }
+			MockAction::Solicit { target, hash, len } => Some(UpwardMessage::Solicit {
+				target: *target,
+				hash: *hash,
+				len: (*len).into(),
+			}),
+			MockAction::EjectService { service } =>
+				Some(UpwardMessage::EjectService { service: *service }),
+			MockAction::SetServiceSupervisor { service, new_supervisor } =>
+				Some(UpwardMessage::SetServiceSupervisor {
+					service: *service,
+					new_supervisor: *new_supervisor,
+				}),
+			MockAction::CreateService(args) => Some(UpwardMessage::CreateService(args.clone())),
+			MockAction::Forget { target, hash, len } => Some(UpwardMessage::Forget {
+				target: *target,
+				hash: *hash,
+				len: (*len).into(),
+			}),
+			MockAction::RemoveServiceStorage { service, key } =>
+				Some(UpwardMessage::RemoveServiceStorage {
+					service: *service,
+					key: key.clone(),
+				}),
+			MockAction::RequestCodeUpgrade { hash, len } => {
+				Some(UpwardMessage::RequestCodeUpgrade {
+					hash: ValidationCodeHash(*hash),
+					len: (*len).into(),
+				})
 			},
-			MockAction::EjectService { service } => unsafe { eject_service_raw(*service) },
-			MockAction::SetServiceSupervisor { service, new_supervisor } => unsafe {
-				set_service_supervisor_raw(*service, *new_supervisor)
+			MockAction::TransferOut(args) => Some(UpwardMessage::TransferOut(args.clone())),
+			MockAction::AssignCore { core, queue, assigner, jam_slot } => {
+				Some(UpwardMessage::AssignCore {
+					core: *core as u16,
+					queue: queue.clone(),
+					new_assigner: *assigner,
+					jam_slot: *jam_slot,
+				})
 			},
-			MockAction::CreateService(args) => {
-				let encoded = args.encode();
-				unsafe { create_service_raw(encoded.as_ptr() as u32, encoded.len() as u32) }
+			MockAction::SetValidatorKeys { keys, is_last } => {
+				Some(UpwardMessage::SetValidatorKeys {
+					keys: keys.chunks_exact(336).map(|key| key.try_into().unwrap()).collect(),
+					is_last: *is_last,
+				})
 			},
-			MockAction::Forget { target, hash, len } => {
-				let (kind, id) = target_regs(target);
-				unsafe { forget_raw(kind, id, hash.as_ptr() as u32, *len) }
+			MockAction::CleanUpBucketsUpTo { bucket_id } => {
+				Some(UpwardMessage::CleanUpBucketsUpTo(*bucket_id))
 			},
-			MockAction::RemoveServiceStorage { service, key } => unsafe {
-				remove_service_storage_raw(*service, key.as_ptr() as u32, key.len() as u32)
+			MockAction::ServiceUpgrade { code_hash, len, min_acc_gas, min_memo_gas } => {
+				Some(UpwardMessage::UpgradeService {
+					code_hash: *code_hash,
+					len: (*len).into(),
+					min_acc_gas: *min_acc_gas,
+					min_memo_gas: *min_memo_gas,
+				})
 			},
-			MockAction::RequestCodeUpgrade { hash, len } => unsafe {
-				request_code_upgrade_raw(hash.as_ptr() as u32, *len)
+			MockAction::ParachainSetHead { para_id, head } => {
+				Some(UpwardMessage::ParachainSetHead {
+					para_id: ParaId(*para_id),
+					new_head: ServiceHeadData::try_from(head.clone()).unwrap(),
+				})
 			},
-			MockAction::TransferOut(args) => {
-				let encoded = args.encode();
-				unsafe { transfer_out_raw(encoded.as_ptr() as u32, encoded.len() as u32) }
+			MockAction::ParachainSetValidationCode { para_id, hash, len } => {
+				Some(UpwardMessage::ParachainSetValidationCode {
+					para_id: ParaId(*para_id),
+					new_validation_code_hash: ValidationCodeHash(*hash),
+					new_validation_code_len: (*len).into(),
+				})
 			},
-			MockAction::AssignCore { core, queue, assigner, jam_slot } => unsafe {
-				assign_core_raw(
-					*core,
-					queue.as_ptr() as u32,
-					queue.len() as u32,
-					assigner.is_some() as u32,
-					assigner.unwrap_or(0),
-					*jam_slot,
-				)
+			MockAction::ParachainCleanUp { para_id } => {
+				Some(UpwardMessage::ParachainCleanUp(ParaId(*para_id)))
 			},
-			MockAction::SetValidatorKeys { keys, is_last } => unsafe {
-				set_validator_keys_raw(
-					keys.as_ptr() as u32,
-					(keys.len() / 336) as u32,
-					*is_last as u32,
-				)
-			},
-			MockAction::CleanUpBucketsUpTo { bucket_id } => unsafe {
-				clean_up_buckets_up_to_raw(*bucket_id)
-			},
-			MockAction::ServiceUpgrade { code_hash, len, min_acc_gas, min_memo_gas } => unsafe {
-				parachain_service_upgrade_raw(
-					code_hash.as_ptr() as u32,
-					*len,
-					*min_acc_gas,
-					*min_memo_gas,
-				)
+			MockAction::ParachainSetStateBalance { para_id, total } => {
+				Some(UpwardMessage::ParachainSetStateBalance {
+					para_id: ParaId(*para_id),
+					new_total: (*total).into(),
+				})
 			},
 			MockAction::ReportError(data) => unsafe {
-				// Aborts the PVF host-side; execution never resumes.
-				report_error_raw(data.as_ptr() as u32, data.len() as u32)
+				report_error_raw(data.as_ptr() as u32, data.len() as u32);
+				None
 			},
-			MockAction::ParachainSetHead { para_id, head } => unsafe {
-				parachain_set_head_raw(*para_id, head.as_ptr() as u32, head.len() as u32)
-			},
-			MockAction::ParachainSetValidationCode { para_id, hash, len } => unsafe {
-				parachain_set_validation_code_raw(*para_id, hash.as_ptr() as u32, *len)
-			},
-			MockAction::ParachainCleanUp { para_id } => unsafe { parachain_clean_up_raw(*para_id) },
-			MockAction::ParachainSetStateBalance { para_id, total } => unsafe {
-				parachain_set_state_balance_raw(*para_id, *total)
-			},
-			MockAction::DuplicateSetHead(_) | MockAction::SkipHeadDeclarations => {},
+			MockAction::DuplicateSetHead(_) | MockAction::SkipHeadDeclarations => None,
+		};
+		if let Some(message) = message {
+			let encoded = message.encode();
+			unsafe { send_upward_message_raw(encoded.as_ptr() as u32, encoded.len() as u32) }
 		}
 	}
 }

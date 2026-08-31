@@ -37,42 +37,8 @@ pub enum HostCall {
 	SetParentHeadHash = 12,
 	/// Declare the new head data this parachain block produced.
 	SetHead = 13,
-	/// Signal a PVF code upgrade request.
-	RequestCodeUpgrade = 14,
-	/// Mediated forward of JAM's `solicit`.
-	Solicit = 15,
-	/// Mediated forward of JAM's `forget`.
-	Forget = 16,
-	/// Upsert key_value_storage entry.
-	KvSet = 17,
-	/// Remove key_value_storage entry.
-	KvRemove = 18,
-	/// Transfer balance to another JAM service.
-	TransferOut = 19,
-	/// Schedule a core's assign.
-	AssignCore = 20,
-	/// Append a chunk of upcoming validator keys.
-	SetValidatorKeys = 21,
-	/// Remove queued transfer buckets up to a bucket id.
-	CleanUpBucketsUpTo = 22,
-	/// Replace the Parachain Service's own service code.
-	ParachainServiceUpgrade = 23,
+	/// Append one SCALE-encoded upward message to the work digest.
+	SendUpwardMessage = 14,
 	/// Abort the PVF with an opaque error payload.
-	ReportError = 24,
-	/// Upsert a parachain's head data (Coretime chain only).
-	ParachainSetHead = 25,
-	/// Upsert a parachain's validation code (Coretime chain only).
-	ParachainSetValidationCode = 26,
-	/// Remove all per-parachain state (Coretime chain only).
-	ParachainCleanUp = 27,
-	/// Overwrite a parachain's total state balance (Coretime chain only).
-	ParachainSetStateBalance = 28,
-	/// Delete a key from a supervised service's storage (Asset Hub only).
-	RemoveServiceStorage = 29,
-	/// Destroy an empty supervised service (Asset Hub only).
-	EjectService = 30,
-	/// Hand a supervised service to another supervisor (Asset Hub only).
-	SetServiceSupervisor = 31,
-	/// Create a service supervised by this one (Asset Hub only).
-	CreateService = 32,
+	ReportError = 15,
 }

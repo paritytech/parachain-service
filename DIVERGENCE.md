@@ -97,24 +97,11 @@ probably follow Rust here.
 **Spec feedback**: §4.1/§4.3 should state whether the failure reason is the first violation in
 emission order or the highest-priority violation in the whole list.
 
-## M-5: `RefineOutputTooLarge` fires at a different threshold
+## M-5: `RefineOutputTooLarge` threshold — resolved
 
-**Rust is right; the model is conservative.**
-
-`quint/refine.qnt:119-125` charges the worst case on both variable parts — head data at 4 098 B
-and the auth trace at 256 B — so its message budget is a fixed ~44.7 KiB.
-`service/src/lib.rs:41-54` measures the actual encoded digest plus the actual
-`auth_trace().len()` against `MAX_REFINE_OUTPUT_SIZE`.
-
-A candidate with small head data therefore gets roughly 4 KiB more message room in Rust than
-the model allows. Rust's is the Gray-Paper-accurate check — `W_R` bounds real octets — so the
-model is merely stricter, not unsafe. But the boundary is not the same, and any replay near it
-will diverge.
-
-**Spec feedback**: §4.1 step 7 should say the check is against actual encoded size; the model
-should measure `headData` rather than charging its cap. This is blocked on the model's
-`HeadData` being an opaque `int` with no measurable length (the same abstraction that makes
-`upwardMessageSize` charge `ParachainSetHead` its 4 102 B worst case, `quint/refine.qnt:106`).
+Quint `4cff218575` introduced the separate 40 KiB encoded upward-message budget. Rust enforces
+that streaming budget in `send_upward_message`, then retains the actual Gray Paper 48 KiB
+combined-output check as a backstop.
 
 ## M-6: `UpgradeService` ignores the declared `len`
 
