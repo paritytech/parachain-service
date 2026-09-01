@@ -20,6 +20,9 @@ members = [
 exclude = [
     "vendor/polkadot-sdk-companion",
     "vendor/polkajam",
+    # An experiment, not part of the product: `authorizer-sr25519-experiment/README.md` says what
+    # it measures. Its own workspace on purpose, so a normal workspace build never touches it.
+    "authorizer-sr25519-experiment",
 ]
 resolver = "2"
 

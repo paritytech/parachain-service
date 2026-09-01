@@ -1,0 +1,55 @@
+# EXPERIMENT — not part of the product. See `README.md` for the question this answers, the
+# measured numbers, and how to re-run it.
+#
+# Its own workspace on purpose: the repo root lists this directory under `[workspace] exclude`,
+# so `cargo build`/`cargo test`/`cargo clippy` at the root never build it and the root
+# `Cargo.lock` never mentions it. That means no `workspace = true` inheritance is available
+# here — every dependency, profile and lint setting below is spelled out, and must be kept in
+# step with the shipping `authorizer` crate by hand for the comparison to stay honest.
+[workspace]
+members = ["bin"]
+resolver = "2"
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = [] }
+
+# Copied verbatim from the root workspace: the authorizer blob's size depends on both.
+[profile.production]
+inherits = "release"
+lto = true
+codegen-units = 1
+debug = false
+debug-assertions = false
+overflow-checks = false
+
+[profile.production-authorizer]
+inherits = "production"
+opt-level = "z"
+
+[package]
+name = "parachain-authorizer-sr25519-experiment"
+version = "0.1.0"
+edition = "2021"
+authors = ["Parity Technologies <admin@parity.io>"]
+repository = "https://github.com/paritytech/parachain-service"
+license = "Apache-2.0"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+jam-types = { path = "../vendor/polkajam/crates/jam-types", default-features = false }
+parachain-service-interface = { path = "../service-interface", default-features = false }
+jam-pvm-common = { path = "../vendor/polkajam/crates/jam-pvm-common", default-features = false, features = ["authorizer", "logging"] }
+polkavm-derive = { version = "0.36.0", default-features = false }
+codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }
+blake2b_simd = { version = "1", default-features = false, features = ["uninline_portable"] }
+primitive-types = { version = "0.13.1", default-features = false, features = ["codec"] }
+
+# The one line that differs from the shipping authorizer's dependencies.
+#
+# `default-features = false` is what keeps `getrandom` out: schnorrkel's default features are
+# `std` + `getrandom`, and on a bare RISC-V guest there is no `getrandom` backend to link. The
+# verify-only path never draws randomness, so `alloc` alone is enough — see `README.md`.
+schnorrkel = { version = "0.11.5", default-features = false, features = ["alloc"] }
