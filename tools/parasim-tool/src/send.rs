@@ -13,23 +13,25 @@
 //! still in flight — refined but not accumulated — and nothing but accumulate's reorder buffer
 //! puts them back in order. That is the pipelining case, and it is only testable from a single
 //! invocation, because the packages have to overlap in flight.
+//!
+//! Every package rides the para's AURA authorizer, signed as whichever dev collator the lookup
+//! anchor's slot names. There is no unauthorized lane left: parasim reads the para id from the
+//! authorizer config and refuses a package that has none.
 
 use std::time::Duration;
 
-use futures::StreamExt as _;
-
 use codec::Encode as _;
 
-use crate::format::hex;
-use jam_interface::{
-	JamChainSource, JamStateSource, JamWorkPackageSubmission, StorageKey, WorkPackageStatus,
+use crate::{
+	aura::Aura,
+	cores,
+	format::hex,
+	package::{submit_and_follow, Anchor},
 };
+use jam_interface::{JamChainSource, JamStateSource, StorageKey};
 use jam_rpc_interface::JamRpcInterface;
 use jam_state_helpers::StateProof;
-use jam_types::{
-	Authorization, Authorizer, CodeHash, RefineContext, ServiceId, WorkItem, WorkPackage,
-	WorkPackageHash, WorkPayload,
-};
+use jam_types::{ServiceId, WorkPackage};
 use parachain_service_interface::{
 	candidate::ParachainCandidate,
 	types::{ParaId, ValidationCodeHash},
@@ -37,12 +39,6 @@ use parachain_service_interface::{
 
 /// Proof sizes are bounded by the trie depth, so this only has to be comfortably large.
 const PROOF_SIZE_LIMIT: u32 = 1024 * 1024;
-/// How long to follow a package before giving up on it.
-const FOLLOW_TIMEOUT: Duration = Duration::from_secs(60);
-/// How long to wait for a freshly created service's code to reach the lookup anchor.
-const CODE_WAIT_TIMEOUT: Duration = Duration::from_secs(120);
-/// Gap between code-availability checks; finality moves once per slot at best.
-const CODE_POLL_INTERVAL: Duration = Duration::from_secs(3);
 /// How long to wait for accumulate to store the new head after the last package is reported.
 const HEAD_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
 /// Extra head-wait budget per package, since a chain accumulates one link at a time.
@@ -60,6 +56,7 @@ pub struct Args {
 	pub chain: usize,
 	pub tamper: Option<Tamper>,
 	pub tamper_at: usize,
+	pub aura: Aura,
 }
 
 /// A deliberate defect to plant in one package of the chain, so that the rejection it should draw
@@ -128,17 +125,30 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 	// built against. Holding it fixed across the chain is also what makes the run meaningful —
 	// every package after the first proves a head that predates its own parent, so accumulate is
 	// the only place its lineage can be settled.
-	let anchor = jam.best_block().await.map_err(|e| format!("best block: {e}"))?;
-	let anchor_state_root =
-		jam.state_root(anchor.header_hash).await.map_err(|e| format!("state root: {e}"))?;
-	println!("anchor {:?} state root {:?}", anchor.header_hash, anchor_state_root);
+	let anchor = Anchor::fetch(jam, args.service).await?;
+	let anchor_state_root = *anchor.context.state_root;
+	println!("anchor {:?} state root {:?}", anchor.context.anchor, anchor.context.state_root);
+
+	// The core has to be running this para, or the package is refused before parasim sees it.
+	let authorizer = args.aura.hash(args.para);
+	let head = cores::queue_head(jam, anchor.context.anchor, args.core).await?;
+	if head != authorizer {
+		return Err(format!(
+			"core {} holds authorizer 0x{}, but para {} hashes to 0x{}; assign the core first \
+			 (or check --collators and --slot-duration)",
+			args.core,
+			hex(&head.0),
+			args.para.0,
+			hex(&authorizer.0),
+		));
+	}
 
 	let service_local_key = parasim_service::para_head_key(args.para);
 	let state_key =
 		jam_state_helpers::service_value_state_key(args.service, &service_local_key);
 	let proof = jam
 		.state_proof(
-			anchor.header_hash,
+			anchor.context.anchor,
 			StorageKey(state_key),
 			StorageKey(state_key),
 			PROOF_SIZE_LIMIT,
@@ -163,7 +173,6 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 		None => println!("para {} has no head yet; the chain starts at its first block", args.para.0),
 	}
 
-	let template = Template::fetch(jam, args, anchor).await?;
 	let mut link: Option<Link> = None;
 	// The head the para should end at: whatever the last package that is *expected to succeed*
 	// carried. The tampered package never applies, and its successors name its head as their
@@ -208,7 +217,7 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 		let header = header_bytes(parent_hash, number, args.para, index as u32);
 		let payload = build_payload(&anchor_state_root, &proof, &header);
 		println!("block number {number} parent 0x{}", hex(&parent_hash));
-		let package = template.package(args, payload)?;
+		let package = build_package(&anchor, args, payload)?;
 		submit_and_follow(jam, args.core, &package).await?;
 
 		if !doomed {
@@ -352,80 +361,17 @@ fn compact(value: u32, out: &mut Vec<u8>) {
 	codec::Compact(value).encode_to(out);
 }
 
-/// Everything a package in the chain shares: the anchor's context and the service's code hash.
-///
-/// Fetched once, because every package in a run is anchored at the same block.
-struct Template {
-	code_hash: CodeHash,
-	context: RefineContext,
-	refine_gas_limit: u64,
-	accumulate_gas_limit: u64,
-}
-
-impl Template {
-	async fn fetch(
-		jam: &JamRpcInterface,
-		args: &Args,
-		anchor: jam_interface::BlockDesc,
-	) -> Result<Self, String> {
-		let jam_std_common::VersionedParameters::V1(parameters) =
-			jam.parameters().await.map_err(|e| format!("parameters: {e}"))?;
-		let service = jam
-			.service_info(anchor.header_hash, args.service)
-			.await
-			.map_err(|e| format!("service info: {e}"))?
-			.ok_or_else(|| format!("service {} is not registered", args.service))?;
-
-		let finalized = wait_for_code(jam, args.service, *service.code_hash).await?;
-		let context = RefineContext {
-			anchor: anchor.header_hash,
-			state_root: jam
-				.state_root(anchor.header_hash)
-				.await
-				.map_err(|e| format!("state root: {e}"))?,
-			beefy_root: jam
-				.beefy_root(anchor.header_hash)
-				.await
-				.map_err(|e| format!("beefy root: {e}"))?,
-			lookup_anchor: finalized.header_hash,
-			lookup_anchor_slot: finalized.slot,
-			prerequisites: Default::default(),
-		};
-		Ok(Self {
-			code_hash: CodeHash::from(*service.code_hash),
-			context,
-			refine_gas_limit: parameters.max_refine_gas,
-			accumulate_gas_limit: parameters.max_accumulate_gas,
-		})
-	}
-
-	/// Wrap one payload in a single-item work package.
-	fn package(&self, args: &Args, payload: Vec<u8>) -> Result<WorkPackage, String> {
-		let item = WorkItem {
-			service: args.service,
-			code_hash: self.code_hash,
-			payload: WorkPayload(payload),
-			refine_gas_limit: self.refine_gas_limit,
-			accumulate_gas_limit: self.accumulate_gas_limit,
-			import_segments: Default::default(),
-			extrinsics: Default::default(),
-			// parasim exports nothing since phase 5a. A count that does not match what refine
-			// produces is answered with `BadExports`, whichever way it differs.
-			export_count: 0,
-		};
-		Ok(WorkPackage {
-			authorization: Authorization::default(),
-			auth_code_host: 0,
-			// The dev genesis seeds every core's queue with the null authorizer and an empty
-			// config.
-			authorizer: Authorizer {
-				code_hash: jam_null_authorizer_bin::HASH.into(),
-				config: Default::default(),
-			},
-			context: self.context.clone(),
-			items: vec![item].try_into().expect("one work item always fits; qed"),
-		})
-	}
+/// Wrap one payload in a single-item package under the para's AURA authorizer, signed as the
+/// collator the lookup anchor names.
+fn build_package(
+	anchor: &Anchor,
+	args: &Args,
+	payload: Vec<u8>,
+) -> Result<WorkPackage, String> {
+	let mut package = anchor
+		.package(args.aura.authorizer(args.para), vec![anchor.item(args.service, payload)]);
+	package.authorization = args.aura.token(&package, None)?;
+	Ok(package)
 }
 
 /// Wait for the para head to reach `expected`, returning the last head observed.
@@ -452,96 +398,5 @@ async fn wait_for_head(
 			return Ok(head);
 		}
 		tokio::time::sleep(HEAD_POLL_INTERVAL).await;
-	}
-}
-
-/// Wait until the service's code is available at a finalized block, and return that block for
-/// use as the package's `lookup_anchor`.
-///
-/// JAM fetches service code as of the `lookup_anchor`, so a package naming an anchor from before
-/// the code was provided fails with `BadCode` and refine never runs — with nothing logged by the
-/// service, which makes it look as though the service was never invoked. Finality lags the head by
-/// a couple of slots, so submitting straight after `create-service` hits this every time and then
-/// mysteriously starts working. Waiting here makes a cold deploy behave like a warm one.
-async fn wait_for_code(
-	jam: &JamRpcInterface,
-	service: ServiceId,
-	code_hash: [u8; HASH_LEN],
-) -> Result<jam_interface::BlockDesc, String> {
-	use jam_std_common::Node as _;
-
-	let deadline = tokio::time::Instant::now() + CODE_WAIT_TIMEOUT;
-	loop {
-		let finalized =
-			jam.finalized_block().await.map_err(|e| format!("finalized block: {e}"))?;
-		let len = jam
-			.node()
-			.service_preimage_len(finalized.header_hash, service, code_hash)
-			.await
-			.map_err(|e| format!("looking up the service code: {e}"))?;
-		if let Some(len) = len {
-			println!("service {service} code ({len} bytes) is available at the lookup anchor");
-			return Ok(finalized);
-		}
-		if tokio::time::Instant::now() >= deadline {
-			return Err(format!(
-				"service {service} code is still unavailable at the finalized block after \
-				 {CODE_WAIT_TIMEOUT:?}; was the service created?"
-			));
-		}
-		println!("waiting for service {service} code to be available at the lookup anchor...");
-		tokio::time::sleep(CODE_POLL_INTERVAL).await;
-	}
-}
-
-/// The hash JAM identifies a work package by: blake2b-256 of its jam-codec encoding, which is what
-/// `jam_std_common::build_encoded_bundle` puts at the front of a bundle.
-fn work_package_hash(package: &WorkPackage) -> WorkPackageHash {
-	jam_std_common::hash_raw(&jam_codec::Encode::encode(package)).into()
-}
-
-/// Submit the package and print each status until JAM reports it.
-///
-/// Returning at `Reported` rather than at accumulation is what keeps a chain pipelined: the parent
-/// is on chain as a report while its head is still nowhere in state, so the child's lineage really
-/// does have to be settled by accumulate's reorder buffer.
-async fn submit_and_follow(
-	jam: &JamRpcInterface,
-	core: u16,
-	package: &WorkPackage,
-) -> Result<(), String> {
-	let package_hash = work_package_hash(package);
-	jam.submit_work_package(core, package, Vec::new())
-		.await
-		.map_err(|e| format!("submitting the work package: {e}"))?;
-	println!("submitted {package_hash:?} to core {core}");
-
-	let mut statuses = jam
-		.work_package_status_stream(package_hash, package.context.anchor, false)
-		.await
-		.map_err(|e| format!("following the work package: {e}"))?;
-
-	let follow = async {
-		while let Some(status) = statuses.next().await {
-			println!("  status: {status:?}");
-			match status {
-				// Neither status says the package *succeeded*: a report is produced whether refine
-				// returned a head or an error, and `Ready` only means "queued for accumulation".
-				// The caller decides the outcome by watching the head.
-				WorkPackageStatus::Reported { .. } | WorkPackageStatus::Ready { .. } => {
-					println!("  reported on chain");
-					return Ok(());
-				},
-				WorkPackageStatus::Failed(reason) =>
-					return Err(format!("the work package failed: {reason}")),
-				WorkPackageStatus::Reportable { .. } => {},
-			}
-		}
-		Err("the status stream closed before the package was reported".to_string())
-	};
-
-	match tokio::time::timeout(FOLLOW_TIMEOUT, follow).await {
-		Ok(result) => result,
-		Err(_) => Err(format!("gave up after {FOLLOW_TIMEOUT:?}")),
 	}
 }

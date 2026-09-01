@@ -3138,6 +3138,7 @@ name = "parasim-service"
 version = "0.1.0"
 dependencies = [
  "executor",
+ "jam-null-authorizer-bin",
  "jam-pvm-common",
  "jam-state-helpers",
  "jam-types",
@@ -3163,6 +3164,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "futures",
+ "jam-bootstrap-service-common",
  "jam-codec",
  "jam-interface",
  "jam-null-authorizer-bin",
@@ -3170,9 +3172,12 @@ dependencies = [
  "jam-state-helpers",
  "jam-std-common",
  "jam-types",
+ "parachain-authorizer",
  "parachain-service-interface",
  "parasim-service",
  "parity-scale-codec",
+ "primitive-types",
+ "sp-core",
  "tokio",
  "tracing",
  "tracing-subscriber",

@@ -3,15 +3,23 @@
 //! A debugging companion to the parasim service: it speaks the same wire formats and reuses the
 //! same verifier, so what it shows is what refine would see.
 
-use clap::{Parser, Subcommand};
-use jam_interface::ServiceId;
+use std::path::PathBuf;
+
+use clap::{Args as ClapArgs, Parser, Subcommand};
+use jam_interface::{CoreIndex, ServiceId};
 use parachain_service_interface::types::ParaId;
 
+mod aura;
+mod bootstrap;
 mod chain;
+mod control;
+mod cores;
+mod deploy;
 mod format;
 mod header;
 mod inflight;
 mod keys;
+mod package;
 mod rpc;
 mod send;
 
@@ -24,8 +32,39 @@ struct Cli {
 	/// The parasim service to talk to.
 	#[arg(long, default_value_t = 9, global = true)]
 	service: ServiceId,
+	#[command(flatten)]
+	aura: AuraArgs,
 	#[command(subcommand)]
 	command: Command,
+}
+
+/// How the AURA authorizer a package runs under is put together. Every field is committed to by
+/// the authorizer hash a core's queue holds, so all of them have to match what the collator uses
+/// or the resulting hash is one nobody will ever install.
+#[derive(ClapArgs)]
+struct AuraArgs {
+	/// The AURA authorizer blob, for its code hash. Only its hash is read; `deploy-authorizer`
+	/// is what puts the bytes on chain.
+	#[arg(long, env = "AUTHORIZER_BLOB", global = true, value_name = "PATH")]
+	authorizer_blob: Option<PathBuf>,
+	/// The collator set, as dev names in round-robin order.
+	#[arg(long, default_value = "alice", global = true, value_name = "NAMES")]
+	collators: String,
+	/// Length of a para slot, in JAM timeslots.
+	#[arg(long, default_value_t = 1, global = true)]
+	slot_duration: u32,
+}
+
+impl AuraArgs {
+	fn resolve(&self, service: ServiceId) -> Result<aura::Aura, String> {
+		let path = self.authorizer_blob.as_ref().ok_or(
+			"this command needs the AURA authorizer's code hash: pass --authorizer-blob (or set \
+			 AUTHORIZER_BLOB) to the blob `deploy-authorizer` put on chain",
+		)?;
+		let blob = std::fs::read(path).map_err(|e| format!("reading {}: {e}", path.display()))?;
+		let code_hash = jam_std_common::hash_raw(&blob).into();
+		aura::Aura::from_dev_names(&self.collators, code_hash, service, self.slot_duration)
+	}
 }
 
 #[derive(Subcommand)]
@@ -63,6 +102,34 @@ enum Command {
 		#[arg(long)]
 		raw: bool,
 	},
+	/// Host the AURA authorizer blob in the bootstrap service: solicit it, then provide it.
+	DeployAuthorizer {
+		/// The blob to deploy. Defaults to --authorizer-blob.
+		#[arg(value_name = "PATH")]
+		blob: Option<PathBuf>,
+	},
+	/// Hand a core's assigner privilege to parasim. Run it after the core's first `assign-core`:
+	/// once parasim owns a core, only a control package on an AURA core can assign it.
+	GrantAssigner {
+		/// Which core.
+		core: CoreIndex,
+	},
+	/// Point a core's authorizer queue at a para's AURA authorizer.
+	AssignCore {
+		/// Which para.
+		para: u32,
+		/// Which core.
+		core: CoreIndex,
+		#[command(flatten)]
+		via: Via,
+	},
+	/// Return a core to the unassigned authorizer. Its pool drains over the next few blocks.
+	FreeCore {
+		/// Which core.
+		core: CoreIndex,
+		#[command(flatten)]
+		via: Via,
+	},
 	/// Submit mock work packages and follow them until the head moves.
 	Send {
 		/// The para to build for.
@@ -82,6 +149,19 @@ enum Command {
 		#[arg(long, value_name = "INDEX", default_value_t = 0, requires = "tamper")]
 		tamper_at: usize,
 	},
+}
+
+/// Which core a control package rides, once parasim is the assigner and the command has to come
+/// from it. Not necessarily the core being assigned: any core under an authorizer this tool can
+/// sign for will carry the command.
+#[derive(ClapArgs, Clone, Copy)]
+struct Via {
+	/// The core to submit the control package to. Defaults to the core being assigned.
+	#[arg(long, value_name = "CORE")]
+	via_core: Option<CoreIndex>,
+	/// The para that core is currently running, whose collator has to sign the package.
+	#[arg(long, value_name = "PARA", default_value_t = 0)]
+	via_para: u32,
 }
 
 #[derive(Subcommand)]
@@ -141,6 +221,18 @@ async fn run(cli: Cli) -> Result<(), String> {
 				keys::display_buffer(&jam, cli.service, ParaId(para), block, raw).await
 			},
 		},
+		Command::DeployAuthorizer { blob } => {
+			let blob = blob
+				.or_else(|| cli.aura.authorizer_blob.clone())
+				.ok_or("pass the authorizer blob, or set --authorizer-blob/AUTHORIZER_BLOB")?;
+			deploy::run(&jam, &blob).await
+		},
+		Command::GrantAssigner { core } =>
+			control::grant(&jam, &control_args(&cli, None)?, core).await,
+		Command::AssignCore { para, core, via } =>
+			control::assign(&jam, &control_args(&cli, Some(&via))?, ParaId(para), core).await,
+		Command::FreeCore { core, via } =>
+			control::free(&jam, &control_args(&cli, Some(&via))?, core).await,
 		Command::Send { para, core, chain, tamper, tamper_at } => {
 			let args = send::Args {
 				service: cli.service,
@@ -149,8 +241,21 @@ async fn run(cli: Cli) -> Result<(), String> {
 				chain,
 				tamper,
 				tamper_at,
+				aura: cli.aura.resolve(cli.service)?,
 			};
 			send::run(&jam, &args).await
 		},
 	}
+}
+
+/// `grant-assigner` never needs a carrier core, so it passes no `--via`. For the other two a
+/// wrong `--via-para` costs nothing: the carrier's queue must hold exactly the authorizer the
+/// token is built for, and that is checked before anything is submitted.
+fn control_args(cli: &Cli, via: Option<&Via>) -> Result<control::Args, String> {
+	Ok(control::Args {
+		service: cli.service,
+		aura: cli.aura.resolve(cli.service)?,
+		via_core: via.and_then(|via| via.via_core),
+		via_para: ParaId(via.map_or(0, |via| via.via_para)),
+	})
 }
