@@ -19,10 +19,12 @@ workspace = true
 codec = { workspace = true }
 jam-types = { workspace = true }
 num_enum = { workspace = true }
+bounded-collections = { workspace = true }
 
 [features]
 std = [
 	"codec/std",
 	"jam-types/std",
 	"num_enum/std",
+	"bounded-collections/std",
 ]

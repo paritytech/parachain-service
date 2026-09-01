@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 codec = { workspace = true }
 tiny-keccak = { workspace = true }
+blake2b_simd = { workspace = true }
 sp-io = { workspace = true }
 parachain-service-interface = { workspace = true }
 
@@ -21,14 +22,15 @@ default = [
 	"std",
 ]
 std = [
+	"blake2b_simd/std",
 	"codec/std",
 	"parachain-service-interface/std",
 	"sp-io/std",
-	"substrate-wasm-builder",
+	"pvm-builder",
 ]
 
 [build-dependencies]
-substrate-wasm-builder = { workspace = true, optional = true }
+pvm-builder = { workspace = true, optional = true }
 
 [lints]
 workspace = true

@@ -2,12 +2,11 @@
 
 use crate::{
 	pvf::{executor::ExecutorState, PVF_ENTRY_POINT},
-	work_digest::RefineLog,
+	work_digest::{HeadData, RefineLog},
 };
-use alloc::vec::Vec;
 use jam_pvm_common::{refine, InvokeOutcome};
-use jam_types::{PageMode, PAGE_SIZE};
-use parachain_service_interface::{host_call::HostCall, types::UpwardMessage};
+use jam_types::{Hash, PageMode, PAGE_SIZE};
+use parachain_service_interface::{types::ParaId, upward_message::UpwardMessages};
 use polkavm::Reg;
 
 /// A parachain validation function parsed into a form ready to run as an inner PVM.
@@ -67,10 +66,12 @@ pub fn parse_pvf(code: &[u8]) -> Result<ParsedPvf, PvfParseError> {
 	Ok(ParsedPvf { code, entry_pc: entry_pc as u64, ro_data, rw_data, memory })
 }
 
-/// Instantiate the parsed PVF as an inner PVM, run `validate_block` over the opaque PoV,
-/// and return the head data it produces. The PoV is copied in verbatim; the runtime
-/// decodes it. `machine` spawns the VM code-only, so we lay out its memory first.
-pub fn run(pvf: &ParsedPvf, pov: &[u8]) -> Result<Vec<u8>, RefineLog> {
+/// Instantiate the parsed PVF as an inner PVM and invoke `jam_validate_block()` (spec §4.2).
+/// The entry point takes no arguments; the PVF reads its inputs through the
+/// `work_item_payload` host call and declares its results through `set_parent_head_hash`
+/// and `set_head` (DECISIONS.md D-1). `machine` spawns the VM code-only, so we lay out
+/// its memory first.
+pub fn run(pvf: &ParsedPvf, para_id: ParaId) -> Result<(Hash, HeadData, UpwardMessages), RefineLog> {
 	let handle =
 		refine::machine(&pvf.code[..], pvf.entry_pc).map_err(|_| RefineLog::InvalidCode)?;
 	let mem = &pvf.memory;
@@ -83,49 +84,37 @@ pub fn run(pvf: &ParsedPvf, pov: &[u8]) -> Result<Vec<u8>, RefineLog> {
 	poke_bytes(handle, mem.rw_data_address(), &pvf.rw_data)?;
 	alloc_pages(handle, mem.stack_address_low(), mem.stack_size())?;
 
-	// Drop the opaque PoV into a page-aligned slot in the unused heap area and hand its
-	// `(ptr, len)` to `validate_block(ptr, len)`.
-	let input_ptr = align_up(mem.heap_base(), PAGE_SIZE);
-	alloc_pages(handle, input_ptr, pov.len() as u32)?;
-	poke_bytes(handle, input_ptr, pov)?;
-
 	let mut regs = [0u64; 13];
 	regs[Reg::SP as usize] = mem.stack_address_high() as u64;
 	regs[Reg::RA as usize] = polkavm::RETURN_TO_HOST;
-	regs[Reg::A0 as usize] = input_ptr as u64;
-	regs[Reg::A1 as usize] = pov.len() as u64;
 
-	let mut exe = ExecutorState::default();
+	let mut exe = ExecutorState::new(para_id);
 
-	loop {
-		let (outcome, _gas, out_regs) = refine::invoke(handle, refine::gas() as i64, regs)
-			.map_err(|_| RefineLog::ValidationFailed)?;
+	let result = loop {
+		let (outcome, _gas, out_regs) = match refine::invoke(handle, refine::gas() as i64, regs) {
+			Ok(r) => r,
+			Err(_) => break Err(RefineLog::ValidationFailed),
+		};
 		regs = out_regs;
 
-		exe = match outcome {
-			InvokeOutcome::Halt => break,
-			InvokeOutcome::PageFault(_) => Err(RefineLog::ValidationFailed),
-			InvokeOutcome::HostCallFault(hc) if hc == HostCall::KvSet as u64 => {
-				let (key_ptr, key_len, value_ptr, value_len) = (
-					regs[Reg::A0 as usize],
-					regs[Reg::A1 as usize],
-					regs[Reg::A2 as usize],
-					regs[Reg::A3 as usize],
-				);
-				exe.kv_set_raw(handle, key_ptr, key_len, value_ptr, value_len)
+		match outcome {
+			InvokeOutcome::Halt => break Ok(()),
+			InvokeOutcome::HostCallFault(index) => {
+				if let Err(e) = exe.dispatch(handle, index, &mut regs) {
+					break Err(e);
+				}
 			},
-			InvokeOutcome::HostCallFault(_) => Err(RefineLog::ValidationFailed),
-			InvokeOutcome::Panic => Err(RefineLog::ValidationFailed),
-			InvokeOutcome::OutOfGas => Err(RefineLog::ValidationFailed),
-		}?;
-	}
-
-	// `validate_block` returns `(ptr, len)` of the encoded head data in A0/A1.
-	let head_data = refine::peek(handle, regs[Reg::A0 as usize], regs[Reg::A1 as usize])
-		.map_err(|_| RefineLog::ValidationFailed)?;
+			// A PVF that page-faults, panics, or runs out of gas failed to
+			// validate the candidate (§4.2).
+			InvokeOutcome::PageFault(_) | InvokeOutcome::Panic | InvokeOutcome::OutOfGas => {
+				break Err(RefineLog::ValidationFailed)
+			},
+		}
+	};
 
 	let _ = refine::expunge(handle);
-	Ok(head_data)
+	result?;
+	exe.finish()
 }
 
 /// Allocate + zero the pages spanning `[addr, addr + len)`; `addr` must be page-aligned.
@@ -146,6 +135,4 @@ fn poke_bytes(handle: u64, addr: u32, data: &[u8]) -> Result<(), RefineLog> {
 	refine::poke(handle, data, addr as u64).map_err(|_| RefineLog::ValidationFailed)
 }
 
-fn align_up(addr: u32, align: u32) -> u32 {
-	(addr + (align - 1)) & !(align - 1)
-}
+

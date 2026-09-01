@@ -1,0 +1,16 @@
+[package]
+name = "mock-dest-service"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+jam-types = { workspace = true }
+jam-pvm-common = { workspace = true, features = ["service", "logging"] }
+polkavm-derive = { workspace = true }

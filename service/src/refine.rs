@@ -2,25 +2,16 @@
 
 use crate::{
 	pvf,
-	work_digest::{ParachainWorkDigest, RefineLog, ValidationCodeHash, ValidationCodeRef},
+	work_digest::{ParachainWorkDigest, RefineLog, ValidationCodeRef},
 };
 use alloc::vec::Vec;
-use codec::{Decode, DecodeAll, Encode};
+use codec::{Decode, DecodeAll};
 use jam_pvm_common::refine::{self, auth_trace, lookup as historical_lookup};
 use jam_types::{CoreIndex, ServiceId, WorkPackageHash, WorkPayload};
 use parachain_authorizer::aura;
 use parachain_service_interface::types::ParaId;
 
-/// Work package payload for a parachain candidate.
-#[derive(Encode, Decode)]
-pub struct ParachainCandidate {
-	/// The hash of the currently active validation code. Used by Refine to
-	/// look up the PVF bytecode from the preimage store.
-	pub validation_code_hash: ValidationCodeHash,
-
-	/// The Proof-of-Validity (PoV) — the actual block data + witness.
-	pub pov: Vec<u8>,
-}
+pub use parachain_service_interface::candidate::ParachainCandidate;
 
 pub fn refine(
 	_core_index: CoreIndex,
@@ -49,7 +40,7 @@ pub fn refine(
 		return ParachainWorkDigest::Err { para_id, error: RefineLog::AuthConfigMismatch };
 	};
 
-	let Ok([work_item]): Result<&[_; 1], _> = work_items.as_slice().try_into() else {
+	let Ok([_work_item]): Result<&[_; 1], _> = work_items.as_slice().try_into() else {
 		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidItemCount };
 	};
 
@@ -63,21 +54,21 @@ pub fn refine(
 	};
 	let code_len: u32 = code.len().try_into().expect("PVF code must be at most 4 GiB");
 
-	// Run the PVF over the opaque PoV in an inner PVM.
 	let Ok(parsed) = pvf::pvm::parse_pvf(&code) else {
 		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidCode };
 	};
-	let head_data = match pvf::pvm::run(&parsed, &candidate.pov) {
-		Ok(head_data) => head_data,
-		Err(error) => return ParachainWorkDigest::Err { para_id, error },
-	};
+	let (parent_head_hash, head_data, upward_messages) =
+		match pvf::pvm::run(&parsed, para_id) {
+			Ok(ok) => ok,
+			Err(error) => return ParachainWorkDigest::Err { para_id, error },
+		};
 
 	ParachainWorkDigest::Ok {
 		para_id,
 		validation_code: ValidationCodeRef { hash: code_hash, len: code_len },
-		parent_head_hash: [0; 32], // FIXME
+		parent_head_hash,
 		head_data,
-		upward_messages: Default::default(),
-		lookup_anchor: 123, // FIXME
+		upward_messages,
+		lookup_anchor: refine::refine_context().lookup_anchor_slot,
 	}
 }

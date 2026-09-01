@@ -1,0 +1,45 @@
+[package]
+name = "parasim-service"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[features]
+default = []
+# Validation/flow tests only — pulls in the fast-churning service crates that
+# parasim exists to avoid depending on. Off for production so parasim's core
+# still builds when those crates are mid-refactor.
+test-utils = [
+	"dep:executor",
+	"dep:parachain-service",
+	"dep:parachain-service-bin",
+	"parachain-service-bin?/test-utils",
+]
+
+[dependencies]
+codec = { workspace = true }
+jam-types = { workspace = true }
+jam-pvm-common = { workspace = true, features = ["service", "logging"] }
+jam-state-helpers = { workspace = true }
+parachain-service-interface = { workspace = true }
+polkavm-derive = { workspace = true }
+
+# test-utils only: in-memory engine + real service blob + mock fixtures.
+executor = { workspace = true, optional = true }
+parachain-service = { workspace = true, optional = true, features = ["test-utils", "std"] }
+parachain-service-bin = { workspace = true, optional = true }
+
+# `test-utils` is deliberately not enabled from here: doing so would pull the churning service
+# crates into every `cargo test`, which is the coupling this crate exists to avoid. Run the
+# byte-compat test with `--features test-utils`.
+[dev-dependencies]
+parachain-service-interface = { workspace = true }

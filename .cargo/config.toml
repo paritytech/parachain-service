@@ -1,8 +1,14 @@
 # The vendored jam-node exposes its VM test harness behind `hazmat` and declares
-# `substr_range`. Limit the stable-toolchain bootstrap escape hatch to that crate
-# so `cargo test` works without granting it to the rest of the workspace.
+# `substr_range`, and `substrate-wasm-builder` needs bootstrap to compile the frameless
+# runtime PVF (`-Z build-std`/`-Z json-target-spec`) on ambient stable cargo.
+# `wasm-builder`'s nightly-feature probe (`supports_nightly_features`) only checks that the
+# `RUSTC_BOOTSTRAP` variable *exists*, ignoring its value — a crate-scoped value like
+# "jam_node" makes it skip setting `RUSTC_BOOTSTRAP=1` for the inner PVF cargo, which then
+# rejects the `-Z` flags (previously the whole `cargo test` build path failed on stable with
+# "the `-Z` flag is only accepted on the nightly channel of Cargo"). So the escape hatch must
+# be the full "1" (granting bootstrap workspace-wide), not a per-crate value.
 [env]
-RUSTC_BOOTSTRAP = { value = "jam_node", force = false }
+RUSTC_BOOTSTRAP = { value = "1", force = false }
 # This is a PVM project: build the frameless runtime for RISC-V (PolkaVM),
 # never WASM. `substrate-wasm-builder` defaults to `wasm32-unknown-unknown` unless this
 # is set, so pin it here for every `cargo` command (check/test/build/clippy), not just

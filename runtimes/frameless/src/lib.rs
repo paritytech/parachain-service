@@ -60,6 +60,14 @@ fn keccak256(input: &[u8]) -> [u8; 32] {
 	out
 }
 
+/// blake2b-256 — the hash the Parachain Service applies to stored head data, so
+/// `set_parent_head_hash` must use it too (DECISIONS.md D-5). Distinct from this
+/// chain's *internal* keccak head hashing, which the service never sees.
+pub fn blake2_256(input: &[u8]) -> [u8; 32] {
+	let hash = blake2b_simd::Params::new().hash_length(32).hash(input);
+	hash.as_bytes().try_into().expect("hash_length(32) yields 32 bytes; qed")
+}
+
 /// Which parachain this is. Fixed at genesis and carried in [`State`]; a block cannot
 /// change it, since its start state must hash-match the parent head and
 /// [`State::transition`] keeps the `Config`.
@@ -72,9 +80,73 @@ pub enum Config {
 	Mock(Vec<MockAction>),
 }
 
+/// One scripted side-effect host call, driven from the block body in tests via
+/// [`Config::Mock`]. Mirrors the §4.3 side-effect host functions with primitive
+/// field types so the test crate composes them freely.
 #[derive(Clone, Encode, Decode, Debug, PartialEq, Eq)]
 pub enum MockAction {
 	KVSet(Vec<u8>, Vec<u8>),
+	KVRemove {
+		para_id: u32,
+		key: Vec<u8>,
+	},
+	Solicit {
+		hash: [u8; 32],
+		len: u32,
+	},
+	Forget {
+		para_id: u32,
+		hash: [u8; 32],
+		len: u32,
+	},
+	RequestCodeUpgrade {
+		hash: [u8; 32],
+		len: u32,
+	},
+	TransferOut(parachain_service_interface::upward_message::TransferOutArgs),
+	AssignCore {
+		core: u32,
+		queue: Vec<[u8; 32]>,
+		assigner: Option<u32>,
+		jam_slot: u32,
+	},
+	/// `keys` is the raw concatenation of 336-byte validator keys.
+	SetValidatorKeys {
+		keys: Vec<u8>,
+		is_last: bool,
+	},
+	ConsumeTransfersUpTo {
+		slot: u32,
+	},
+	ServiceUpgrade {
+		code_hash: [u8; 32],
+		len: u32,
+		min_acc_gas: u64,
+		min_memo_gas: u64,
+	},
+	/// Aborts the PVF via `report_error` — nothing after it executes.
+	ReportError(Vec<u8>),
+	ParachainSetHead {
+		para_id: u32,
+		head: Vec<u8>,
+	},
+	ParachainSetValidationCode {
+		para_id: u32,
+		hash: [u8; 32],
+		len: u32,
+	},
+	ParachainCleanUp {
+		para_id: u32,
+	},
+	ParachainSetStateBalance {
+		para_id: u32,
+		total: u64,
+	},
+	/// Calls `set_head` with an extra out-of-band declaration (ABI-violation test).
+	DuplicateSetHead(Vec<u8>),
+	/// Suppresses the entry point's own mandatory head declarations
+	/// (ABI-violation test: exits without `set_head`/`set_parent_head_hash`).
+	SkipHeadDeclarations,
 }
 
 /// The full chain state: the immutable [`Config`] plus the mutable counter.
@@ -88,13 +160,14 @@ pub struct State {
 
 impl State {
 	/// Apply one block's `add`, carrying [`State::config`] through unchanged.
+	/// [`Config::Mock`] actions fire their scripted host calls here, in order.
 	fn transition(&self, add: u64) -> State {
 		if let Config::Mock(actions) = &self.config {
 			for action in actions {
-				if let MockAction::KVSet(key, value) = action {
-					#[cfg(target_arch = "riscv64")]
-					kv_set(key, value);
-				}
+				#[cfg(target_arch = "riscv64")]
+				host::run_action(action);
+				#[cfg(not(target_arch = "riscv64"))]
+				let _ = action;
 			}
 		}
 
@@ -176,95 +249,239 @@ pub fn validate(input: &[u8]) -> Vec<u8> {
 	new_head.encode()
 }
 
-/// PVM entry point: validate one block.
+/// PVM entry point: validate one block (DECISIONS.md D-1).
 ///
-/// Input: [`ValidationParams`], output: [`HeadData`]
+/// Reads inputs via `work_item_payload(0)` (spec §4.2). Results are declared
+/// exclusively through the mandatory `set_parent_head_hash` + `set_head` host
+/// calls; nothing is returned through registers.
 #[cfg(target_arch = "riscv64")]
 #[polkavm_derive::polkavm_export]
-extern "C" fn jam_validate_block(ptr: u32, len: u32) -> (u64, u64) {
-	let input = unsafe { core::slice::from_raw_parts(ptr as *const u8, len as usize) };
-	let output = alloc::boxed::Box::leak(validate(input).into_boxed_slice());
-	(output.as_ptr() as u64, output.len() as u64)
+extern "C" fn jam_validate_block() {
+	use parachain_service_interface::candidate::ParachainCandidate;
+	// index 0: service/src/refine.rs enforces exactly one work item (InvalidItemCount).
+	let raw = host::work_item_payload(0).expect("work item payload present; qed");
+	let candidate =
+		ParachainCandidate::decode(&mut &raw[..]).expect("ParachainCandidate decodes; qed");
+	let params =
+		ValidationParams::decode(&mut &candidate.pov[..]).expect("invalid validation params");
+
+	let parent_head = HeadData::decode(&mut &params.parent_head[..]).expect("invalid parent head");
+	let block_data = BlockData::decode(&mut &params.block_data[..]).expect("invalid block data");
+
+	// Mock actions fire inside the transition, in scripted order.
+	let new_head = execute(parent_head, &block_data).expect("block is valid");
+
+	if let Config::Mock(actions) = &block_data.state.config {
+		if actions.iter().any(|a| matches!(a, MockAction::SkipHeadDeclarations)) {
+			return;
+		}
+		for action in actions {
+			if let MockAction::DuplicateSetHead(head) = action {
+				host::set_head(head);
+			}
+		}
+	}
+
+	// The parent-head hash is over the encoded parent head data, with the hash
+	// function the service applies to stored head data (D-5).
+	host::set_parent_head_hash(&blake2_256(&params.parent_head));
+	host::set_head(&new_head.encode());
 }
 
+/// Child host calls of the Parachain Service's Refine, per the ABI in
+/// `parachain-service`'s `pvf/executor.rs` (indices from
+/// `parachain-service-interface`'s `HostCall`).
 #[cfg(target_arch = "riscv64")]
-#[polkavm_derive::polkavm_import]
-extern "C" {
-	// TODO ensure that these indices match
-	// FIXME args wrong, just placeholders except for `kv_set``
-	// --- Data Access ---
-	#[polkavm_import(index = 0)]
-	fn lookup_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 1)]
-	fn foreign_lookup_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 2)]
-	fn gas_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 3)]
-	fn work_package_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 4)]
-	fn work_package_context_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 5)]
-	fn auth_config_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 6)]
-	fn auth_token_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 7)]
-	fn work_items_summary_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 8)]
-	fn work_item_summary_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 9)]
-	fn work_item_payload_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 10)]
-	fn import_segments_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 11)]
-	fn import_segment_raw(ptr: u32, len: u32);
-	// --- Side-effects ---
-	#[polkavm_import(index = 12)]
-	fn export_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 13)]
-	fn set_parent_head_hash_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 14)]
-	fn set_head_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 15)]
-	fn request_code_upgrade_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 16)]
-	fn solicit_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 17)]
-	fn forget_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 18)]
-	fn kv_set_raw(key_ptr: u32, key_len: u32, value_ptr: u32, value_len: u32);
-	#[polkavm_import(index = 19)]
-	fn kv_remove_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 20)]
-	fn transfer_out_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 21)]
-	fn assign_core_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 22)]
-	fn set_validator_keys_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 23)]
-	fn consume_transfers_up_to_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 24)]
-	fn parachain_service_upgrade_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 25)]
-	fn report_error_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 26)]
-	fn parachain_set_head_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 27)]
-	fn parachain_set_validation_code_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 28)]
-	fn parachain_clean_up_raw(ptr: u32, len: u32);
-	#[polkavm_import(index = 29)]
-	fn parachain_set_state_balance_raw(ptr: u32, len: u32);
-}
+mod host {
+	use super::MockAction;
+	use alloc::vec::Vec;
+	use codec::Encode;
 
-#[cfg(target_arch = "riscv64")]
-pub(crate) fn kv_set(key: &[u8], value: &[u8]) {
-	unsafe {
-		kv_set_raw(
-			key.as_ptr() as u32,
-			key.len() as u32,
-			value.as_ptr() as u32,
-			value.len() as u32,
+	#[polkavm_derive::polkavm_import]
+	extern "C" {
+		// --- Data access ---
+		#[polkavm_import(index = 0)]
+		fn lookup_raw(hash_ptr: u32, out_ptr: u32, out_cap: u32) -> u64;
+		#[polkavm_import(index = 2)]
+		fn gas_raw() -> u64;
+		#[polkavm_import(index = 9)]
+		fn work_item_payload_raw(index: u32, out_ptr: u32, out_cap: u32) -> u64;
+		// --- Side effects ---
+		#[polkavm_import(index = 12)]
+		fn export_raw(ptr: u32, len: u32) -> u64;
+		#[polkavm_import(index = 13)]
+		fn set_parent_head_hash_raw(hash_ptr: u32);
+		#[polkavm_import(index = 14)]
+		fn set_head_raw(ptr: u32, len: u32);
+		#[polkavm_import(index = 15)]
+		fn request_code_upgrade_raw(hash_ptr: u32, len: u32);
+		#[polkavm_import(index = 16)]
+		fn solicit_raw(hash_ptr: u32, len: u32);
+		#[polkavm_import(index = 17)]
+		fn forget_raw(para_id: u32, hash_ptr: u32, len: u32);
+		#[polkavm_import(index = 18)]
+		fn kv_set_raw(key_ptr: u32, key_len: u32, value_ptr: u32, value_len: u32);
+		#[polkavm_import(index = 19)]
+		fn kv_remove_raw(para_id: u32, key_ptr: u32, key_len: u32);
+		#[polkavm_import(index = 20)]
+		fn transfer_out_raw(args_ptr: u32, args_len: u32);
+		#[polkavm_import(index = 21)]
+		fn assign_core_raw(
+			core: u32,
+			queue_ptr: u32,
+			queue_count: u32,
+			has_assigner: u32,
+			assigner: u32,
+			jam_slot: u32,
 		);
+		#[polkavm_import(index = 22)]
+		fn set_validator_keys_raw(keys_ptr: u32, count: u32, is_last: u32);
+		#[polkavm_import(index = 23)]
+		fn consume_transfers_up_to_raw(slot: u32);
+		#[polkavm_import(index = 24)]
+		fn parachain_service_upgrade_raw(
+			hash_ptr: u32,
+			len: u32,
+			min_acc_gas: u64,
+			min_memo_gas: u64,
+		);
+		#[polkavm_import(index = 25)]
+		fn report_error_raw(ptr: u32, len: u32);
+		#[polkavm_import(index = 26)]
+		fn parachain_set_head_raw(para_id: u32, head_ptr: u32, head_len: u32);
+		#[polkavm_import(index = 27)]
+		fn parachain_set_validation_code_raw(para_id: u32, hash_ptr: u32, len: u32);
+		#[polkavm_import(index = 28)]
+		fn parachain_clean_up_raw(para_id: u32);
+		#[polkavm_import(index = 29)]
+		fn parachain_set_state_balance_raw(para_id: u32, total: u64);
+	}
+
+	pub fn set_parent_head_hash(hash: &[u8; 32]) {
+		unsafe { set_parent_head_hash_raw(hash.as_ptr() as u32) }
+	}
+
+	pub fn set_head(head: &[u8]) {
+		unsafe { set_head_raw(head.as_ptr() as u32, head.len() as u32) }
+	}
+
+	/// Fetch a preimage into a fresh buffer; `None` if unavailable.
+	#[allow(dead_code)]
+	pub fn lookup(hash: &[u8; 32], max_len: usize) -> Option<Vec<u8>> {
+		let mut out = alloc::vec![0u8; max_len];
+		let len = unsafe { lookup_raw(hash.as_ptr() as u32, out.as_ptr() as u32, max_len as u32) };
+		if len == u64::MAX {
+			return None;
+		}
+		out.truncate((len as usize).min(max_len));
+		Some(out)
+	}
+
+	#[allow(dead_code)]
+	pub fn gas() -> u64 {
+		unsafe { gas_raw() }
+	}
+
+	/// Fetch work-item payload at `index`; `None` if absent.
+	/// Probes with zero capacity to get the byte length, then retries with a
+	/// large enough buffer (buffer protocol per `executor.rs` module docs).
+	pub fn work_item_payload(index: u32) -> Option<Vec<u8>> {
+		let len = unsafe { work_item_payload_raw(index, 0, 0) };
+		if len == u64::MAX {
+			return None;
+		}
+		let mut buf = alloc::vec![0u8; len as usize];
+		loop {
+			let actual =
+				unsafe { work_item_payload_raw(index, buf.as_ptr() as u32, buf.len() as u32) };
+			if actual == u64::MAX {
+				return None;
+			}
+			let actual = actual as usize;
+			if actual <= buf.len() {
+				buf.truncate(actual);
+				return Some(buf);
+			}
+			buf.resize(actual, 0);
+		}
+	}
+
+	#[allow(dead_code)]
+	pub fn export(data: &[u8]) -> u64 {
+		unsafe { export_raw(data.as_ptr() as u32, data.len() as u32) }
+	}
+
+	/// Fire one scripted side-effect host call. Entry-point-level actions
+	/// (`DuplicateSetHead`, `SkipHeadDeclarations`) are handled by
+	/// `jam_validate_block` itself and are no-ops here.
+	pub fn run_action(action: &MockAction) {
+		match action {
+			MockAction::KVSet(key, value) => unsafe {
+				kv_set_raw(
+					key.as_ptr() as u32,
+					key.len() as u32,
+					value.as_ptr() as u32,
+					value.len() as u32,
+				)
+			},
+			MockAction::KVRemove { para_id, key } => unsafe {
+				kv_remove_raw(*para_id, key.as_ptr() as u32, key.len() as u32)
+			},
+			MockAction::Solicit { hash, len } => unsafe { solicit_raw(hash.as_ptr() as u32, *len) },
+			MockAction::Forget { para_id, hash, len } => unsafe {
+				forget_raw(*para_id, hash.as_ptr() as u32, *len)
+			},
+			MockAction::RequestCodeUpgrade { hash, len } => unsafe {
+				request_code_upgrade_raw(hash.as_ptr() as u32, *len)
+			},
+			MockAction::TransferOut(args) => {
+				let encoded = args.encode();
+				unsafe { transfer_out_raw(encoded.as_ptr() as u32, encoded.len() as u32) }
+			},
+			MockAction::AssignCore { core, queue, assigner, jam_slot } => unsafe {
+				assign_core_raw(
+					*core,
+					queue.as_ptr() as u32,
+					queue.len() as u32,
+					assigner.is_some() as u32,
+					assigner.unwrap_or(0),
+					*jam_slot,
+				)
+			},
+			MockAction::SetValidatorKeys { keys, is_last } => unsafe {
+				set_validator_keys_raw(
+					keys.as_ptr() as u32,
+					(keys.len() / 336) as u32,
+					*is_last as u32,
+				)
+			},
+			MockAction::ConsumeTransfersUpTo { slot } => unsafe {
+				consume_transfers_up_to_raw(*slot)
+			},
+			MockAction::ServiceUpgrade { code_hash, len, min_acc_gas, min_memo_gas } => unsafe {
+				parachain_service_upgrade_raw(
+					code_hash.as_ptr() as u32,
+					*len,
+					*min_acc_gas,
+					*min_memo_gas,
+				)
+			},
+			MockAction::ReportError(data) => unsafe {
+				// Aborts the PVF host-side; execution never resumes.
+				report_error_raw(data.as_ptr() as u32, data.len() as u32)
+			},
+			MockAction::ParachainSetHead { para_id, head } => unsafe {
+				parachain_set_head_raw(*para_id, head.as_ptr() as u32, head.len() as u32)
+			},
+			MockAction::ParachainSetValidationCode { para_id, hash, len } => unsafe {
+				parachain_set_validation_code_raw(*para_id, hash.as_ptr() as u32, *len)
+			},
+			MockAction::ParachainCleanUp { para_id } => unsafe { parachain_clean_up_raw(*para_id) },
+			MockAction::ParachainSetStateBalance { para_id, total } => unsafe {
+				parachain_set_state_balance_raw(*para_id, *total)
+			},
+			MockAction::DuplicateSetHead(_) | MockAction::SkipHeadDeclarations => {},
+		}
 	}
 }
 

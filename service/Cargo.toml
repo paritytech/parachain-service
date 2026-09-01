@@ -16,6 +16,7 @@ workspace = true
 
 [dependencies]
 jam-types = { workspace = true }
+jam-codec = { workspace = true }
 parachain-service-interface = { workspace = true }
 jam-pvm-common = { workspace = true, features = ["service", "logging"] }
 codec = { workspace = true }
@@ -24,15 +25,19 @@ jam-std-common = { workspace = true, optional = true }
 parachain-authorizer = { workspace = true }
 bounded-collections = { workspace = true }
 polkavm = { workspace = true }
+blake2b_simd = { workspace = true }
+tiny-keccak = { workspace = true }
 
 [features]
 test-utils = [
 	"parachain-authorizer/test-utils",
 ]
 std = [
+	"blake2b_simd/std",
 	"bounded-collections/std",
 	"codec/std",
 	"dep:jam-std-common",
+	"jam-codec/std",
 	"jam-pvm-common/std",
 	"jam-types/std",
 	"parachain-authorizer/std",

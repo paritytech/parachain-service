@@ -5,48 +5,87 @@
 
 use codec::{Decode, Encode};
 use executor::{pj, pj::RefineOutcome};
-use frameless::{hash_state, BlockData, Config, HeadData, MockAction, State, ValidationParams};
-use jam_types::{AuthConfig, AuthTrace, Authorization as AuthToken};
+use frameless::{
+	blake2_256, hash_state, BlockData, Config, HeadData, MockAction, State, ValidationParams,
+};
+use jam_types::{AuthConfig, AuthTrace, Authorization as AuthToken, Hash};
 use parachain_authorizer_bin::BLOB as AUTHORIZER;
 use parachain_service::{
 	refine::ParachainCandidate,
-	work_digest::{ParachainWorkDigest, RefineLog, ValidationCodeHash},
+	work_digest::{validation_code_hash, ParachainWorkDigest, RefineLog},
 };
 use parachain_service_bin::{
-	mock::{good_config, good_token, good_trace, refine_args, refine_work_item},
+	mock::{good_config, good_config_for, good_token, good_trace, refine_args, refine_work_item},
 	BLOB as SERVICE,
 };
+use parachain_service_interface::{
+	types::{Balance, ParaId, ServiceId, ASSET_HUB_PARA_ID},
+	upward_message::{TransferOutArgs, UpwardMessage, UpwardMessages},
+};
 
-pub const MOCK_CODE_HASH: ValidationCodeHash = ValidationCodeHash([123; 32]);
+/// A deferred `TransferOut` from this service's regular balance — the only shape
+/// the vendored GP 0.7.2 host can execute (§5.1).
+fn transfer_out_args(dest: ServiceId, amount: Balance) -> TransferOutArgs {
+	TransferOutArgs {
+		source: None,
+		dest,
+		amount: amount.into(),
+		id: 1.into(),
+		source_supervisor_balance: false,
+		dest_supervisor_balance: false,
+		deferred: Some(([9; 128], 500)),
+	}
+}
 
-#[test]
-fn trivial_works() {
-	let config = good_config(1);
-	let token = good_token();
-	let auth_trace = good_trace();
-
+/// Run one frameless block (`counter += add`) built on `parent` through refine.
+fn run_block(
+	config: Config,
+	parent: &HeadData,
+	add: u64,
+	para_ids: Vec<ParaId>,
+) -> anyhow::Result<RefineOutcome> {
 	let pvf = frameless::WASM_BINARY.unwrap();
-	let pvf_hash = ValidationCodeHash::from(pvf);
+	let pvf_hash = validation_code_hash(pvf);
 
-	// One block on top of the Coretime genesis: counter 0 -> 512.
-	let parent = HeadData {
-		number: 0,
-		parent_hash: [0; 32],
-		post_state: hash_state(&State { config: Config::Coretime, counter: 0 }),
-	};
-	let block = BlockData { state: State { config: Config::Coretime, counter: 0 }, add: 512 };
+	let block = BlockData { state: State { config, counter: 0 }, add };
 	let params = ValidationParams { parent_head: parent.encode(), block_data: block.encode() };
-
 	let payload =
 		ParachainCandidate { validation_code_hash: pvf_hash, pov: params.encode() }.encode();
 	let work_items = vec![refine_work_item(SERVICE, payload, vec![Vec::new(), Vec::new()])];
-	let (engine, code_hash, mut context) =
-		refine_args(SERVICE, AUTHORIZER, config, token, auth_trace, work_items, &[pvf], 0);
+	let (engine, code_hash, mut context) = refine_args(
+		SERVICE,
+		AUTHORIZER,
+		good_config_for(para_ids),
+		good_token(),
+		good_trace(),
+		work_items,
+		&[pvf],
+		0,
+	);
+	pj::refine(&engine, code_hash, &mut context)
+}
 
-	let outcome = pj::refine(&engine, code_hash, &mut context);
+fn genesis(config: Config) -> HeadData {
+	HeadData {
+		number: 0,
+		parent_hash: [0; 32],
+		post_state: hash_state(&State { config, counter: 0 }),
+	}
+}
 
-	// The inner PVM decoded the PoV, executed the block, and returned the new head data.
-	let head_data = expect_ok(outcome);
+#[test]
+fn trivial_works() {
+	let parent = genesis(Config::Coretime);
+	let outcome = run_block(Config::Coretime, &parent, 512, vec![ParaId(0)]);
+
+	// The inner PVM decoded the PoV, executed the block, and declared the new
+	// head + parent hash through host calls (D-1).
+	let (parent_head_hash, head_data, upward_messages, lookup_anchor) = expect_ok(outcome);
+	assert_eq!(upward_messages, UpwardMessages::new());
+	assert_eq!(parent_head_hash, blake2_256(&parent.encode()));
+	// The mock context's lookup-anchor slot.
+	assert_eq!(lookup_anchor, 0);
+
 	let head = HeadData::decode(&mut &head_data[..]).expect("refine returned valid HeadData");
 	assert_eq!(head.number, 1);
 	assert_eq!(head.parent_hash, parent.hash());
@@ -55,37 +94,80 @@ fn trivial_works() {
 
 #[test]
 fn send_upward_messages_works() {
-	let config = good_config(1);
-	let token = good_token();
-	let auth_trace = good_trace();
-
-	let pvf = frameless::WASM_BINARY.unwrap();
-	let pvf_hash = ValidationCodeHash::from(pvf);
-
 	let mock_action = MockAction::KVSet(b"KEY".to_vec(), b"VALUE".to_vec());
 	let action = Config::Mock(vec![mock_action]);
-	let parent = HeadData {
-		number: 0,
-		parent_hash: [0; 32],
-		post_state: hash_state(&State { config: action.clone(), counter: 0 }),
-	};
-	let block = BlockData { state: State { config: action.clone(), counter: 0 }, add: 512 };
-	let params = ValidationParams { parent_head: parent.encode(), block_data: block.encode() };
+	let parent = genesis(action.clone());
 
-	let payload =
-		ParachainCandidate { validation_code_hash: pvf_hash, pov: params.encode() }.encode();
-	let work_items = vec![refine_work_item(SERVICE, payload, vec![Vec::new(), Vec::new()])];
-	let (engine, code_hash, mut context) =
-		refine_args(SERVICE, AUTHORIZER, config, token, auth_trace, work_items, &[pvf], 0);
+	let outcome = run_block(action.clone(), &parent, 512, vec![ParaId(0)]);
 
-	let outcome = pj::refine(&engine, code_hash, &mut context);
+	let (_, head_data, upward_messages, _) = expect_ok(outcome);
+	assert_eq!(
+		upward_messages,
+		UpwardMessages::try_from(vec![UpwardMessage::SetKV {
+			key: b"KEY".to_vec(),
+			value: b"VALUE".to_vec()
+		}])
+		.unwrap()
+	);
 
-	// The inner PVM decoded the PoV, executed the block, and returned the new head data.
-	let head_data = expect_ok(outcome);
 	let head = HeadData::decode(&mut &head_data[..]).expect("refine returned valid HeadData");
 	assert_eq!(head.number, 1);
-	assert_eq!(head.parent_hash, parent.hash());
 	assert_eq!(head.post_state, hash_state(&State { config: action, counter: 512 }));
+}
+
+#[test]
+fn report_error_works() {
+	let action = Config::Mock(vec![MockAction::ReportError(b"complaint".to_vec())]);
+	let parent = genesis(action.clone());
+
+	let outcome = run_block(action, &parent, 1, vec![ParaId(0)]);
+
+	let log = expect_log(outcome);
+	assert_eq!(log, RefineLog::Opaque(b"complaint".to_vec().try_into().unwrap()));
+}
+
+#[test]
+fn restricted_host_function_errors() {
+	// `transfer_out` is Asset-Hub-only (§4.3); para 0 is not Asset Hub.
+	let action = Config::Mock(vec![MockAction::TransferOut(transfer_out_args(42, 1))]);
+	let parent = genesis(action.clone());
+
+	let outcome = run_block(action, &parent, 1, vec![ParaId(0)]);
+
+	assert_eq!(expect_log(outcome), RefineLog::RestrictedHostFunction);
+}
+
+#[test]
+fn asset_hub_transfer_out_works() {
+	// The same call is fine when the config binds the item to Asset Hub.
+	let args = transfer_out_args(42, 1);
+	let action = Config::Mock(vec![MockAction::TransferOut(args.clone())]);
+	let parent = genesis(action.clone());
+
+	let outcome = run_block(action, &parent, 1, vec![ASSET_HUB_PARA_ID]);
+
+	let (_, _, upward_messages, _) = expect_ok(outcome);
+	assert_eq!(upward_messages.into_iter().next(), Some(UpwardMessage::TransferOut(args)));
+}
+
+#[test]
+fn skip_head_declarations_errors() {
+	let action = Config::Mock(vec![MockAction::SkipHeadDeclarations]);
+	let parent = genesis(action.clone());
+
+	let outcome = run_block(action, &parent, 1, vec![ParaId(0)]);
+
+	assert_eq!(expect_log(outcome), RefineLog::MissingHeadDeclaration);
+}
+
+#[test]
+fn duplicate_set_head_errors() {
+	let action = Config::Mock(vec![MockAction::DuplicateSetHead(b"bogus".to_vec())]);
+	let parent = genesis(action.clone());
+
+	let outcome = run_block(action, &parent, 1, vec![ParaId(0)]);
+
+	assert_eq!(expect_log(outcome), RefineLog::MissingHeadDeclaration);
 }
 
 // Empty WPs are invalid per GP, hence panic.
@@ -169,17 +251,22 @@ fn less_para_ids_than_work_items_errors() {
 /// Extract a RefineLog or panic.
 fn expect_log(res: anyhow::Result<RefineOutcome>) -> RefineLog {
 	let output = res.expect("Refine failed to return a ParachainWorkDigest");
-	let log = output
+	output
 		.digest
 		.try_into_log()
-		.expect("Expected refine to produce a RefineLog and not just `Ok`");
-	log
+		.expect("Expected refine to produce a RefineLog and not just `Ok`")
 }
 
-fn expect_ok(res: anyhow::Result<RefineOutcome>) -> Vec<u8> {
+fn expect_ok(res: anyhow::Result<RefineOutcome>) -> (Hash, Vec<u8>, UpwardMessages, u32) {
 	let output = res.expect("Refine failed to return a ParachainWorkDigest");
 	match output.digest {
-		ParachainWorkDigest::Ok { head_data, .. } => head_data,
+		ParachainWorkDigest::Ok {
+			parent_head_hash,
+			head_data,
+			upward_messages,
+			lookup_anchor,
+			..
+		} => (parent_head_hash, head_data.into_inner(), upward_messages, lookup_anchor),
 		ParachainWorkDigest::Err { error, .. } => panic!("RefineLog error: {error:?}"),
 	}
 }

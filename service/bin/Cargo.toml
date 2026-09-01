@@ -15,7 +15,9 @@ workspace = true
 # Off by default so production builds only embed the blob; enabled for this
 # crate's own tests via the self dev-dependency below.
 test-utils = [
+	"dep:blake2b_simd",
 	"dep:codec",
+	"dep:ed25519-dalek",
 	"dep:executor",
 	"dep:jam-node",
 	"dep:jam-std-common",
@@ -31,6 +33,8 @@ test-utils = [
 jam-pvm-builder = { workspace = true }
 
 # Optional: only pulled in by `test-utils` for the `mock` fixtures.
+blake2b_simd = { workspace = true, optional = true }
+ed25519-dalek = { workspace = true, optional = true }
 executor = { workspace = true, optional = true }
 jam-node = { path = "../../vendor/polkajam/crates/node", default-features = false, features = ["hazmat"], optional = true }
 jam-std-common = { path = "../../vendor/polkajam/crates/jam-std-common", optional = true }
@@ -40,11 +44,13 @@ primitive-types = { workspace = true, optional = true }
 jam-types = { workspace = true, optional = true }
 
 [build-dependencies]
-jam-pvm-builder = { workspace = true }
+pvm-builder = { workspace = true }
 parachain-service = { workspace = true }
+mock-dest-service = { workspace = true }
 
 [dev-dependencies]
 parachain-service-bin = { path = ".", features = ["test-utils"] } # TODO clean this up
+tiny-keccak = { workspace = true }
 parachain-authorizer-bin = { workspace = true }
 parachain-service = { workspace = true, features = ["test-utils", "std"] }
 frameless = { workspace = true }
