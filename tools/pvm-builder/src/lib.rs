@@ -115,6 +115,7 @@ fn build_pvm_blob_in_build_script(
 	blob_type: BlobType,
 	inner_name: Option<String>,
 	no_default_features: bool,
+	profile: &'static str,
 ) {
 	let out_dir: PathBuf = std::env::var("OUT_DIR").expect("No OUT_DIR").into();
 	println!("cargo:rerun-if-env-changed=SKIP_PVM_BUILDS");
@@ -134,7 +135,7 @@ fn build_pvm_blob_in_build_script(
 			crate_dir,
 			blob_type,
 			&out_dir,
-			ProfileType::Other("production"),
+			ProfileType::Other(profile),
 			inner_name,
 			no_default_features,
 		);
@@ -152,7 +153,7 @@ fn build_pvm_blob_in_build_script(
 /// The blob may be included in the relevant crate by using the [`pvm_binary!`] macro from
 /// `jam_pvm_builder`.
 pub fn build_service(crate_dir: &Path) {
-	build_pvm_blob_in_build_script(crate_dir, BlobType::Service, None, false);
+	build_pvm_blob_in_build_script(crate_dir, BlobType::Service, None, false, "production");
 }
 
 /// Build the authorizer crate in `crate_dir` for PVM.
@@ -163,8 +164,17 @@ pub fn build_service(crate_dir: &Path) {
 ///
 /// The blob may be included in the relevant crate by using the [`pvm_binary!`] macro from
 /// `jam_pvm_builder`.
+/// Built with the `production-authorizer` profile: an authorizer blob has to fit JAM's 64 kB
+/// `C_maxauthcodesize`, which a service blob (4 MB) never has to think about, and it is over that
+/// limit at the speed-first settings a service wants.
 pub fn build_authorizer(crate_dir: &Path) {
-	build_pvm_blob_in_build_script(crate_dir, BlobType::Authorizer, None, false);
+	build_pvm_blob_in_build_script(
+		crate_dir,
+		BlobType::Authorizer,
+		None,
+		false,
+		"production-authorizer",
+	);
 }
 
 /// Build a generic runtime crate in `crate_dir` for PVM, without a service/authorizer
@@ -175,7 +185,7 @@ pub fn build_authorizer(crate_dir: &Path) {
 /// `--no-default-features`: runtimes gate their `std`-only host embedding on a `std`
 /// feature, which must be off when compiling for the bare Riscv target.
 pub fn build_runtime(crate_dir: &Path) {
-	build_pvm_blob_in_build_script(crate_dir, BlobType::Runtime, None, true);
+	build_pvm_blob_in_build_script(crate_dir, BlobType::Runtime, None, true, "production");
 }
 
 /// Build the `CARGO_ENCODED_RUSTFLAGS` value for the PVM build.

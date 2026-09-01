@@ -40,6 +40,8 @@ jam-pvm-common = { path = "vendor/polkajam/crates/jam-pvm-common", default-featu
 jam-std-common = { path = "vendor/polkajam/crates/jam-std-common" }
 polkajam-trie = { package = "trie", path = "vendor/polkajam/crates/trie" }
 jam-null-authorizer-bin = { path = "vendor/polkajam/services/null-authorizer-bin" }
+jam-bootstrap-service-common = { path = "vendor/polkajam/services/bootstrap-service/common", features = ["std"] }
+sp-core = { path = "vendor/polkadot-sdk-companion/substrate/primitives/core", default-features = false }
 async-stream = "0.3"
 async-trait = "0.1"
 bytes = { version = "1.7.1", default-features = false }
@@ -92,3 +94,11 @@ codegen-units = 1
 debug = false
 debug-assertions = false
 overflow-checks = false
+
+# Authorizer blobs have a hard 64 kB ceiling (`C_maxauthcodesize`) and 50 M gas for one call;
+# service blobs have 4 MB and gas that is actually under pressure. So they are optimised for
+# different things: `tools/pvm-builder` builds authorizers with this profile and services with
+# `production`.
+[profile.production-authorizer]
+inherits = "production"
+opt-level = "z"

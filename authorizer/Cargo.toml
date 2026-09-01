@@ -21,7 +21,10 @@ jam-pvm-common = { workspace = true, features = ["authorizer", "logging"] }
 polkavm-derive = { workspace = true }
 codec = { workspace = true }
 ed25519-dalek = { workspace = true, features = ["alloc"] }
-blake2b_simd = { workspace = true }
+# `uninline_portable` keeps blake2b's compression function a real function instead of one fully
+# unrolled body. It is worth ~13 kB of the 64 kB authorizer ceiling, and the authorizer hashes a
+# few dozen bytes per call.
+blake2b_simd = { workspace = true, features = ["uninline_portable"] }
 primitive-types = { workspace = true }
 
 [dev-dependencies]
