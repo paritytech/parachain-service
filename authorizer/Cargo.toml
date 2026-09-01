@@ -25,7 +25,7 @@ blake2b_simd = { workspace = true }
 primitive-types = { workspace = true }
 
 [dev-dependencies]
-parachain-service = { workspace = true }
+parachain-service = { workspace = true, features = ["std"] }
 parachain-authorizer = { path = ".", features = ["test-utils"] }
 
 [features]

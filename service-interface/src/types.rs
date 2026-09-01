@@ -14,7 +14,7 @@
 extern crate alloc;
 
 use bounded_collections::{BoundedVec, ConstU32};
-use codec::{Decode, Encode};
+use codec::{Decode, Encode, MaxEncodedLen};
 
 /// A JAM timeslot (`jam_types::Slot`).
 pub type Timeslot = u32;
@@ -48,7 +48,9 @@ pub const MAX_HEAD_DATA_SIZE: u32 = 4 * 1024;
 pub type HeadData = BoundedVec<u8, ConstU32<MAX_HEAD_DATA_SIZE>>;
 
 /// Unique identifier of a parachain.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Encode, Decode)]
+#[derive(
+	Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Encode, Decode, MaxEncodedLen,
+)]
 pub struct ParaId(pub u32);
 
 impl From<u32> for ParaId {
