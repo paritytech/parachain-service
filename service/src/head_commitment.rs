@@ -4,12 +4,11 @@
 //! the block: a binary Merkle tree over one leaf per changed head, ordered by
 //! ascending `para_id`, with the root returned. No head changed means no hash.
 
-use crate::{hashing::blake2_256, state::para_info::Parachains};
+use crate::{hashing::keccak_256, state::para_info::Parachains};
 use alloc::vec::Vec;
 use codec::Encode;
 use jam_types::Hash;
 use parachain_service_interface::types::ParaId;
-use tiny_keccak::{Hasher as _, Keccak};
 
 /// An element of the commitment tree (§5.5).
 ///
@@ -25,11 +24,7 @@ enum MerkleTree {
 
 impl MerkleTree {
 	fn hash(&self) -> Hash {
-		let mut keccak = Keccak::v256();
-		keccak.update(&self.encode());
-		let mut out = Hash::default();
-		keccak.finalize(&mut out);
-		out
+		keccak_256(&self.encode())
 	}
 }
 
@@ -58,8 +53,10 @@ fn merkle_root(leaves: Vec<Hash>) -> Option<Hash> {
 	level.first().copied()
 }
 
+/// The head hash a commitment leaf carries: keccak-256, NOT the blake2b-256
+/// `hash(head_data)` the §5.1 parent-head check compares (see `crate::hashing`).
 fn head_hash_of(para_id: ParaId) -> Option<Hash> {
-	Parachains::get(para_id).map(|pi| blake2_256(&pi.head_data))
+	Parachains::get(para_id).map(|pi| keccak_256(&pi.head_data))
 }
 
 /// Tracks the parachains whose head this block may have moved, so the §5.5

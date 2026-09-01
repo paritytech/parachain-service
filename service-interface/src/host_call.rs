@@ -1,78 +1,62 @@
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 /// Host call indices as per §4.3.
+///
+/// Every host function is imported at a fixed index. Those forwarding a JAM host
+/// call keep its Gray Paper index; those native to the Parachain Service are
+/// numbered from 100 up.
+///
+/// NOTE: these are the indices the **child PVF** imports at, which this service
+/// decodes — a different index space from the ones the service itself uses to
+/// call into JAM. The vendored PolkaJAM host numbers its own calls `gas` 0,
+/// `fetch` 1, `historical_lookup` 6, `export` 7, because it has no `grow_heap`
+/// at 1. The two sets look alike; conflating them is a silent ABI break.
 #[derive(IntoPrimitive, TryFromPrimitive)]
 #[repr(u64)]
 pub enum HostCall {
-	// --- Data Access ---
-	/// Fetch a preimage from the service's own store.
-	Lookup = 0,
-	/// Fetch a preimage from another service's store.
-	ForeignLookup = 1,
-	/// Query the remaining gas budget.
-	Gas = 2,
-	/// Access the full encoded work package.
-	WorkPackage = 3,
-	/// Access the refinement context.
-	WorkPackageContext = 4,
-	/// Access the authorizer config blob.
-	AuthConfig = 5,
-	/// Access the authorization token blob.
-	AuthToken = 6,
-	/// Summary of all work items.
-	WorkItemsSummary = 7,
-	/// Summary of a specific work item by index.
-	WorkItemSummary = 8,
-	/// Payload of a specific work item by index.
-	WorkItemPayload = 9,
-	/// A specific import segment, by its index in the work item's import
-	/// manifest. Indices `0 .. import_count` enumerate the segments in
-	/// manifest order.
-	ImportSegment = 10,
+	// --- JAM host functions, forwarded unchanged (§4.3) ---
+	/// The remaining gas budget.
+	Gas = 0,
+	/// Expand the RW data region.
+	GrowHeap = 1,
+	/// Read the work package and its context: the package itself, the refine
+	/// context, the authorizer config and token, the work-item summaries and
+	/// payloads, and the import segments.
+	Fetch = 2,
+	/// Read a service's preimage store at the lookup-anchor; serves both own and
+	/// foreign lookups.
+	HistoricalLookup = 7,
+	/// Write a segment to the JAM Data Lake, e.g. an outbound XCMP payload.
+	Export = 8,
 
-	// --- Side-effects ---
-	/// Write a segment to the JAM Data Lake (e.g. outbound XCMP payloads). Returns segment index.
-	Export = 11,
+	// --- Parachain Service host functions (§4.3) ---
 	/// Declare the parent head hash this candidate was built on.
-	SetParentHeadHash = 12,
+	SetParentHeadHash = 100,
 	/// Declare the new head data this parachain block produced.
-	SetHead = 13,
-	/// Signal a PVF code upgrade request.
-	RequestCodeUpgrade = 14,
-	/// Mediated forward of JAM's `solicit`.
-	Solicit = 15,
-	/// Mediated forward of JAM's `forget`.
-	Forget = 16,
-	/// Upsert key_value_storage entry.
-	KvSet = 17,
-	/// Remove key_value_storage entry.
-	KvRemove = 18,
-	/// Transfer balance to another JAM service.
-	TransferOut = 19,
-	/// Schedule a core's assign.
-	AssignCore = 20,
-	/// Append a chunk of upcoming validator keys.
-	SetValidatorKeys = 21,
-	/// Drop queued transfer buckets up to a slot.
-	ConsumeTransfersUpTo = 22,
-	/// Replace the Parachain Service's own service code.
-	ParachainServiceUpgrade = 23,
+	SetHead = 101,
+	/// Append one upward message to the work digest.
+	SendUpwardMessage = 102,
 	/// Abort the PVF with an opaque error payload.
-	ReportError = 24,
-	/// Upsert a parachain's head data (Coretime chain only).
-	ParachainSetHead = 25,
-	/// Upsert a parachain's validation code (Coretime chain only).
-	ParachainSetValidationCode = 26,
-	/// Remove all per-parachain state (Coretime chain only).
-	ParachainCleanUp = 27,
-	/// Overwrite a parachain's total state balance (Coretime chain only).
-	ParachainSetStateBalance = 28,
-	/// Delete a key from a supervised service's storage (Asset Hub only).
-	RemoveServiceStorage = 29,
-	/// Destroy an empty supervised service (Asset Hub only).
-	EjectService = 30,
-	/// Hand a supervised service to another supervisor (Asset Hub only).
-	SetServiceSupervisor = 31,
-	/// Create a service supervised by this one (Asset Hub only).
-	CreateService = 32,
+	ReportError = 103,
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	// The discriminants are the child's import indices (§4.3). The mirror in
+	// `runtimes/frameless/src/lib.rs` `host` is `#[cfg(target_arch = "riscv64")]`
+	// and never compiled here, so a renumbering would be a silent ABI break.
+	#[test]
+	fn indices_works() {
+		assert_eq!(HostCall::Gas as u64, 0);
+		assert_eq!(HostCall::GrowHeap as u64, 1);
+		assert_eq!(HostCall::Fetch as u64, 2);
+		assert_eq!(HostCall::HistoricalLookup as u64, 7);
+		assert_eq!(HostCall::Export as u64, 8);
+		assert_eq!(HostCall::SetParentHeadHash as u64, 100);
+		assert_eq!(HostCall::SetHead as u64, 101);
+		assert_eq!(HostCall::SendUpwardMessage as u64, 102);
+		assert_eq!(HostCall::ReportError as u64, 103);
+	}
 }

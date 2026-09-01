@@ -34,6 +34,12 @@ pub const MAX_STAGED_VALIDATOR_KEYS: usize = CORE_COUNT * 3;
 /// (§5.1); FIXME before production.
 pub const MAX_INCOMING_TRANSFERS: usize = 1000;
 
+/// §3.1 — cap on the transfers one `incoming_transfers` bucket may hold, so
+/// Asset Hub can bound the cost of reading any single bucket however many
+/// transfers arrive at once. A bucket that reaches this many is closed and the
+/// next arrival opens a fresh id (§5.1).
+pub const MAX_TRANSFERS_PER_BUCKET: u32 = 512;
+
 /// Valid `stagingset` lengths for JAM `designate` (Gray Paper Safrole `valcount`):
 /// `3 * c` for `c` in `2 ..= CORE_COUNT`.
 pub fn is_valid_val_count(len: usize) -> bool {

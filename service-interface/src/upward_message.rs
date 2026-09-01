@@ -7,8 +7,8 @@
 extern crate alloc;
 
 use crate::types::{
-	AuthorizerHash, Balance, CoreIndex, Hash, HeadData, Memo, ParaId, ServiceId, Timeslot,
-	ValidationCodeHash, ValidatorKey, ASSET_HUB_PARA_ID, CORETIME_PARA_ID,
+	AuthorizerHash, Balance, BucketId, CoreIndex, Hash, HeadData, Memo, ParaId, ServiceId,
+	Timeslot, ValidationCodeHash, ValidatorKey, ASSET_HUB_PARA_ID, CORETIME_PARA_ID,
 };
 use alloc::vec::Vec;
 use bounded_collections::{BoundedVec, ConstU32};
@@ -18,8 +18,17 @@ use codec::{Compact, Decode, Encode};
 /// Spec §4.3.
 pub const MAX_UPWARD_MESSAGES_PER_DIGEST: u32 = 1024;
 
-/// Per-call cap on `set_validator_keys` chunks. Spec §4.3, §5.3.
+/// Per-call cap on `SetValidatorKeys` chunks. Spec §4.3, §5.3.
 pub const SET_VALIDATOR_KEYS_MAX_KEYS: usize = 30;
+
+/// The parachain's fixed budget for the encoded upward messages of one Refine
+/// invocation. Spec §4.3.
+///
+/// `UpwardMessage`'s SCALE encoding is part of the parachain-visible ABI, so a
+/// message's `encoded_size()` is computable inside the PVF. The budget counts
+/// the encoded messages alone, independently of the Gray Paper's 48 KiB
+/// combined result-blob limit.
+pub const MAX_UPWARD_MESSAGE_BYTES: usize = 40 * 1024;
 
 /// Upward messages emitted via host functions during Refine and replayed in order
 /// by Accumulate.
@@ -136,9 +145,9 @@ pub enum UpwardMessage {
 	/// From `set_validator_keys`: append a chunk of upcoming validator keys
 	/// (Asset Hub only, §5.3).
 	SetValidatorKeys { keys: Vec<ValidatorKey>, is_last: bool },
-	/// From `consume_transfers_up_to`: drop every queued transfer bucket up to
-	/// and including this slot (Asset Hub only, §5.1).
-	ConsumeTransfersUpTo(Timeslot),
+	/// From `clean_up_buckets_up_to`: remove every `incoming_transfers` bucket up
+	/// to and including this bucket id (Asset Hub only, §5.1).
+	CleanUpBucketsUpTo(BucketId),
 	/// From `parachain_service_upgrade`: replace the Parachain Service's own
 	/// service code (Asset Hub only, §5.4).
 	UpgradeService { code_hash: Hash, len: Compact<u32>, min_acc_gas: u64, min_memo_gas: u64 },
@@ -166,7 +175,7 @@ impl UpwardMessage {
 			self,
 			Self::TransferOut { .. } |
 				Self::SetValidatorKeys { .. } |
-				Self::ConsumeTransfersUpTo(_) |
+				Self::CleanUpBucketsUpTo(_) |
 				Self::UpgradeService { .. } |
 				Self::RemoveServiceStorage { .. } |
 				Self::EjectService { .. } |

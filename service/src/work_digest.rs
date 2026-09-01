@@ -70,13 +70,16 @@ pub enum RefineLog {
 	/// Opaque payload supplied by the PVF via `report_error(data)` before
 	/// failing the execution (max 1024 bytes).
 	Opaque(BoundedVec<u8, ConstU32<1024>>),
-	/// A `set_validator_keys` chunk contained more than 30 keys, or
-	/// `set_validator_keys` was called more than once in a single Refine
+	/// A `SetValidatorKeys` was sent more than once in a single Refine
 	/// invocation. See §4.3, §5.3.
-	SetValidatorKeysTooManyKeys,
-	/// The PVF emitted more than 1024 upward messages in a single Refine
-	/// invocation. See §4.3.
+	SetValidatorKeysRepeated,
+	/// A `SetValidatorKeys` chunk carried more than 30 keys. See §4.3, §5.3.
+	TooManyValidatorKeys,
+	/// The PVF emitted more than `MAX_UPWARD_MESSAGES_PER_DIGEST` upward
+	/// messages in a single Refine invocation. See §4.3.
 	TooManyUpwardMessages,
+	/// The parachain's 40 KiB upward-message budget was exceeded. See §4.3.
+	UpwardMessagesTooLarge,
 	/// The PVF invoked a host function restricted to another parachain
 	/// (Asset Hub or the Coretime chain). See §4.3.
 	RestrictedHostFunction,
@@ -93,6 +96,9 @@ pub enum RefineLog {
 	/// The PVF exited without calling `set_parent_head_hash` and/or `set_head`
 	/// exactly once. Both head declarations are mandatory. See §4.2.
 	MissingHeadDeclaration,
+	/// `set_head` was called with head data beyond the 4 KiB `HeadData` bound.
+	/// See §4.3.
+	HeadDataTooLarge,
 }
 
 /// The maximum byte length of a `report_error` payload. Spec §4.3.

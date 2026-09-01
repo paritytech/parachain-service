@@ -39,30 +39,42 @@ accept any well-formed value, behind `FIXME` markers. Rejection rules for zero
 **Spec feedback**: unaffected; real crypto is an implementation milestone, not a spec
 question. The §7.1 canonical proof/encoding rules still need specifying.
 
-## D-5: `hash(head_data)` is blake2b-256
+## D-5: the parent-head check's `hash(head_data)` is blake2b-256
 
 New finding (not previously tracked). The design's parent-head check (§5.1 step 3) compares
 `parent_head_hash` against `hash(ParaInfo.head_data)` but never names the hash function; the
 PVF (via `set_parent_head_hash`) and the service must agree on it. We pin **blake2b-256**,
 matching JAM's own preimage hashing (`jam_std_common::hash_raw`).
 
-**Spec feedback**: name the function in §5.1/§4.3.
+Scope narrowed by spec `09f868d216b`: `head_data` is now digested under **two** functions.
+This entry covers only the §5.1 parent-head check; the head hash a §5.5 commitment *leaf*
+carries is **keccak-256**, which the spec now states outright (see D-12). The two are
+deliberately separate domains, so a commitment leaf never verifies against a candidate's
+declared parent head. Both live in `service/src/hashing.rs`.
+
+**Spec feedback**: §5.1/§4.3 still do not name the function for the parent-head check;
+only §5.5's side was pinned upstream.
 
 ## D-8: incoming transfers are recorded in one bucket write per block
 
 Gap: transfer gas, admission, and financial reconciliation are incomplete in the design.
 
-The Quint model records each incoming transfer individually. Since all of a block's
-transfer operands arrive at the same timeslot (one bucket), a literal port re-reads and
-re-writes the growing bucket per transfer — measured at 551M gas for 1024 same-slot
-transfers, 55x the Gray Paper's whole per-report budget `Ga = 10M`
-(`accumulate_gas.rs::incoming_transfer_bench_works`). The PoC batches: admission is checked
-per transfer in operand order (identical semantics, including the count-based cap), then
-all admitted transfers land in a single bucket write. Measured cost drops to 1.63M gas.
+The Quint model records each incoming transfer individually. Since one accumulate
+invocation fills one bucket (§5.1: a bucket is closed when the invocation that opened it
+ends), a literal port re-reads and re-writes the growing bucket per transfer — measured at
+551M gas for 1024 same-slot transfers, 55x the Gray Paper's whole per-report budget
+`Ga = 10M` (`accumulate_gas.rs::incoming_transfer_bench_works`). The PoC batches: admission
+is checked per transfer in operand order (identical semantics, including the count-based
+cap), the invocation's buckets are filled in memory, and each is written exactly once.
+Measured cost drops to 1.63M gas.
+
+Since spec `17a10dcb3f`, `MAX_TRANSFERS_PER_BUCKET` (512) can also split one invocation
+across several buckets; the batching writes one entry per bucket actually used, so the
+property is unchanged.
 
 **Spec feedback**: the model's per-transfer processing is fine as a spec of *meaning*, but
-§5.1 should note that recording must be batched per block (or the §3.1 bucket layout must
-be chunked) — a conforming literal implementation cannot fit its own gas budget.
+§5.1 should note that recording must be batched per invocation — a conforming literal
+implementation cannot fit its own gas budget.
 
 ## D-10: `transfer_out` takes its arguments as one SCALE blob
 
@@ -124,14 +136,13 @@ trailing odd element to the next level **unchanged** rather than duplicating it.
 the `binary-merkle-tree` crate, which is what Polkadot already uses for its own Merkle roots
 and is already a workspace dependency, so a verifier can reuse the familiar construction.
 
-The PoC also has to pin one thing §5.5 leaves implicit: the leaf's `head_hash` is
-`blake2b-256` of the head data, per D-5, while the **tree element** hashes are `keccak_256`
-of the SCALE encoding as §5.5 requires. So the two hash functions genuinely coexist in one
-structure; §5.5's "every element's hash is `keccak_256`" refers only to the tree elements.
+~~The PoC also has to pin one thing §5.5 leaves implicit: the leaf's `head_hash` is
+`blake2b-256` of the head data, per D-5.~~ **Resolved upstream** in spec `09f868d216b`:
+§5.5 now states that a leaf's `head_hash` is `keccak_256`, so the leaf and the tree elements
+use the same function and only the §5.1 parent-head check remains blake2b-256 (D-5).
 
-**Spec feedback**: §5.5 must state the pairing rule and the odd-element rule, and should say
-explicitly which hash applies to `head_hash` versus to the tree elements. Until then any
-independent implementation is likely to compute a different root.
+**Spec feedback**: §5.5 must still state the pairing rule and the odd-element rule. Until
+then any independent implementation is likely to compute a different root.
 
 ---
 

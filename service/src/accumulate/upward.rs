@@ -17,7 +17,7 @@ use alloc::vec::Vec;
 use jam_pvm_common::accumulate::{is_available, upgrade};
 use jam_types::{CodeHash, ServiceId, Slot};
 use parachain_service_interface::{
-	types::{ParaId, Timeslot},
+	types::ParaId,
 	upward_message::{Target, UpwardMessage},
 };
 
@@ -27,7 +27,6 @@ pub fn apply(
 	now: Slot,
 	service_id: ServiceId,
 	origin: ParaId,
-	lookup_anchor: Timeslot,
 	message: UpwardMessage,
 	logs: &mut Vec<AccumulateLog>,
 	heads: &mut HeadTracker,
@@ -139,7 +138,7 @@ pub fn apply(
 			validator_keys::apply(keys, is_last, logs)
 		},
 
-		UpwardMessage::ConsumeTransfersUpTo(slot) => transfers::consume_up_to(slot, lookup_anchor),
+		UpwardMessage::CleanUpBucketsUpTo(id) => transfers::clean_up_buckets_up_to(id),
 
 		UpwardMessage::UpgradeService { code_hash, len: _, min_acc_gas, min_memo_gas } => {
 			// §5.4: forward to JAM `upgrade` only when the new code's preimage is

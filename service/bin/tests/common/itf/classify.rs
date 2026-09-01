@@ -46,7 +46,7 @@ pub fn classify(previous: &Value, current: &Value) -> Result<FrameKind, String> 
 		now_unchanged &&
 		!changed_svc_fields.is_empty() &&
 		changed_svc_fields.iter().all(|field| {
-			matches!(*field, "incomingTransfers" | "incomingTransferChain" | "parachains")
+			matches!(*field, "incomingTransfers" | "incomingTransferBuckets" | "parachains")
 		});
 
 	let matches = block as u8 + provision as u8 + incoming as u8;
@@ -100,7 +100,7 @@ mod tests {
 		json!({
 			"parachains": {},
 			"incomingTransfers": {},
-			"incomingTransferChain": null,
+			"incomingTransferBuckets": null,
 			"preimageStatus": {}
 		})
 	}
@@ -147,7 +147,7 @@ mod tests {
 		let previous = frame(0, svc(), json!([]));
 		let mut changed = svc();
 		changed["incomingTransfers"]["0"] = json!([100]);
-		changed["incomingTransferChain"] = json!(0);
+		changed["incomingTransferBuckets"] = json!(0);
 		changed["parachains"]["2"] = json!({"usedStateBalance": 10});
 		let current = frame(0, changed, json!([]));
 		assert_eq!(classify(&previous, &current).unwrap(), FrameKind::IncomingTransfer);

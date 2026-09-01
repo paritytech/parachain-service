@@ -114,7 +114,7 @@ pub fn process(now: Slot, service_id: ServiceId, record: &WorkItemRecord, heads:
 
 			// Step 7: replay the upward messages in order.
 			for message in upward_messages.into_iter() {
-				upward::apply(now, service_id, para_id, lookup_anchor, message, &mut logs, heads);
+				upward::apply(now, service_id, para_id, message, &mut logs, heads);
 			}
 
 			ParachainLogs::append_accumulate(para_id, now, logs);

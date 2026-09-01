@@ -37,8 +37,8 @@ pub fn accumulate(
 	assigns::apply_due_assigns(now, service_id);
 
 	// Phase 2: incoming-transfer processing (§5.1). JAM already credited the
-	// balances unconditionally; recording is best effort. All operands share
-	// `now`, so they are recorded in one bucket write (D-8).
+	// balances unconditionally; recording is best effort. Transfers are
+	// written once per whole bucket, never per transfer (D-8).
 	let transfers: alloc::vec::Vec<_> = items
 		.iter()
 		.filter_map(|item| match item {
@@ -48,7 +48,7 @@ pub fn accumulate(
 		.collect();
 	// A bucket/chain write that hits the §6.1 backstop is logged
 	// to Asset Hub; recording continues for the admitted transfers.
-	let transfer_logs = transfers::record_incoming(now, &transfers);
+	let transfer_logs = transfers::record_incoming(&transfers);
 	if !transfer_logs.is_empty() {
 		ParachainLogs::append_accumulate(ASSET_HUB_PARA_ID, now, transfer_logs);
 	}

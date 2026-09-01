@@ -30,7 +30,7 @@ pub enum Tag {
 	PreimageRegistry = 0x04,
 	StagedValidatorKeys = 0x05,
 	IncomingTransfers = 0x06,
-	IncomingTransferChain = 0x07,
+	IncomingTransferBuckets = 0x07,
 	KeyValueStorage = 0x08,
 }
 
@@ -63,10 +63,14 @@ pub struct StorageFull;
 
 /// Encode + write a map entry.
 ///
-/// Returns `Err(StorageFull)` on a JAM-level balance failure instead of
-/// panicking. The §6.1 pre-check makes this unreachable in practice, but a
-/// panic would revert to the last checkpoint and wedge the service until
-/// manual intervention.
+/// JAM's `write` returns `StorageFull` when **the service's own** balance
+/// cannot cover the new footprint (§6.1). That is a different quantity from the
+/// per-parachain `total_state_balance` the §6.1 growth checks pre-check against,
+/// so the pre-check does not guarantee the write lands. Seeing it indicates a
+/// bookkeeping bug.
+///
+/// It is surfaced rather than panicked: a panic would revert to the last
+/// checkpoint and wedge the service until manual intervention.
 /// FIXME: consensus-critical — private headroom ≠ real JAM balance.
 pub fn write(tag: Tag, key: &impl Encode, value: &impl Encode) -> Result<(), StorageFull> {
 	jam_pvm_common::accumulate::set_storage(&storage_key(tag, key), &value.encode())
@@ -89,7 +93,6 @@ pub fn write_singleton(tag: Tag, value: &impl Encode) -> Result<(), StorageFull>
 	write(tag, &(), value)
 }
 
-/// Remove a singleton.
 pub fn clear_singleton(tag: Tag) {
 	clear(tag, &())
 }

@@ -8,7 +8,7 @@ use parachain_service::{
 	state::{
 		log::{AccumulateLog, LogEntry, TransferError},
 		storage_key,
-		transfers::{IncomingTransferChain, IncomingTransfers, QueuedTransfer},
+		transfers::{IncomingTransferBuckets, IncomingTransfers, QueuedTransfer},
 		Tag,
 	},
 	state_balance::{excess_transfer_footprint, INCOMING_TRANSFER_ENTRY_FOOTPRINT},
@@ -36,71 +36,60 @@ fn ah_accumulate_logs(storage: &jam_node::vm::Storage) -> Vec<AccumulateLog> {
 fn record_works() {
 	let (_, storage, _) = accumulate_block(ah_storage(), vec![transfer_item(9, 1_000_000)], NOW);
 
-	let chain = transfer_chain(&storage).expect("chain created");
-	assert_eq!(chain, IncomingTransferChain { first_slot: NOW, last_slot: NOW, count: 1 });
-	let bucket = transfer_bucket(&storage, NOW).expect("bucket created");
-	assert_eq!(bucket.transfers.len(), 1);
-	assert_eq!(bucket.transfers[0].from, 9);
-	assert_eq!(bucket.transfers[0].amount, 1_000_000);
-	assert_eq!(bucket.next_slot, None);
+	// §5.1: an empty queue opens bucket 0, so both endpoints name it.
+	let queue = transfer_queue(&storage).expect("queue created");
+	assert_eq!(queue, IncomingTransferBuckets { first_bucket: 0, last_bucket: 0, count: 1 });
+	let bucket = transfer_bucket(&storage, 0).expect("bucket created");
+	assert_eq!(bucket.len(), 1);
+	assert_eq!(bucket[0].from, 9);
+	assert_eq!(bucket[0].amount, 1_000_000);
 }
 
 #[test]
-fn same_slot_bucket_append_works() {
-	// Two arrivals in one slot share the bucket — no new storage item (§5.1).
+fn same_invocation_shares_bucket_works() {
+	// §5.1: everything one accumulate invocation admits lands in the bucket it
+	// opened, so a second arrival adds no storage item.
 	let items = vec![transfer_item(9, 1_000_000), transfer_item(10, 2_000_000)];
 	let (_, storage, _) = accumulate_block(ah_storage(), items, NOW);
 
-	let chain = transfer_chain(&storage).unwrap();
-	assert_eq!(chain.count, 2);
-	assert_eq!(transfer_bucket(&storage, NOW).unwrap().transfers.len(), 2);
+	assert_eq!(transfer_queue(&storage).unwrap().count, 2);
+	assert_eq!(transfer_bucket(&storage, 0).unwrap().len(), 2);
+	assert!(transfer_bucket(&storage, 1).is_none());
 }
 
 #[test]
-fn chained_buckets_works() {
-	// Arrivals in different slots link buckets through `next_slot`.
+fn consecutive_invocations_open_contiguous_ids_works() {
+	// §5.1: each invocation opens `last_bucket + 1`, never appending to the
+	// bucket a previous one left. Contiguity is what replaces `next_slot`.
 	let (_, storage, _) = accumulate_block(ah_storage(), vec![transfer_item(9, 1_000_000)], NOW);
 	let (_, storage, _) = accumulate_block(storage, vec![transfer_item(10, 2_000_000)], NOW + 5);
 
-	let chain = transfer_chain(&storage).unwrap();
-	assert_eq!(chain, IncomingTransferChain { first_slot: NOW, last_slot: NOW + 5, count: 2 });
-	assert_eq!(transfer_bucket(&storage, NOW).unwrap().next_slot, Some(NOW + 5));
-	assert_eq!(transfer_bucket(&storage, NOW + 5).unwrap().next_slot, None);
+	let queue = transfer_queue(&storage).unwrap();
+	assert_eq!(queue, IncomingTransferBuckets { first_bucket: 0, last_bucket: 1, count: 2 });
+	assert_eq!(transfer_bucket(&storage, 0).unwrap()[0].from, 9);
+	assert_eq!(transfer_bucket(&storage, 1).unwrap()[0].from, 10);
 }
 
 #[test]
 fn over_reserved_portion_admission_works() {
 	// §5.1: past the reserved portion, only a transfer covering its own
 	// worst-case slot cost is recorded.
-	let full_chain =
-		IncomingTransferChain { first_slot: 1, last_slot: 1, count: MAX_INCOMING_TRANSFERS as u32 };
-	let storage = fresh_storage(|s| {
-		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
-		set_state(s, &storage_key(Tag::IncomingTransferChain, &()), &full_chain);
-		set_state(
-			s,
-			&storage_key(Tag::IncomingTransfers, &1u32),
-			&parachain_service::state::transfers::IncomingTransfers {
-				transfers: vec![],
-				next_slot: None,
-			},
-		);
-	});
+	let storage = queue_storage(MAX_INCOMING_TRANSFERS as u32);
 
 	// Too small to pay for its own bucket: dropped without a trace.
 	let small = INCOMING_TRANSFER_ENTRY_FOOTPRINT - 1;
 	let (_, storage, _) = accumulate_block(storage, vec![transfer_item(9, small)], NOW);
-	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32);
-	assert!(transfer_bucket(&storage, NOW).is_none());
+	assert_eq!(transfer_queue(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32);
+	assert!(transfer_bucket(&storage, 1).is_none());
 
-	// Self-funding: recorded.
+	// Self-funding: recorded into the next id.
 	let (_, storage, _) = accumulate_block(
 		storage,
 		vec![transfer_item(9, INCOMING_TRANSFER_ENTRY_FOOTPRINT)],
 		NOW + 1,
 	);
-	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32 + 1);
-	assert!(transfer_bucket(&storage, NOW + 1).is_some());
+	assert_eq!(transfer_queue(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32 + 1);
+	assert!(transfer_bucket(&storage, 1).is_some());
 }
 
 #[test]
@@ -108,91 +97,93 @@ fn reservation_edge_admission_works() {
 	// §5.1: one short of the reservation the entry is still inside it, so a
 	// zero-amount transfer is free and fills the reservation exactly. Only from
 	// `MAX_INCOMING_TRANSFERS` onwards must an entry pay for itself.
-	let storage = chain_storage(MAX_INCOMING_TRANSFERS as u32 - 1);
+	let storage = queue_storage(MAX_INCOMING_TRANSFERS as u32 - 1);
 	let (_, storage, _) = accumulate_block(storage, vec![transfer_item(9, 0)], NOW);
 
-	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32);
-	assert!(transfer_bucket(&storage, NOW).is_some());
+	assert_eq!(transfer_queue(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32);
+	assert!(transfer_bucket(&storage, 1).is_some());
 
 	// The next one is past the reservation: a zero-amount transfer is dropped.
 	let (_, storage, _) = accumulate_block(storage, vec![transfer_item(9, 0)], NOW + 1);
-	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32);
-	assert!(transfer_bucket(&storage, NOW + 1).is_none());
+	assert_eq!(transfer_queue(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32);
+	assert!(transfer_bucket(&storage, 2).is_none());
 }
 
 #[test]
-fn consume_works() {
-	// Record at two slots, then Asset Hub consumes the first only.
+fn clean_up_works() {
+	// Two invocations fill buckets 0 and 1; Asset Hub removes the first only.
 	let (_, storage, _) = accumulate_block(ah_storage(), vec![transfer_item(9, 1_000_000)], NOW);
 	let (_, storage, _) = accumulate_block(storage, vec![transfer_item(10, 2_000_000)], NOW + 5);
 
-	let msg = UpwardMessage::ConsumeTransfersUpTo(NOW);
+	let msg = UpwardMessage::CleanUpBucketsUpTo(0);
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], NOW + 6);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 6);
 
-	assert!(transfer_bucket(&storage, NOW).is_none());
-	assert!(transfer_bucket(&storage, NOW + 5).is_some());
+	assert!(transfer_bucket(&storage, 0).is_none());
+	assert!(transfer_bucket(&storage, 1).is_some());
 	assert_eq!(
-		transfer_chain(&storage).unwrap(),
-		IncomingTransferChain { first_slot: NOW + 5, last_slot: NOW + 5, count: 1 }
+		transfer_queue(&storage).unwrap(),
+		IncomingTransferBuckets { first_bucket: 1, last_bucket: 1, count: 1 }
 	);
 
-	// Consuming the rest clears the chain entirely.
-	let msg = UpwardMessage::ConsumeTransfersUpTo(NOW + 5);
+	// Removing the rest drops the endpoint entry, so ids restart from 0.
+	let msg = UpwardMessage::CleanUpBucketsUpTo(1);
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-1", b"ah-2", vec![msg], NOW + 7);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 7);
-	assert!(transfer_chain(&storage).is_none());
-	assert!(transfer_bucket(&storage, NOW + 5).is_none());
+	assert!(transfer_queue(&storage).is_none());
+	assert!(transfer_bucket(&storage, 1).is_none());
+
+	let (_, storage, _) = accumulate_block(storage, vec![transfer_item(9, 1_000_000)], NOW + 8);
+	assert_eq!(
+		transfer_queue(&storage).unwrap(),
+		IncomingTransferBuckets { first_bucket: 0, last_bucket: 0, count: 1 }
+	);
 }
 
 #[test]
-fn consume_is_clamped_to_anchor_works() {
-	// §5.1: `consume_transfers_up_to` is clamped to the candidate's
-	// lookup-anchor. Asset Hub cannot have read a bucket newer than the anchor
-	// it built on, so a slot beyond it must not drain buckets it never observed.
-	// Buckets at or below the anchor are still drained normally.
+fn clean_up_below_first_bucket_works() {
+	// §5.1 dropped the lookup-anchor clamping: ids are allocated, not derived
+	// from a timeslot, so a parachain can only ever name a bucket it has seen.
+	// An id already removed must therefore be a no-op, never drag `first_bucket`
+	// backwards.
 	let (_, storage, _) = accumulate_block(ah_storage(), vec![transfer_item(9, 1_000_000)], 1);
 	let (_, storage, _) = accumulate_block(storage, vec![transfer_item(9, 1_000_000)], 9);
-	assert_eq!(transfer_chain(&storage).unwrap().count, 2);
-
-	// A candidate anchored at 5 asking to consume everything up to 9.
-	let msg = UpwardMessage::ConsumeTransfersUpTo(9);
+	let msg = UpwardMessage::CleanUpBucketsUpTo(0);
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 5);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], 10);
+	let before = transfer_queue(&storage).unwrap();
+	assert_eq!(before, IncomingTransferBuckets { first_bucket: 1, last_bucket: 1, count: 1 });
 
-	// Clamped to 5: bucket 1 drained, bucket 9 survives.
-	assert!(transfer_bucket(&storage, 1).is_none());
-	assert!(transfer_bucket(&storage, 9).is_some());
-	assert_eq!(
-		transfer_chain(&storage).unwrap(),
-		IncomingTransferChain { first_slot: 9, last_slot: 9, count: 1 }
-	);
+	// Re-issuing the same id changes nothing.
+	let msg = UpwardMessage::CleanUpBucketsUpTo(0);
+	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-1", b"ah-2", vec![msg], 10);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], 11);
+
+	assert_eq!(transfer_queue(&storage).unwrap(), before);
+	assert!(transfer_bucket(&storage, 1).is_some());
 }
 
-/// A chain claiming `count` queued transfers as a single one-entry bucket at
-/// slot 1 (the count is what gates admission and re-attribution).
-fn chain_storage(count: u32) -> jam_node::vm::Storage {
+/// A queue claiming `count` queued transfers as a single one-entry bucket at id
+/// 0 (the count is what gates admission and re-attribution).
+fn queue_storage(count: u32) -> jam_node::vm::Storage {
 	fresh_storage(|s| {
 		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
 		set_state(
 			s,
-			&storage_key(Tag::IncomingTransferChain, &()),
-			&IncomingTransferChain { first_slot: 1, last_slot: 1, count },
+			&storage_key(Tag::IncomingTransferBuckets, &()),
+			&IncomingTransferBuckets { first_bucket: 0, last_bucket: 0, count },
 		);
-		set_state(
-			s,
-			&storage_key(Tag::IncomingTransfers, &1u32),
-			&IncomingTransfers {
-				transfers: vec![QueuedTransfer { from: 0, amount: 0, memo: [0; 128] }],
-				next_slot: None,
-			},
-		);
+		let mut bucket = IncomingTransfers::new();
+		bucket
+			.try_push(QueuedTransfer { from: 0, amount: 0, memo: [0; 128] })
+			.expect("a fresh bucket has room");
+		set_state(s, &storage_key(Tag::IncomingTransfers, &0u64), &bucket);
 	})
 }
 
-/// A chain holding exactly the reservation, so the next entry must self-fund.
-fn full_chain_storage() -> jam_node::vm::Storage {
-	chain_storage(MAX_INCOMING_TRANSFERS as u32)
+/// A queue holding exactly the reservation, so the next entry must self-fund.
+fn full_queue_storage() -> jam_node::vm::Storage {
+	queue_storage(MAX_INCOMING_TRANSFERS as u32)
 }
 
 #[test]
@@ -200,7 +191,7 @@ fn unreserved_transfers_are_self_funded_works() {
 	// §5.1: draining refunds exactly what admission charged, so an unreserved
 	// entry cannot ratchet `used_state_balance` upward over time. Both `used`
 	// and `total` move by the per-bucket cost, never by the transfer's `amount`.
-	let storage = full_chain_storage();
+	let storage = full_queue_storage();
 	let used0 = para_info(&storage, ASSET_HUB_PARA_ID).unwrap().used_state_balance;
 	let total0 = para_info(&storage, ASSET_HUB_PARA_ID).unwrap().total_state_balance;
 
@@ -213,16 +204,16 @@ fn unreserved_transfers_are_self_funded_works() {
 		at,
 	);
 	let pi = para_info(&storage, ASSET_HUB_PARA_ID).unwrap();
-	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32 + 1);
+	assert_eq!(transfer_queue(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32 + 1);
 	assert_eq!(pi.used_state_balance, used0 + INCOMING_TRANSFER_ENTRY_FOOTPRINT);
 	assert_eq!(pi.total_state_balance, total0 + INCOMING_TRANSFER_ENTRY_FOOTPRINT);
 
 	// Drain the whole queue back out through the real accumulate path.
-	let msg = UpwardMessage::ConsumeTransfersUpTo(at);
+	let msg = UpwardMessage::CleanUpBucketsUpTo(1);
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], at);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], at + 1);
 
-	assert!(transfer_chain(&storage).is_none());
+	assert!(transfer_queue(&storage).is_none());
 	let pi = para_info(&storage, ASSET_HUB_PARA_ID).unwrap();
 	assert_eq!(pi.used_state_balance, used0);
 	assert_eq!(pi.total_state_balance, total0);
@@ -233,12 +224,13 @@ fn draining_unreserved_restores_balance_works() {
 	// §5.1: a full queue plus three self-funded entries, then the three oldest
 	// drained on the next round. The queue is full again and the state balance
 	// is back to its pre-charge value.
-	let storage = full_chain_storage();
+	let storage = full_queue_storage();
 	let used0 = para_info(&storage, ASSET_HUB_PARA_ID).unwrap().used_state_balance;
 	let total0 = para_info(&storage, ASSET_HUB_PARA_ID).unwrap().total_state_balance;
 	let big = INCOMING_TRANSFER_ENTRY_FOOTPRINT;
 
-	// Push three entries, each in its own fresh slot past the tail.
+	// Push three entries, each in its own invocation, so each opens a fresh id
+	// past the seeded bucket 0.
 	let mut storage = storage;
 	let mut now = 2;
 	for _ in 0..3 {
@@ -247,19 +239,19 @@ fn draining_unreserved_restores_balance_works() {
 		now += 1;
 	}
 	let pi = para_info(&storage, ASSET_HUB_PARA_ID).unwrap();
-	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32 + 3);
+	assert_eq!(transfer_queue(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32 + 3);
 	assert_eq!(pi.used_state_balance, used0 + 3 * big);
 	assert_eq!(pi.total_state_balance, total0 + 3 * big);
 
-	// Drain buckets up to slot 3 (the seed bucket plus two arrivals): three
-	// transfers gone, the queue returns to the reservation size and the charge
-	// is refunded.
-	let msg = UpwardMessage::ConsumeTransfersUpTo(3);
+	// Remove buckets 0..=2 (the seed bucket plus two arrivals), leaving bucket 3:
+	// three transfers gone, the queue returns to the reservation size and the
+	// charge is refunded.
+	let msg = UpwardMessage::CleanUpBucketsUpTo(2);
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 3);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], now);
 
 	let pi = para_info(&storage, ASSET_HUB_PARA_ID).unwrap();
-	assert_eq!(transfer_chain(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32);
+	assert_eq!(transfer_queue(&storage).unwrap().count, MAX_INCOMING_TRANSFERS as u32);
 	assert_eq!(pi.used_state_balance, used0);
 	assert_eq!(pi.total_state_balance, total0);
 }
