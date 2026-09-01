@@ -42,4 +42,6 @@ parachain-service-bin = { workspace = true, optional = true }
 # crates into every `cargo test`, which is the coupling this crate exists to avoid. Run the
 # byte-compat test with `--features test-utils`.
 [dev-dependencies]
+# Only to pin the copied null-authorizer code hash against polkajam's own constant.
+jam-null-authorizer-bin = { workspace = true }
 parachain-service-interface = { workspace = true }
