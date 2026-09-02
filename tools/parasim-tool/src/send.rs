@@ -127,7 +127,7 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 	// the only place its lineage can be settled.
 	let anchor = Anchor::fetch(jam, args.service).await?;
 	let anchor_state_root = *anchor.context.state_root;
-	println!("anchor {:?} state root {:?}", anchor.context.anchor, anchor.context.state_root);
+	tracing::info!("anchor {:?} state root {:?}", anchor.context.anchor, anchor.context.state_root);
 
 	// The core has to be running this para, or the package is refused before parasim sees it.
 	let authorizer = args.aura.hash(args.para);
@@ -164,13 +164,13 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 	let accumulated = stored.as_deref().map(decode_para_info).transpose()?;
 
 	match &accumulated {
-		Some(head) => println!(
+		Some(head) => tracing::info!(
 			"para {} head is {} bytes at number {}",
 			args.para.0,
 			head.len(),
 			block_number(head)?
 		),
-		None => println!("para {} has no head yet; the chain starts at its first block", args.para.0),
+		None => tracing::info!("para {} has no head yet; the chain starts at its first block", args.para.0),
 	}
 
 	let mut link: Option<Link> = None;
@@ -182,8 +182,7 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 	for index in 0..args.chain {
 		let tamper = args.tamper.filter(|_| index == args.tamper_at);
 		let doomed = args.tamper.is_some() && index >= args.tamper_at;
-		println!();
-		println!("=== package {} of {} ===", index + 1, args.chain);
+		tracing::info!("=== package {} of {} ===", index + 1, args.chain);
 
 		// A stale package deliberately ignores the block in flight and builds on the accumulated
 		// head again, so it is a sibling of its predecessor rather than its child.
@@ -209,14 +208,14 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 			node[HASH_LEN] ^= 0xff;
 		}
 		if let Some(tamper) = tamper {
-			println!("tampering: {tamper:?}; expect {}", tamper.expected_rejection());
+			tracing::info!("tampering: {tamper:?}; expect {}", tamper.expected_rejection());
 		}
 
 		// The nonce keeps two blocks built on the same parent — a stale sibling and the package it
 		// was meant to extend — from being the same block, and so the same work package.
 		let header = header_bytes(parent_hash, number, args.para, index as u32);
 		let payload = build_payload(&anchor_state_root, &proof, &header);
-		println!("block number {number} parent 0x{}", hex(&parent_hash));
+		tracing::info!("block number {number} parent 0x{}", hex(&parent_hash));
 		let package = build_package(&anchor, args, payload)?;
 		submit_and_follow(jam, args.core, &package).await?;
 
@@ -229,7 +228,6 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 	// A `Reported` status only means JAM put the work *report* on chain, and a report is produced
 	// whether refine returned a head or an error. So the real outcome is whether the stored head
 	// changed, and that takes another slot or two while accumulate runs.
-	println!();
 	let timeout = HEAD_WAIT_TIMEOUT + HEAD_WAIT_PER_PACKAGE * args.chain as u32;
 	let observed =
 		wait_for_head(jam, args.service, &service_local_key, expected_head.as_deref(), timeout)

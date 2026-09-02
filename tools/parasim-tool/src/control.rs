@@ -64,7 +64,7 @@ pub async fn grant(jam: &JamRpcInterface, args: &Args, core: CoreIndex) -> Resul
 	let best = jam.best_block().await.map_err(|e| format!("best block: {e}"))?.header_hash;
 	match cores::assigner(jam, best, core).await? {
 		current if current == args.service => {
-			println!("core {core} is already assigned by service {current}");
+			tracing::info!("core {core} is already assigned by service {current}");
 			return Ok(());
 		},
 		BOOTSTRAP_SERVICE => {},
@@ -80,7 +80,7 @@ pub async fn grant(jam: &JamRpcInterface, args: &Args, core: CoreIndex) -> Resul
 	// its own head changes nothing.
 	let queue = cores::queue_head(jam, best, core).await?;
 	if queue == cores::unassigned() {
-		println!(
+		tracing::info!(
 			"warning: core {core} is still unassigned. Once parasim owns it, only a control \
 			 package on an AURA core can assign it — install its queue with `assign-core` first \
 			 if this is the only core in play."
@@ -100,7 +100,7 @@ pub async fn grant(jam: &JamRpcInterface, args: &Args, core: CoreIndex) -> Resul
 			args.service
 		));
 	}
-	println!("core {core} is now assigned by service {}", args.service);
+	tracing::info!("core {core} is now assigned by service {}", args.service);
 	Ok(())
 }
 
@@ -112,7 +112,7 @@ pub async fn assign(
 	core: CoreIndex,
 ) -> Result<(), String> {
 	let target = args.aura.hash(para);
-	println!("core {core} → para {} (authorizer 0x{})", para.0, hex(&target.0));
+	tracing::info!("core {core} → para {} (authorizer 0x{})", para.0, hex(&target.0));
 	route(jam, args, core, target, Command::Assign { para_id: para, core, authorizer: target.0 })
 		.await?;
 	cores::report(jam, core, target).await
@@ -126,7 +126,7 @@ pub async fn assign(
 /// assigned one.
 pub async fn free(jam: &JamRpcInterface, args: &Args, core: CoreIndex) -> Result<(), String> {
 	let target = args.aura.parked_hash();
-	println!("core {core} → parked (authorizer 0x{})", hex(&target.0));
+	tracing::info!("core {core} → parked (authorizer 0x{})", hex(&target.0));
 	route(jam, args, core, target, Command::Free { core, parked_authorizer: target.0 }).await?;
 	cores::report(jam, core, target).await
 }
@@ -142,7 +142,7 @@ async fn route(
 	let best = jam.best_block().await.map_err(|e| format!("best block: {e}"))?.header_hash;
 	match cores::assigner(jam, best, core).await? {
 		BOOTSTRAP_SERVICE => {
-			println!("core {core} is still assigned by the bootstrap service; going through it");
+			tracing::info!("core {core} is still assigned by the bootstrap service; going through it");
 			bootstrap::instruct(
 				jam,
 				None,
@@ -192,7 +192,7 @@ async fn control_package(
 	if authorizer.hash(jam_std_common::hash_raw) != head {
 		return Err(carrier_mismatch(args, core, head));
 	}
-	println!(
+	tracing::info!(
 		"carrying the command on core {core}, under {}",
 		if parked {
 			"the parked authorizer".to_string()

@@ -10,6 +10,7 @@ use jam_interface::{CoreIndex, ServiceId};
 use parachain_service_interface::types::ParaId;
 
 mod aura;
+mod authorizers;
 mod bootstrap;
 mod chain;
 mod control;
@@ -99,6 +100,19 @@ enum Command {
 	DisplayKey {
 		#[command(subcommand)]
 		subject: Key,
+	},
+	/// Show what each core's authorizer pool and queue hold.
+	///
+	/// The queue is what `assign` writes; the pool is what a package can actually be reported
+	/// under, and it refills from the queue one entry per block. Hashes the tool can reproduce
+	/// from --authorizer-blob and --collators are named; the rest are shown as they are.
+	DisplayAuthorizers {
+		/// Read at this block instead of the current best.
+		#[arg(long, value_name = "HASH", conflicts_with = "watch")]
+		block: Option<String>,
+		/// Sample every slot and re-print whenever a pool or queue moves.
+		#[arg(long)]
+		watch: bool,
 	},
 	/// Show work packages JAM has reported but not yet accumulated.
 	///
@@ -208,34 +222,35 @@ struct Via {
 #[derive(Subcommand)]
 enum Key {
 	/// The para's head, as stored in the service's `parachains` map.
-	Parahead {
-		/// Which para.
-		para: u32,
-		/// Read at this block instead of the current best.
-		#[arg(long, value_name = "HASH")]
-		block: Option<String>,
-		/// Print the stored bytes without decoding them.
-		#[arg(long)]
-		raw: bool,
-	},
+	Parahead(KeyArgs),
 	/// The para's reorder buffer: heads accumulate has parked until their parent arrives.
-	Buffer {
-		/// Which para.
-		para: u32,
-		/// Read at this block instead of the current best.
-		#[arg(long, value_name = "HASH")]
-		block: Option<String>,
-		/// Print the stored bytes without decoding them.
-		#[arg(long)]
-		raw: bool,
-	},
+	Buffer(KeyArgs),
+}
+
+/// The same three options for every subject: which para, when, and how much decoding.
+#[derive(ClapArgs)]
+struct KeyArgs {
+	/// Which para.
+	para: u32,
+	/// Read at this block instead of the current best.
+	#[arg(long, value_name = "HASH", conflicts_with = "watch")]
+	block: Option<String>,
+	/// Sample every slot and re-print whenever the entry changes.
+	#[arg(long)]
+	watch: bool,
+	/// Print the stored bytes without decoding them.
+	#[arg(long)]
+	raw: bool,
 }
 
 #[tokio::main]
 async fn main() {
+	// INFO by default, because this tool's own progress lines go through `tracing` and their
+	// timestamps are the whole point: correlating what the tool did with what the node logged is
+	// otherwise done by hand. Command *output* stays on stdout, undecorated, so piping it works.
 	tracing_subscriber::fmt()
 		.with_env_filter(
-			tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "warn".into()),
+			tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
 		)
 		.init();
 
@@ -254,13 +269,30 @@ async fn run(cli: Cli) -> Result<(), String> {
 			let args = inflight::Args { service: cli.service, para, block, watch, raw };
 			inflight::run(&jam, &args).await
 		},
-		Command::DisplayKey { subject } => match subject {
-			Key::Parahead { para, block, raw } => {
-				keys::display_parahead(&jam, cli.service, ParaId(para), block, raw).await
-			},
-			Key::Buffer { para, block, raw } => {
-				keys::display_buffer(&jam, cli.service, ParaId(para), block, raw).await
-			},
+		Command::DisplayKey { subject } => {
+			let (subject, key) = match subject {
+				Key::Parahead(key) => (keys::Subject::Parahead, key),
+				Key::Buffer(key) => (keys::Subject::Buffer, key),
+			};
+			let args = keys::Args {
+				service: cli.service,
+				para: ParaId(key.para),
+				subject,
+				block: key.block,
+				watch: key.watch,
+				raw: key.raw,
+			};
+			keys::run(&jam, &args).await
+		},
+		Command::DisplayAuthorizers { block, watch } => {
+			// Without a blob there is no code hash, so nothing but the genesis authorizer can be
+			// named — which is still worth showing, so a missing blob is not an error here.
+			let args = authorizers::Args {
+				block,
+				watch,
+				aura: cli.aura.resolve(cli.service).ok(),
+			};
+			authorizers::run(&jam, &args).await
 		},
 		Command::DeployAuthorizer { blob } => {
 			let blob = blob

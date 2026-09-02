@@ -24,14 +24,14 @@ pub async fn run(jam: &JamRpcInterface, blob: &Path) -> Result<(), String> {
 	let blob = std::fs::read(blob).map_err(|e| format!("reading {}: {e}", blob.display()))?;
 	let hash = jam_std_common::hash_raw(&blob);
 	let len = blob.len() as u64;
-	println!("authorizer code hash 0x{} ({len} bytes)", hex(&hash));
+	tracing::info!("authorizer code hash 0x{} ({len} bytes)", hex(&hash));
 
 	if available_at_finalized(jam, hash).await?.is_some() {
-		println!("already available at the lookup anchor; nothing to do");
+		tracing::info!("already available at the lookup anchor; nothing to do");
 		return Ok(());
 	}
 
-	println!("soliciting it into service {BOOTSTRAP_SERVICE}");
+	tracing::info!("soliciting it into service {BOOTSTRAP_SERVICE}");
 	bootstrap::instruct(jam, None, vec![Instruction::Solicit { hash: hash.into_any(), len }])
 		.await?;
 	wait_until("the solicit to accumulate", || async {
@@ -45,7 +45,7 @@ pub async fn run(jam: &JamRpcInterface, blob: &Path) -> Result<(), String> {
 	})
 	.await?;
 
-	println!("providing the blob");
+	tracing::info!("providing the blob");
 	jam.node()
 		.submit_preimage(BOOTSTRAP_SERVICE, blob.into())
 		.await
@@ -55,7 +55,7 @@ pub async fn run(jam: &JamRpcInterface, blob: &Path) -> Result<(), String> {
 	})
 	.await?;
 
-	println!("authorizer 0x{} is hosted by service {BOOTSTRAP_SERVICE}", hex(&hash));
+	tracing::info!("authorizer 0x{} is hosted by service {BOOTSTRAP_SERVICE}", hex(&hash));
 	Ok(())
 }
 
@@ -87,7 +87,7 @@ where
 		if tokio::time::Instant::now() >= deadline {
 			return Err(format!("gave up waiting for {what} after {WAIT_TIMEOUT:?}"));
 		}
-		println!("waiting for {what}...");
+		tracing::info!("waiting for {what}...");
 		tokio::time::sleep(POLL_INTERVAL).await;
 	}
 }

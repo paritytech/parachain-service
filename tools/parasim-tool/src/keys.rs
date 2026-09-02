@@ -4,8 +4,10 @@
 //! Naming the subject leaves room for other entries as the service grows, and it is also a
 //! reminder that the bytes are not self-describing: the caller has to say what they expect.
 
+use std::time::Duration;
+
 use codec::Decode as _;
-use jam_interface::{HeaderHash, JamChainSource, JamStateSource, ServiceId};
+use jam_interface::{HeaderHash, JamChainSource, JamStateSource, ServiceId, VersionedParameters};
 use jam_rpc_interface::JamRpcInterface;
 use parachain_service_interface::types::ParaId;
 use parasim_service::buffer::{BufferedCandidate, StoredHead, BUFFER_CAP};
@@ -15,71 +17,112 @@ use crate::{
 	header,
 };
 
-/// Print the para head stored for `para` by `service`, decoded unless `raw`.
-pub async fn display_parahead(
-	jam: &JamRpcInterface,
-	service: ServiceId,
-	para: ParaId,
-	at: Option<String>,
-	raw: bool,
-) -> Result<(), String> {
-	let at = resolve_block(jam, at).await?;
-	let service_local_key = parasim_service::para_head_key(para);
-	print_location(at, service, para, &service_local_key);
-
-	let Some(stored) = jam
-		.service_value(at, service, &service_local_key)
-		.await
-		.map_err(|e| format!("reading the para head: {e}"))?
-	else {
-		println!("\nno entry: para {} has no head at this block", para.0);
-		return Ok(());
-	};
-
-	println!("\nParaInfo    {} bytes", stored.len());
-	if raw {
-		println!("0x{}", hex(&stored));
-		return Ok(());
-	}
-	print_para_info(&stored)
+/// Which of a para's service-storage entries to read.
+#[derive(Clone, Copy)]
+pub enum Subject {
+	/// The para's head, as stored in the service's `parachains` map.
+	Parahead,
+	/// The heads accumulate has parked until their parent arrives.
+	Buffer,
 }
 
-/// Print the heads `para` has parked in the reorder buffer, decoded unless `raw`.
-///
-/// The stored head is read alongside the buffer, because a parked head only means something
-/// against the head it is waiting for: the same entry is next in line or already orphaned
-/// depending on where the head has got to.
-pub async fn display_buffer(
-	jam: &JamRpcInterface,
-	service: ServiceId,
-	para: ParaId,
-	at: Option<String>,
-	raw: bool,
-) -> Result<(), String> {
-	let at = resolve_block(jam, at).await?;
-	let service_local_key = parasim_service::buffer_key(para);
-	print_location(at, service, para, &service_local_key);
-
-	let Some(stored) = jam
-		.service_value(at, service, &service_local_key)
-		.await
-		.map_err(|e| format!("reading the reorder buffer: {e}"))?
-	else {
-		println!("\nbuffer is empty: nothing parked for para {} at this block", para.0);
-		return Ok(());
-	};
-
-	println!("\nReorderBuffer {} bytes", stored.len());
-	if raw {
-		println!("0x{}", hex(&stored));
-		return Ok(());
+impl Subject {
+	fn key(self, para: ParaId) -> Vec<u8> {
+		match self {
+			Self::Parahead => parasim_service::para_head_key(para),
+			Self::Buffer => parasim_service::buffer_key(para),
+		}
 	}
+}
 
-	let head = jam
-		.service_value(at, service, &parasim_service::para_head_key(para))
+/// What `display-key` needs to know.
+pub struct Args {
+	pub service: ServiceId,
+	pub para: ParaId,
+	pub subject: Subject,
+	pub block: Option<String>,
+	pub watch: bool,
+	pub raw: bool,
+}
+
+pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
+	if args.watch {
+		return watch(jam, args).await;
+	}
+	let at = resolve_block(jam, args.block.clone()).await?;
+	show(jam, args, at).await
+}
+
+/// Poll once per slot and re-print the entry whenever its bytes change.
+///
+/// Same convention as `display-inflight --watch`: one verb, `--watch` streams changes. Comparing
+/// the stored bytes rather than the block means a slot that did not touch this para prints
+/// nothing, which is what makes it usable next to a `send` in another terminal.
+async fn watch(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
+	let VersionedParameters::V1(parameters) =
+		jam.parameters().await.map_err(|e| format!("parameters: {e}"))?;
+	let key = args.subject.key(args.para);
+	let mut previous: Option<Option<Vec<u8>>> = None;
+	loop {
+		let best = jam.best_block().await.map_err(|e| format!("best block: {e}"))?;
+		let stored = jam
+			.service_value(best.header_hash, args.service, &key)
+			.await
+			.map_err(|e| format!("reading the entry: {e}"))?;
+		if previous.as_ref() != Some(&stored) {
+			tracing::info!("para {} changed at block 0x{}", args.para.0, hex(&*best.header_hash));
+			show(jam, args, best.header_hash).await?;
+			println!();
+			previous = Some(stored);
+		}
+		tokio::time::sleep(Duration::from_secs(parameters.slot_period_sec.into())).await;
+	}
+}
+
+/// Print the entry as it stands at `at`, decoded unless `raw`.
+async fn show(jam: &JamRpcInterface, args: &Args, at: HeaderHash) -> Result<(), String> {
+	let service_local_key = args.subject.key(args.para);
+	print_location(at, args.service, args.para, &service_local_key);
+
+	let stored = jam
+		.service_value(at, args.service, &service_local_key)
 		.await
-		.map_err(|e| format!("reading the para head: {e}"))?;
-	print_buffer(&stored, StoredHead::read(head.as_deref()))
+		.map_err(|e| format!("reading the entry: {e}"))?;
+
+	match (args.subject, stored) {
+		(Subject::Parahead, None) => {
+			println!("\nno entry: para {} has no head at this block", args.para.0);
+			Ok(())
+		},
+		(Subject::Buffer, None) => {
+			println!("\nbuffer is empty: nothing parked for para {} at this block", args.para.0);
+			Ok(())
+		},
+		(subject, Some(stored)) => {
+			let label = match subject {
+				Subject::Parahead => "ParaInfo     ",
+				Subject::Buffer => "ReorderBuffer",
+			};
+			println!("\n{label} {} bytes", stored.len());
+			if args.raw {
+				println!("0x{}", hex(&stored));
+				return Ok(());
+			}
+			match subject {
+				Subject::Parahead => print_para_info(&stored),
+				// The stored head is read alongside the buffer, because a parked head only means
+				// something against the head it is waiting for: the same entry is next in line or
+				// already orphaned depending on where the head has got to.
+				Subject::Buffer => {
+					let head = jam
+						.service_value(at, args.service, &parasim_service::para_head_key(args.para))
+						.await
+						.map_err(|e| format!("reading the para head: {e}"))?;
+					print_buffer(&stored, StoredHead::read(head.as_deref()))
+				},
+			}
+		},
+	}
 }
 
 /// Decode and print a stored `ParaInfo`, then the substrate header inside its `head_data`.

@@ -185,7 +185,7 @@ impl Aura {
 			signature: pair.sign(payload.as_bytes()),
 			sudo,
 		};
-		println!(
+		tracing::info!(
 			"signing as collator {index} of {} (lookup anchor slot {})",
 			self.pairs.len(),
 			package.context.lookup_anchor_slot

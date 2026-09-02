@@ -25,8 +25,8 @@ const QUEUE_WAIT_TIMEOUT: Duration = Duration::from_secs(60);
 const QUEUE_POLL_INTERVAL: Duration = Duration::from_secs(3);
 
 /// The queue entry that means "this core is unassigned": polkajam's null authorizer with an
-/// empty config, which is what every core's queue holds at genesis and what `free-core` puts
-/// back.
+/// empty config, which is what every core's queue holds at genesis. Nothing puts it back —
+/// `free-core` parks a core under the AURA authorizer instead, so that commands still reach it.
 pub fn unassigned() -> AuthorizerHash {
 	Authorizer { code_hash: jam_null_authorizer_bin::HASH.into(), config: AuthConfig::default() }
 		.hash(jam_std_common::hash_raw)
@@ -116,7 +116,7 @@ pub async fn report(
 			hex(&expected.0),
 		));
 	}
-	println!("core {core} queue is 0x{}", hex(&expected.0));
+	tracing::info!("core {core} queue is 0x{}", hex(&expected.0));
 
 	let deadline = tokio::time::Instant::now() + QUEUE_WAIT_TIMEOUT;
 	loop {
@@ -124,7 +124,7 @@ pub async fn report(
 		let pool = pool(jam, best.header_hash, core).await?;
 		let converged = pool.iter().filter(|entry| **entry == expected).count();
 		if converged > 0 {
-			println!("core {core} pool holds {converged} of {} copies of it", pool.len());
+			tracing::info!("core {core} pool holds {converged} of {} copies of it", pool.len());
 			return Ok(());
 		}
 		if tokio::time::Instant::now() >= deadline {
@@ -133,7 +133,7 @@ pub async fn report(
 				 be reported on that core"
 			));
 		}
-		println!("waiting for core {core}'s pool to pick the authorizer up...");
+		tracing::info!("waiting for core {core}'s pool to pick the authorizer up...");
 		tokio::time::sleep(QUEUE_POLL_INTERVAL).await;
 	}
 }

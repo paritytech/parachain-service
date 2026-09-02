@@ -122,7 +122,7 @@ pub async fn submit_and_follow(
 	jam.submit_work_package(core, package, Vec::new())
 		.await
 		.map_err(|e| format!("submitting the work package: {e}"))?;
-	println!("submitted {package_hash:?} to core {core}");
+	tracing::info!("submitted {package_hash:?} to core {core}");
 
 	let mut statuses = jam
 		.work_package_status_stream(package_hash, package.context.anchor, false)
@@ -131,13 +131,13 @@ pub async fn submit_and_follow(
 
 	let follow = async {
 		while let Some(status) = statuses.next().await {
-			println!("  status: {status:?}");
+			tracing::info!("  status: {status:?}");
 			match status {
 				// Neither status says the package *succeeded*: a report is produced whether
 				// refine returned a value or an error, and `Ready` only means "queued for
 				// accumulation". The caller decides the outcome by watching state.
 				WorkPackageStatus::Reported { .. } | WorkPackageStatus::Ready { .. } => {
-					println!("  reported on chain");
+					tracing::info!("  reported on chain");
 					return Ok(());
 				},
 				WorkPackageStatus::Failed(reason) =>
@@ -178,7 +178,7 @@ async fn wait_for_code(
 			.await
 			.map_err(|e| format!("looking up the service code: {e}"))?;
 		if let Some(len) = len {
-			println!("service {service} code ({len} bytes) is available at the lookup anchor");
+			tracing::info!("service {service} code ({len} bytes) is available at the lookup anchor");
 			return Ok(finalized);
 		}
 		if tokio::time::Instant::now() >= deadline {
@@ -187,7 +187,7 @@ async fn wait_for_code(
 				 {CODE_WAIT_TIMEOUT:?}; was the service created?"
 			));
 		}
-		println!("waiting for service {service} code to be available at the lookup anchor...");
+		tracing::info!("waiting for service {service} code to be available at the lookup anchor...");
 		tokio::time::sleep(CODE_POLL_INTERVAL).await;
 	}
 }
