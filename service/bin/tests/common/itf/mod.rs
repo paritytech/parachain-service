@@ -2,4 +2,7 @@
 
 pub mod classify;
 pub mod codex;
+pub mod compare;
+pub mod replay;
+pub mod seed;
 pub mod value;

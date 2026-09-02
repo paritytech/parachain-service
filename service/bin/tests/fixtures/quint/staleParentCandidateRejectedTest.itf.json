@@ -1,0 +1,2573 @@
+{
+  "vars": [
+    "foreignServices",
+    "jamStagingSet",
+    "lastHeadRoot",
+    "lastStepAssigns",
+    "lastStepWorkResults",
+    "logPrunedBelow",
+    "now",
+    "prevSvc",
+    "solicitedSet",
+    "svc"
+  ],
+  "states": [
+    {
+      "foreignServices": {
+        "#map": []
+      },
+      "jamStagingSet": [],
+      "lastHeadRoot": {
+        "tag": "None",
+        "value": {
+          "#tup": []
+        }
+      },
+      "lastStepAssigns": [],
+      "lastStepWorkResults": [],
+      "logPrunedBelow": {
+        "#map": []
+      },
+      "now": {
+        "#bigint": "0"
+      },
+      "prevSvc": {
+        "incomingTransferChain": {
+          "tag": "None",
+          "value": {
+            "#tup": []
+          }
+        },
+        "incomingTransfers": {
+          "#map": []
+        },
+        "keyValueStorage": {
+          "#map": []
+        },
+        "parachainLog": {
+          "#map": []
+        },
+        "parachains": {
+          "#map": [
+            [
+              {
+                "tag": "MkParaId",
+                "value": {
+                  "#bigint": "1"
+                }
+              },
+              {
+                "headData": {
+                  "#bigint": "0"
+                },
+                "isDeregistering": false,
+                "pendingUpgrade": {
+                  "tag": "None",
+                  "value": {
+                    "#tup": []
+                  }
+                },
+                "totalStateBalance": {
+                  "#bigint": "271108"
+                },
+                "usedStateBalance": {
+                  "#bigint": "135554"
+                },
+                "validationCode": {
+                  "tag": "Some",
+                  "value": {
+                    "pinned": false,
+                    "ref": {
+                      "hash": {
+                        "vchBytes": {
+                          "#bigint": "1"
+                        }
+                      },
+                      "len": {
+                        "#bigint": "65536"
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            [
+              {
+                "tag": "MkParaId",
+                "value": {
+                  "#bigint": "2"
+                }
+              },
+              {
+                "headData": {
+                  "#bigint": "0"
+                },
+                "isDeregistering": false,
+                "pendingUpgrade": {
+                  "tag": "None",
+                  "value": {
+                    "#tup": []
+                  }
+                },
+                "totalStateBalance": {
+                  "#bigint": "1704408"
+                },
+                "usedStateBalance": {
+                  "#bigint": "1568854"
+                },
+                "validationCode": {
+                  "tag": "Some",
+                  "value": {
+                    "pinned": false,
+                    "ref": {
+                      "hash": {
+                        "vchBytes": {
+                          "#bigint": "2"
+                        }
+                      },
+                      "len": {
+                        "#bigint": "65536"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          ]
+        },
+        "pendingAssignCores": {
+          "#map": []
+        },
+        "pendingAssigns": {
+          "#map": []
+        },
+        "preimageRegistry": {
+          "#map": [
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "1"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "referencers": {
+                  "#set": [
+                    {
+                      "tag": "MkParaId",
+                      "value": {
+                        "#bigint": "1"
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "referencers": {
+                  "#set": [
+                    {
+                      "tag": "MkParaId",
+                      "value": {
+                        "#bigint": "2"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          ]
+        },
+        "preimageStatus": {
+          "#map": [
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "1"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "tag": "Unprovided",
+                "value": {
+                  "#tup": []
+                }
+              }
+            ],
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "tag": "Unprovided",
+                "value": {
+                  "#tup": []
+                }
+              }
+            ]
+          ]
+        },
+        "serviceCodeHash": {
+          "hashBytes": {
+            "#bigint": "0"
+          }
+        },
+        "stagedValidatorKeys": []
+      },
+      "solicitedSet": {
+        "#set": []
+      },
+      "svc": {
+        "incomingTransferChain": {
+          "tag": "None",
+          "value": {
+            "#tup": []
+          }
+        },
+        "incomingTransfers": {
+          "#map": []
+        },
+        "keyValueStorage": {
+          "#map": []
+        },
+        "parachainLog": {
+          "#map": []
+        },
+        "parachains": {
+          "#map": [
+            [
+              {
+                "tag": "MkParaId",
+                "value": {
+                  "#bigint": "1"
+                }
+              },
+              {
+                "headData": {
+                  "#bigint": "0"
+                },
+                "isDeregistering": false,
+                "pendingUpgrade": {
+                  "tag": "None",
+                  "value": {
+                    "#tup": []
+                  }
+                },
+                "totalStateBalance": {
+                  "#bigint": "271108"
+                },
+                "usedStateBalance": {
+                  "#bigint": "135554"
+                },
+                "validationCode": {
+                  "tag": "Some",
+                  "value": {
+                    "pinned": false,
+                    "ref": {
+                      "hash": {
+                        "vchBytes": {
+                          "#bigint": "1"
+                        }
+                      },
+                      "len": {
+                        "#bigint": "65536"
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            [
+              {
+                "tag": "MkParaId",
+                "value": {
+                  "#bigint": "2"
+                }
+              },
+              {
+                "headData": {
+                  "#bigint": "0"
+                },
+                "isDeregistering": false,
+                "pendingUpgrade": {
+                  "tag": "None",
+                  "value": {
+                    "#tup": []
+                  }
+                },
+                "totalStateBalance": {
+                  "#bigint": "1704408"
+                },
+                "usedStateBalance": {
+                  "#bigint": "1568854"
+                },
+                "validationCode": {
+                  "tag": "Some",
+                  "value": {
+                    "pinned": false,
+                    "ref": {
+                      "hash": {
+                        "vchBytes": {
+                          "#bigint": "2"
+                        }
+                      },
+                      "len": {
+                        "#bigint": "65536"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          ]
+        },
+        "pendingAssignCores": {
+          "#map": []
+        },
+        "pendingAssigns": {
+          "#map": []
+        },
+        "preimageRegistry": {
+          "#map": [
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "1"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "referencers": {
+                  "#set": [
+                    {
+                      "tag": "MkParaId",
+                      "value": {
+                        "#bigint": "1"
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "referencers": {
+                  "#set": [
+                    {
+                      "tag": "MkParaId",
+                      "value": {
+                        "#bigint": "2"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          ]
+        },
+        "preimageStatus": {
+          "#map": [
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "1"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "tag": "Unprovided",
+                "value": {
+                  "#tup": []
+                }
+              }
+            ],
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "tag": "Unprovided",
+                "value": {
+                  "#tup": []
+                }
+              }
+            ]
+          ]
+        },
+        "serviceCodeHash": {
+          "hashBytes": {
+            "#bigint": "0"
+          }
+        },
+        "stagedValidatorKeys": []
+      }
+    },
+    {
+      "foreignServices": {
+        "#map": []
+      },
+      "jamStagingSet": [],
+      "lastHeadRoot": {
+        "tag": "Some",
+        "value": {
+          "merkleBytes": {
+            "#bigint": "1030"
+          }
+        }
+      },
+      "lastStepAssigns": [],
+      "lastStepWorkResults": [
+        {
+          "authTrace": {
+            "#bigint": "0"
+          },
+          "result": {
+            "tag": "WorkOk",
+            "value": {
+              "tag": "Ok",
+              "value": {
+                "headData": {
+                  "#bigint": "1"
+                },
+                "lookupAnchor": {
+                  "#bigint": "0"
+                },
+                "paraId": {
+                  "tag": "MkParaId",
+                  "value": {
+                    "#bigint": "2"
+                  }
+                },
+                "parentHeadHash": {
+                  "headBytes": {
+                    "#bigint": "0"
+                  }
+                },
+                "upwardMessages": [],
+                "validationCode": {
+                  "hash": {
+                    "vchBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  "len": {
+                    "#bigint": "65536"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "logPrunedBelow": {
+        "#map": [
+          [
+            {
+              "tag": "MkParaId",
+              "value": {
+                "#bigint": "2"
+              }
+            },
+            {
+              "#bigint": "0"
+            }
+          ]
+        ]
+      },
+      "now": {
+        "#bigint": "1"
+      },
+      "prevSvc": {
+        "incomingTransferChain": {
+          "tag": "None",
+          "value": {
+            "#tup": []
+          }
+        },
+        "incomingTransfers": {
+          "#map": []
+        },
+        "keyValueStorage": {
+          "#map": []
+        },
+        "parachainLog": {
+          "#map": []
+        },
+        "parachains": {
+          "#map": [
+            [
+              {
+                "tag": "MkParaId",
+                "value": {
+                  "#bigint": "1"
+                }
+              },
+              {
+                "headData": {
+                  "#bigint": "0"
+                },
+                "isDeregistering": false,
+                "pendingUpgrade": {
+                  "tag": "None",
+                  "value": {
+                    "#tup": []
+                  }
+                },
+                "totalStateBalance": {
+                  "#bigint": "271108"
+                },
+                "usedStateBalance": {
+                  "#bigint": "135554"
+                },
+                "validationCode": {
+                  "tag": "Some",
+                  "value": {
+                    "pinned": false,
+                    "ref": {
+                      "hash": {
+                        "vchBytes": {
+                          "#bigint": "1"
+                        }
+                      },
+                      "len": {
+                        "#bigint": "65536"
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            [
+              {
+                "tag": "MkParaId",
+                "value": {
+                  "#bigint": "2"
+                }
+              },
+              {
+                "headData": {
+                  "#bigint": "0"
+                },
+                "isDeregistering": false,
+                "pendingUpgrade": {
+                  "tag": "None",
+                  "value": {
+                    "#tup": []
+                  }
+                },
+                "totalStateBalance": {
+                  "#bigint": "1704408"
+                },
+                "usedStateBalance": {
+                  "#bigint": "1568854"
+                },
+                "validationCode": {
+                  "tag": "Some",
+                  "value": {
+                    "pinned": false,
+                    "ref": {
+                      "hash": {
+                        "vchBytes": {
+                          "#bigint": "2"
+                        }
+                      },
+                      "len": {
+                        "#bigint": "65536"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          ]
+        },
+        "pendingAssignCores": {
+          "#map": []
+        },
+        "pendingAssigns": {
+          "#map": []
+        },
+        "preimageRegistry": {
+          "#map": [
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "1"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "referencers": {
+                  "#set": [
+                    {
+                      "tag": "MkParaId",
+                      "value": {
+                        "#bigint": "1"
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "referencers": {
+                  "#set": [
+                    {
+                      "tag": "MkParaId",
+                      "value": {
+                        "#bigint": "2"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          ]
+        },
+        "preimageStatus": {
+          "#map": [
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "1"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "tag": "Unprovided",
+                "value": {
+                  "#tup": []
+                }
+              }
+            ],
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "tag": "Unprovided",
+                "value": {
+                  "#tup": []
+                }
+              }
+            ]
+          ]
+        },
+        "serviceCodeHash": {
+          "hashBytes": {
+            "#bigint": "0"
+          }
+        },
+        "stagedValidatorKeys": []
+      },
+      "solicitedSet": {
+        "#set": []
+      },
+      "svc": {
+        "incomingTransferChain": {
+          "tag": "None",
+          "value": {
+            "#tup": []
+          }
+        },
+        "incomingTransfers": {
+          "#map": []
+        },
+        "keyValueStorage": {
+          "#map": []
+        },
+        "parachainLog": {
+          "#map": []
+        },
+        "parachains": {
+          "#map": [
+            [
+              {
+                "tag": "MkParaId",
+                "value": {
+                  "#bigint": "1"
+                }
+              },
+              {
+                "headData": {
+                  "#bigint": "0"
+                },
+                "isDeregistering": false,
+                "pendingUpgrade": {
+                  "tag": "None",
+                  "value": {
+                    "#tup": []
+                  }
+                },
+                "totalStateBalance": {
+                  "#bigint": "271108"
+                },
+                "usedStateBalance": {
+                  "#bigint": "135554"
+                },
+                "validationCode": {
+                  "tag": "Some",
+                  "value": {
+                    "pinned": false,
+                    "ref": {
+                      "hash": {
+                        "vchBytes": {
+                          "#bigint": "1"
+                        }
+                      },
+                      "len": {
+                        "#bigint": "65536"
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            [
+              {
+                "tag": "MkParaId",
+                "value": {
+                  "#bigint": "2"
+                }
+              },
+              {
+                "headData": {
+                  "#bigint": "1"
+                },
+                "isDeregistering": false,
+                "pendingUpgrade": {
+                  "tag": "None",
+                  "value": {
+                    "#tup": []
+                  }
+                },
+                "totalStateBalance": {
+                  "#bigint": "1704408"
+                },
+                "usedStateBalance": {
+                  "#bigint": "1568854"
+                },
+                "validationCode": {
+                  "tag": "Some",
+                  "value": {
+                    "pinned": false,
+                    "ref": {
+                      "hash": {
+                        "vchBytes": {
+                          "#bigint": "2"
+                        }
+                      },
+                      "len": {
+                        "#bigint": "65536"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          ]
+        },
+        "pendingAssignCores": {
+          "#map": []
+        },
+        "pendingAssigns": {
+          "#map": []
+        },
+        "preimageRegistry": {
+          "#map": [
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "1"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "referencers": {
+                  "#set": [
+                    {
+                      "tag": "MkParaId",
+                      "value": {
+                        "#bigint": "1"
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "referencers": {
+                  "#set": [
+                    {
+                      "tag": "MkParaId",
+                      "value": {
+                        "#bigint": "2"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          ]
+        },
+        "preimageStatus": {
+          "#map": [
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "1"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "tag": "Unprovided",
+                "value": {
+                  "#tup": []
+                }
+              }
+            ],
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "tag": "Unprovided",
+                "value": {
+                  "#tup": []
+                }
+              }
+            ]
+          ]
+        },
+        "serviceCodeHash": {
+          "hashBytes": {
+            "#bigint": "0"
+          }
+        },
+        "stagedValidatorKeys": []
+      }
+    },
+    {
+      "foreignServices": {
+        "#map": []
+      },
+      "jamStagingSet": [],
+      "lastHeadRoot": {
+        "tag": "Some",
+        "value": {
+          "merkleBytes": {
+            "#bigint": "1030"
+          }
+        }
+      },
+      "lastStepAssigns": [],
+      "lastStepWorkResults": [
+        {
+          "authTrace": {
+            "#bigint": "0"
+          },
+          "result": {
+            "tag": "WorkOk",
+            "value": {
+              "tag": "Ok",
+              "value": {
+                "headData": {
+                  "#bigint": "1"
+                },
+                "lookupAnchor": {
+                  "#bigint": "0"
+                },
+                "paraId": {
+                  "tag": "MkParaId",
+                  "value": {
+                    "#bigint": "2"
+                  }
+                },
+                "parentHeadHash": {
+                  "headBytes": {
+                    "#bigint": "0"
+                  }
+                },
+                "upwardMessages": [],
+                "validationCode": {
+                  "hash": {
+                    "vchBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  "len": {
+                    "#bigint": "65536"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "logPrunedBelow": {
+        "#map": [
+          [
+            {
+              "tag": "MkParaId",
+              "value": {
+                "#bigint": "2"
+              }
+            },
+            {
+              "#bigint": "0"
+            }
+          ]
+        ]
+      },
+      "now": {
+        "#bigint": "1"
+      },
+      "prevSvc": {
+        "incomingTransferChain": {
+          "tag": "None",
+          "value": {
+            "#tup": []
+          }
+        },
+        "incomingTransfers": {
+          "#map": []
+        },
+        "keyValueStorage": {
+          "#map": []
+        },
+        "parachainLog": {
+          "#map": []
+        },
+        "parachains": {
+          "#map": [
+            [
+              {
+                "tag": "MkParaId",
+                "value": {
+                  "#bigint": "1"
+                }
+              },
+              {
+                "headData": {
+                  "#bigint": "0"
+                },
+                "isDeregistering": false,
+                "pendingUpgrade": {
+                  "tag": "None",
+                  "value": {
+                    "#tup": []
+                  }
+                },
+                "totalStateBalance": {
+                  "#bigint": "271108"
+                },
+                "usedStateBalance": {
+                  "#bigint": "135554"
+                },
+                "validationCode": {
+                  "tag": "Some",
+                  "value": {
+                    "pinned": false,
+                    "ref": {
+                      "hash": {
+                        "vchBytes": {
+                          "#bigint": "1"
+                        }
+                      },
+                      "len": {
+                        "#bigint": "65536"
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            [
+              {
+                "tag": "MkParaId",
+                "value": {
+                  "#bigint": "2"
+                }
+              },
+              {
+                "headData": {
+                  "#bigint": "0"
+                },
+                "isDeregistering": false,
+                "pendingUpgrade": {
+                  "tag": "None",
+                  "value": {
+                    "#tup": []
+                  }
+                },
+                "totalStateBalance": {
+                  "#bigint": "1704408"
+                },
+                "usedStateBalance": {
+                  "#bigint": "1568854"
+                },
+                "validationCode": {
+                  "tag": "Some",
+                  "value": {
+                    "pinned": false,
+                    "ref": {
+                      "hash": {
+                        "vchBytes": {
+                          "#bigint": "2"
+                        }
+                      },
+                      "len": {
+                        "#bigint": "65536"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          ]
+        },
+        "pendingAssignCores": {
+          "#map": []
+        },
+        "pendingAssigns": {
+          "#map": []
+        },
+        "preimageRegistry": {
+          "#map": [
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "1"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "referencers": {
+                  "#set": [
+                    {
+                      "tag": "MkParaId",
+                      "value": {
+                        "#bigint": "1"
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "referencers": {
+                  "#set": [
+                    {
+                      "tag": "MkParaId",
+                      "value": {
+                        "#bigint": "2"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          ]
+        },
+        "preimageStatus": {
+          "#map": [
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "1"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "tag": "Unprovided",
+                "value": {
+                  "#tup": []
+                }
+              }
+            ],
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "tag": "Unprovided",
+                "value": {
+                  "#tup": []
+                }
+              }
+            ]
+          ]
+        },
+        "serviceCodeHash": {
+          "hashBytes": {
+            "#bigint": "0"
+          }
+        },
+        "stagedValidatorKeys": []
+      },
+      "solicitedSet": {
+        "#set": []
+      },
+      "svc": {
+        "incomingTransferChain": {
+          "tag": "None",
+          "value": {
+            "#tup": []
+          }
+        },
+        "incomingTransfers": {
+          "#map": []
+        },
+        "keyValueStorage": {
+          "#map": []
+        },
+        "parachainLog": {
+          "#map": []
+        },
+        "parachains": {
+          "#map": [
+            [
+              {
+                "tag": "MkParaId",
+                "value": {
+                  "#bigint": "1"
+                }
+              },
+              {
+                "headData": {
+                  "#bigint": "0"
+                },
+                "isDeregistering": false,
+                "pendingUpgrade": {
+                  "tag": "None",
+                  "value": {
+                    "#tup": []
+                  }
+                },
+                "totalStateBalance": {
+                  "#bigint": "271108"
+                },
+                "usedStateBalance": {
+                  "#bigint": "135554"
+                },
+                "validationCode": {
+                  "tag": "Some",
+                  "value": {
+                    "pinned": false,
+                    "ref": {
+                      "hash": {
+                        "vchBytes": {
+                          "#bigint": "1"
+                        }
+                      },
+                      "len": {
+                        "#bigint": "65536"
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            [
+              {
+                "tag": "MkParaId",
+                "value": {
+                  "#bigint": "2"
+                }
+              },
+              {
+                "headData": {
+                  "#bigint": "1"
+                },
+                "isDeregistering": false,
+                "pendingUpgrade": {
+                  "tag": "None",
+                  "value": {
+                    "#tup": []
+                  }
+                },
+                "totalStateBalance": {
+                  "#bigint": "1704408"
+                },
+                "usedStateBalance": {
+                  "#bigint": "1568854"
+                },
+                "validationCode": {
+                  "tag": "Some",
+                  "value": {
+                    "pinned": false,
+                    "ref": {
+                      "hash": {
+                        "vchBytes": {
+                          "#bigint": "2"
+                        }
+                      },
+                      "len": {
+                        "#bigint": "65536"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          ]
+        },
+        "pendingAssignCores": {
+          "#map": []
+        },
+        "pendingAssigns": {
+          "#map": []
+        },
+        "preimageRegistry": {
+          "#map": [
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "1"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "referencers": {
+                  "#set": [
+                    {
+                      "tag": "MkParaId",
+                      "value": {
+                        "#bigint": "1"
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "referencers": {
+                  "#set": [
+                    {
+                      "tag": "MkParaId",
+                      "value": {
+                        "#bigint": "2"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          ]
+        },
+        "preimageStatus": {
+          "#map": [
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "1"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "tag": "Unprovided",
+                "value": {
+                  "#tup": []
+                }
+              }
+            ],
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "tag": "Unprovided",
+                "value": {
+                  "#tup": []
+                }
+              }
+            ]
+          ]
+        },
+        "serviceCodeHash": {
+          "hashBytes": {
+            "#bigint": "0"
+          }
+        },
+        "stagedValidatorKeys": []
+      }
+    },
+    {
+      "foreignServices": {
+        "#map": []
+      },
+      "jamStagingSet": [],
+      "lastHeadRoot": {
+        "tag": "None",
+        "value": {
+          "#tup": []
+        }
+      },
+      "lastStepAssigns": [],
+      "lastStepWorkResults": [
+        {
+          "authTrace": {
+            "#bigint": "0"
+          },
+          "result": {
+            "tag": "WorkOk",
+            "value": {
+              "tag": "Ok",
+              "value": {
+                "headData": {
+                  "s": {
+                    "#bigint": "1"
+                  },
+                  "e": {
+                    "#bigint": "18"
+                  },
+                  "c": [
+                    {
+                      "#bigint": "92233"
+                    },
+                    {
+                      "#bigint": "72036854775807"
+                    }
+                  ]
+                },
+                "lookupAnchor": {
+                  "#bigint": "0"
+                },
+                "paraId": {
+                  "tag": "MkParaId",
+                  "value": {
+                    "#bigint": "2"
+                  }
+                },
+                "parentHeadHash": {
+                  "headBytes": {
+                    "s": {
+                      "#bigint": "1"
+                    },
+                    "e": {
+                      "#bigint": "18"
+                    },
+                    "c": [
+                      {
+                        "#bigint": "92233"
+                      },
+                      {
+                        "#bigint": "72036854775807"
+                      }
+                    ]
+                  }
+                },
+                "upwardMessages": [],
+                "validationCode": {
+                  "hash": {
+                    "vchBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  "len": {
+                    "#bigint": "65536"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "logPrunedBelow": {
+        "#map": [
+          [
+            {
+              "tag": "MkParaId",
+              "value": {
+                "#bigint": "2"
+              }
+            },
+            {
+              "#bigint": "0"
+            }
+          ]
+        ]
+      },
+      "now": {
+        "#bigint": "2"
+      },
+      "prevSvc": {
+        "incomingTransferChain": {
+          "tag": "None",
+          "value": {
+            "#tup": []
+          }
+        },
+        "incomingTransfers": {
+          "#map": []
+        },
+        "keyValueStorage": {
+          "#map": []
+        },
+        "parachainLog": {
+          "#map": []
+        },
+        "parachains": {
+          "#map": [
+            [
+              {
+                "tag": "MkParaId",
+                "value": {
+                  "#bigint": "1"
+                }
+              },
+              {
+                "headData": {
+                  "#bigint": "0"
+                },
+                "isDeregistering": false,
+                "pendingUpgrade": {
+                  "tag": "None",
+                  "value": {
+                    "#tup": []
+                  }
+                },
+                "totalStateBalance": {
+                  "#bigint": "271108"
+                },
+                "usedStateBalance": {
+                  "#bigint": "135554"
+                },
+                "validationCode": {
+                  "tag": "Some",
+                  "value": {
+                    "pinned": false,
+                    "ref": {
+                      "hash": {
+                        "vchBytes": {
+                          "#bigint": "1"
+                        }
+                      },
+                      "len": {
+                        "#bigint": "65536"
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            [
+              {
+                "tag": "MkParaId",
+                "value": {
+                  "#bigint": "2"
+                }
+              },
+              {
+                "headData": {
+                  "#bigint": "1"
+                },
+                "isDeregistering": false,
+                "pendingUpgrade": {
+                  "tag": "None",
+                  "value": {
+                    "#tup": []
+                  }
+                },
+                "totalStateBalance": {
+                  "#bigint": "1704408"
+                },
+                "usedStateBalance": {
+                  "#bigint": "1568854"
+                },
+                "validationCode": {
+                  "tag": "Some",
+                  "value": {
+                    "pinned": false,
+                    "ref": {
+                      "hash": {
+                        "vchBytes": {
+                          "#bigint": "2"
+                        }
+                      },
+                      "len": {
+                        "#bigint": "65536"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          ]
+        },
+        "pendingAssignCores": {
+          "#map": []
+        },
+        "pendingAssigns": {
+          "#map": []
+        },
+        "preimageRegistry": {
+          "#map": [
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "1"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "referencers": {
+                  "#set": [
+                    {
+                      "tag": "MkParaId",
+                      "value": {
+                        "#bigint": "1"
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "referencers": {
+                  "#set": [
+                    {
+                      "tag": "MkParaId",
+                      "value": {
+                        "#bigint": "2"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          ]
+        },
+        "preimageStatus": {
+          "#map": [
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "1"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "tag": "Unprovided",
+                "value": {
+                  "#tup": []
+                }
+              }
+            ],
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "tag": "Unprovided",
+                "value": {
+                  "#tup": []
+                }
+              }
+            ]
+          ]
+        },
+        "serviceCodeHash": {
+          "hashBytes": {
+            "#bigint": "0"
+          }
+        },
+        "stagedValidatorKeys": []
+      },
+      "solicitedSet": {
+        "#set": []
+      },
+      "svc": {
+        "incomingTransferChain": {
+          "tag": "None",
+          "value": {
+            "#tup": []
+          }
+        },
+        "incomingTransfers": {
+          "#map": []
+        },
+        "keyValueStorage": {
+          "#map": []
+        },
+        "parachainLog": {
+          "#map": []
+        },
+        "parachains": {
+          "#map": [
+            [
+              {
+                "tag": "MkParaId",
+                "value": {
+                  "#bigint": "1"
+                }
+              },
+              {
+                "headData": {
+                  "#bigint": "0"
+                },
+                "isDeregistering": false,
+                "pendingUpgrade": {
+                  "tag": "None",
+                  "value": {
+                    "#tup": []
+                  }
+                },
+                "totalStateBalance": {
+                  "#bigint": "271108"
+                },
+                "usedStateBalance": {
+                  "#bigint": "135554"
+                },
+                "validationCode": {
+                  "tag": "Some",
+                  "value": {
+                    "pinned": false,
+                    "ref": {
+                      "hash": {
+                        "vchBytes": {
+                          "#bigint": "1"
+                        }
+                      },
+                      "len": {
+                        "#bigint": "65536"
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            [
+              {
+                "tag": "MkParaId",
+                "value": {
+                  "#bigint": "2"
+                }
+              },
+              {
+                "headData": {
+                  "#bigint": "1"
+                },
+                "isDeregistering": false,
+                "pendingUpgrade": {
+                  "tag": "None",
+                  "value": {
+                    "#tup": []
+                  }
+                },
+                "totalStateBalance": {
+                  "#bigint": "1704408"
+                },
+                "usedStateBalance": {
+                  "#bigint": "1568854"
+                },
+                "validationCode": {
+                  "tag": "Some",
+                  "value": {
+                    "pinned": false,
+                    "ref": {
+                      "hash": {
+                        "vchBytes": {
+                          "#bigint": "2"
+                        }
+                      },
+                      "len": {
+                        "#bigint": "65536"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          ]
+        },
+        "pendingAssignCores": {
+          "#map": []
+        },
+        "pendingAssigns": {
+          "#map": []
+        },
+        "preimageRegistry": {
+          "#map": [
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "1"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "referencers": {
+                  "#set": [
+                    {
+                      "tag": "MkParaId",
+                      "value": {
+                        "#bigint": "1"
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "referencers": {
+                  "#set": [
+                    {
+                      "tag": "MkParaId",
+                      "value": {
+                        "#bigint": "2"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          ]
+        },
+        "preimageStatus": {
+          "#map": [
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "1"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "tag": "Unprovided",
+                "value": {
+                  "#tup": []
+                }
+              }
+            ],
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "tag": "Unprovided",
+                "value": {
+                  "#tup": []
+                }
+              }
+            ]
+          ]
+        },
+        "serviceCodeHash": {
+          "hashBytes": {
+            "#bigint": "0"
+          }
+        },
+        "stagedValidatorKeys": []
+      }
+    },
+    {
+      "foreignServices": {
+        "#map": []
+      },
+      "jamStagingSet": [],
+      "lastHeadRoot": {
+        "tag": "None",
+        "value": {
+          "#tup": []
+        }
+      },
+      "lastStepAssigns": [],
+      "lastStepWorkResults": [
+        {
+          "authTrace": {
+            "#bigint": "0"
+          },
+          "result": {
+            "tag": "WorkOk",
+            "value": {
+              "tag": "Ok",
+              "value": {
+                "headData": {
+                  "s": {
+                    "#bigint": "1"
+                  },
+                  "e": {
+                    "#bigint": "18"
+                  },
+                  "c": [
+                    {
+                      "#bigint": "92233"
+                    },
+                    {
+                      "#bigint": "72036854775807"
+                    }
+                  ]
+                },
+                "lookupAnchor": {
+                  "#bigint": "0"
+                },
+                "paraId": {
+                  "tag": "MkParaId",
+                  "value": {
+                    "#bigint": "2"
+                  }
+                },
+                "parentHeadHash": {
+                  "headBytes": {
+                    "s": {
+                      "#bigint": "1"
+                    },
+                    "e": {
+                      "#bigint": "18"
+                    },
+                    "c": [
+                      {
+                        "#bigint": "92233"
+                      },
+                      {
+                        "#bigint": "72036854775807"
+                      }
+                    ]
+                  }
+                },
+                "upwardMessages": [],
+                "validationCode": {
+                  "hash": {
+                    "vchBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  "len": {
+                    "#bigint": "65536"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "logPrunedBelow": {
+        "#map": [
+          [
+            {
+              "tag": "MkParaId",
+              "value": {
+                "#bigint": "2"
+              }
+            },
+            {
+              "#bigint": "0"
+            }
+          ]
+        ]
+      },
+      "now": {
+        "#bigint": "2"
+      },
+      "prevSvc": {
+        "incomingTransferChain": {
+          "tag": "None",
+          "value": {
+            "#tup": []
+          }
+        },
+        "incomingTransfers": {
+          "#map": []
+        },
+        "keyValueStorage": {
+          "#map": []
+        },
+        "parachainLog": {
+          "#map": []
+        },
+        "parachains": {
+          "#map": [
+            [
+              {
+                "tag": "MkParaId",
+                "value": {
+                  "#bigint": "1"
+                }
+              },
+              {
+                "headData": {
+                  "#bigint": "0"
+                },
+                "isDeregistering": false,
+                "pendingUpgrade": {
+                  "tag": "None",
+                  "value": {
+                    "#tup": []
+                  }
+                },
+                "totalStateBalance": {
+                  "#bigint": "271108"
+                },
+                "usedStateBalance": {
+                  "#bigint": "135554"
+                },
+                "validationCode": {
+                  "tag": "Some",
+                  "value": {
+                    "pinned": false,
+                    "ref": {
+                      "hash": {
+                        "vchBytes": {
+                          "#bigint": "1"
+                        }
+                      },
+                      "len": {
+                        "#bigint": "65536"
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            [
+              {
+                "tag": "MkParaId",
+                "value": {
+                  "#bigint": "2"
+                }
+              },
+              {
+                "headData": {
+                  "#bigint": "1"
+                },
+                "isDeregistering": false,
+                "pendingUpgrade": {
+                  "tag": "None",
+                  "value": {
+                    "#tup": []
+                  }
+                },
+                "totalStateBalance": {
+                  "#bigint": "1704408"
+                },
+                "usedStateBalance": {
+                  "#bigint": "1568854"
+                },
+                "validationCode": {
+                  "tag": "Some",
+                  "value": {
+                    "pinned": false,
+                    "ref": {
+                      "hash": {
+                        "vchBytes": {
+                          "#bigint": "2"
+                        }
+                      },
+                      "len": {
+                        "#bigint": "65536"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          ]
+        },
+        "pendingAssignCores": {
+          "#map": []
+        },
+        "pendingAssigns": {
+          "#map": []
+        },
+        "preimageRegistry": {
+          "#map": [
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "1"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "referencers": {
+                  "#set": [
+                    {
+                      "tag": "MkParaId",
+                      "value": {
+                        "#bigint": "1"
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "referencers": {
+                  "#set": [
+                    {
+                      "tag": "MkParaId",
+                      "value": {
+                        "#bigint": "2"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          ]
+        },
+        "preimageStatus": {
+          "#map": [
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "1"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "tag": "Unprovided",
+                "value": {
+                  "#tup": []
+                }
+              }
+            ],
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "tag": "Unprovided",
+                "value": {
+                  "#tup": []
+                }
+              }
+            ]
+          ]
+        },
+        "serviceCodeHash": {
+          "hashBytes": {
+            "#bigint": "0"
+          }
+        },
+        "stagedValidatorKeys": []
+      },
+      "solicitedSet": {
+        "#set": []
+      },
+      "svc": {
+        "incomingTransferChain": {
+          "tag": "None",
+          "value": {
+            "#tup": []
+          }
+        },
+        "incomingTransfers": {
+          "#map": []
+        },
+        "keyValueStorage": {
+          "#map": []
+        },
+        "parachainLog": {
+          "#map": []
+        },
+        "parachains": {
+          "#map": [
+            [
+              {
+                "tag": "MkParaId",
+                "value": {
+                  "#bigint": "1"
+                }
+              },
+              {
+                "headData": {
+                  "#bigint": "0"
+                },
+                "isDeregistering": false,
+                "pendingUpgrade": {
+                  "tag": "None",
+                  "value": {
+                    "#tup": []
+                  }
+                },
+                "totalStateBalance": {
+                  "#bigint": "271108"
+                },
+                "usedStateBalance": {
+                  "#bigint": "135554"
+                },
+                "validationCode": {
+                  "tag": "Some",
+                  "value": {
+                    "pinned": false,
+                    "ref": {
+                      "hash": {
+                        "vchBytes": {
+                          "#bigint": "1"
+                        }
+                      },
+                      "len": {
+                        "#bigint": "65536"
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            [
+              {
+                "tag": "MkParaId",
+                "value": {
+                  "#bigint": "2"
+                }
+              },
+              {
+                "headData": {
+                  "#bigint": "1"
+                },
+                "isDeregistering": false,
+                "pendingUpgrade": {
+                  "tag": "None",
+                  "value": {
+                    "#tup": []
+                  }
+                },
+                "totalStateBalance": {
+                  "#bigint": "1704408"
+                },
+                "usedStateBalance": {
+                  "#bigint": "1568854"
+                },
+                "validationCode": {
+                  "tag": "Some",
+                  "value": {
+                    "pinned": false,
+                    "ref": {
+                      "hash": {
+                        "vchBytes": {
+                          "#bigint": "2"
+                        }
+                      },
+                      "len": {
+                        "#bigint": "65536"
+                      }
+                    }
+                  }
+                }
+              }
+            ]
+          ]
+        },
+        "pendingAssignCores": {
+          "#map": []
+        },
+        "pendingAssigns": {
+          "#map": []
+        },
+        "preimageRegistry": {
+          "#map": [
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "1"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "referencers": {
+                  "#set": [
+                    {
+                      "tag": "MkParaId",
+                      "value": {
+                        "#bigint": "1"
+                      }
+                    }
+                  ]
+                }
+              }
+            ],
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "referencers": {
+                  "#set": [
+                    {
+                      "tag": "MkParaId",
+                      "value": {
+                        "#bigint": "2"
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          ]
+        },
+        "preimageStatus": {
+          "#map": [
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "1"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "tag": "Unprovided",
+                "value": {
+                  "#tup": []
+                }
+              }
+            ],
+            [
+              {
+                "#tup": [
+                  {
+                    "hashBytes": {
+                      "#bigint": "2"
+                    }
+                  },
+                  {
+                    "#bigint": "65536"
+                  }
+                ]
+              },
+              {
+                "tag": "Unprovided",
+                "value": {
+                  "#tup": []
+                }
+              }
+            ]
+          ]
+        },
+        "serviceCodeHash": {
+          "hashBytes": {
+            "#bigint": "0"
+          }
+        },
+        "stagedValidatorKeys": []
+      }
+    }
+  ]
+}

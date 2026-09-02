@@ -32,6 +32,9 @@ impl Codex {
 
 	pub fn head(value: i128) -> Result<HeadData, String> {
 		let value = u64::try_from(value).map_err(|_| format!("HeadData out of range: {value}"))?;
+		if value == 0 {
+			return Ok(HeadData::default());
+		}
 		value
 			.to_le_bytes()
 			.to_vec()
@@ -40,6 +43,9 @@ impl Codex {
 	}
 
 	pub fn head_int(value: &HeadData) -> Result<i128, String> {
+		if value.is_empty() {
+			return Ok(0);
+		}
 		let bytes: [u8; 8] = value
 			.as_slice()
 			.try_into()

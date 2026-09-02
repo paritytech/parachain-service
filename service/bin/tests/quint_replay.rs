@@ -207,3 +207,11 @@ fn minimal_replay_works() {
 	// 4. Compare against expected state.
 	assert_state_eq(&storage, block_state, "state[1]").expect("state mismatch");
 }
+
+#[test]
+fn stale_parent_candidate_rejected_works() {
+	common::itf::replay::trace(include_str!(
+		"fixtures/quint/staleParentCandidateRejectedTest.itf.json"
+	))
+	.expect("Quint and Rust state should agree after every frame");
+}
