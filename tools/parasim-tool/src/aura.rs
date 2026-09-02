@@ -89,6 +89,9 @@ pub struct Aura {
 	/// The curve `pairs` are on. Not part of the config — it is the blob `code_hash` names — but
 	/// it is what a hash this tool recognises has to be labelled with.
 	pub scheme: Scheme,
+	/// The dev names `pairs` were derived from, in round-robin order. Kept because a label on a
+	/// recognised hash has to say which set it was recognised as, or nobody can act on it.
+	pub collators: String,
 	pairs: Vec<CollatorPair>,
 	root: H256,
 	proofs: Vec<Vec<H256>>,
@@ -112,7 +115,8 @@ impl Aura {
 		}
 		let keys: Vec<CollatorKey> = pairs.iter().map(CollatorPair::public).collect();
 		let (root, proofs) = build_collator_tree(&keys);
-		Ok(Self { code_hash, service, slot_duration, scheme, pairs, root, proofs })
+		let collators = names.split(',').map(str::trim).collect::<Vec<_>>().join(",");
+		Ok(Self { code_hash, service, slot_duration, scheme, collators, pairs, root, proofs })
 	}
 
 	/// The config for a core dedicated to `para`: one work item, one para.
@@ -188,6 +192,22 @@ impl Aura {
 	}
 }
 
+/// `names` reordered ascending by public key, which is the order a substrate runtime's
+/// `AuraApi::authorities()` hands a collator set back in — and so the round-robin order the
+/// authorizer hash commits to.
+///
+/// A set written `alice,bob` in genesis comes back as `bob,alice`, because pallet-collator-selection
+/// keeps its invulnerables sorted by account id and a collator's account id here is its own public
+/// key. The two orders are two different authorizers, so naming a hash has to try both.
+pub fn in_authority_order(names: &[&str], scheme: Scheme) -> Result<String, String> {
+	let mut keyed = names
+		.iter()
+		.map(|name| CollatorPair::from_dev_name(scheme, name).map(|pair| (pair.public(), *name)))
+		.collect::<Result<Vec<_>, _>>()?;
+	keyed.sort();
+	Ok(keyed.iter().map(|(_, name)| *name).collect::<Vec<_>>().join(","))
+}
+
 /// The token that rides the authorizer's sudo lane: the sentinel key, and nothing else that
 /// means anything.
 ///
@@ -259,6 +279,26 @@ mod tests {
 		let alone = Aura::from_dev_names("alice", Scheme::Sr25519, CodeHash::zero(), 5, 1)
 			.expect("dev names derive; qed");
 		assert_ne!(aura.parked_hash(), alone.parked_hash());
+	}
+
+	/// A runtime hands its collator set back sorted by account id, not in the order genesis names
+	/// it, and that order is what the authorizer hash commits to — so a tool that only ever tries
+	/// the written order cannot name the hash a two-collator para is actually running under.
+	/// Pinned against the dev keys rather than against a second call to the same sort.
+	#[test]
+	fn the_authority_order_is_by_key_not_by_name_works() {
+		let order = |names: &[&str]| {
+			in_authority_order(names, Scheme::Sr25519).expect("dev names derive; qed")
+		};
+		assert_eq!(order(&["alice", "bob"]), "bob,alice");
+		assert_eq!(order(&["alice", "bob", "charlie"]), "bob,charlie,alice");
+		// A single collator is the case that hides the difference: any order is the right one.
+		assert_eq!(order(&["alice"]), "alice");
+		// The keys are the curve's, so the order can be the curve's too.
+		assert_ne!(
+			in_authority_order(&["alice", "bob"], Scheme::Ed25519).expect("dev names derive; qed"),
+			String::new()
+		);
 	}
 
 	/// The same names on a different curve are a different set, so a core assigned under one

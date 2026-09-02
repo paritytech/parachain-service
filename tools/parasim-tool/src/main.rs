@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args as ClapArgs, Parser, Subcommand};
 use jam_interface::{CoreIndex, ServiceId};
+use jam_types::CodeHash;
 use parachain_service_interface::types::ParaId;
 
 mod aura;
@@ -61,9 +62,58 @@ struct AuraArgs {
 	slot_duration: u32,
 }
 
+/// Substrate's dev accounts, which is the whole universe `--collators` can name a collator from.
+const DEV_COLLATORS: [&str; 6] = ["alice", "bob", "charlie", "dave", "eve", "ferdie"];
+
 impl AuraArgs {
 	fn resolve(&self, service: ServiceId) -> Result<aura::Aura, String> {
 		self.resolve_as(service, self.authorizer_blob.as_deref(), &self.collators, self.scheme)
+	}
+
+	/// Every credential a hash on the chain could have been built from, for `display-authorizers`
+	/// to name hashes with: both curves and every dev collator set, against the blob this tool was
+	/// given and every authorizer blob its own build left behind.
+	///
+	/// Sweeping is safe because a label is only ever attached to a hash that was *reproduced*: a
+	/// candidate with the wrong curve, the wrong set or the wrong blob derives hashes the chain
+	/// does not hold and so names nothing. `--service` and `--slot-duration` are not swept — they
+	/// describe the network the operator says they are looking at, not a guess about it.
+	fn candidates(&self, service: ServiceId) -> Vec<aura::Aura> {
+		let mut candidates = Vec::new();
+		for code_hash in self.candidate_code_hashes() {
+			for scheme in [aura::Scheme::Sr25519, aura::Scheme::Ed25519] {
+				for set in dev_collator_sets(scheme, &self.collators) {
+					let slot_duration = self.slot_duration;
+					let credential =
+						aura::Aura::from_dev_names(&set, scheme, code_hash, service, slot_duration);
+					candidates.extend(credential.ok());
+				}
+			}
+		}
+		candidates
+	}
+
+	/// The code hashes worth trying: the blob the operator named, then every authorizer blob this
+	/// tool's own build left in the target directory.
+	///
+	/// The built ones are worth trying because PVM builds are not byte-deterministic — a rebuild
+	/// hashes differently from the copy that went on chain — so which of them, if any, is the
+	/// deployed one is decided by whether its derived hash matches, not by picking one.
+	fn candidate_code_hashes(&self) -> Vec<CodeHash> {
+		let mut hashes = Vec::new();
+		for path in self.authorizer_blob.iter().cloned().chain(built_authorizer_blobs()) {
+			// An empty file is a PVM build that was skipped, not a blob; hashing it would offer a
+			// candidate that can never match anything.
+			let Ok(blob) = std::fs::read(&path) else { continue };
+			if blob.is_empty() {
+				continue;
+			}
+			let hash = CodeHash::from(jam_std_common::hash_raw(&blob));
+			if !hashes.contains(&hash) {
+				hashes.push(hash);
+			}
+		}
+		hashes
 	}
 
 	/// Build a credential for some other para's authorizer — the carrier's, where each `--via-*`
@@ -104,8 +154,9 @@ enum Command {
 	/// Show what each core's authorizer pool and queue hold.
 	///
 	/// The queue is what `assign` writes; the pool is what a package can actually be reported
-	/// under, and it refills from the queue one entry per block. Hashes the tool can reproduce
-	/// from --authorizer-blob and --collators are named; the rest are shown as they are.
+	/// under, and it refills from the queue one entry per block. Hashes the tool can reproduce are
+	/// named — it tries both curves and every dev collator set against --authorizer-blob and any
+	/// authorizer blob its own build left behind — and the rest are shown as they are.
 	DisplayAuthorizers {
 		/// Read at this block instead of the current best.
 		#[arg(long, value_name = "HASH", conflicts_with = "watch")]
@@ -243,6 +294,47 @@ struct KeyArgs {
 	raw: bool,
 }
 
+/// The collator sets worth trying when naming a hash: the one the operator named, every dev
+/// singleton, and every prefix of the dev accounts both in the order they are written and in the
+/// order a runtime hands them back. The last two differ as soon as a set has more than one member,
+/// and they are different authorizers — see [`aura::in_authority_order`].
+fn dev_collator_sets(scheme: aura::Scheme, named: &str) -> Vec<String> {
+	let mut sets = vec![named.to_string()];
+	for size in 1..=DEV_COLLATORS.len() {
+		sets.push(DEV_COLLATORS[..size].join(","));
+		if let Ok(set) = aura::in_authority_order(&DEV_COLLATORS[..size], scheme) {
+			sets.push(set);
+		}
+	}
+	sets.extend(DEV_COLLATORS.iter().map(|name| name.to_string()));
+	sets.sort();
+	sets.dedup();
+	sets
+}
+
+/// Authorizer blobs this tool's own build left in the target directory, found relative to the
+/// running executable so that it does not matter where the tool is invoked from.
+///
+/// A build script's output lives under `build/<package>/<fingerprint>/out`, and every fingerprint
+/// is worth reading: they are the blobs of every build this target directory still remembers, and
+/// which of them went on chain is decided by whether its hash matches, not by picking the newest.
+fn built_authorizer_blobs() -> Vec<PathBuf> {
+	let Ok(build) = std::env::current_exe().map(|exe| exe.with_file_name("build")) else {
+		return Vec::new();
+	};
+	let Ok(packages) = std::fs::read_dir(build) else { return Vec::new() };
+	packages
+		.flatten()
+		.filter(|package| package.file_name().to_string_lossy().starts_with("parachain-authorizer"))
+		.filter_map(|package| std::fs::read_dir(package.path()).ok())
+		.flat_map(|fingerprints| fingerprints.flatten())
+		.filter_map(|fingerprint| std::fs::read_dir(fingerprint.path().join("out")).ok())
+		.flat_map(|out| out.flatten())
+		.map(|blob| blob.path())
+		.filter(|blob| blob.extension().is_some_and(|extension| extension == "jam"))
+		.collect()
+}
+
 #[tokio::main]
 async fn main() {
 	// This tool's own progress lines go through `tracing`, and their timestamps are the whole
@@ -287,13 +379,10 @@ async fn run(cli: Cli) -> Result<(), String> {
 			keys::run(&jam, &args).await
 		},
 		Command::DisplayAuthorizers { block, watch } => {
-			// Without a blob there is no code hash, so nothing but the genesis authorizer can be
-			// named — which is still worth showing, so a missing blob is not an error here.
-			let args = authorizers::Args {
-				block,
-				watch,
-				aura: cli.aura.resolve(cli.service).ok(),
-			};
+			// Naming a hash needs a code hash, and a missing one is not an error here: the genesis
+			// authorizer is derivable without any blob at all, and the rest stay bare hashes.
+			let args =
+				authorizers::Args { block, watch, credentials: cli.aura.candidates(cli.service) };
 			authorizers::run(&jam, &args).await
 		},
 		Command::DeployAuthorizer { blob } => {
