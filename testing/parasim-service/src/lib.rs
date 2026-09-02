@@ -192,7 +192,7 @@ fn payload_command(sudo: bool, payload: &[u8]) -> Result<Option<Command>, Parasi
 /// with returns an empty one, and a package riding such a core simply has no privilege.
 fn sudo() -> bool {
 	ControlTrace::decode_all(&mut &jam_pvm_common::refine::auth_trace().0[..])
-		.map_or(false, |trace| trace.sudo)
+		.is_ok_and(|trace| trace.sudo)
 }
 
 /// Fill a core's authorizer queue, which is how a core is both assigned and freed.
