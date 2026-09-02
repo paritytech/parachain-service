@@ -129,18 +129,30 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 	let anchor_state_root = *anchor.context.state_root;
 	tracing::info!("anchor {:?} state root {:?}", anchor.context.anchor, anchor.context.state_root);
 
-	// The core has to be running this para, or the package is refused before parasim sees it.
-	let authorizer = args.aura.hash(args.para);
+	// The core has to be running this para, or the package is refused before parasim sees it —
+	// with one exception. A *parked* core is a state this tool can name, and what happens to a
+	// block sent to one is a property worth being able to see: the package is built under the
+	// parked authorizer, exactly as a collator reading the queue would build it, and the
+	// authorizer refuses it in-core because no para is assigned. Anything else is a mistake in
+	// the arguments and stays an error.
 	let head = cores::queue_head(jam, anchor.context.anchor, args.core).await?;
-	if head != authorizer {
+	let parked = head == args.aura.parked_hash();
+	if !parked && head != args.aura.hash(args.para) {
 		return Err(format!(
 			"core {} holds authorizer 0x{}, but para {} hashes to 0x{}; assign the core first \
 			 (or check --collators and --slot-duration)",
 			args.core,
 			hex(&head.0),
 			args.para.0,
-			hex(&authorizer.0),
+			hex(&args.aura.hash(args.para).0),
 		));
+	}
+	if parked {
+		tracing::info!(
+			"core {} is parked, so no para is assigned to it: the authorizer will refuse this \
+			 package with InvalidWorkItemCount and the head will not move",
+			args.core,
+		);
 	}
 
 	let service_local_key = parasim_service::para_head_key(args.para);
@@ -216,7 +228,7 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 		let header = header_bytes(parent_hash, number, args.para, index as u32);
 		let payload = build_payload(&anchor_state_root, &proof, &header);
 		tracing::info!("block number {number} parent 0x{}", hex(&parent_hash));
-		let package = build_package(&anchor, args, payload)?;
+		let package = build_package(&anchor, args, parked, payload)?;
 		submit_and_follow(jam, args.core, &package).await?;
 
 		if !doomed {
@@ -364,10 +376,13 @@ fn compact(value: u32, out: &mut Vec<u8>) {
 fn build_package(
 	anchor: &Anchor,
 	args: &Args,
+	parked: bool,
 	payload: Vec<u8>,
 ) -> Result<WorkPackage, String> {
-	let mut package = anchor
-		.package(args.aura.authorizer(args.para), vec![anchor.item(args.service, payload)]);
+	let authorizer =
+		if parked { args.aura.parked_authorizer() } else { args.aura.authorizer(args.para) };
+	let mut package = anchor.package(authorizer, vec![anchor.item(args.service, payload)]);
+	// Never `sudo`: this is the collator lane, and a block has no business escalating.
 	package.authorization = args.aura.token(&package, false)?;
 	Ok(package)
 }

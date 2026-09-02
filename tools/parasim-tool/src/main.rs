@@ -245,12 +245,14 @@ struct KeyArgs {
 
 #[tokio::main]
 async fn main() {
-	// INFO by default, because this tool's own progress lines go through `tracing` and their
-	// timestamps are the whole point: correlating what the tool did with what the node logged is
-	// otherwise done by hand. Command *output* stays on stdout, undecorated, so piping it works.
+	// This tool's own progress lines go through `tracing`, and their timestamps are the whole
+	// point: correlating what the tool did with what the node logged is otherwise done by hand.
+	// So INFO for us and `warn` for the libraries, whose connection chatter would otherwise bury
+	// it. Command *output* stays on bare stdout, undecorated, so piping it still works.
 	tracing_subscriber::fmt()
 		.with_env_filter(
-			tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+			tracing_subscriber::EnvFilter::try_from_default_env()
+				.unwrap_or_else(|_| "warn,parasim_tool=info".into()),
 		)
 		.init();
 
