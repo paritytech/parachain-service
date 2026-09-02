@@ -2026,21 +2026,30 @@ name = "parachain-authorizer"
 version = "0.1.0"
 dependencies = [
  "blake2b_simd",
- "ed25519-dalek",
  "jam-pvm-common",
  "jam-types",
  "parachain-service-interface",
  "parity-scale-codec",
- "polkavm-derive 0.36.0",
  "primitive-types",
 ]
 
 [[package]]
-name = "parachain-authorizer-bin"
+name = "parachain-authorizer-ed25519"
+version = "0.1.0"
+dependencies = [
+ "ed25519-dalek",
+ "jam-pvm-common",
+ "jam-types",
+ "parachain-authorizer",
+ "polkavm-derive 0.36.0",
+]
+
+[[package]]
+name = "parachain-authorizer-ed25519-bin"
 version = "0.1.0"
 dependencies = [
  "jam-pvm-builder 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "parachain-authorizer",
+ "parachain-authorizer-ed25519",
  "pvm-builder",
 ]
 
@@ -2068,7 +2077,7 @@ dependencies = [
  "jam-std-common",
  "jam-types",
  "parachain-authorizer",
- "parachain-authorizer-bin",
+ "parachain-authorizer-ed25519-bin",
  "parachain-authorizer-sr25519-experiment",
  "parity-scale-codec",
  "primitive-types",
