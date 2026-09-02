@@ -15,7 +15,7 @@ use jam_types::{
 };
 use parachain_authorizer::aura::{
 	build_collator_tree, expected_collator_index, signable_work_package_hash, AuthConfig,
-	AuthToken, CollatorKey, CollatorSignature, Command,
+	AuthToken, CollatorKey, CollatorSignature,
 };
 use parachain_service_interface::types::ParaId;
 use primitive_types::H256;
@@ -30,6 +30,15 @@ use sp_core::{ed25519, sr25519, Pair as _};
 pub enum Scheme {
 	Ed25519,
 	Sr25519,
+}
+
+impl std::fmt::Display for Scheme {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.write_str(match self {
+			Self::Ed25519 => "ed25519",
+			Self::Sr25519 => "sr25519",
+		})
+	}
 }
 
 /// One collator's dev key.
@@ -77,6 +86,9 @@ pub struct Aura {
 	pub service: ServiceId,
 	/// Length of a para slot in JAM timeslots; the round-robin's divisor.
 	pub slot_duration: u32,
+	/// The curve `pairs` are on. Not part of the config — it is the blob `code_hash` names — but
+	/// it is what a hash this tool recognises has to be labelled with.
+	pub scheme: Scheme,
 	pairs: Vec<CollatorPair>,
 	root: H256,
 	proofs: Vec<Vec<H256>>,
@@ -100,7 +112,7 @@ impl Aura {
 		}
 		let keys: Vec<CollatorKey> = pairs.iter().map(CollatorPair::public).collect();
 		let (root, proofs) = build_collator_tree(&keys);
-		Ok(Self { code_hash, service, slot_duration, pairs, root, proofs })
+		Ok(Self { code_hash, service, slot_duration, scheme, pairs, root, proofs })
 	}
 
 	/// The config for a core dedicated to `para`: one work item, one para.
@@ -114,8 +126,22 @@ impl Aura {
 		}
 	}
 
+	/// The config of a *parked* core: this collator set, no para.
+	///
+	/// The same authorizer code as an assigned core, so a parked core still admits the `sudo`
+	/// package that would re-assign it; no para, so the item-count check refuses every parachain
+	/// block sent to it. That is what makes assignment one-way — a core never goes back to the
+	/// null authorizer, which would leave it deaf to commands.
+	pub fn parked_config(&self) -> AuthConfig {
+		AuthConfig { para_ids: Vec::new(), ..self.config(ParaId(0)) }
+	}
+
 	pub fn authorizer(&self, para: ParaId) -> Authorizer {
-		Authorizer { code_hash: self.code_hash, config: RawAuthConfig(self.config(para).encode()) }
+		self.wrap(self.config(para))
+	}
+
+	pub fn parked_authorizer(&self) -> Authorizer {
+		self.wrap(self.parked_config())
 	}
 
 	/// What a core's authorizer queue holds when it is running `para`.
@@ -123,18 +149,27 @@ impl Aura {
 		self.authorizer(para).hash(jam_std_common::hash_raw)
 	}
 
-	/// Sign `package` as whichever collator its lookup anchor names, optionally carrying a
-	/// core-assignment command.
+	/// What a core's authorizer queue holds once it is parked.
+	pub fn parked_hash(&self) -> AuthorizerHash {
+		self.parked_authorizer().hash(jam_std_common::hash_raw)
+	}
+
+	fn wrap(&self, config: AuthConfig) -> Authorizer {
+		Authorizer { code_hash: self.code_hash, config: RawAuthConfig(config.encode()) }
+	}
+
+	/// Sign `package` as whichever collator its lookup anchor names.
 	///
 	/// The round-robin index is read out of the config the package itself carries, not out of
 	/// this struct's fields, so the token can only ever be built against the config the
 	/// authorizer is going to read. Rather than hunt for an anchor that names a particular
 	/// collator, this signs as the one the anchor already names — every dev key is to hand.
-	pub fn token(
-		&self,
-		package: &WorkPackage,
-		command: Option<Command>,
-	) -> Result<Authorization, String> {
+	///
+	/// `sudo` asks the authorizer to admit the package without a para assigned to the core, which
+	/// is the only way onto a parked one. The signature is still produced, because this tool has
+	/// the keys and a token nobody could have signed would be a worse thing to leave lying
+	/// around; the authorizer simply does not look at it.
+	pub fn token(&self, package: &WorkPackage, sudo: bool) -> Result<Authorization, String> {
 		let config = AuthConfig::decode_all(&mut &package.authorizer.config[..])
 			.map_err(|e| format!("the package's own authorizer config does not decode: {e}"))?;
 		let index = expected_collator_index(package.context.lookup_anchor_slot, &config) as usize;
@@ -143,12 +178,12 @@ impl Aura {
 			.get(index)
 			.ok_or_else(|| format!("the collator set has no member {index}"))?;
 
-		let payload = AuthToken::signing_payload(signable_work_package_hash(package), &command);
+		let payload = signable_work_package_hash(package);
 		let token = AuthToken {
 			proof: self.proofs[index].clone(),
 			key: pair.public(),
 			signature: pair.sign(payload.as_bytes()),
-			control_command: command,
+			sudo,
 		};
 		println!(
 			"signing as collator {index} of {} (lookup anchor slot {})",
@@ -200,6 +235,26 @@ mod tests {
 		let alone = Aura::from_dev_names("alice", Scheme::Sr25519, CodeHash::zero(), 5, 1)
 			.expect("dev names derive; qed");
 		assert_ne!(aura.hash(ParaId(0)), alone.hash(ParaId(0)));
+	}
+
+	/// Parking is an assignment state of its own, not the absence of one: it must not collide
+	/// with any para's authorizer, and it must be reproducible, or `free-core` would write a hash
+	/// the tool could never recognise again — and a parked core is only re-assignable because
+	/// this tool can name what its queue holds.
+	#[test]
+	fn a_parked_core_has_an_authorizer_of_its_own_works() {
+		let aura = Aura::from_dev_names("alice,bob", Scheme::Sr25519, CodeHash::zero(), 5, 1)
+			.expect("dev names derive; qed");
+		assert!(aura.parked_config().para_ids.is_empty());
+		assert_eq!(aura.parked_hash(), aura.parked_hash());
+		for para in 0..8 {
+			assert_ne!(aura.parked_hash(), aura.hash(ParaId(para)));
+		}
+		// The collator set is still committed to, so parking core A does not make it look like
+		// core B parked under a different set.
+		let alone = Aura::from_dev_names("alice", Scheme::Sr25519, CodeHash::zero(), 5, 1)
+			.expect("dev names derive; qed");
+		assert_ne!(aura.parked_hash(), alone.parked_hash());
 	}
 
 	/// The same names on a different curve are a different set, so a core assigned under one

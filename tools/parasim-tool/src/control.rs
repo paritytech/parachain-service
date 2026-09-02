@@ -5,19 +5,23 @@
 //!
 //! - **bootstrap** — service 0, the assigner of every core at genesis. Instructions ride an
 //!   unassigned core.
-//! - **parasim** — a control package whose authorization token carries the command. Rides a core
-//!   already under an AURA authorizer this tool can sign for, which need not be the target core.
+//! - **parasim** — a control package carrying the command as its work-item payload. Rides a core
+//!   already under an AURA authorizer this tool can name, which need not be the target core, and
+//!   may be a parked one: parking keeps the authorizer, so a parked core still takes commands.
 //!
 //! So the bootstrap order is: install the first AURA queue on a core, *then* hand that core's
 //! assigner privilege to parasim. The other way round leaves a core parasim owns but cannot be
 //! reached on — see the note in `grant`.
 
+use codec::Encode as _;
 use jam_bootstrap_service_common::Instruction;
 use jam_interface::JamChainSource;
 use jam_rpc_interface::JamRpcInterface;
 use jam_types::{AuthQueue, AuthorizerHash, CoreIndex, ServiceId};
-use parachain_authorizer::aura::Command;
-use parachain_service_interface::types::ParaId;
+use parachain_service_interface::{
+	authorization::{Command, CONTROL_COMMAND_PREFIX},
+	types::ParaId,
+};
 
 use crate::{
 	aura::Aura,
@@ -50,10 +54,12 @@ pub struct Args {
 /// assign it, and parasim can only be reached through a core running the AURA authorizer. Granting
 /// on a still-unassigned core therefore strands it — nothing on chain can assign it any more.
 ///
-/// It rides an unassigned core and nothing else. Handing the privilege over is service 0's to do
-/// and service 0's work items only get past the unassigned authorizer, so there is no AURA lane
-/// for this one command; on a network with every core assigned, `free-core` a parasim-owned core
-/// to open the window and `assign-core` it back afterwards.
+/// It rides a core still holding the *genesis* authorizer and nothing else. Handing the privilege
+/// over is service 0's to do, service 0's work items only get past the null authorizer, and
+/// assignment to parasim is one-way: `free-core` parks a core under the AURA authorizer rather
+/// than returning it to the null one, so no genesis core is ever made again. Grant every core
+/// parasim is to own while one is still unassigned; once the last one goes, this command has no
+/// lane left on that network.
 pub async fn grant(jam: &JamRpcInterface, args: &Args, core: CoreIndex) -> Result<(), String> {
 	let best = jam.best_block().await.map_err(|e| format!("best block: {e}"))?.header_hash;
 	match cores::assigner(jam, best, core).await? {
@@ -112,11 +118,16 @@ pub async fn assign(
 	cores::report(jam, core, target).await
 }
 
-/// Return `core` to the unassigned authorizer, draining its pool over the next few blocks.
+/// Park `core`: no para on it, but the same AURA authorizer, so commands still reach it.
+///
+/// The parked config is built from `--collators`/`--scheme` — normally the very values the core
+/// was assigned with — because the hash has to travel with the command: accumulate cannot read an
+/// authorizer config, not even its own package's, so it can no more derive a parked hash than an
+/// assigned one.
 pub async fn free(jam: &JamRpcInterface, args: &Args, core: CoreIndex) -> Result<(), String> {
-	let target = cores::unassigned();
-	println!("core {core} → unassigned (authorizer 0x{})", hex(&target.0));
-	route(jam, args, core, target, Command::Free { core }).await?;
+	let target = args.aura.parked_hash();
+	println!("core {core} → parked (authorizer 0x{})", hex(&target.0));
+	route(jam, args, core, target, Command::Free { core, parked_authorizer: target.0 }).await?;
 	cores::report(jam, core, target).await
 }
 
@@ -152,10 +163,12 @@ async fn route(
 	}
 }
 
-/// Submit a package whose only job is to carry `command` in its authorization token.
+/// Submit a package whose only job is to carry `command`.
 ///
-/// The work item is parasim's control no-op: a control package has no parachain block in it, and
-/// the command reaches accumulate through the authorization output, not through the item.
+/// The command *is* the work item's payload: accumulate, which is where `assign` has to be
+/// called, sees neither the package nor its authorization, so refine reads the command and hands
+/// it on in its work output. The token is `sudo`, which is what gets the package past an
+/// authorizer that has no para to match the item against.
 async fn control_package(
 	jam: &JamRpcInterface,
 	args: &Args,
@@ -164,31 +177,50 @@ async fn control_package(
 ) -> Result<(), String> {
 	let core = args.via_core.unwrap_or(target_core);
 	let anchor = Anchor::fetch(jam, args.service).await?;
-
-	// The carrier core has to be under the very authorizer this token is built for, or the
-	// package is refused before parasim ever sees it — and a refused package is one more thing
-	// that looks like a silent failure.
-	let expected = args.carrier.hash(args.via_para);
 	let head = cores::queue_head(jam, anchor.context.anchor, core).await?;
-	if head != expected {
-		return Err(format!(
-			"core {core} holds authorizer 0x{}, but a token for para {} hashes to 0x{}. Name the \
-			 para that core is actually running with --via-para, or a core that is running one \
-			 with --via-core; if that para has its own collator set or curve, name those too \
-			 with --via-collators/--via-scheme.",
-			hex(&head.0),
-			args.via_para.0,
-			hex(&expected.0),
-		));
-	}
-	println!("carrying the command on core {core}, under para {}'s authorizer", args.via_para.0);
 
-	let mut package = anchor.package(
-		args.carrier.authorizer(args.via_para),
-		vec![anchor.item(args.service, parasim_service::CONTROL_NOOP_PAYLOAD.to_vec())],
+	// The carrier core has to be under the very authorizer this package names, or JAM refuses it
+	// before parasim ever sees it — and a refused package is one more thing that looks like a
+	// silent failure. A *parked* carrier is as good as an assigned one: parking keeps the AURA
+	// authorizer in place, which is the whole reason the recovery dance is gone.
+	let parked = head == args.carrier.parked_hash();
+	let authorizer = if parked {
+		args.carrier.parked_authorizer()
+	} else {
+		args.carrier.authorizer(args.via_para)
+	};
+	if authorizer.hash(jam_std_common::hash_raw) != head {
+		return Err(carrier_mismatch(args, core, head));
+	}
+	println!(
+		"carrying the command on core {core}, under {}",
+		if parked {
+			"the parked authorizer".to_string()
+		} else {
+			format!("para {}'s authorizer", args.via_para.0)
+		}
 	);
-	package.authorization = args.carrier.token(&package, Some(command))?;
+
+	let mut payload = CONTROL_COMMAND_PREFIX.to_vec();
+	command.encode_to(&mut payload);
+	let mut package = anchor.package(authorizer, vec![anchor.item(args.service, payload)]);
+	package.authorization = args.carrier.token(&package, true)?;
 	submit_and_follow(jam, core, &package).await
+}
+
+/// Both hashes the carrier credential can produce, so the operator can see which one the core was
+/// expected to hold.
+fn carrier_mismatch(args: &Args, core: CoreIndex, head: AuthorizerHash) -> String {
+	format!(
+		"core {core} holds authorizer 0x{}, but a token for para {} hashes to 0x{} and a parked \
+		 one to 0x{}. Name the para that core is actually running with --via-para, or a core that \
+		 is running one with --via-core; if that para has its own collator set or curve, name \
+		 those too with --via-collators/--via-scheme.",
+		hex(&head.0),
+		args.via_para.0,
+		hex(&args.carrier.hash(args.via_para).0),
+		hex(&args.carrier.parked_hash().0),
+	)
 }
 
 /// Wait for `core`'s assigner privilege to reach `expected`, returning who holds it in the end.

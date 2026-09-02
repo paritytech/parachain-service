@@ -71,13 +71,13 @@ pub fn good_token() -> AuthToken {
 		proof: vec![],
 		key: key_bytes,
 		signature: [0u8; 64],
-		control_command: None,
+		sudo: false,
 	};
 	AuthToken(token.encode())
 }
 
 pub fn good_trace() -> AuthTrace {
-	let trace = aura::AuthTrace { author_key: [0; 32], control_command: None };
+	let trace = aura::AuthTrace { author_key: [0; 32], sudo: false };
 	AuthTrace(trace.encode())
 }
 
@@ -122,19 +122,17 @@ pub fn make_auth_with_seed(
 			proof: vec![],
 			key: [0u8; 32],
 			signature: [0u8; 64],
-			control_command: None,
+			sudo: false,
 		}
 		.encode(),
 	);
 	let pkg = work_package(authorizer_blob, config_enc.clone(), dummy_token, items.to_vec());
 	let wp_hash = aura::signable_work_package_hash(&pkg);
 
-	let payload = aura::AuthToken::signing_payload(wp_hash, &None);
-	let sig_bytes: [u8; 64] = signing_key.sign(payload.as_bytes()).to_bytes();
+	let sig_bytes: [u8; 64] = signing_key.sign(wp_hash.as_bytes()).to_bytes();
 
-	let token =
-		aura::AuthToken { proof, key: key_bytes, signature: sig_bytes, control_command: None };
-	let trace = aura::AuthTrace { author_key: key_bytes, control_command: None };
+	let token = aura::AuthToken { proof, key: key_bytes, signature: sig_bytes, sudo: false };
+	let trace = aura::AuthTrace { author_key: key_bytes, sudo: false };
 
 	(config_enc, AuthToken(token.encode()), AuthTrace(trace.encode()))
 }
@@ -158,7 +156,7 @@ pub fn make_single_collator_args_with_key(
 		collator_set_size: 1,
 		slot_duration: 1,
 	};
-	let token = aura::AuthToken { proof: vec![], key, signature, control_command: None };
+	let token = aura::AuthToken { proof: vec![], key, signature, sudo: false };
 	is_authorized_args(
 		authorizer_blob,
 		AuthConfig(config.encode()),
@@ -197,7 +195,7 @@ pub fn make_wrong_collator_index_args(
 		collator_set_size: all_seeds.len() as u32,
 		slot_duration: 1,
 	};
-	let token = aura::AuthToken { proof, key, signature: [0u8; 64], control_command: None };
+	let token = aura::AuthToken { proof, key, signature: [0u8; 64], sudo: false };
 	is_authorized_args(
 		authorizer_blob,
 		AuthConfig(config.encode()),

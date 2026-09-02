@@ -9,24 +9,30 @@
 //! failing to authorize.
 //!
 //! So the signing here goes through `Keystore`, never through a `Pair`: the keystore's choices
-//! are the ones the collator is stuck with, and they are what is under test.
+//! are the ones the collator is stuck with, and they are what is under test. And the decision
+//! under test is `is_authorized::authorize` itself, not a re-implementation of it — a carve-out
+//! that only the tests know about would guard nothing.
 
 use jam_types::{
 	AuthConfig as RawAuthConfig, Authorization, Authorizer, CodeHash, HeaderHash, RefineContext,
-	ServiceId, WorkItem, WorkPackage, WorkPayload,
+	ServiceId, Slot, WorkItem, WorkPackage, WorkPayload,
 };
-use parachain_authorizer::aura::{
-	build_collator_tree, signable_work_package_hash, AuthConfig, AuthToken, CollatorKey,
-	CollatorSignature, Command, SignatureScheme,
+use parachain_authorizer::{
+	aura::{
+		build_collator_tree, signable_work_package_hash, AuthConfig, AuthToken, AuthTrace,
+		CollatorKey, CollatorSignature,
+	},
+	is_authorized::{authorize, AuthorizationError},
 };
 use parachain_authorizer_ed25519::Ed25519;
 use parachain_authorizer_sr25519::Sr25519;
-use parachain_service_interface::types::ParaId;
-use sp_core::crypto::KeyTypeId;
-use sp_keystore::{testing::MemoryKeystore, Keystore};
+use parachain_service_interface::{
+	authorization::{Command, CONTROL_COMMAND_PREFIX},
+	types::ParaId,
+};
 
 /// The aura key type, which is the collator identity phase 6a settles on.
-const AURA: KeyTypeId = KeyTypeId(*b"aura");
+const AURA: sp_core::crypto::KeyTypeId = sp_core::crypto::KeyTypeId(*b"aura");
 const PARACHAIN_SERVICE: ServiceId = 5;
 
 #[derive(Clone, Copy, Debug)]
@@ -38,14 +44,15 @@ enum Scheme {
 /// A collator set as the node holds it: keys in a keystore, signed for through the same
 /// `Keystore` calls the collator makes.
 struct Collators {
-	keystore: MemoryKeystore,
+	keystore: sp_keystore::testing::MemoryKeystore,
 	scheme: Scheme,
 	keys: Vec<CollatorKey>,
 }
 
 impl Collators {
 	fn new(scheme: Scheme, seeds: &[&str]) -> Self {
-		let keystore = MemoryKeystore::new();
+		use sp_keystore::Keystore as _;
+		let keystore = sp_keystore::testing::MemoryKeystore::new();
 		let keys = seeds
 			.iter()
 			.map(|seed| match scheme {
@@ -63,6 +70,7 @@ impl Collators {
 	}
 
 	fn sign(&self, index: usize, payload: &[u8]) -> CollatorSignature {
+		use sp_keystore::Keystore as _;
 		let key = self.keys[index];
 		match self.scheme {
 			Scheme::Ed25519 => self
@@ -80,38 +88,37 @@ impl Collators {
 		}
 	}
 
-	/// The config a core running `para` under this set is assigned, and one token per collator
-	/// signing `package` with `command`.
-	fn tokens(
-		&self,
-		package: &WorkPackage,
-		command: Option<Command>,
-	) -> (AuthConfig, Vec<AuthToken>) {
-		let (collator_set_root, proofs) = build_collator_tree(&self.keys);
-		let config = AuthConfig {
-			para_ids: vec![ParaId(0)],
+	/// The config a core running `para_ids` under this set is assigned. An empty list is a
+	/// *parked* core: same collator set, same authorizer code, no para.
+	fn config(&self, para_ids: Vec<ParaId>) -> AuthConfig {
+		let (collator_set_root, _) = build_collator_tree(&self.keys);
+		AuthConfig {
+			para_ids,
 			parachain_service: PARACHAIN_SERVICE,
 			collator_set_root,
 			collator_set_size: self.keys.len() as u32,
 			slot_duration: 1,
-		};
-		let payload =
-			AuthToken::signing_payload(signable_work_package_hash(package), &command);
-		let tokens = (0..self.keys.len())
+		}
+	}
+
+	/// One token per collator, each signing `package` as that collator would.
+	fn tokens(&self, package: &WorkPackage) -> Vec<AuthToken> {
+		let (_, proofs) = build_collator_tree(&self.keys);
+		let payload = signable_work_package_hash(package);
+		(0..self.keys.len())
 			.map(|index| AuthToken {
 				proof: proofs[index].clone(),
 				key: self.keys[index],
 				signature: self.sign(index, payload.as_bytes()),
-				control_command: command.clone(),
+				sudo: false,
 			})
-			.collect();
-		(config, tokens)
+			.collect()
 	}
 }
 
 /// A package shaped like the ones the collator submits: one item for the parachain service, and
-/// an anchor that is part of what gets signed.
-fn package(anchor_byte: u8) -> WorkPackage {
+/// an anchor and a slot that are both part of what gets signed.
+fn package(anchor_byte: u8, slot: Slot, payload: Vec<u8>) -> WorkPackage {
 	WorkPackage {
 		authorization: Authorization::default(),
 		auth_code_host: PARACHAIN_SERVICE,
@@ -124,7 +131,7 @@ fn package(anchor_byte: u8) -> WorkPackage {
 			state_root: Default::default(),
 			beefy_root: Default::default(),
 			lookup_anchor: HeaderHash([anchor_byte; 32]),
-			lookup_anchor_slot: 0,
+			lookup_anchor_slot: slot,
 			prerequisites: Default::default(),
 		},
 		items: vec![WorkItem {
@@ -133,7 +140,7 @@ fn package(anchor_byte: u8) -> WorkPackage {
 			refine_gas_limit: 1_000_000,
 			accumulate_gas_limit: 1_000_000,
 			export_count: 0,
-			payload: WorkPayload(b"contract".to_vec()),
+			payload: WorkPayload(payload),
 			import_segments: Default::default(),
 			extrinsics: Default::default(),
 		}]
@@ -142,39 +149,56 @@ fn package(anchor_byte: u8) -> WorkPackage {
 	}
 }
 
-/// Run `check_proof` + `check_signature` the way the guest's `is_authorized` does.
-fn verify<S: SignatureScheme>(
-	token: &AuthToken,
+/// A parachain block, as far as the authorizer is concerned: any payload without the command
+/// prefix.
+fn block(anchor_byte: u8, slot: Slot) -> WorkPackage {
+	package(anchor_byte, slot, b"contract".to_vec())
+}
+
+/// The package a core-assignment command rides in: the command *is* the payload.
+fn commanding(anchor_byte: u8, slot: Slot) -> WorkPackage {
+	use codec::Encode as _;
+	let command = Command::Free { core: 1, parked_authorizer: [0xcd; 32] };
+	let mut payload = CONTROL_COMMAND_PREFIX.to_vec();
+	command.encode_to(&mut payload);
+	package(anchor_byte, slot, payload)
+}
+
+/// Run the decision the guest runs, under `scheme`'s verifier.
+fn authorize_under(
+	scheme: Scheme,
 	config: &AuthConfig,
-	index: u32,
+	token: &AuthToken,
 	package: &WorkPackage,
-) -> bool {
-	token.check_proof(config, index).is_ok() &&
-		token.check_signature::<S>(signable_work_package_hash(package)).is_ok()
+) -> Result<AuthTrace, AuthorizationError> {
+	let slot = package.context.lookup_anchor_slot;
+	match scheme {
+		Scheme::Ed25519 => authorize::<Ed25519>(config, token, package, slot),
+		Scheme::Sr25519 => authorize::<Sr25519>(config, token, package, slot),
+	}
+}
+
+fn admits(scheme: Scheme, config: &AuthConfig, token: &AuthToken, package: &WorkPackage) -> bool {
+	authorize_under(scheme, config, token, package).is_ok()
 }
 
 /// The whole point: what the node builds, the guest of the same scheme accepts — at every index
 /// of the round-robin, so the proof and the signature are both exercised off leaf zero.
 #[test]
 fn a_keystore_token_passes_its_own_verifier_works() {
-	let package = package(1);
-
-	let ed = Collators::new(Scheme::Ed25519, &["//Alice", "//Bob", "//Charlie"]);
-	let (config, tokens) = ed.tokens(&package, None);
-	for (index, token) in tokens.iter().enumerate() {
-		assert!(
-			verify::<Ed25519>(token, &config, index as u32, &package),
-			"ed25519 collator {index} was rejected by the ed25519 verifier"
-		);
-	}
-
-	let sr = Collators::new(Scheme::Sr25519, &["//Alice", "//Bob", "//Charlie"]);
-	let (config, tokens) = sr.tokens(&package, None);
-	for (index, token) in tokens.iter().enumerate() {
-		assert!(
-			verify::<Sr25519>(token, &config, index as u32, &package),
-			"sr25519 collator {index} was rejected by the sr25519 verifier"
-		);
+	for scheme in [Scheme::Ed25519, Scheme::Sr25519] {
+		let collators = Collators::new(scheme, &["//Alice", "//Bob", "//Charlie"]);
+		let config = collators.config(vec![ParaId(0)]);
+		// The round-robin picks the collator from the lookup-anchor slot, so walking the slot is
+		// what walks the set.
+		for index in 0..collators.keys.len() {
+			let package = block(1, index as Slot);
+			let token = &collators.tokens(&package)[index];
+			assert!(
+				admits(scheme, &config, token, &package),
+				"{scheme:?} collator {index} was rejected by its own verifier"
+			);
+		}
 	}
 }
 
@@ -184,15 +208,13 @@ fn a_keystore_token_passes_its_own_verifier_works() {
 /// wrong curve, which is why the positive test above has to pass at the same time.
 #[test]
 fn a_token_is_rejected_by_the_other_verifier_works() {
-	let package = package(1);
+	let package = block(1, 0);
 
 	let ed = Collators::new(Scheme::Ed25519, &["//Alice"]);
-	let (config, tokens) = ed.tokens(&package, None);
-	assert!(!verify::<Sr25519>(&tokens[0], &config, 0, &package));
+	assert!(!admits(Scheme::Sr25519, &ed.config(vec![ParaId(0)]), &ed.tokens(&package)[0], &package));
 
 	let sr = Collators::new(Scheme::Sr25519, &["//Alice"]);
-	let (config, tokens) = sr.tokens(&package, None);
-	assert!(!verify::<Ed25519>(&tokens[0], &config, 0, &package));
+	assert!(!admits(Scheme::Ed25519, &sr.config(vec![ParaId(0)]), &sr.tokens(&package)[0], &package));
 }
 
 /// The signature is over the package's context, so a token cannot be lifted onto a package built
@@ -200,48 +222,109 @@ fn a_token_is_rejected_by_the_other_verifier_works() {
 #[test]
 fn a_token_does_not_carry_over_to_a_re_anchored_package_works() {
 	for scheme in [Scheme::Ed25519, Scheme::Sr25519] {
-		let signed = package(1);
-		let reanchored = package(2);
+		let signed = block(1, 0);
+		let reanchored = block(2, 0);
 		let collators = Collators::new(scheme, &["//Alice"]);
-		let (config, tokens) = collators.tokens(&signed, None);
+		let config = collators.config(vec![ParaId(0)]);
+		let token = &collators.tokens(&signed)[0];
 
-		let (accepted, rejected) = match scheme {
-			Scheme::Ed25519 => (
-				verify::<Ed25519>(&tokens[0], &config, 0, &signed),
-				verify::<Ed25519>(&tokens[0], &config, 0, &reanchored),
-			),
-			Scheme::Sr25519 => (
-				verify::<Sr25519>(&tokens[0], &config, 0, &signed),
-				verify::<Sr25519>(&tokens[0], &config, 0, &reanchored),
-			),
-		};
-		assert!(accepted, "{scheme:?}: the token did not pass on its own package");
-		assert!(!rejected, "{scheme:?}: the token passed on a re-anchored package");
+		assert!(admits(scheme, &config, token, &signed), "{scheme:?}: rejected on its own package");
+		assert!(
+			!admits(scheme, &config, token, &reanchored),
+			"{scheme:?}: passed on a re-anchored package"
+		);
 	}
 }
 
-/// The control command travels in the token, and the package hash deliberately excludes the
-/// token — so unless the signature covers the command, anyone can bolt one onto a package they
-/// intercept in flight and reassign a core with somebody else's signature.
+/// A command now travels in a work item, so the package hash covers it: a signature cannot be
+/// lifted from an innocent package onto one that reassigns a core. Phase 6 bound the command into
+/// the signing payload by hand because it lived outside the hash; this is that property, held by
+/// the hash itself.
 #[test]
-fn a_signature_does_not_carry_over_to_another_command_works() {
-	let command = Command::Assign { para_id: ParaId(3), core: 1, authorizer: [0xcd; 32] };
+fn a_signature_does_not_carry_over_to_another_payload_works() {
 	for scheme in [Scheme::Ed25519, Scheme::Sr25519] {
-		let package = package(1);
+		let signed = block(1, 0);
 		let collators = Collators::new(scheme, &["//Alice"]);
-		let (config, plain) = collators.tokens(&package, None);
-		let (_, commanding) = collators.tokens(&package, Some(command.clone()));
+		let config = collators.config(vec![ParaId(0)]);
+		let token = &collators.tokens(&signed)[0];
 
-		// The token that carries the command, signed for no command at all.
-		let forged = AuthToken { control_command: Some(command.clone()), ..plain[0].clone() };
-
-		let verified: Vec<bool> = [&plain[0], &commanding[0], &forged]
-			.iter()
-			.map(|token| match scheme {
-				Scheme::Ed25519 => verify::<Ed25519>(token, &config, 0, &package),
-				Scheme::Sr25519 => verify::<Sr25519>(token, &config, 0, &package),
-			})
-			.collect();
-		assert_eq!(verified, vec![true, true, false], "{scheme:?}");
+		assert!(admits(scheme, &config, token, &signed), "{scheme:?}: rejected on its own package");
+		assert!(
+			!admits(scheme, &config, token, &commanding(1, 0)),
+			"{scheme:?}: an innocent package's signature authorized a command"
+		);
 	}
 }
+
+/// A parked core is the one-way end of assignment: same authorizer code, no para. Every ordinary
+/// package must bounce off it — the item-count check has nothing to match — which is what stops a
+/// collator spending a core that no longer runs its para.
+#[test]
+fn a_parked_core_admits_no_ordinary_package_works() {
+	for scheme in [Scheme::Ed25519, Scheme::Sr25519] {
+		let collators = Collators::new(scheme, &["//Alice"]);
+		let parked = collators.config(Vec::new());
+		let package = block(1, 0);
+		// A perfectly good collator signature is still not a para assignment.
+		let token = &collators.tokens(&package)[0];
+		assert!(matches!(
+			authorize_under(scheme, &parked, token, &package),
+			Err(AuthorizationError::InvalidWorkItemCount)
+		));
+		// Nor does putting a command in it help without the privilege to run one.
+		let control = commanding(1, 0);
+		assert!(matches!(
+			authorize_under(scheme, &parked, &collators.tokens(&control)[0], &control),
+			Err(AuthorizationError::InvalidWorkItemCount)
+		));
+	}
+}
+
+/// `sudo` is what gets a command onto a parked core, and it is a deliberate hole: no signature is
+/// checked at all. Pinned so that widening it any further has to be a conscious edit — and so
+/// that the trace says `sudo`, which is the only thing stopping refine running a command that
+/// came in on the ordinary lane.
+#[test]
+fn a_sudo_token_reaches_a_parked_core_unsigned_works() {
+	for scheme in [Scheme::Ed25519, Scheme::Sr25519] {
+		let collators = Collators::new(scheme, &["//Alice"]);
+		let parked = collators.config(Vec::new());
+		let control = commanding(1, 0);
+
+		let forged = AuthToken {
+			proof: Vec::new(),
+			key: [0xee; 32],
+			signature: [0xff; 64],
+			sudo: true,
+		};
+		let trace = authorize_under(scheme, &parked, &forged, &control)
+			.expect("sudo admits a package nobody signed");
+		assert!(trace.sudo, "{scheme:?}: the trace must tell refine the command may run");
+		assert_eq!(trace.author_key, forged.key);
+
+		// The hole is exactly this wide: the target-service check still applies, so a parked
+		// core's coretime cannot be spent on some other JAM service.
+		let mut foreign = control;
+		foreign.items[0].service = PARACHAIN_SERVICE + 1;
+		assert!(matches!(
+			authorize_under(scheme, &parked, &forged, &foreign),
+			Err(AuthorizationError::WrongTargetService)
+		));
+	}
+}
+
+/// Assigned cores are unaffected by any of the above: their behaviour is exactly what it was.
+#[test]
+fn an_assigned_core_still_counts_items_works() {
+	for scheme in [Scheme::Ed25519, Scheme::Sr25519] {
+		let collators = Collators::new(scheme, &["//Alice"]);
+		let package = block(1, 0);
+		let token = &collators.tokens(&package)[0];
+		// Two paras assigned, one item submitted.
+		assert!(matches!(
+			authorize_under(scheme, &collators.config(vec![ParaId(0), ParaId(1)]), token, &package),
+			Err(AuthorizationError::InvalidWorkItemCount)
+		));
+	}
+}
+

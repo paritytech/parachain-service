@@ -3173,7 +3173,6 @@ name = "parasim-service"
 version = "0.1.0"
 dependencies = [
  "executor",
- "jam-null-authorizer-bin",
  "jam-pvm-common",
  "jam-state-helpers",
  "jam-types",

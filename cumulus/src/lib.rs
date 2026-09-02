@@ -19,9 +19,14 @@ pub mod aura {
 	// one encoding must be picked, the others aliased, and a cross-repo test added.
 	pub use parachain_authorizer::aura::{
 		build_collator_tree, expected_collator_index, signable_work_package_hash, AuthConfig,
-		AuthToken, AuthTrace, CollatorKey, CollatorSignature, Command, SignatureScheme, TokenError,
+		AuthToken, AuthTrace, CollatorKey, CollatorSignature, SignatureScheme, TokenError,
 		WORK_PACKAGE_SIGN_CTX,
 	};
+
+	/// The core-assignment command, and the work-item payload prefix that carries it. Not the
+	/// authorizer's: since 6a.4 a command travels in the package rather than in the token, so it
+	/// belongs to the service the item is addressed to.
+	pub use parachain_service_interface::authorization::{Command, CONTROL_COMMAND_PREFIX};
 
 	/// The two verifier blobs' signature schemes, so a collator can check a token the way the
 	/// guest will before it spends a core on it. Which one a para uses is its runtime's `AuraId`,

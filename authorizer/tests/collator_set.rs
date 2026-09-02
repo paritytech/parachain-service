@@ -25,7 +25,7 @@ fn config(keys: &[CollatorKey]) -> (AuthConfig, Vec<Vec<H256>>) {
 }
 
 fn token(key: CollatorKey, proof: Vec<H256>) -> AuthToken {
-	AuthToken { proof, key, signature: [0u8; 64], control_command: None }
+	AuthToken { proof, key, signature: [0u8; 64], sudo: false }
 }
 
 /// The builder is the verifier's inverse, so every proof it hands out must satisfy the

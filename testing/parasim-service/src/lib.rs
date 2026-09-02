@@ -28,13 +28,13 @@ use codec::{Decode, DecodeAll, Encode};
 use jam_pvm_common::{declare_service, Service};
 use jam_state_helpers::StateProof;
 use jam_types::{
-	AuthQueue, AuthTrace, AuthorizerHash, CoreIndex, Hash, ServiceId, Slot, WorkOutput,
+	AuthQueue, AuthorizerHash, CoreIndex, Hash, ServiceId, Slot, WorkOutput,
 	WorkPackageHash, WorkPayload,
 };
 use parachain_service_interface::{
 	// Renamed: `jam_types::AuthTrace` is the opaque blob JAM carries an authorization output in;
 	// this is what our own authorizer puts inside it.
-	authorization::{AuthTrace as ControlTrace, Command},
+	authorization::{AuthTrace as ControlTrace, Command, CONTROL_COMMAND_PREFIX},
 	types::{HeadData, ParaId},
 };
 
@@ -61,28 +61,22 @@ const PARA_HEAD_TAG: u8 = 0x00;
 /// the reorder buffer ever becomes part of the spec.
 const BUFFER_TAG: u8 = 0xf0;
 
-/// Work-item payload of a control-only package: one that carries a core-assignment command in
-/// its authorization token and no parachain block at all.
-///
-/// Refine answers it with an empty work output, which accumulate's stray-output path drops — a
-/// control package must not be mistaken for a head, nor park anything in the reorder buffer.
-pub const CONTROL_NOOP_PAYLOAD: &[u8] = b"parasim:control";
-
-/// Code hash of polkajam's null authorizer, the authorizer every core's queue holds at genesis
-/// and the one `Free` puts back.
-///
-/// Copied rather than imported: `jam-null-authorizer-bin` is a host crate and this is a `no_std`
-/// guest. `null_authorizer_code_hash_matches_polkajam_works` pins the copy.
-const NULL_AUTHORIZER_CODE_HASH: [u8; HASH_LEN] = [
-	248, 216, 107, 151, 214, 83, 25, 160, 120, 229, 132, 15, 22, 20, 194, 150, 165, 37, 66, 23,
-	121, 77, 204, 145, 14, 114, 202, 23, 78, 60, 46, 134,
-];
-
 /// What parasim's `refine` hands to `accumulate` for one work item.
-/// Accumulate cannot see the work-item payload, so the head (and the para it
-/// belongs to) travel in the work output.
+///
+/// Accumulate sees neither the work-item payload nor the package, so everything it acts on has to
+/// travel through here — the new head, or the core-assignment command the item carried. They are
+/// two variants of one type rather than two shapes of one struct so that accumulate cannot
+/// confuse them: a command has no para and no lineage, and applying or parking it as a head would
+/// corrupt whichever para happened to decode out of it.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct ParasimWorkOutput {
+pub enum ParasimWorkOutput {
+	Head(RefinedHead),
+	Command(Command),
+}
+
+/// A parachain block's new head, and what accumulate needs to place it in the para's lineage.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct RefinedHead {
 	pub para_id: ParaId,
 	pub head_data: HeadData,
 	/// blake2b-256 of the head this block was refined against. Accumulate compares it with the
@@ -105,10 +99,7 @@ impl Service for ParasimService {
 		_package_hash: WorkPackageHash,
 	) -> WorkOutput {
 		match refine_inner(item_index, service_id, &payload) {
-			Ok(Some(output)) => WorkOutput(output.encode()),
-			// A control-only package carries no block, so there is nothing to hand accumulate.
-			// Empty is the plainest thing that does not decode as a head.
-			Ok(None) => WorkOutput(Vec::new()),
+			Ok(output) => WorkOutput(output.encode()),
 			Err(error) => {
 				jam_pvm_common::error!(
 					"parasim: refine failed: {error:?} payload len={} head={:02x?}",
@@ -124,18 +115,13 @@ impl Service for ParasimService {
 		jam_pvm_common::error!("parasim: accumulate called item_count={item_count} slot={slot}");
 		for item in jam_pvm_common::accumulate::accumulate_items() {
 			if let jam_types::AccumulateItem::WorkItem(record) = item {
-				// The command travels in the authorization, not in the work item, so it is
-				// applied whether or not refine produced anything for this item.
-				if let Some(command) = control_command(&record.auth_output) {
-					apply_command(id, command);
-				}
 				match record.result {
 					Ok(result) => {
 						jam_pvm_common::error!(
 							"parasim: accumulate result ok, result len={}",
 							result.0.len()
 						);
-						accumulate_one(slot, &result);
+						accumulate_one(id, slot, &result);
 					},
 					Err(e) => jam_pvm_common::error!("parasim: accumulate work-item Err: {e:?}"),
 				}
@@ -145,20 +131,23 @@ impl Service for ParasimService {
 	}
 }
 
-/// Decode a work item, declare the parent it builds on, and re-emit the new head. A control-only
-/// item has no head to re-emit and yields `None`.
+/// Decode a work item and re-emit whatever accumulate has to act on: the new head a parachain
+/// block carries, or the core-assignment command a control payload carries.
 fn refine_inner(
 	item_index: usize,
 	service_id: ServiceId,
 	payload: &WorkPayload,
-) -> Result<Option<ParasimWorkOutput>, ParasimRefineError> {
+) -> Result<ParasimWorkOutput, ParasimRefineError> {
+	// Before the para id, because a parked core has no para at all and a command is exactly what
+	// gets sent to one.
+	if let Some(command) = payload_command(sudo(), &payload.0)? {
+		return Ok(ParasimWorkOutput::Command(command));
+	}
+
 	// The para id comes from the authorizer config's `Vec<ParaId>` prefix and nowhere else (the
 	// real service's layout): whoever installed the core's queue decided which para may run on
 	// it, and the submitter has no say.
 	let para_id = work_package_para_id(item_index).ok_or(ParasimRefineError::NoParaId)?;
-	if payload.0 == CONTROL_NOOP_PAYLOAD {
-		return Ok(None);
-	}
 
 	let mut input: &[u8] = &payload.0;
 	let candidate =
@@ -172,7 +161,7 @@ fn refine_inner(
 	log_parent_relationship(&pov, proven_head(service_id, para_id, &pov)?.as_deref());
 
 	let head_data = pov.head.to_vec().try_into().map_err(|_| ParasimRefineError::HeadTooLarge)?;
-	Ok(Some(ParasimWorkOutput {
+	Ok(ParasimWorkOutput::Head(RefinedHead {
 		para_id,
 		head_data,
 		parent_head_hash: pov.parent_hash,
@@ -180,12 +169,30 @@ fn refine_inner(
 	}))
 }
 
-/// The core-assignment command the authorizer put in this item's authorization output, if any.
+/// The command a work-item payload carries, or `None` if it carries a parachain block.
 ///
-/// A trace that does not decode is not an error: the null authorizer every core starts out with
-/// returns an empty one, so packages riding an unassigned core simply carry no command.
-fn control_command(auth_output: &AuthTrace) -> Option<Command> {
-	ControlTrace::decode_all(&mut &auth_output.0[..]).ok()?.control_command
+/// `sudo` is the authorizer's verdict, not the submitter's claim, which is what keeps the command
+/// lane closed to ordinary packages. A command arriving without it is refused rather than read as
+/// a block: it is either a mistake or an attempt to smuggle one past the authorizer, and both are
+/// worth seeing in the log.
+fn payload_command(sudo: bool, payload: &[u8]) -> Result<Option<Command>, ParasimRefineError> {
+	let Some(encoded) = payload.strip_prefix(CONTROL_COMMAND_PREFIX) else { return Ok(None) };
+	if !sudo {
+		return Err(ParasimRefineError::CommandWithoutSudo);
+	}
+	Command::decode_all(&mut &encoded[..])
+		.map(Some)
+		.map_err(|_| ParasimRefineError::MalformedCommand)
+}
+
+/// Whether the authorizer admitted this package through its `sudo` lane.
+///
+/// The trace is all refine gets to see of the authorization, and only the authorizer can write
+/// it. A trace that does not decode is not an error: the null authorizer every core starts out
+/// with returns an empty one, and a package riding such a core simply has no privilege.
+fn sudo() -> bool {
+	ControlTrace::decode_all(&mut &jam_pvm_common::refine::auth_trace().0[..])
+		.map_or(false, |trace| trace.sudo)
 }
 
 /// Fill a core's authorizer queue, which is how a core is both assigned and freed.
@@ -203,9 +210,11 @@ fn apply_command(me: ServiceId, command: Command) {
 			);
 			(core, authorizer)
 		},
-		Command::Free { core } => {
-			jam_pvm_common::error!("parasim: freeing core {core}");
-			(core, unassigned_authorizer())
+		Command::Free { core, parked_authorizer } => {
+			jam_pvm_common::error!(
+				"parasim: parking core {core}, authorizer {parked_authorizer:02x?}"
+			);
+			(core, parked_authorizer)
 		},
 	};
 	if let Err(error) =
@@ -215,12 +224,6 @@ fn apply_command(me: ServiceId, command: Command) {
 			"parasim: assign for core {core} failed: {error:?} (service {me} is not its assigner)"
 		);
 	}
-}
-
-/// The queue entry that means "nobody is using this core": `blake2b(code_hash ‖ config)` of the
-/// null authorizer with an empty config, which is exactly what the genesis queues hold.
-fn unassigned_authorizer() -> [u8; HASH_LEN] {
-	jam_state_helpers::blake2_256(&NULL_AUTHORIZER_CODE_HASH)
 }
 
 /// Record how the block's parent relates to the head proven at the anchor.
@@ -293,11 +296,17 @@ fn work_package_para_id(item_index: usize) -> Option<ParaId> {
 	para_ids.get(item_index).copied()
 }
 
-/// Apply one accumulated work item to its para's head, park it, or drop it.
-fn accumulate_one(slot: Slot, result: &WorkOutput) {
+/// Apply one accumulated work item: run the command it carried, or place its head.
+fn accumulate_one(me: ServiceId, slot: Slot, result: &WorkOutput) {
 	let Ok(output) = ParasimWorkOutput::decode_all(&mut &result.0[..]) else {
 		// A stray/incompatible refine result should never wedge accumulate.
 		return;
+	};
+	let output = match output {
+		// Commands never touch the head store or the reorder buffer; they have no para to belong
+		// to and no lineage to be judged against.
+		ParasimWorkOutput::Command(command) => return apply_command(me, command),
+		ParasimWorkOutput::Head(head) => head,
 	};
 	let para_id = output.para_id;
 	let buffer_key = buffer_key(para_id);
@@ -478,6 +487,11 @@ pub enum ParasimRefineError {
 	/// package speaks for. Every authorizer parasim runs under carries the prefix; the null one
 	/// does not, and packages on an unassigned core are refused rather than guessed at.
 	NoParaId,
+	/// The payload is marked as a core-assignment command, but the authorization did not come
+	/// through the `sudo` lane, so this package may not carry one.
+	CommandWithoutSudo,
+	/// The payload is marked as a core-assignment command but does not decode as one.
+	MalformedCommand,
 }
 #[cfg(test)]
 mod tests {
@@ -524,43 +538,48 @@ mod tests {
 		assert_eq!(buffer_key(ParaId(3)), vec![0xf0, 3, 0, 0, 0]);
 	}
 
-	/// `Free` writes this hash across a core's queue, so getting it wrong would hand the core to
-	/// an authorizer nobody hosts instead of releasing it — and there is no on-chain complaint
-	/// when that happens.
-	#[test]
-	fn null_authorizer_code_hash_matches_polkajam_works() {
-		assert_eq!(NULL_AUTHORIZER_CODE_HASH, jam_null_authorizer_bin::HASH);
+	fn command() -> Command {
+		Command::Free { core: 1, parked_authorizer: [7u8; HASH_LEN] }
 	}
 
-	/// A control package's empty output has to fall down the stray-output path: `accumulate_one`
-	/// returns before it touches the head or the reorder buffer precisely because the bytes do
-	/// not decode as a head. Nothing does decode from nothing — but that is the whole reason the
-	/// no-op is shaped this way, so it is worth pinning.
+	fn command_payload() -> Vec<u8> {
+		let mut payload = CONTROL_COMMAND_PREFIX.to_vec();
+		command().encode_to(&mut payload);
+		payload
+	}
+
+	/// The prefix is the only thing that makes a payload a command, and `sudo` — the authorizer's
+	/// verdict, which the submitter cannot forge — is the only thing that makes refine read it.
+	/// Without the second half, any collator could assign any core by putting the right bytes in
+	/// a block it was going to send anyway.
 	#[test]
-	fn a_control_no_op_output_is_not_a_head_works() {
-		assert!(ParasimWorkOutput::decode_all(&mut &[][..]).is_err());
+	fn a_command_needs_both_the_prefix_and_sudo_works() {
+		assert_eq!(payload_command(true, &command_payload()), Ok(Some(command())));
+		// The same command bytes on the ordinary collator lane do nothing at all.
+		assert_eq!(
+			payload_command(false, &command_payload()),
+			Err(ParasimRefineError::CommandWithoutSudo)
+		);
+		// A parachain block is not a command even with the privilege to run one.
+		assert_eq!(payload_command(true, &command().encode()), Ok(None));
+		assert_eq!(
+			payload_command(true, CONTROL_COMMAND_PREFIX),
+			Err(ParasimRefineError::MalformedCommand)
+		);
+	}
+
+	/// Accumulate matches on the variant, so a command can never reach the head store or the
+	/// reorder buffer — it has no para to belong to. Pinned because the two used to be one
+	/// output type told apart by whether it decoded.
+	#[test]
+	fn a_command_output_is_not_a_head_works() {
+		let encoded = ParasimWorkOutput::Command(command()).encode();
+		assert!(matches!(
+			ParasimWorkOutput::decode_all(&mut &encoded[..]),
+			Ok(ParasimWorkOutput::Command(_))
+		));
+		assert!(RefinedHead::decode_all(&mut &encoded[..]).is_err());
 		// Nor is it a rejection: a control package that reached accumulate did not fail.
-		assert!(ParasimRefineError::decode_all(&mut &[][..]).is_err());
-		// And the marker payload is not a candidate either, so an item that reached refine
-		// without the marker check would still be refused rather than half-decoded.
-		assert!(parachain_service_interface::candidate::ParachainCandidate::decode_all(
-			&mut &CONTROL_NOOP_PAYLOAD[..]
-		)
-		.is_err());
-	}
-
-	/// The authorization output is the only channel a command has, and the null authorizer every
-	/// core starts on returns an empty one. Reading a command out of that would be reading it out
-	/// of nothing.
-	#[test]
-	fn a_trace_without_a_command_yields_none_works() {
-		assert_eq!(control_command(&AuthTrace(vec![])), None);
-		let plain = ControlTrace { author_key: [1u8; HASH_LEN], control_command: None };
-		assert_eq!(control_command(&AuthTrace(plain.encode())), None);
-
-		let command = Command::Free { core: 1 };
-		let carrying =
-			ControlTrace { author_key: [1u8; HASH_LEN], control_command: Some(command.clone()) };
-		assert_eq!(control_command(&AuthTrace(carrying.encode())), Some(command));
+		assert!(ParasimRefineError::decode_all(&mut &encoded[..]).is_err());
 	}
 }

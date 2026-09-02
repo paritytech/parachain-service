@@ -20,7 +20,7 @@ use jam_interface::{
 };
 use jam_rpc_interface::JamRpcInterface;
 use jam_types::WorkDigest;
-use parasim_service::{ParasimRefineError, ParasimWorkOutput};
+use parasim_service::{ParasimRefineError, ParasimWorkOutput, RefinedHead};
 
 use crate::{
 	format::{hex, parse_header_hash},
@@ -180,7 +180,9 @@ fn describe(args: &Args, digest: &WorkDigest) -> Option<String> {
 
 /// What parasim's refine put in the work output.
 enum Refined {
-	Head(ParasimWorkOutput),
+	Head(RefinedHead),
+	/// A core-assignment command on its way to accumulate, which is where it takes effect.
+	Command(parachain_service_interface::authorization::Command),
 	Rejected(ParasimRefineError),
 	/// parasim's output, but nothing this tool's version of parasim understands.
 	Unknown,
@@ -193,11 +195,13 @@ enum Refined {
 ///
 /// A rejection refine can still report — one that leaves the export count intact — arrives as a
 /// *successful* work output holding the reason where the head would have gone. Telling the two
-/// apart by trying each is unambiguous, because a `ParasimWorkOutput` carries a 32-byte parent
-/// hash and a `ParasimRefineError` is exactly one byte.
+/// apart by trying each is unambiguous, because every `ParasimWorkOutput` variant carries a
+/// payload and a `ParasimRefineError` is exactly one byte.
 fn decode_output(bytes: &[u8]) -> Refined {
-	if let Ok(output) = ParasimWorkOutput::decode_all(&mut &bytes[..]) {
-		return Refined::Head(output);
+	match ParasimWorkOutput::decode_all(&mut &bytes[..]) {
+		Ok(ParasimWorkOutput::Head(head)) => return Refined::Head(head),
+		Ok(ParasimWorkOutput::Command(command)) => return Refined::Command(command),
+		Err(_) => {},
 	}
 	match ParasimRefineError::decode_all(&mut &bytes[..]) {
 		Ok(error) => Refined::Rejected(error),
@@ -214,7 +218,7 @@ fn matches_para(para: Option<u32>, refined: &Refined) -> bool {
 		(None, _) => true,
 		(Some(wanted), Refined::Head(output)) => output.para_id.0 == wanted,
 		(Some(_), Refined::Foreign) => false,
-		(Some(_), Refined::Rejected(_) | Refined::Unknown) => true,
+		(Some(_), Refined::Command(_) | Refined::Rejected(_) | Refined::Unknown) => true,
 	}
 }
 
@@ -232,6 +236,7 @@ fn render(refined: &Refined, len: usize) -> String {
 				Err(error) => format!("head {} bytes, undecodable header: {error}", head.len()),
 			}
 		},
+		Refined::Command(command) => format!("COMMAND: {command:?}"),
 		Refined::Rejected(error) => format!("REJECTED: {error:?}"),
 		Refined::Unknown => format!("{len} bytes, not a parasim result"),
 		Refined::Foreign => format!("{len} bytes"),
@@ -247,13 +252,21 @@ mod tests {
 	fn output_and_rejection_are_told_apart_works() {
 		// The whole feature rests on this: a rejected package is an `Ok` work output holding an
 		// error, so the two encodings must not be confusable in either direction.
-		let head = ParasimWorkOutput {
+		let head = RefinedHead {
 			para_id: parachain_service_interface::types::ParaId(7),
 			head_data: vec![1u8; 40].try_into().expect("40 bytes fit; qed"),
 			parent_head_hash: [2u8; 32],
 			number: 9,
 		};
-		assert!(matches!(decode_output(&head.encode()), Refined::Head(decoded) if decoded == head));
+		let encoded = ParasimWorkOutput::Head(head.clone()).encode();
+		assert!(matches!(decode_output(&encoded), Refined::Head(decoded) if decoded == head));
+		// A control package's output is a command, and must not read as a head of para 0.
+		let command = parachain_service_interface::authorization::Command::Free {
+			core: 1,
+			parked_authorizer: [3u8; 32],
+		};
+		let encoded = ParasimWorkOutput::Command(command).encode();
+		assert!(matches!(decode_output(&encoded), Refined::Command(_)));
 		assert!(matches!(
 			decode_output(&ParasimRefineError::InvalidProof.encode()),
 			Refined::Rejected(ParasimRefineError::InvalidProof)
@@ -274,7 +287,7 @@ mod tests {
 
 	#[test]
 	fn para_filter_keeps_unattributable_rows_works() {
-		let head = Refined::Head(ParasimWorkOutput {
+		let head = Refined::Head(RefinedHead {
 			para_id: parachain_service_interface::types::ParaId(0),
 			head_data: Default::default(),
 			parent_head_hash: [0u8; 32],

@@ -370,7 +370,7 @@ fn build_package(
 ) -> Result<WorkPackage, String> {
 	let mut package = anchor
 		.package(args.aura.authorizer(args.para), vec![anchor.item(args.service, payload)]);
-	package.authorization = args.aura.token(&package, None)?;
+	package.authorization = args.aura.token(&package, false)?;
 	Ok(package)
 }
 

@@ -129,9 +129,9 @@ enum Command {
 	/// once parasim owns a core, only a control package on an AURA core can assign it.
 	///
 	/// The grant itself is a bootstrap instruction, so it always rides a core still holding the
-	/// unassigned authorizer — there is no AURA lane for it. On a network with every core
-	/// assigned, free a parasim-owned core first and re-assign it afterwards through
-	/// `--via-core`/`--via-collators`.
+	/// genesis authorizer — there is no AURA lane for it. Assignment to parasim is one-way, so
+	/// there is no way to make such a core again: grant every core parasim is to own while one is
+	/// still unassigned.
 	GrantAssigner {
 		/// Which core.
 		core: CoreIndex,
@@ -145,7 +145,11 @@ enum Command {
 		#[command(flatten)]
 		via: Via,
 	},
-	/// Return a core to the unassigned authorizer. Its pool drains over the next few blocks.
+	/// Park a core: no para on it, but the same AURA authorizer, so it still takes commands.
+	///
+	/// The parked authorizer commits to `--collators`/`--scheme`, so pass the ones the core was
+	/// assigned with. Its pool drains over the next few blocks, after which the core refuses
+	/// parachain work and `assign-core` can put a para back on it, riding the core itself.
 	FreeCore {
 		/// Which core.
 		core: CoreIndex,

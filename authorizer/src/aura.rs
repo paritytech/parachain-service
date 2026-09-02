@@ -9,12 +9,9 @@ use jam_types::{Encode as JamEncode, ServiceId, Slot, WorkPackage};
 use parachain_service_interface::types::ParaId;
 use primitive_types::H256;
 
-// The service decodes the trace (and so the command in it) without linking this crate, so both
-// live in the shared interface crate; they are re-exported here because this is where the
-// authorizer's wire types read as one set.
-pub use parachain_service_interface::authorization::{
-	AuthTrace, CollatorKey, CollatorSignature, Command,
-};
+// The service decodes the trace without linking this crate, so it lives in the shared interface
+// crate; it is re-exported here because this is where the authorizer's wire types read as one set.
+pub use parachain_service_interface::authorization::{AuthTrace, CollatorKey, CollatorSignature};
 
 #[derive(Debug, Encode, Decode)]
 pub struct AuthConfig {
@@ -44,14 +41,20 @@ pub struct AuthToken {
 	/// Key of the collator that authored the work package.
 	pub key: CollatorKey,
 
-	/// Signature by the `key` over [`AuthToken::signing_payload`].
+	/// Signature by the `key` over [`signable_work_package_hash`].
 	pub signature: CollatorSignature,
 
-	/// A core-assignment command for the Parachain Service, normally `None`.
+	/// Privilege escalation: admit the package without checking the collator signature and
+	/// without requiring a para to be assigned to the core.
 	///
-	/// The authorizer only echoes it into the trace once the token checks out; executing it is
-	/// the service's business, in Accumulate.
-	pub control_command: Option<Command>,
+	/// It is what lets a core-assignment command reach a *parked* core, whose config names no
+	/// para and therefore admits no work item at all — including the one carrying the command
+	/// that would un-park it.
+	///
+	/// FIXME: a dev-network debugging bypass. It widens command access to anyone, on any core
+	/// this authorizer guards. Accepted for the POC (user decision, 2026-09-02); it must not
+	/// ship.
+	pub sudo: bool,
 }
 
 /// The one thing about a collator's authorization that is not scheme-blind.
@@ -110,25 +113,17 @@ impl AuthToken {
 	}
 
 	/// Verify the collator's signature over the token-free package hash, under `S`.
+	///
+	/// The hash is the whole of what a collator signs. Everything a package says — its items and
+	/// so any command they carry, its authorizer, its context — is already inside it; only the
+	/// token is not, which is what lets the signature sit inside the token.
 	pub fn check_signature<S: SignatureScheme>(
 		&self,
 		work_package_hash: H256,
 	) -> Result<(), TokenError> {
-		let payload = Self::signing_payload(work_package_hash, &self.control_command);
-		S::verify(&self.key, &self.signature, payload.as_bytes())
+		S::verify(&self.key, &self.signature, work_package_hash.as_bytes())
 			.then_some(())
 			.ok_or(TokenError::BadCollatorSignature)
-	}
-
-	/// What a collator actually signs: the token-free package hash bound to the control command
-	/// the token carries.
-	///
-	/// The command cannot travel in the package hash, because it lives in the token and the
-	/// package hash excludes the token by construction (that is what lets the signature sit
-	/// inside it). Binding it here is what stops a command being bolted onto somebody else's
-	/// package while it is in flight. Signers must go through this function, `None` included.
-	pub fn signing_payload(work_package_hash: H256, control_command: &Option<Command>) -> H256 {
-		H256::from(blake2b_32(&(work_package_hash, control_command).encode()))
 	}
 
 	/// Run the §7.1 token checks for the slot-selected `collator_index` and
@@ -144,7 +139,7 @@ impl AuthToken {
 		self.check_proof(config, collator_index)?;
 		self.check_signature::<S>(wp_hash)?;
 
-		Ok(AuthTrace { author_key: self.key, control_command: self.control_command.clone() })
+		Ok(AuthTrace { author_key: self.key, sudo: false })
 	}
 }
 
