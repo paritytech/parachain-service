@@ -163,6 +163,17 @@ fn clean_up_below_first_bucket_works() {
 	assert!(transfer_bucket(&storage, 1).is_some());
 }
 
+#[test]
+fn bucket_spills_at_capacity_works() {
+	let items = (0..parachain_service::constants::MAX_TRANSFERS_PER_BUCKET + 1)
+		.map(|i| transfer_item(i, 1_000_000))
+		.collect();
+	let (_, storage, _) = accumulate_block(ah_storage(), items, NOW);
+	assert_eq!(transfer_bucket(&storage, 0).unwrap().len(), 512);
+	assert_eq!(transfer_bucket(&storage, 1).unwrap().len(), 1);
+	assert_eq!(transfer_queue(&storage).unwrap().last_bucket, 1);
+}
+
 /// A queue claiming `count` queued transfers as a single one-entry bucket at id
 /// 0 (the count is what gates admission and re-attribution).
 fn queue_storage(count: u32) -> jam_node::vm::Storage {

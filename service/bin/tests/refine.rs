@@ -292,6 +292,55 @@ fn valid_authorizer_queue_works() {
 }
 
 #[test]
+fn repeated_validator_keys_errors() {
+	let key = vec![0; 336];
+	let action = Config::Mock(vec![
+		MockAction::SetValidatorKeys { keys: key.clone(), is_last: false },
+		MockAction::SetValidatorKeys { keys: key, is_last: true },
+	]);
+	let parent = genesis(action.clone());
+
+	let outcome = run_block(action, &parent, 1, vec![ASSET_HUB_PARA_ID]);
+
+	assert_eq!(expect_log(outcome), RefineLog::SetValidatorKeysRepeated);
+}
+
+#[test]
+fn too_many_validator_keys_errors() {
+	let action =
+		Config::Mock(vec![MockAction::SetValidatorKeys { keys: vec![0; 31 * 336], is_last: true }]);
+	let parent = genesis(action.clone());
+
+	let outcome = run_block(action, &parent, 1, vec![ASSET_HUB_PARA_ID]);
+
+	assert_eq!(expect_log(outcome), RefineLog::TooManyValidatorKeys);
+}
+
+#[test]
+fn oversized_upward_messages_errors() {
+	// Variant (1) + empty-key prefix (1) + four-byte value prefix (4) means
+	// 40 KiB - 5 bytes of value is the first rejected encoding.
+	let action = Config::Mock(vec![MockAction::KVSet(vec![], vec![0; 40 * 1024 - 5])]);
+	let parent = genesis(action.clone());
+
+	let outcome = run_block(action, &parent, 1, vec![ParaId(0)]);
+
+	assert_eq!(expect_log(outcome), RefineLog::UpwardMessagesTooLarge);
+}
+
+#[test]
+fn upward_messages_at_size_budget_works() {
+	// The same encoding with one less value byte is exactly 40 KiB.
+	let action = Config::Mock(vec![MockAction::KVSet(vec![], vec![0; 40 * 1024 - 6])]);
+	let parent = genesis(action.clone());
+
+	let outcome = run_block(action, &parent, 1, vec![ParaId(0)]);
+
+	let (_, _, messages, _) = expect_ok(outcome);
+	assert_eq!(messages.len(), 1);
+}
+
+#[test]
 fn skip_head_declarations_errors() {
 	let action = Config::Mock(vec![MockAction::SkipHeadDeclarations]);
 	let parent = genesis(action.clone());

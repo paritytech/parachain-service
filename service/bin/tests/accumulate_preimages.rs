@@ -217,6 +217,11 @@ fn shared_referencer_leaves_works() {
 	};
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg.clone()], 0);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+	let msg = UpwardMessage::Solicit {
+		target: Target::Parachain(OTHER),
+		hash: blob_hash(),
+		len: blob_len().into(),
+	};
 	let digest = ok_digest(OTHER, b"para-2000-code", b"genesis-2", b"head-2-1", vec![msg], 0);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 	let used_charged = para_info(&storage, PARA).unwrap().used_state_balance;

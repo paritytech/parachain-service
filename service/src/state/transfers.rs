@@ -75,3 +75,15 @@ impl TransferQueue {
 		state::clear_singleton(Tag::IncomingTransferBuckets)
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn endpoint_encoding_works() {
+		let endpoints = IncomingTransferBuckets { first_bucket: 1, last_bucket: 2, count: 3 };
+		assert_eq!(endpoints.encode().len(), 8 + 8 + 4);
+		assert_eq!(Some(endpoints).encode().len(), 1 + 8 + 8 + 4);
+	}
+}

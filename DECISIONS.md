@@ -76,24 +76,12 @@ property is unchanged.
 §5.1 should note that recording must be batched per invocation — a conforming literal
 implementation cannot fit its own gas budget.
 
-## D-10: `transfer_out` takes its arguments as one SCALE blob
+## D-10: upward messages use one SCALE-encoded host call
 
-Gap: the child-PVF ABI is not pinned by the design.
-
-§5.1's reworked `transfer_out` has seven arguments (`source`, `dest`, `amount`, `id`, two
-balance selectors, `deferred`), two of them optional. The child ABI passes arguments in
-`A0..A5`, so they do not fit. The PoC passes a single SCALE-encoded
-[`TransferOutArgs`](service-interface/src/upward_message.rs) via the usual `(ptr, len)`
-pair, and reuses that same struct as the `UpwardMessage::TransferOut` payload. Because the
-field order is the design's, the host-call encoding and the wire encoding are byte-identical,
-so there is only one definition to keep in sync.
-
-Alternative considered: pack the selectors and option tags into a flags register. That keeps
-the register convention uniform but needs a bespoke bit layout, and still leaves no register
-for the deferred gas limit.
-
-**Spec feedback**: §4.3 should state how host calls whose arity exceeds the register window
-pass arguments; this is the first such call, and more will follow as §8 messaging lands.
+Resolved by Quint `4cff218575`: the child PVF passes every [`UpwardMessage`](service-interface/src/upward_message.rs)
+through `send_upward_message(msg)` as one SCALE blob. This removes per-variant register ABIs,
+including the earlier special case for `transfer_out`, and makes the parachain-visible encoding
+the sole message definition.
 
 ## D-11: only the deferred transfer mode is executable on the vendored host
 
