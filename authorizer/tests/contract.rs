@@ -13,6 +13,7 @@
 //! under test is `is_authorized::authorize` itself, not a re-implementation of it — a carve-out
 //! that only the tests know about would guard nothing.
 
+use codec::{DecodeAll as _, Encode};
 use jam_types::{
 	AuthConfig as RawAuthConfig, Authorization, Authorizer, CodeHash, HeaderHash, RefineContext,
 	ServiceId, Slot, WorkItem, WorkPackage, WorkPayload,
@@ -20,7 +21,7 @@ use jam_types::{
 use parachain_authorizer::{
 	aura::{
 		build_collator_tree, signable_work_package_hash, AuthConfig, AuthToken, AuthTrace,
-		CollatorKey, CollatorSignature,
+		CollatorKey, CollatorSignature, SUDO_KEY,
 	},
 	is_authorized::{authorize, AuthorizationError},
 };
@@ -30,6 +31,21 @@ use parachain_service_interface::{
 	authorization::{Command, CONTROL_COMMAND_PREFIX},
 	types::ParaId,
 };
+use primitive_types::{H256, U256};
+
+/// The token exactly as the design spec writes it (§7.1: `AuthToken { proof, key, signature }`),
+/// declared here rather than reused so that the test encodes what the *spec* says while the guest
+/// decodes what the *crate* says.
+///
+/// This is the shape a collator built against the final design emits, knowing nothing of parasim's
+/// sudo lane. Keeping the two in step is the entire reason that lane rides a sentinel key instead
+/// of a field of its own — a fourth field would make every collator encode a flag forever.
+#[derive(Encode)]
+struct SpecToken {
+	proof: Vec<H256>,
+	key: CollatorKey,
+	signature: CollatorSignature,
+}
 
 /// The aura key type, which is the collator identity phase 6a settles on.
 const AURA: sp_core::crypto::KeyTypeId = sp_core::crypto::KeyTypeId(*b"aura");
@@ -110,7 +126,6 @@ impl Collators {
 				proof: proofs[index].clone(),
 				key: self.keys[index],
 				signature: self.sign(index, payload.as_bytes()),
-				sudo: false,
 			})
 			.collect()
 	}
@@ -157,7 +172,6 @@ fn block(anchor_byte: u8, slot: Slot) -> WorkPackage {
 
 /// The package a core-assignment command rides in: the command *is* the payload.
 fn commanding(anchor_byte: u8, slot: Slot) -> WorkPackage {
-	use codec::Encode as _;
 	let command = Command::Free { core: 1, parked_authorizer: [0xcd; 32] };
 	let mut payload = CONTROL_COMMAND_PREFIX.to_vec();
 	command.encode_to(&mut payload);
@@ -200,6 +214,53 @@ fn a_keystore_token_passes_its_own_verifier_works() {
 			);
 		}
 	}
+}
+
+/// The compatibility pin: a token in the spec's three-field shape, assembled by someone who has
+/// never heard of the sudo lane, is admitted by the guest of its own scheme.
+///
+/// `decode_all` is what makes this a wire test rather than a type test — it fails on a trailing
+/// byte, so a fourth field appearing in `AuthToken` breaks this even if every other test still
+/// compiles.
+#[test]
+fn a_spec_shaped_token_passes_its_own_verifier_works() {
+	for scheme in [Scheme::Ed25519, Scheme::Sr25519] {
+		// Two collators and slot 1, so the proof is a real sibling rather than an empty vec.
+		let collators = Collators::new(scheme, &["//Alice", "//Bob"]);
+		let package = block(1, 1);
+		let (_, proofs) = build_collator_tree(&collators.keys);
+		let payload = signable_work_package_hash(&package);
+		let spec = SpecToken {
+			proof: proofs[1].clone(),
+			key: collators.keys[1],
+			signature: collators.sign(1, payload.as_bytes()),
+		};
+
+		let token = AuthToken::decode_all(&mut &spec.encode()[..])
+			.expect("the guest decodes the spec's three fields and nothing more");
+		assert!(
+			admits(scheme, &collators.config(vec![ParaId(0)]), &token, &package),
+			"{scheme:?}: a spec-shaped token was rejected by its own verifier"
+		);
+	}
+}
+
+/// The sentinel's safety argument, checked rather than left in prose.
+///
+/// A public key on either curve is the compressed encoding of a point, and the low 255 bits of
+/// that encoding are a coordinate reduced modulo the curves' shared field prime, 2^255 − 19.
+/// `SUDO_KEY`'s low 255 bits are 2^255 − 1, which is not reduced — so these bytes are not the
+/// encoding of any key a keygen can emit, and nobody can find themselves in a collator set under
+/// the one key that opens the sudo lane.
+#[test]
+fn the_sudo_sentinel_is_no_keys_encoding_works() {
+	let field_prime = (U256::MAX >> 1) - 18;
+	let mut coordinate = SUDO_KEY;
+	coordinate[31] &= 0x7f; // The top bit carries a sign, not part of the coordinate.
+	assert!(
+		U256::from_little_endian(&coordinate) >= field_prime,
+		"the sentinel is a reduced field element, so it could be somebody's real key"
+	);
 }
 
 /// A core's queue commits to one verifier blob, so pointing it at the wrong one must reject
@@ -280,10 +341,10 @@ fn a_parked_core_admits_no_ordinary_package_works() {
 	}
 }
 
-/// `sudo` is what gets a command onto a parked core, and it is a deliberate hole: no signature is
-/// checked at all. Pinned so that widening it any further has to be a conscious edit — and so
-/// that the trace says `sudo`, which is the only thing stopping refine running a command that
-/// came in on the ordinary lane.
+/// The sentinel key is what gets a command onto a parked core, and it is a deliberate hole: no
+/// proof and no signature are checked at all. Pinned so that widening it any further has to be a
+/// conscious edit — and so that the trace says `sudo`, which is the only thing stopping refine
+/// running a command that came in on the ordinary lane.
 #[test]
 fn a_sudo_token_reaches_a_parked_core_unsigned_works() {
 	for scheme in [Scheme::Ed25519, Scheme::Sr25519] {
@@ -291,16 +352,11 @@ fn a_sudo_token_reaches_a_parked_core_unsigned_works() {
 		let parked = collators.config(Vec::new());
 		let control = commanding(1, 0);
 
-		let forged = AuthToken {
-			proof: Vec::new(),
-			key: [0xee; 32],
-			signature: [0xff; 64],
-			sudo: true,
-		};
+		let forged = AuthToken { proof: Vec::new(), key: SUDO_KEY, signature: [0u8; 64] };
 		let trace = authorize_under(scheme, &parked, &forged, &control)
-			.expect("sudo admits a package nobody signed");
+			.expect("the sentinel key admits a package nobody signed");
 		assert!(trace.sudo, "{scheme:?}: the trace must tell refine the command may run");
-		assert_eq!(trace.author_key, forged.key);
+		assert_eq!(trace.author_key, SUDO_KEY);
 
 		// The hole is exactly this wide: the target-service check still applies, so a parked
 		// core's coretime cannot be spent on some other JAM service.
@@ -309,6 +365,37 @@ fn a_sudo_token_reaches_a_parked_core_unsigned_works() {
 		assert!(matches!(
 			authorize_under(scheme, &parked, &forged, &foreign),
 			Err(AuthorizationError::WrongTargetService)
+		));
+	}
+}
+
+/// The sentinel key is the *whole* of the signal: nothing else in a token can switch the sudo
+/// lane on, and nothing else can switch it off. Pinned because the signal used to be a field of
+/// its own — a magic value is easy to compare sloppily, and either mistake is silent.
+#[test]
+fn only_the_sentinel_key_opens_the_sudo_lane_works() {
+	for scheme in [Scheme::Ed25519, Scheme::Sr25519] {
+		let collators = Collators::new(scheme, &["//Alice"]);
+		let control = commanding(1, 0);
+
+		// A sentinel token dressed up as an ordinary one — real proof, real signature — is still
+		// the sudo lane, on a parked core and on an assigned one alike: the key decides before
+		// anything else in the token is looked at.
+		let mut dressed = collators.tokens(&control)[0].clone();
+		dressed.key = SUDO_KEY;
+		for config in [collators.config(Vec::new()), collators.config(vec![ParaId(0)])] {
+			let trace = authorize_under(scheme, &config, &dressed, &control)
+				.expect("the sentinel decides, whatever else the token carries");
+			assert!(trace.sudo, "{scheme:?}: a dressed-up sentinel lost its privilege");
+		}
+
+		// One byte off the sentinel is an ordinary collator key, and an ordinary key on a parked
+		// core buys nothing at all.
+		let mut near_miss = dressed;
+		near_miss.key[31] = 0xfe;
+		assert!(matches!(
+			authorize_under(scheme, &collators.config(Vec::new()), &near_miss, &control),
+			Err(AuthorizationError::InvalidWorkItemCount)
 		));
 	}
 }

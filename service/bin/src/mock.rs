@@ -67,12 +67,7 @@ pub fn good_config_for(para_ids: Vec<ParaId>) -> AuthConfig {
 pub fn good_token() -> AuthToken {
 	let signing_key = SigningKey::from_bytes(&COLLATOR_SEED);
 	let key_bytes: [u8; 32] = signing_key.verifying_key().to_bytes();
-	let token = aura::AuthToken {
-		proof: vec![],
-		key: key_bytes,
-		signature: [0u8; 64],
-		sudo: false,
-	};
+	let token = aura::AuthToken { proof: vec![], key: key_bytes, signature: [0u8; 64] };
 	AuthToken(token.encode())
 }
 
@@ -118,20 +113,14 @@ pub fn make_auth_with_seed(
 	let config_enc = AuthConfig(config.encode());
 
 	let dummy_token = AuthToken(
-		aura::AuthToken {
-			proof: vec![],
-			key: [0u8; 32],
-			signature: [0u8; 64],
-			sudo: false,
-		}
-		.encode(),
+		aura::AuthToken { proof: vec![], key: [0u8; 32], signature: [0u8; 64] }.encode(),
 	);
 	let pkg = work_package(authorizer_blob, config_enc.clone(), dummy_token, items.to_vec());
 	let wp_hash = aura::signable_work_package_hash(&pkg);
 
 	let sig_bytes: [u8; 64] = signing_key.sign(wp_hash.as_bytes()).to_bytes();
 
-	let token = aura::AuthToken { proof, key: key_bytes, signature: sig_bytes, sudo: false };
+	let token = aura::AuthToken { proof, key: key_bytes, signature: sig_bytes };
 	let trace = aura::AuthTrace { author_key: key_bytes, sudo: false };
 
 	(config_enc, AuthToken(token.encode()), AuthTrace(trace.encode()))
@@ -156,7 +145,7 @@ pub fn make_single_collator_args_with_key(
 		collator_set_size: 1,
 		slot_duration: 1,
 	};
-	let token = aura::AuthToken { proof: vec![], key, signature, sudo: false };
+	let token = aura::AuthToken { proof: vec![], key, signature };
 	is_authorized_args(
 		authorizer_blob,
 		AuthConfig(config.encode()),
@@ -195,7 +184,7 @@ pub fn make_wrong_collator_index_args(
 		collator_set_size: all_seeds.len() as u32,
 		slot_duration: 1,
 	};
-	let token = aura::AuthToken { proof, key, signature: [0u8; 64], sudo: false };
+	let token = aura::AuthToken { proof, key, signature: [0u8; 64] };
 	is_authorized_args(
 		authorizer_blob,
 		AuthConfig(config.encode()),

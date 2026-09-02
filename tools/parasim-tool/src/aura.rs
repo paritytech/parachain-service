@@ -15,7 +15,7 @@ use jam_types::{
 };
 use parachain_authorizer::aura::{
 	build_collator_tree, expected_collator_index, signable_work_package_hash, AuthConfig,
-	AuthToken, CollatorKey, CollatorSignature,
+	AuthToken, CollatorKey, CollatorSignature, SUDO_KEY,
 };
 use parachain_service_interface::types::ParaId;
 use primitive_types::H256;
@@ -164,12 +164,7 @@ impl Aura {
 	/// this struct's fields, so the token can only ever be built against the config the
 	/// authorizer is going to read. Rather than hunt for an anchor that names a particular
 	/// collator, this signs as the one the anchor already names — every dev key is to hand.
-	///
-	/// `sudo` asks the authorizer to admit the package without a para assigned to the core, which
-	/// is the only way onto a parked one. The signature is still produced, because this tool has
-	/// the keys and a token nobody could have signed would be a worse thing to leave lying
-	/// around; the authorizer simply does not look at it.
-	pub fn token(&self, package: &WorkPackage, sudo: bool) -> Result<Authorization, String> {
+	pub fn token(&self, package: &WorkPackage) -> Result<Authorization, String> {
 		let config = AuthConfig::decode_all(&mut &package.authorizer.config[..])
 			.map_err(|e| format!("the package's own authorizer config does not decode: {e}"))?;
 		let index = expected_collator_index(package.context.lookup_anchor_slot, &config) as usize;
@@ -183,7 +178,6 @@ impl Aura {
 			proof: self.proofs[index].clone(),
 			key: pair.public(),
 			signature: pair.sign(payload.as_bytes()),
-			sudo,
 		};
 		tracing::info!(
 			"signing as collator {index} of {} (lookup anchor slot {})",
@@ -192,6 +186,16 @@ impl Aura {
 		);
 		Ok(Authorization(token.encode()))
 	}
+}
+
+/// The token that rides the authorizer's sudo lane: the sentinel key, and nothing else that
+/// means anything.
+///
+/// It is what gets a command past an authorizer with no para to match the work item against,
+/// which is the only way onto a parked core. No collator set is involved — the authorizer sees
+/// the key and stops looking — so the other two fields carry their shortest encodings.
+pub fn sudo_token() -> Authorization {
+	Authorization(AuthToken { proof: Vec::new(), key: SUDO_KEY, signature: [0u8; 64] }.encode())
 }
 
 #[cfg(test)]

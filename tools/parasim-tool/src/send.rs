@@ -382,8 +382,7 @@ fn build_package(
 	let authorizer =
 		if parked { args.aura.parked_authorizer() } else { args.aura.authorizer(args.para) };
 	let mut package = anchor.package(authorizer, vec![anchor.item(args.service, payload)]);
-	// Never `sudo`: this is the collator lane, and a block has no business escalating.
-	package.authorization = args.aura.token(&package, false)?;
+	package.authorization = args.aura.token(&package)?;
 	Ok(package)
 }
 

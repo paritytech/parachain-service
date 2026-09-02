@@ -54,20 +54,20 @@ pub fn authorize<S: SignatureScheme>(
 	package: &WorkPackage,
 	lookup_anchor_slot: Slot,
 ) -> Result<aura::AuthTrace, AuthorizationError> {
-	// Deliberately outside the `sudo` bypass: para-specific coretime must not be spent on other
+	// Deliberately outside the sudo bypass: para-specific coretime must not be spent on other
 	// JAM work whatever a package carries (SPEC_GAPS #7).
 	if package.items.iter().any(|item| item.service != config.parachain_service) {
 		return Err(AuthorizationError::WrongTargetService);
 	}
 
-	// The `sudo` lane. A parked core's config names no para, so the item-count check below
-	// refuses every package sent to it — including the control package carrying the command that
-	// would un-park it. This is the way past that, and the trace says the package came through
-	// here so that Refine can tell a command it may execute from one it may not.
+	// The sudo lane, which a token asks for by carrying `SUDO_KEY` instead of a collator's. A
+	// parked core's config names no para, so the item-count check below refuses every package
+	// sent to it — including the control package carrying the command that would un-park it. This
+	// is the way past that, and the trace says the package came through here so that Refine can
+	// tell a command it may execute from one it may not.
 	//
-	// FIXME: see `AuthToken::sudo`. A dev-network debugging bypass that lets anyone command any
-	// core this authorizer guards; accepted for the POC, must not ship.
-	if token.sudo {
+	// FIXME: see [`aura::SUDO_KEY`]; it must not ship.
+	if token.key == aura::SUDO_KEY {
 		return Ok(aura::AuthTrace { author_key: token.key, sudo: true });
 	}
 

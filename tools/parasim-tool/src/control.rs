@@ -24,7 +24,7 @@ use parachain_service_interface::{
 };
 
 use crate::{
-	aura::Aura,
+	aura::{sudo_token, Aura},
 	bootstrap,
 	cores::{self, BOOTSTRAP_SERVICE},
 	format::hex,
@@ -167,8 +167,8 @@ async fn route(
 ///
 /// The command *is* the work item's payload: accumulate, which is where `assign` has to be
 /// called, sees neither the package nor its authorization, so refine reads the command and hands
-/// it on in its work output. The token is `sudo`, which is what gets the package past an
-/// authorizer that has no para to match the item against.
+/// it on in its work output. The token rides the sudo lane — [`sudo_token`] — which is what gets
+/// the package past an authorizer that has no para to match the item against.
 async fn control_package(
 	jam: &JamRpcInterface,
 	args: &Args,
@@ -204,7 +204,7 @@ async fn control_package(
 	let mut payload = CONTROL_COMMAND_PREFIX.to_vec();
 	command.encode_to(&mut payload);
 	let mut package = anchor.package(authorizer, vec![anchor.item(args.service, payload)]);
-	package.authorization = args.carrier.token(&package, true)?;
+	package.authorization = sudo_token();
 	submit_and_follow(jam, core, &package).await
 }
 
