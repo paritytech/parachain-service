@@ -18,9 +18,15 @@ pub mod aura {
 	// phase 1. It diverges from polkajam's `signed-authorizer` `create_message`; before phase 3
 	// one encoding must be picked, the others aliased, and a cross-repo test added.
 	pub use parachain_authorizer::aura::{
-		expected_collator_index, signable_work_package_hash, AuthConfig, AuthToken, AuthTrace,
-		CollatorKey, CollatorSignature, TokenError, WORK_PACKAGE_SIGN_CTX,
+		build_collator_tree, expected_collator_index, signable_work_package_hash, AuthConfig,
+		AuthToken, AuthTrace, CollatorKey, CollatorSignature, Command, SignatureScheme, TokenError,
+		WORK_PACKAGE_SIGN_CTX,
 	};
+
+	/// The two verifier blobs' signature schemes, so a collator can check a token the way the
+	/// guest will before it spends a core on it. Which one a para uses is its runtime's `AuraId`,
+	/// and it decides which blob's code hash the core's queue must hold.
+	pub use ::{parachain_authorizer_ed25519::Ed25519, parachain_authorizer_sr25519::Sr25519};
 }
 
 pub mod service_state {
