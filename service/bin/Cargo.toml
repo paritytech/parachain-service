@@ -51,7 +51,7 @@ mock-dest-service = { workspace = true }
 [dev-dependencies]
 parachain-service-bin = { path = ".", features = ["test-utils"] } # TODO clean this up
 tiny-keccak = { workspace = true }
-parachain-authorizer-bin = { workspace = true }
+parachain-authorizer-ed25519-bin = { workspace = true }
 parachain-service = { workspace = true, features = ["test-utils", "std"] }
 frameless = { workspace = true }
 anyhow = "1" # TODO pull up to workspace

@@ -60,14 +60,17 @@ build-service-pvm:
 
 	just check-blob-size {{ SERVICE_BLOB }}
 
+# One blob per signature scheme; they share `authorizer/`, differing only in the verifier.
 build-authorizer-pvm:
 	#!/usr/bin/env sh
 	set -eu
 
 	mkdir -p target
-	jam-pvm-build --module authorizer --output {{ AUTHORIZER_BLOB }} authorizer
+	jam-pvm-build --module authorizer --output {{ AUTHORIZER_ED25519_BLOB }} authorizer-ed25519
+	jam-pvm-build --module authorizer --output {{ AUTHORIZER_SR25519_BLOB }} authorizer-sr25519
 
-	just check-blob-size {{ AUTHORIZER_BLOB }}
+	just check-blob-size {{ AUTHORIZER_ED25519_BLOB }}
+	just check-blob-size {{ AUTHORIZER_SR25519_BLOB }}
 
 build-runtime-pvm:
 	#!/usr/bin/env sh

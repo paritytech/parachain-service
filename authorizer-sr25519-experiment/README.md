@@ -1,5 +1,13 @@
 # sr25519 authorizer — blob-size experiment
 
+> **Superseded, and kept for the measurement.** Phase 6a took the answer below and shipped it:
+> `authorizer-sr25519/` is the productized crate, over the scheme-blind core in `authorizer/`.
+> Two things differ there and are deliberate. The signing context is `b"substrate"`, not the
+> `jam:parachain-service:aura` this crate verifies with — a collator signs through
+> `Keystore::sr25519_sign`, which hard-codes it. And the blob is a little larger, because the
+> shipping crates split scheme-blind code out into a separate crate; the sizes in the table below
+> are this experiment's, not the shipping blobs'.
+
 **Not part of the product.** This is a disposable copy of the `authorizer` crate with the
 ed25519 signature check swapped for sr25519 and *nothing else changed*, kept so that the next
 person who asks "why is the AURA authorizer on ed25519?" gets a number they can rebuild rather

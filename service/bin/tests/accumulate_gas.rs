@@ -313,7 +313,7 @@ fn due_assign_flood_works() {
 #[test]
 fn is_authorized_ed25519_gas_works() {
 	use executor::pj;
-	use parachain_authorizer_bin::BLOB as AUTHORIZER;
+	use parachain_authorizer_ed25519_bin::BLOB as AUTHORIZER;
 	use parachain_service_bin::mock::{is_authorized_args, make_auth, work_items};
 	use parachain_service_interface::types::ParaId;
 

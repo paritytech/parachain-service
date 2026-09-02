@@ -7,9 +7,9 @@ repository.workspace = true
 license.workspace = true
 publish = false
 
-# Plain `rlib` (the default): see the note in `service/Cargo.toml`. The
-# `parachain-authorizer-bin` wrapper build-depends on this crate for `MANIFEST_DIR`,
-# and `jam-pvm-builder` forces `--crate-type=cdylib` when building the blob.
+# Plain `rlib` (the default): see the note in `service/Cargo.toml`. This crate is not a blob of
+# its own; `parachain-authorizer-{ed25519,sr25519}` are, and each build-depends on itself for
+# `MANIFEST_DIR` while `jam-pvm-builder` forces `--crate-type=cdylib` for the blob.
 
 [lints]
 workspace = true
@@ -18,22 +18,26 @@ workspace = true
 jam-types = { workspace = true }
 parachain-service-interface = { workspace = true }
 jam-pvm-common = { workspace = true, features = ["authorizer", "logging"] }
-polkavm-derive = { workspace = true }
 codec = { workspace = true }
-ed25519-dalek = { workspace = true, features = ["alloc"] }
 # `uninline_portable` keeps blake2b's compression function a real function instead of one fully
 # unrolled body. It is worth ~13 kB of the 64 kB authorizer ceiling, and the authorizer hashes a
 # few dozen bytes per call.
 blake2b_simd = { workspace = true, features = ["uninline_portable"] }
 primitive-types = { workspace = true }
 
+# The cross-scheme contract tests live here, next to the core they are the drift alarm for: they
+# check that a token assembled the node's way passes the matching verifier and no other. Cargo
+# allows a dev-dependency cycle, which is what these two are.
 [dev-dependencies]
-parachain-service = { workspace = true, features = ["std"] }
 parachain-authorizer = { path = ".", features = ["test-utils"] }
+parachain-authorizer-ed25519 = { workspace = true }
+parachain-authorizer-sr25519 = { workspace = true }
+parachain-service = { workspace = true, features = ["std"] }
+sp-core = { workspace = true, features = ["std"] }
+sp-keystore = { workspace = true }
 
 [features]
 std = [
-	"ed25519-dalek/std",
 	"blake2b_simd/std",
 	"codec/std",
 	"jam-pvm-common/std",
@@ -42,6 +46,7 @@ std = [
 	"parachain-service-interface/std",
 	"parachain-service/std",
 	"primitive-types/std",
+	"sp-core/std",
 ]
 test-utils = [
 	"parachain-authorizer/test-utils",

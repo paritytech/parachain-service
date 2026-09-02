@@ -1,7 +1,10 @@
 [workspace]
 members = [
     "authorizer",
-    "authorizer/bin",
+    "authorizer-ed25519",
+    "authorizer-ed25519/bin",
+    "authorizer-sr25519",
+    "authorizer-sr25519/bin",
     "cumulus",
     "cumulus/jam-interface",
     "cumulus/jam-rpc-interface",
@@ -45,6 +48,7 @@ polkajam-trie = { package = "trie", path = "vendor/polkajam/crates/trie" }
 jam-null-authorizer-bin = { path = "vendor/polkajam/services/null-authorizer-bin" }
 jam-bootstrap-service-common = { path = "vendor/polkajam/services/bootstrap-service/common", features = ["std"] }
 sp-core = { path = "vendor/polkadot-sdk-companion/substrate/primitives/core", default-features = false }
+sp-keystore = { path = "vendor/polkadot-sdk-companion/substrate/primitives/keystore" }
 async-stream = "0.3"
 async-trait = "0.1"
 bytes = { version = "1.7.1", default-features = false }
@@ -60,6 +64,7 @@ url = "2.5"
 binary-merkle-tree = { version = "16.1.1", default-features = false }
 blake2b_simd = { version = "1", default-features = false }
 ed25519-dalek = { version = "2", default-features = false }
+schnorrkel = { version = "0.11.5", default-features = false }
 primitive-types = { version = "0.13.1", default-features = false, features = ["codec"] }
 jam-pvm-builder = { version = "0.1.28" }
 polkavm-derive = { version = "0.36.0", default-features = false }
@@ -73,7 +78,10 @@ mock-dest-service = { path = "testing/mock-dest-service" }
 parachain-service = { path = "service" }
 parachain-service-bin = { path = "service/bin" }
 parachain-authorizer = { path = "authorizer" }
-parachain-authorizer-bin = { path = "authorizer/bin" }
+parachain-authorizer-ed25519 = { path = "authorizer-ed25519" }
+parachain-authorizer-ed25519-bin = { path = "authorizer-ed25519/bin" }
+parachain-authorizer-sr25519 = { path = "authorizer-sr25519" }
+parachain-authorizer-sr25519-bin = { path = "authorizer-sr25519/bin" }
 parachain-service-interface = { path = "service-interface", default-features = false }
 parasim-service = { path = "testing/parasim-service" }
 jam-interface = { path = "cumulus/jam-interface" }

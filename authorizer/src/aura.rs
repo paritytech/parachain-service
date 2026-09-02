@@ -1,11 +1,10 @@
-//! AURA-style collator-set authorizer (design §7.1) — full §7.1 pipeline with
-//! real binary Merkle-proof and ed25519 `verify_strict` signature verification
+//! AURA-style collator-set authorizer (design §7.1) — the full §7.1 pipeline with real binary
+//! Merkle-proof verification, over whichever signature scheme the verifier blob supplies
 //! (D-4 resolved).
 
 use alloc::vec::Vec;
 
 use codec::{Decode, Encode};
-use ed25519_dalek::{Signature, VerifyingKey};
 use jam_types::{Encode as JamEncode, ServiceId, Slot, WorkPackage};
 use parachain_service_interface::types::ParaId;
 use primitive_types::H256;
@@ -36,7 +35,7 @@ pub struct AuthConfig {
 	pub slot_duration: u32,
 }
 
-#[derive(Debug, Encode, Decode)]
+#[derive(Clone, Debug, Encode, Decode)]
 pub struct AuthToken {
 	/// Proof that the `key` is at the slot-selected leaf index in the collator
 	/// set trie committed to by `collator_set_root`.
@@ -53,6 +52,17 @@ pub struct AuthToken {
 	/// The authorizer only echoes it into the trace once the token checks out; executing it is
 	/// the service's business, in Accumulate.
 	pub control_command: Option<Command>,
+}
+
+/// The one thing about a collator's authorization that is not scheme-blind.
+///
+/// Keys and signatures are raw 32/64-byte arrays, the trie hashes raw key bytes and the signing
+/// payload is a hash, so a scheme is exactly this one function. Which scheme a core accepts is
+/// settled by the authorizer hash sitting in its queue — the hash commits to the verifier blob's
+/// code, and there is one blob per scheme.
+pub trait SignatureScheme {
+	/// Whether `signature` is `key`'s signature over `payload`.
+	fn verify(key: &CollatorKey, signature: &CollatorSignature, payload: &[u8]) -> bool;
 }
 
 /// Authorization token validation failed.
@@ -99,18 +109,15 @@ impl AuthToken {
 		}
 	}
 
-	/// Verify the collator's ed25519 signature over the token-free package hash.
-	///
-	/// Uses `verify_strict` (not `verify`) to reject cofactored/non-canonical
-	/// signatures and low-order public keys — required for deterministic
-	/// validator agreement across implementations.
-	pub fn check_signature(&self, work_package_hash: H256) -> Result<(), TokenError> {
+	/// Verify the collator's signature over the token-free package hash, under `S`.
+	pub fn check_signature<S: SignatureScheme>(
+		&self,
+		work_package_hash: H256,
+	) -> Result<(), TokenError> {
 		let payload = Self::signing_payload(work_package_hash, &self.control_command);
-		let vk = VerifyingKey::from_bytes(&self.key)
-			.map_err(|_| TokenError::BadCollatorSignature)?;
-		let sig = Signature::from_bytes(&self.signature);
-		vk.verify_strict(payload.as_bytes(), &sig)
-			.map_err(|_| TokenError::BadCollatorSignature)
+		S::verify(&self.key, &self.signature, payload.as_bytes())
+			.then_some(())
+			.ok_or(TokenError::BadCollatorSignature)
 	}
 
 	/// What a collator actually signs: the token-free package hash bound to the control command
@@ -126,7 +133,7 @@ impl AuthToken {
 
 	/// Run the §7.1 token checks for the slot-selected `collator_index` and
 	/// produce the trace carrying the author key.
-	pub fn try_into_trace(
+	pub fn try_into_trace<S: SignatureScheme>(
 		&self,
 		config: &AuthConfig,
 		wp: &WorkPackage,
@@ -135,7 +142,7 @@ impl AuthToken {
 		let wp_hash = signable_work_package_hash(wp);
 
 		self.check_proof(config, collator_index)?;
-		self.check_signature(wp_hash)?;
+		self.check_signature::<S>(wp_hash)?;
 
 		Ok(AuthTrace { author_key: self.key, control_command: self.control_command.clone() })
 	}

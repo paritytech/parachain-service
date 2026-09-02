@@ -19,7 +19,9 @@ pub enum AuthorizationError {
 	BadAuthToken(aura::TokenError),
 }
 
-pub fn is_authorized(_core: CoreIndex) -> Result<AuthTrace, AuthorizationError> {
+pub fn is_authorized<S: aura::SignatureScheme>(
+	_core: CoreIndex,
+) -> Result<AuthTrace, AuthorizationError> {
 	let package = work_package();
 	assert!(
 		package.items.len() > 0,
@@ -56,7 +58,7 @@ pub fn is_authorized(_core: CoreIndex) -> Result<AuthTrace, AuthorizationError> 
 	let collator_index = aura::expected_collator_index(slot, &config);
 
 	let trace = token
-		.try_into_trace(&config, &package, collator_index)
+		.try_into_trace::<S>(&config, &package, collator_index)
 		.map_err(AuthorizationError::BadAuthToken)?;
 
 	Ok(AuthTrace(trace.encode()))

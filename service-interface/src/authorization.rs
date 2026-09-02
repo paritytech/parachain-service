@@ -2,16 +2,21 @@
 //!
 //! They live here rather than in the authorizer crate because the service must decode an
 //! [`AuthTrace`] without linking the authorizer: the two are separate blobs, and depending on the
-//! authorizer crate drags its `is_authorized` entry point (and ed25519) into the service's own.
+//! authorizer crate drags its `is_authorized` entry point (and a curve implementation) into the
+//! service's own.
 //! The token and the config stay with the authorizer, which is the only program that reads them.
 
 use crate::types::{AuthorizerHash, CoreIndex, ParaId};
 use codec::{Decode, Encode, MaxEncodedLen};
 
-/// An ed25519 collator public key.
+/// A collator public key: the raw 32 bytes, whichever curve they are on.
+///
+/// Both aura schemes have the same shape here, which is what lets everything but the verifier
+/// itself stay scheme-blind. Which curve a core's collators sign on is settled by the authorizer
+/// blob its queue commits to.
 pub type CollatorKey = [u8; 32];
 
-/// A collator's ed25519 signature over an authorization token's signing payload.
+/// A collator's signature over an authorization token's signing payload, raw 64 bytes.
 pub type CollatorSignature = [u8; 64];
 
 /// A core-assignment command riding an authorization token.

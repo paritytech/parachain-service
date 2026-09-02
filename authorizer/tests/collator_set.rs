@@ -1,11 +1,10 @@
-//! The two halves of the token that only agree by construction: the collator-set trie the
-//! authorizer verifies against and the builder that produces it, and the payload a collator
-//! signs and the one `check_signature` recomputes.
+//! The two halves of the collator set that only agree by construction: the trie the authorizer
+//! verifies proofs against, and the builder that produces those proofs.
+//!
+//! All of this is scheme-blind — the trie hashes raw key bytes. The signature half of the token
+//! is in `contract.rs`, where both schemes are exercised.
 
-use ed25519_dalek::{Signer as _, SigningKey};
-use parachain_authorizer::aura::{
-	build_collator_tree, AuthConfig, AuthToken, CollatorKey, Command,
-};
+use parachain_authorizer::aura::{build_collator_tree, AuthConfig, AuthToken, CollatorKey};
 use parachain_service_interface::types::ParaId;
 use primitive_types::H256;
 
@@ -68,32 +67,4 @@ fn an_outsider_cannot_prove_membership_works() {
 	let (config, proofs) = config(&keys);
 	let outsider = token([0xaa; 32], proofs[0].clone());
 	assert!(outsider.check_proof(&config, 0).is_err());
-}
-
-/// The control command travels in the token, and the package hash deliberately excludes the
-/// token — so unless the signature covers the command, anyone can bolt one onto a package they
-/// intercept in flight and reassign a core with somebody else's signature.
-#[test]
-fn a_signature_does_not_carry_over_to_another_command_works() {
-	let signing_key = SigningKey::from_bytes(&[7u8; 32]);
-	let key = signing_key.verifying_key().to_bytes();
-	let wp_hash = H256::repeat_byte(0xab);
-	let command = Command::Assign { para_id: ParaId(3), core: 1, authorizer: [0xcd; 32] };
-
-	let sign = |command: &Option<Command>| {
-		signing_key
-			.sign(AuthToken::signing_payload(wp_hash, command).as_bytes())
-			.to_bytes()
-	};
-	let plain = AuthToken { signature: sign(&None), ..token(key, vec![]) };
-	let commanding = AuthToken { signature: sign(&Some(command.clone())), ..token(key, vec![]) };
-
-	assert!(plain.check_signature(wp_hash).is_ok());
-	assert!(commanding.check_signature(wp_hash).is_err(), "the signature is for no command");
-	assert!(AuthToken { control_command: Some(command.clone()), ..plain }
-		.check_signature(wp_hash)
-		.is_err());
-	assert!(AuthToken { control_command: Some(command), ..commanding }
-		.check_signature(wp_hash)
-		.is_ok());
 }

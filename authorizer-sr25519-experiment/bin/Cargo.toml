@@ -24,7 +24,7 @@ parachain-authorizer-sr25519-experiment = { path = ".." }
 [dev-dependencies]
 parachain-authorizer-sr25519-experiment = { path = ".." }
 parachain-authorizer = { path = "../../authorizer" }
-parachain-authorizer-bin = { path = "../../authorizer/bin" }
+parachain-authorizer-ed25519-bin = { path = "../../authorizer-ed25519/bin" }
 jam-node = { path = "../../vendor/polkajam/crates/node", default-features = false, features = ["hazmat"] }
 jam-std-common = { path = "../../vendor/polkajam/crates/jam-std-common" }
 jam-types = { path = "../../vendor/polkajam/crates/jam-types", features = ["std"] }
