@@ -32,7 +32,12 @@ pub struct Args {
 	/// The parasim service the AURA authorizer is configured for, and the assigner cores are
 	/// handed to.
 	pub service: ServiceId,
+	/// The target para's authorizer: what gets written into the core being assigned.
 	pub aura: Aura,
+	/// The carrier core's authorizer: what the control package itself has to satisfy. A separate
+	/// credential because the carrier is a different para, possibly with a different collator set
+	/// on a different curve, and the token has to hash to what that core's queue actually holds.
+	pub carrier: Aura,
 	/// The core a control package rides, when one is needed. Defaults to the target core.
 	pub via_core: Option<CoreIndex>,
 	/// The para whose authorizer the carrier core is under, which is whose collator has to sign.
@@ -44,6 +49,11 @@ pub struct Args {
 /// This is the last bootstrap step for a core, not the first: afterwards service 0 can no longer
 /// assign it, and parasim can only be reached through a core running the AURA authorizer. Granting
 /// on a still-unassigned core therefore strands it — nothing on chain can assign it any more.
+///
+/// It rides an unassigned core and nothing else. Handing the privilege over is service 0's to do
+/// and service 0's work items only get past the unassigned authorizer, so there is no AURA lane
+/// for this one command; on a network with every core assigned, `free-core` a parasim-owned core
+/// to open the window and `assign-core` it back afterwards.
 pub async fn grant(jam: &JamRpcInterface, args: &Args, core: CoreIndex) -> Result<(), String> {
 	let best = jam.best_block().await.map_err(|e| format!("best block: {e}"))?.header_hash;
 	match cores::assigner(jam, best, core).await? {
@@ -158,13 +168,14 @@ async fn control_package(
 	// The carrier core has to be under the very authorizer this token is built for, or the
 	// package is refused before parasim ever sees it — and a refused package is one more thing
 	// that looks like a silent failure.
-	let expected = args.aura.hash(args.via_para);
+	let expected = args.carrier.hash(args.via_para);
 	let head = cores::queue_head(jam, anchor.context.anchor, core).await?;
 	if head != expected {
 		return Err(format!(
 			"core {core} holds authorizer 0x{}, but a token for para {} hashes to 0x{}. Name the \
 			 para that core is actually running with --via-para, or a core that is running one \
-			 with --via-core.",
+			 with --via-core; if that para has its own collator set or curve, name those too \
+			 with --via-collators/--via-scheme.",
 			hex(&head.0),
 			args.via_para.0,
 			hex(&expected.0),
@@ -173,10 +184,10 @@ async fn control_package(
 	println!("carrying the command on core {core}, under para {}'s authorizer", args.via_para.0);
 
 	let mut package = anchor.package(
-		args.aura.authorizer(args.via_para),
+		args.carrier.authorizer(args.via_para),
 		vec![anchor.item(args.service, parasim_service::CONTROL_NOOP_PAYLOAD.to_vec())],
 	);
-	package.authorization = args.aura.token(&package, Some(command))?;
+	package.authorization = args.carrier.token(&package, Some(command))?;
 	submit_and_follow(jam, core, &package).await
 }
 

@@ -1,11 +1,12 @@
 //! The AURA authorizer a package runs under: the collator set, the config it commits to, and the
 //! token that satisfies it.
 //!
-//! The set is named, never supplied: `--collators alice,bob` derives the same `//Name` ed25519
-//! keys the harness puts in a collator's keystore, so nothing here needs key material on disk.
-//! Everything else — the trie, the leaf hashing, the signing payload — comes out of
-//! `parachain-authorizer`, the crate the guest is built from, because a queue hash commits to the
-//! whole config and a hash nobody can reproduce is a core nobody can use.
+//! The set is named, never supplied: `--collators alice,bob` derives the same `//Name` keys the
+//! runtime's genesis puts in `authorities()` and the harness puts in a collator's keystore, on
+//! whichever curve `--scheme` names. Everything else — the trie, the leaf hashing, the signing
+//! payload — comes out of `parachain-authorizer`, the crate the guest is built from, because a
+//! queue hash commits to the whole config and a hash nobody can reproduce is a core nobody can
+//! use.
 
 use codec::{DecodeAll as _, Encode as _};
 use jam_types::{
@@ -14,11 +15,58 @@ use jam_types::{
 };
 use parachain_authorizer::aura::{
 	build_collator_tree, expected_collator_index, signable_work_package_hash, AuthConfig,
-	AuthToken, Command,
+	AuthToken, CollatorKey, CollatorSignature, Command,
 };
 use parachain_service_interface::types::ParaId;
 use primitive_types::H256;
-use sp_core::{ed25519, Pair as _};
+use sp_core::{ed25519, sr25519, Pair as _};
+
+/// The curve a para's collators sign on, which is its runtime's `AuraId`.
+///
+/// It picks the dev keys derived from `--collators` and, with them, the authorizer blob whose
+/// code hash the core's queue must hold: there is one verifier blob per scheme and neither can
+/// read the other's signatures.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, clap::ValueEnum)]
+pub enum Scheme {
+	Ed25519,
+	Sr25519,
+}
+
+/// One collator's dev key.
+enum CollatorPair {
+	Ed25519(ed25519::Pair),
+	Sr25519(sr25519::Pair),
+}
+
+impl CollatorPair {
+	/// The key behind a dev name, derived exactly as `key insert --suri //Name` would.
+	fn from_dev_name(scheme: Scheme, name: &str) -> Result<Self, String> {
+		let mut capitalized = name.to_string();
+		capitalized[..1].make_ascii_uppercase();
+		let suri = format!("//{capitalized}");
+		match scheme {
+			Scheme::Ed25519 => ed25519::Pair::from_string(&suri, None).map(Self::Ed25519),
+			Scheme::Sr25519 => sr25519::Pair::from_string(&suri, None).map(Self::Sr25519),
+		}
+		.map_err(|e| format!("no {scheme:?} dev key for collator {name:?}: {e:?}"))
+	}
+
+	fn public(&self) -> CollatorKey {
+		match self {
+			Self::Ed25519(pair) => pair.public().0,
+			Self::Sr25519(pair) => pair.public().0,
+		}
+	}
+
+	/// Sign as the collator would, through the same `sp_core` pairs the keystore is made of —
+	/// sr25519's transcript context in particular is not ours to pick.
+	fn sign(&self, payload: &[u8]) -> CollatorSignature {
+		match self {
+			Self::Ed25519(pair) => pair.sign(payload).0,
+			Self::Sr25519(pair) => pair.sign(payload).0,
+		}
+	}
+}
 
 /// A para's AURA authorizer, and the keys needed to author under it.
 pub struct Aura {
@@ -29,7 +77,7 @@ pub struct Aura {
 	pub service: ServiceId,
 	/// Length of a para slot in JAM timeslots; the round-robin's divisor.
 	pub slot_duration: u32,
-	pairs: Vec<ed25519::Pair>,
+	pairs: Vec<CollatorPair>,
 	root: H256,
 	proofs: Vec<Vec<H256>>,
 }
@@ -38,18 +86,19 @@ impl Aura {
 	/// Derive the collator set from dev names, in the order the round-robin walks it.
 	pub fn from_dev_names(
 		names: &str,
+		scheme: Scheme,
 		code_hash: CodeHash,
 		service: ServiceId,
 		slot_duration: u32,
 	) -> Result<Self, String> {
 		let pairs = names
 			.split(',')
-			.map(|name| dev_pair(name.trim()))
+			.map(|name| CollatorPair::from_dev_name(scheme, name.trim()))
 			.collect::<Result<Vec<_>, _>>()?;
 		if pairs.is_empty() {
 			return Err("--collators names at least one collator".to_string());
 		}
-		let keys: Vec<[u8; 32]> = pairs.iter().map(|pair| pair.public().0).collect();
+		let keys: Vec<CollatorKey> = pairs.iter().map(CollatorPair::public).collect();
 		let (root, proofs) = build_collator_tree(&keys);
 		Ok(Self { code_hash, service, slot_duration, pairs, root, proofs })
 	}
@@ -97,8 +146,8 @@ impl Aura {
 		let payload = AuthToken::signing_payload(signable_work_package_hash(package), &command);
 		let token = AuthToken {
 			proof: self.proofs[index].clone(),
-			key: pair.public().0,
-			signature: pair.sign(payload.as_bytes()).0,
+			key: pair.public(),
+			signature: pair.sign(payload.as_bytes()),
 			control_command: command,
 		};
 		println!(
@@ -110,45 +159,57 @@ impl Aura {
 	}
 }
 
-/// The ed25519 key behind a dev name, derived exactly as `key insert --suri //Name` would.
-fn dev_pair(name: &str) -> Result<ed25519::Pair, String> {
-	let mut capitalized = name.to_string();
-	capitalized[..1].make_ascii_uppercase();
-	ed25519::Pair::from_string(&format!("//{capitalized}"), None)
-		.map_err(|e| format!("no dev key for collator {name:?}: {e:?}"))
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
 
+	fn public(scheme: Scheme, name: &str) -> String {
+		let pair = CollatorPair::from_dev_name(scheme, name).expect("dev names derive; qed");
+		crate::format::hex(&pair.public())
+	}
+
 	/// The collator set root commits every collator's key, and the collator reads its own key
 	/// from a keystore this tool never sees. If the two derivations ever diverge, every proof
 	/// this tool builds is for a set the collator is not in — so pin the derivation against
-	/// substrate's published dev key rather than against ourselves.
+	/// substrate's published dev keys rather than against ourselves, on both curves.
 	#[test]
 	fn dev_names_are_substrates_dev_keys_works() {
-		let alice = dev_pair("alice").expect("//Alice derives; qed");
 		assert_eq!(
-			crate::format::hex(&alice.public().0),
+			public(Scheme::Ed25519, "alice"),
 			"88dc3417d5058ec4b4503e0c12ea1a0a89be200fe98922423d4334014fa6b0ee"
 		);
+		assert_eq!(
+			public(Scheme::Sr25519, "alice"),
+			"d43593c715fdd31c61141abd04a99fd6822c8558854ccde39a5684e7a56da27d"
+		);
 		// Capitalisation is the operator's convenience, not a different key.
-		assert_eq!(dev_pair("Alice").expect("//Alice derives; qed").public(), alice.public());
-		assert_ne!(dev_pair("bob").expect("//Bob derives; qed").public(), alice.public());
+		assert_eq!(public(Scheme::Sr25519, "Alice"), public(Scheme::Sr25519, "alice"));
+		assert_ne!(public(Scheme::Sr25519, "bob"), public(Scheme::Sr25519, "alice"));
 	}
 
 	/// A queue hash commits to the whole config, so two paras on the same collator set must not
-	/// collide, and the same para must hash the same way every time this tool runs.
+	/// collide, and the same para must hash the same way every time this tool runs. The scheme
+	/// is not in the config at all — it is in the blob, and so in `code_hash`.
 	#[test]
 	fn each_para_gets_its_own_authorizer_works() {
-		let aura = Aura::from_dev_names("alice,bob", CodeHash::zero(), 5, 1)
+		let aura = Aura::from_dev_names("alice,bob", Scheme::Sr25519, CodeHash::zero(), 5, 1)
 			.expect("dev names derive; qed");
 		assert_ne!(aura.hash(ParaId(0)), aura.hash(ParaId(1)));
 		assert_eq!(aura.hash(ParaId(0)), aura.hash(ParaId(0)));
 		// And a different collator set is a different core, even for the same para.
-		let alone =
-			Aura::from_dev_names("alice", CodeHash::zero(), 5, 1).expect("dev names derive; qed");
+		let alone = Aura::from_dev_names("alice", Scheme::Sr25519, CodeHash::zero(), 5, 1)
+			.expect("dev names derive; qed");
 		assert_ne!(aura.hash(ParaId(0)), alone.hash(ParaId(0)));
+	}
+
+	/// The same names on a different curve are a different set, so a core assigned under one
+	/// scheme authorizes nothing signed under the other even before the verifier is reached.
+	#[test]
+	fn the_scheme_changes_the_authorizer_works() {
+		let ed = Aura::from_dev_names("alice", Scheme::Ed25519, CodeHash::zero(), 5, 1)
+			.expect("dev names derive; qed");
+		let sr = Aura::from_dev_names("alice", Scheme::Sr25519, CodeHash::zero(), 5, 1)
+			.expect("dev names derive; qed");
+		assert_ne!(ed.hash(ParaId(0)), sr.hash(ParaId(0)));
 	}
 }

@@ -70,8 +70,9 @@ async fn unassigned_core(
 		.position(|queue| queue.get(0) == Some(&cores::unassigned()))
 		.map(|core| core as CoreIndex)
 		.ok_or_else(|| {
-			"every core is assigned, so no core will authorize a bootstrap instruction; free one \
-			 first"
+			"every core is assigned, so no core will authorize a bootstrap instruction. Free a \
+			 core parasim already owns (`free-core <core> --via-core <other>`), run this again, \
+			 then assign that core back through the same carrier."
 				.to_string()
 		})
 }
