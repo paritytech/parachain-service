@@ -24,6 +24,9 @@ pub type Hash = [u8; 32];
 pub type ServiceId = u32;
 /// A JAM core index (`jam_types::CoreIndex`).
 pub type CoreIndex = u16;
+/// Key of one `incoming_transfers` bucket: a `u64` the service allocates by
+/// incrementing, deliberately unrelated to the arrival timeslot (spec §3.1).
+pub type BucketId = u64;
 /// A JAM balance. The design doc says `Compact<u128>`, but JAM's `Balance` is `u64`
 /// (see DECISIONS.md D-3); wire encodings use `Compact<u64>`.
 pub type Balance = u64;

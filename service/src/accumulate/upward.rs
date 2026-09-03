@@ -13,7 +13,10 @@ use crate::{
 use alloc::vec::Vec;
 use jam_pvm_common::accumulate::{is_available, upgrade};
 use jam_types::{CodeHash, ServiceId, Slot};
-use parachain_service_interface::{types::ParaId, upward_message::UpwardMessage};
+use parachain_service_interface::{
+	types::ParaId,
+	upward_message::{Target, UpwardMessage},
+};
 
 /// Apply one upward message emitted by `origin`'s PVF. Log entries are batched
 /// into `logs` and appended to the origin's `parachain_log` by the caller.
@@ -30,7 +33,9 @@ pub fn apply(
 			code_upgrades::request_code_upgrade(origin, now, hash, len.0, logs)
 		},
 
-		UpwardMessage::Solicit { hash, len } => {
+		// The target is not read: this copy's `solicit` host call takes no target argument, so
+		// Refine always names the origin (the real service lets Coretime name another para).
+		UpwardMessage::Solicit { target: Target::Parachain(_), hash, len } => {
 			// For the para's own active/pending validation code this only sets
 			// `pinned`: the code is already referenced by the service, so no
 			// extra balance is charged (§5.2).
@@ -54,7 +59,7 @@ pub fn apply(
 			}
 		},
 
-		UpwardMessage::Forget { para_id, hash, len } => {
+		UpwardMessage::Forget { target: Target::Parachain(para_id), hash, len } => {
 			// `para_id` names whose reference is released (Coretime may name any
 			// para, §6.4); a dead target is a no-op.
 			let Some(mut pi) = Parachains::get(para_id) else { return };
@@ -101,7 +106,9 @@ pub fn apply(
 			validator_keys::apply(keys, is_last, logs)
 		},
 
-		UpwardMessage::ConsumeTransfersUpTo(slot) => transfers::consume_up_to(slot),
+		// This copy still keys transfer buckets by the arrival timeslot the message used to carry
+		// (the real service allocates bucket ids); the id is the slot for everything it emits.
+		UpwardMessage::CleanUpBucketsUpTo(bucket) => transfers::consume_up_to(bucket as Slot),
 
 		UpwardMessage::UpgradeService { code_hash, len: _, min_acc_gas, min_memo_gas } => {
 			// §5.4: forward to JAM `upgrade` only when the new code's preimage is
@@ -137,5 +144,14 @@ pub fn apply(
 		UpwardMessage::ParachainSetStateBalance { para_id, new_total } => {
 			management::set_state_balance(para_id, new_total.0, logs, heads)
 		},
+
+		// Service supervision (§6.5) is not implemented in this copy, and its host calls are not
+		// in the child ABI, so Refine cannot emit any of these.
+		UpwardMessage::Solicit { target: Target::Service(_), .. } |
+		UpwardMessage::Forget { target: Target::Service(_), .. } |
+		UpwardMessage::EjectService { .. } |
+		UpwardMessage::SetServiceSupervisor { .. } |
+		UpwardMessage::CreateService(_) |
+		UpwardMessage::RemoveServiceStorage { .. } => {},
 	}
 }

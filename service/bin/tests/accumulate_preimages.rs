@@ -10,7 +10,7 @@ use parachain_service::{
 };
 use parachain_service_interface::{
 	types::{Hash, ParaId},
-	upward_message::UpwardMessage,
+	upward_message::{Target, UpwardMessage},
 };
 
 const NOW: u32 = 100;
@@ -39,7 +39,11 @@ fn accumulate_logs(storage: &jam_node::vm::Storage, para: ParaId) -> Vec<Accumul
 /// Storage with `PARA` seeded and one block run that solicits `BLOB`.
 fn solicited_storage() -> jam_node::vm::Storage {
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
-	let msg = UpwardMessage::Solicit { hash: blob_hash(), len: blob_len().into() };
+	let msg = UpwardMessage::Solicit {
+		target: Target::Parachain(PARA),
+		hash: blob_hash(),
+		len: blob_len().into(),
+	};
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg], 0);
 	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
 	storage
@@ -74,7 +78,11 @@ fn solicit_insufficient_balance_errors() {
 			&info,
 		);
 	});
-	let msg = UpwardMessage::Solicit { hash: blob_hash(), len: blob_len().into() };
+	let msg = UpwardMessage::Solicit {
+		target: Target::Parachain(PARA),
+		hash: blob_hash(),
+		len: blob_len().into(),
+	};
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg], 0);
 
 	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
@@ -94,7 +102,11 @@ fn forget_unprovided_works() {
 	let storage = solicited_storage();
 	let used_after_solicit = para_info(&storage, PARA).unwrap().used_state_balance;
 
-	let msg = UpwardMessage::Forget { para_id: PARA, hash: blob_hash(), len: blob_len().into() };
+	let msg = UpwardMessage::Forget {
+		target: Target::Parachain(PARA),
+		hash: blob_hash(),
+		len: blob_len().into(),
+	};
 	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![msg], 0);
 	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 1);
 
@@ -118,7 +130,11 @@ fn forget_provided_works() {
 	storage.commit();
 	let used_charged = para_info(&storage, PARA).unwrap().used_state_balance;
 
-	let msg = UpwardMessage::Forget { para_id: PARA, hash: blob_hash(), len: blob_len().into() };
+	let msg = UpwardMessage::Forget {
+		target: Target::Parachain(PARA),
+		hash: blob_hash(),
+		len: blob_len().into(),
+	};
 	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![msg], 0);
 	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 1);
 
@@ -130,7 +146,11 @@ fn forget_provided_works() {
 	assert_eq!(para_info(&storage, PARA).unwrap().used_state_balance, used_charged);
 
 	// Second forget, strictly past the turnaround: expunged and refunded.
-	let msg = UpwardMessage::Forget { para_id: PARA, hash: blob_hash(), len: blob_len().into() };
+	let msg = UpwardMessage::Forget {
+		target: Target::Parachain(PARA),
+		hash: blob_hash(),
+		len: blob_len().into(),
+	};
 	let digest = ok_digest(PARA, CODE, b"head-2", b"head-3", vec![msg], 0);
 	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], due + 2);
 
@@ -148,12 +168,20 @@ fn forget_before_due_works() {
 	storage.provide(NOW, SVC, BLOB).expect("solicited in the previous block");
 	storage.commit();
 
-	let msg = UpwardMessage::Forget { para_id: PARA, hash: blob_hash(), len: blob_len().into() };
+	let msg = UpwardMessage::Forget {
+		target: Target::Parachain(PARA),
+		hash: blob_hash(),
+		len: blob_len().into(),
+	};
 	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![msg], 0);
 	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 1);
 
 	// Too early: the retry must be rejected without state change.
-	let msg = UpwardMessage::Forget { para_id: PARA, hash: blob_hash(), len: blob_len().into() };
+	let msg = UpwardMessage::Forget {
+		target: Target::Parachain(PARA),
+		hash: blob_hash(),
+		len: blob_len().into(),
+	};
 	let digest = ok_digest(PARA, CODE, b"head-2", b"head-3", vec![msg], 0);
 	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 2);
 
@@ -176,7 +204,11 @@ fn shared_referencer_leaves_works() {
 	});
 
 	// Both paras solicit the same blob.
-	let msg = UpwardMessage::Solicit { hash: blob_hash(), len: blob_len().into() };
+	let msg = UpwardMessage::Solicit {
+		target: Target::Parachain(PARA),
+		hash: blob_hash(),
+		len: blob_len().into(),
+	};
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg.clone()], 0);
 	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
 	let digest = ok_digest(OTHER, b"para-2000-code", b"genesis-2", b"head-2-1", vec![msg], 0);
@@ -184,7 +216,11 @@ fn shared_referencer_leaves_works() {
 	let used_charged = para_info(&storage, PARA).unwrap().used_state_balance;
 
 	// PARA leaves; OTHER remains.
-	let msg = UpwardMessage::Forget { para_id: PARA, hash: blob_hash(), len: blob_len().into() };
+	let msg = UpwardMessage::Forget {
+		target: Target::Parachain(PARA),
+		hash: blob_hash(),
+		len: blob_len().into(),
+	};
 	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![msg], 0);
 	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 1);
 
@@ -206,7 +242,11 @@ fn solicit_active_code_pins_works() {
 	let used_before = para_info(&storage, PARA).unwrap().used_state_balance;
 	let cref = code_ref(CODE);
 
-	let msg = UpwardMessage::Solicit { hash: cref.hash.0, len: cref.len.into() };
+	let msg = UpwardMessage::Solicit {
+		target: Target::Parachain(PARA),
+		hash: cref.hash.0,
+		len: cref.len.into(),
+	};
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg], 0);
 	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
 
@@ -222,8 +262,16 @@ fn forget_active_code_unpins_works() {
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let cref = code_ref(CODE);
 
-	let pin = UpwardMessage::Solicit { hash: cref.hash.0, len: cref.len.into() };
-	let unpin = UpwardMessage::Forget { para_id: PARA, hash: cref.hash.0, len: cref.len.into() };
+	let pin = UpwardMessage::Solicit {
+		target: Target::Parachain(PARA),
+		hash: cref.hash.0,
+		len: cref.len.into(),
+	};
+	let unpin = UpwardMessage::Forget {
+		target: Target::Parachain(PARA),
+		hash: cref.hash.0,
+		len: cref.len.into(),
+	};
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![pin, unpin], 0);
 	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);
 
@@ -243,7 +291,11 @@ fn pinned_code_survives_upgrade_works() {
 	let new_ref = code_ref(NEW_CODE);
 
 	// Pin the active code and request the upgrade in one candidate.
-	let pin = UpwardMessage::Solicit { hash: old_ref.hash.0, len: old_ref.len.into() };
+	let pin = UpwardMessage::Solicit {
+		target: Target::Parachain(PARA),
+		hash: old_ref.hash.0,
+		len: old_ref.len.into(),
+	};
 	let request = UpwardMessage::RequestCodeUpgrade { hash: new_ref.hash, len: new_ref.len.into() };
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![pin, request], 0);
 	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW);

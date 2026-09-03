@@ -1,14 +1,21 @@
 //! The upward-message vocabulary a PVF can emit during Refine (spec §3.3, §4.3).
 //!
-//! Each variant corresponds 1:1 to a side-effect host function in §4.3. Refine
-//! buffers them in emission order into the work digest; Accumulate replays the
-//! list in order (§5.1 step 7).
+//! **Synced verbatim from the real parachain service** (`parachain-service-poc`,
+//! `7b68e54`). The SCALE variant indices are a wire contract with a service this
+//! repo does not build, so the file is copied rather than edited: reordering or
+//! inserting a variant here would silently make our `AssignCore` decode as
+//! something else over there. `tests/upward_message_abi.rs` pins both the bytes
+//! and the sync.
+//!
+//! A PVF SCALE-encodes each variant into the generic `send_upward_message` host
+//! call. Refine buffers them in emission order into the work digest; Accumulate
+//! replays the list in order (§5.1 step 7).
 
 extern crate alloc;
 
 use crate::types::{
-	AuthorizerHash, Balance, CoreIndex, Hash, HeadData, Memo, ParaId, ServiceId, Timeslot,
-	ValidationCodeHash, ValidatorKey, ASSET_HUB_PARA_ID, CORETIME_PARA_ID,
+	AuthorizerHash, Balance, BucketId, CoreIndex, Hash, HeadData, Memo, ParaId, ServiceId,
+	Timeslot, ValidationCodeHash, ValidatorKey, ASSET_HUB_PARA_ID, CORETIME_PARA_ID,
 };
 use alloc::vec::Vec;
 use bounded_collections::{BoundedVec, ConstU32};
@@ -18,12 +25,29 @@ use codec::{Compact, Decode, Encode};
 /// Spec §4.3.
 pub const MAX_UPWARD_MESSAGES_PER_DIGEST: u32 = 1024;
 
-/// Per-call cap on `set_validator_keys` chunks. Spec §4.3, §5.3.
+/// Per-call cap on `SetValidatorKeys` chunks. Spec §4.3, §5.3.
 pub const SET_VALIDATOR_KEYS_MAX_KEYS: usize = 30;
+
+/// The parachain's fixed budget for the encoded upward messages of one Refine
+/// invocation. Spec §4.3.
+///
+/// `UpwardMessage`'s SCALE encoding is part of the parachain-visible ABI, so a
+/// message's `encoded_size()` is computable inside the PVF. The budget counts
+/// the encoded messages alone, independently of the Gray Paper's 48 KiB
+/// combined result-blob limit.
+pub const MAX_UPWARD_MESSAGE_BYTES: usize = 40 * 1024;
 
 /// Upward messages emitted via host functions during Refine and replayed in order
 /// by Accumulate.
 pub type UpwardMessages = BoundedVec<UpwardMessage, ConstU32<MAX_UPWARD_MESSAGES_PER_DIGEST>>;
+
+/// What a `forget` acts on: a registered parachain's share of this service's own
+/// preimage store, or a supervised service's store (§6.1, §6.5).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]
+pub enum Target {
+	Parachain(ParaId),
+	Service(ServiceId),
+}
 
 /// Payload of `transfer_out` / `UpwardMessage::TransferOut` (spec §5.1).
 ///
@@ -35,9 +59,7 @@ pub type UpwardMessages = BoundedVec<UpwardMessage, ConstU32<MAX_UPWARD_MESSAGES
 /// supplied. `id` is caller-chosen and echoed back in
 /// `AccumulateLog::TransferFailed` so the parachain can match up the failure.
 ///
-/// Doubles as the `transfer_out` host-call argument encoding: seven fields exceed
-/// the six-register window, so the guest passes this SCALE-encoded (D-10). Field
-/// order is the design doc's, so the two encodings are identical.
+/// Field order is part of the stable upward-message SCALE ABI.
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub struct TransferOutArgs {
 	pub source: Option<ServiceId>,
@@ -49,6 +71,30 @@ pub struct TransferOutArgs {
 	pub deferred: Option<(Memo, u64)>,
 }
 
+/// Payload of `create_service` / `UpwardMessage::CreateService` (spec §6.5).
+///
+/// `desired_id` names an index in JAM's protected range, honoured only while this
+/// service holds JAM's `registrar` privilege; `None` lets JAM allocate. The two
+/// selectors choose which balance funds the new service here and which of its own
+/// balances it is funded into; `true` means the supervisor balance. `id` is the
+/// caller's own handle, echoed back in `AccumulateLog::ServiceCreation` so the
+/// caller can match the assigned `ServiceId` to its own record.
+///
+/// Doubles as the `create_service` host-call argument encoding: eight fields
+/// exceed the six-register window, so the guest passes this SCALE-encoded (D-10).
+/// Field order is the design doc's, so the two encodings are identical.
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
+pub struct CreateServiceArgs {
+	pub code_hash: Hash,
+	pub len: Compact<u32>,
+	pub min_item_gas: u64,
+	pub min_memo_gas: u64,
+	pub id: Compact<u64>,
+	pub desired_id: Option<ServiceId>,
+	pub source_supervisor_balance: bool,
+	pub new_supervisor_balance: bool,
+}
+
 /// Upward messages emitted via host functions during Refine (spec §3.3).
 ///
 /// Variant order (SCALE discriminants) follows the design doc's §3.3 listing.
@@ -56,13 +102,32 @@ pub struct TransferOutArgs {
 pub enum UpwardMessage {
 	/// From `request_code_upgrade`: start a PVF code upgrade (§5.2).
 	RequestCodeUpgrade { hash: ValidationCodeHash, len: Compact<u32> },
-	/// From `solicit`: request a preimage be made available in the parachain's
-	/// own preimage store (§6.1).
-	Solicit { hash: Hash, len: Compact<u32> },
-	/// From `forget`: release a previously solicited preimage (§6.1). `para_id`
-	/// names whose reference is released; a para may only name itself, while the
-	/// Coretime chain may name any para (§6.4).
-	Forget { para_id: ParaId, hash: Hash, len: Compact<u32> },
+	/// From `solicit`: request a preimage be made available. A
+	/// [`Target::Parachain`] requests it in this service's own store, charged to
+	/// that parachain's `used_state_balance` (§6.1); a para may only name itself,
+	/// while the Coretime chain may name any para. A [`Target::Service`] requests
+	/// it in that supervised service's store, charged against **its** balance
+	/// (Asset Hub only, §6.5).
+	Solicit { target: Target, hash: Hash, len: Compact<u32> },
+	/// From `eject_service`: destroy an empty supervised service, crediting its
+	/// balances to this service (Asset Hub only, §6.5).
+	EjectService { service: ServiceId },
+	/// From `set_service_supervisor`: hand a supervised service to another
+	/// supervisor, or name the service itself to set it free. One-way (Asset Hub
+	/// only, §6.5).
+	SetServiceSupervisor { service: ServiceId, new_supervisor: ServiceId },
+	/// From `create_service`: create a service supervised by this one, funded
+	/// from this service's balance (Asset Hub only, §6.5).
+	CreateService(CreateServiceArgs),
+	/// From `forget`: release a previously solicited preimage. A
+	/// [`Target::Parachain`] names whose reference is released in this service's
+	/// own store; a para may only name itself, while the Coretime chain may name
+	/// any para (§6.1, §6.4). A [`Target::Service`] forgets in that supervised
+	/// service's store instead (Asset Hub only, §6.5).
+	Forget { target: Target, hash: Hash, len: Compact<u32> },
+	/// From `remove_service_storage`: delete `key` from a supervised service's
+	/// own storage (Asset Hub only, §6.5).
+	RemoveServiceStorage { service: ServiceId, key: Vec<u8> },
 	/// From `kv_set`: upsert `key_value_storage[(para_id, key)] = value` (§6.1).
 	SetKV { key: Vec<u8>, value: Vec<u8> },
 	/// From `kv_remove`: remove `key_value_storage[(para_id, key)]` (§6.1). Same
@@ -85,9 +150,9 @@ pub enum UpwardMessage {
 	/// From `set_validator_keys`: append a chunk of upcoming validator keys
 	/// (Asset Hub only, §5.3).
 	SetValidatorKeys { keys: Vec<ValidatorKey>, is_last: bool },
-	/// From `consume_transfers_up_to`: drop every queued transfer bucket up to
-	/// and including this slot (Asset Hub only, §5.1).
-	ConsumeTransfersUpTo(Timeslot),
+	/// From `clean_up_buckets_up_to`: remove every `incoming_transfers` bucket up
+	/// to and including this bucket id (Asset Hub only, §5.1).
+	CleanUpBucketsUpTo(BucketId),
 	/// From `parachain_service_upgrade`: replace the Parachain Service's own
 	/// service code (Asset Hub only, §5.4).
 	UpgradeService { code_hash: Hash, len: Compact<u32>, min_acc_gas: u64, min_memo_gas: u64 },
@@ -115,8 +180,15 @@ impl UpwardMessage {
 			self,
 			Self::TransferOut { .. } |
 				Self::SetValidatorKeys { .. } |
-				Self::ConsumeTransfersUpTo(_) |
-				Self::UpgradeService { .. }
+				Self::CleanUpBucketsUpTo(_) |
+				Self::UpgradeService { .. } |
+				Self::RemoveServiceStorage { .. } |
+				Self::EjectService { .. } |
+				Self::SetServiceSupervisor { .. } |
+				Self::CreateService { .. } |
+				// Only a `Service` target; a `Parachain` target keeps the §6.1 rules.
+				Self::Forget { target: Target::Service(_), .. } |
+				Self::Solicit { target: Target::Service(_), .. }
 		)
 	}
 
@@ -142,7 +214,12 @@ impl UpwardMessage {
 			return false;
 		}
 		match self {
-			Self::Forget { para_id, .. } | Self::RemoveKV { para_id, .. } => *para_id != origin,
+			// A `Service` target carries no para, so it is not a cross-para call.
+			// `Solicit` follows the same rule as `Forget`: without it a para could
+			// charge another para's state balance.
+			Self::Forget { target: Target::Parachain(para_id), .. } |
+			Self::Solicit { target: Target::Parachain(para_id), .. } |
+			Self::RemoveKV { para_id, .. } => *para_id != origin,
 			_ => false,
 		}
 	}
@@ -155,5 +232,89 @@ impl UpwardMessage {
 		!(self.is_asset_hub_only() && origin != ASSET_HUB_PARA_ID) &&
 			!(self.is_coretime_only() && origin != CORETIME_PARA_ID) &&
 			!self.targets_foreign_para(origin)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	const VICTIM: ServiceId = 65_536;
+
+	fn service_ops() -> Vec<UpwardMessage> {
+		alloc::vec![
+			UpwardMessage::Forget {
+				target: Target::Service(VICTIM),
+				hash: [9; 32],
+				len: 1024.into(),
+			},
+			UpwardMessage::Solicit {
+				target: Target::Service(VICTIM),
+				hash: [9; 32],
+				len: 1024.into(),
+			},
+			UpwardMessage::RemoveServiceStorage { service: VICTIM, key: alloc::vec![1, 2] },
+			UpwardMessage::EjectService { service: VICTIM },
+			UpwardMessage::SetServiceSupervisor { service: VICTIM, new_supervisor: VICTIM },
+			UpwardMessage::CreateService(CreateServiceArgs {
+				code_hash: [9; 32],
+				len: 1024.into(),
+				min_item_gas: 0,
+				min_memo_gas: 0,
+				id: 77.into(),
+				desired_id: None,
+				source_supervisor_balance: false,
+				new_supervisor_balance: false,
+			}),
+		]
+	}
+
+	#[test]
+	fn service_target_is_asset_hub_only_works() {
+		for msg in service_ops() {
+			assert!(msg.is_asset_hub_only(), "{msg:?}");
+			assert!(!msg.allowed_for(CORETIME_PARA_ID), "{msg:?}");
+			assert!(msg.allowed_for(ASSET_HUB_PARA_ID), "{msg:?}");
+		}
+		// A `Parachain` target keeps the §6.1 rules: a para may name itself from
+		// anywhere.
+		for own in [
+			UpwardMessage::Forget {
+				target: Target::Parachain(CORETIME_PARA_ID),
+				hash: [9; 32],
+				len: 1024.into(),
+			},
+			UpwardMessage::Solicit {
+				target: Target::Parachain(CORETIME_PARA_ID),
+				hash: [9; 32],
+				len: 1024.into(),
+			},
+		] {
+			assert!(!own.is_asset_hub_only(), "{own:?}");
+			assert!(own.allowed_for(CORETIME_PARA_ID), "{own:?}");
+		}
+	}
+
+	#[test]
+	fn service_target_is_not_foreign_para_works() {
+		for msg in service_ops() {
+			assert!(!msg.targets_foreign_para(ASSET_HUB_PARA_ID), "{msg:?}");
+		}
+		for other in [
+			UpwardMessage::Forget {
+				target: Target::Parachain(ParaId(7)),
+				hash: [9; 32],
+				len: 1024.into(),
+			},
+			UpwardMessage::Solicit {
+				target: Target::Parachain(ParaId(7)),
+				hash: [9; 32],
+				len: 1024.into(),
+			},
+		] {
+			assert!(other.targets_foreign_para(ASSET_HUB_PARA_ID), "{other:?}");
+			// Coretime may name any para (§6.4).
+			assert!(!other.targets_foreign_para(CORETIME_PARA_ID), "{other:?}");
+		}
 	}
 }

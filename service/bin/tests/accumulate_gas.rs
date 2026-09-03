@@ -24,7 +24,7 @@ use parachain_service::{
 };
 use parachain_service_interface::{
 	types::{CoreIndex, Hash, ParaId, ASSET_HUB_PARA_ID},
-	upward_message::{UpwardMessage, MAX_UPWARD_MESSAGES_PER_DIGEST},
+	upward_message::{Target, UpwardMessage, MAX_UPWARD_MESSAGES_PER_DIGEST},
 };
 
 const NOW: u32 = 100;
@@ -105,7 +105,11 @@ fn solicit_flood_works() {
 	// `Wr`, and each does a registry write + ParaInfo update + JAM `solicit`.
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let msgs = (0..FLOOD)
-		.map(|i| UpwardMessage::Solicit { hash: distinct_hash(i), len: 100.into() })
+		.map(|i| UpwardMessage::Solicit {
+			target: Target::Parachain(PARA),
+			hash: distinct_hash(i),
+			len: 100.into(),
+		})
 		.collect();
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", msgs, 0);
 	let digest_len = digest.encode().len();

@@ -25,7 +25,7 @@ use parachain_service_interface::{
 	host_call::HostCall,
 	types::{ParaId, ServiceId, Timeslot},
 	upward_message::{
-		TransferOutArgs, UpwardMessage, UpwardMessages, SET_VALIDATOR_KEYS_MAX_KEYS,
+		Target, TransferOutArgs, UpwardMessage, UpwardMessages, SET_VALIDATOR_KEYS_MAX_KEYS,
 	},
 };
 use polkavm::Reg;
@@ -178,12 +178,13 @@ impl ExecutorState {
 			},
 			HostCall::Solicit => {
 				let hash = peek_hash(handle, regs[A0])?;
-				self.push(UpwardMessage::Solicit { hash, len: (regs[A1] as u32).into() })?;
+				let target = Target::Parachain(self.para_id);
+				self.push(UpwardMessage::Solicit { target, hash, len: (regs[A1] as u32).into() })?;
 			},
 			HostCall::Forget => {
-				let para_id = ParaId(regs[A0] as u32);
+				let target = Target::Parachain(ParaId(regs[A0] as u32));
 				let hash = peek_hash(handle, regs[A1])?;
-				self.push(UpwardMessage::Forget { para_id, hash, len: (regs[A2] as u32).into() })?;
+				self.push(UpwardMessage::Forget { target, hash, len: (regs[A2] as u32).into() })?;
 			},
 			HostCall::KvSet => {
 				let key = peek_bytes(handle, regs[A0], regs[A1])?;
@@ -237,7 +238,7 @@ impl ExecutorState {
 				self.push(UpwardMessage::SetValidatorKeys { keys, is_last })?;
 			},
 			HostCall::ConsumeTransfersUpTo => {
-				self.push(UpwardMessage::ConsumeTransfersUpTo(regs[A0] as Timeslot))?;
+				self.push(UpwardMessage::CleanUpBucketsUpTo(regs[A0]))?;
 			},
 			HostCall::ParachainServiceUpgrade => {
 				let code_hash = peek_hash(handle, regs[A0])?;

@@ -106,7 +106,7 @@ fn consume_works() {
 	let (_, storage, _) = run_block(ah_storage(), vec![transfer_item(9, 1_000_000)], NOW);
 	let (_, storage, _) = run_block(storage, vec![transfer_item(10, 2_000_000)], NOW + 5);
 
-	let msg = UpwardMessage::ConsumeTransfersUpTo(NOW);
+	let msg = UpwardMessage::CleanUpBucketsUpTo(NOW.into());
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
 	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 6);
 
@@ -118,7 +118,7 @@ fn consume_works() {
 	);
 
 	// Consuming the rest clears the chain entirely.
-	let msg = UpwardMessage::ConsumeTransfersUpTo(NOW + 5);
+	let msg = UpwardMessage::CleanUpBucketsUpTo((NOW + 5).into());
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-1", b"ah-2", vec![msg], 0);
 	let (_, storage, _) = run_block(storage, vec![work_item(&digest)], NOW + 7);
 	assert!(transfer_chain(&storage).is_none());
