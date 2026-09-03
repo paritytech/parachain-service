@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use jam_std_common::hash_raw;
 use jam_types::{AuthTrace, AuthorizerHash, Hash};
@@ -11,11 +11,13 @@ use parachain_service_interface::types::{HeadData, ParaId};
 pub struct Codex {
 	lengths: BTreeMap<i128, u32>,
 	hashes: BTreeMap<i128, Hash>,
+	paras: BTreeSet<ParaId>,
 }
 
 impl Default for Codex {
 	fn default() -> Self {
-		let mut codex = Self { lengths: BTreeMap::new(), hashes: BTreeMap::new() };
+		let mut codex =
+			Self { lengths: BTreeMap::new(), hashes: BTreeMap::new(), paras: BTreeSet::new() };
 		codex.hashes.insert(0, hash_raw(SERVICE));
 		codex
 	}
@@ -28,6 +30,16 @@ impl Codex {
 
 	pub fn para_int(value: ParaId) -> i128 {
 		value.0.into()
+	}
+
+	pub fn register_para(&mut self, value: i128) -> Result<ParaId, String> {
+		let para = Self::para_id(value)?;
+		self.paras.insert(para);
+		Ok(para)
+	}
+
+	pub fn paras(&self) -> impl Iterator<Item = ParaId> + '_ {
+		self.paras.iter().copied()
 	}
 
 	pub fn head(value: i128) -> Result<HeadData, String> {
@@ -81,6 +93,17 @@ impl Codex {
 			.iter()
 			.find_map(|(value, known)| (*known == hash).then_some(*value))
 			.ok_or_else(|| format!("hash is not registered in the Quint codex: {hash:?}"))
+	}
+
+	/// Every abstract preimage for which the trace has established a length.
+	///
+	/// Comparisons use this to check absence as well as presence: a known hash
+	/// that disappeared from a Quint map must also have disappeared from Rust.
+	pub fn preimages(&self) -> Vec<(i128, Hash, u32)> {
+		self.lengths
+			.iter()
+			.filter_map(|(value, len)| self.hashes.get(value).map(|hash| (*value, *hash, *len)))
+			.collect()
 	}
 
 	pub fn blob(value: i128, len: u32) -> Result<Vec<u8>, String> {

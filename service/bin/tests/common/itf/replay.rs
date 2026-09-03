@@ -217,10 +217,10 @@ pub(crate) fn map_entries(value: &Value) -> Result<Vec<(&Value, &Value)>, String
 		})
 		.collect()
 }
-pub(crate) fn para_id(value: &Value, _codex: &Codex) -> Result<ParaId, String> {
+pub(crate) fn para_id(value: &Value, codex: &mut Codex) -> Result<ParaId, String> {
 	let (tag, value) = variant(value)?;
 	if tag != "MkParaId" {
 		return Err(format!("expected MkParaId, got {tag}"));
 	}
-	Codex::para_id(integer(value)?)
+	codex.register_para(integer(value)?)
 }
