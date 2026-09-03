@@ -8,7 +8,13 @@
 pub use ::{
 	jam_types::WorkPackage,
 	parachain_service::{refine::ParachainCandidate, work_digest::ValidationCodeHash},
-	parachain_service_interface::types::ParaId,
+	parachain_service_interface::{
+		types::ParaId,
+		// The control vocabulary of the service a work item is addressed to: a control package's
+		// payload is a SCALE-encoded `UpwardMessages` and nothing else. Not the authorizer's — it
+		// never looks at a payload — which is why it is not in `aura`.
+		upward_message::{UpwardMessage, UpwardMessages},
+	},
 	primitive_types::H256,
 };
 
@@ -22,11 +28,6 @@ pub mod aura {
 		AuthToken, AuthTrace, CollatorKey, CollatorSignature, SignatureScheme, TokenError,
 		WORK_PACKAGE_SIGN_CTX,
 	};
-
-	/// The core-assignment command, and the work-item payload prefix that carries it. Not the
-	/// authorizer's: since 6a.4 a command travels in the package rather than in the token, so it
-	/// belongs to the service the item is addressed to.
-	pub use parachain_service_interface::authorization::{Command, CONTROL_COMMAND_PREFIX};
 
 	/// The two verifier blobs' signature schemes, so a collator can check a token the way the
 	/// guest will before it spends a core on it. Which one a para uses is its runtime's `AuraId`,

@@ -34,8 +34,9 @@ use jam_types::{
 use parachain_service_interface::{
 	// Renamed: `jam_types::AuthTrace` is the opaque blob JAM carries an authorization output in;
 	// this is what our own authorizer puts inside it.
-	authorization::{AuthTrace as ControlTrace, Command, CONTROL_COMMAND_PREFIX},
-	types::{HeadData, ParaId},
+	authorization::AuthTrace as ControlTrace,
+	types::{CoreIndex as ParaCoreIndex, HeadData, ParaId, Timeslot},
+	upward_message::{UpwardMessage, UpwardMessages},
 };
 
 use buffer::{BufferedCandidate, HeadStore, Outcome, ReorderBuffer, StoredHead};
@@ -64,14 +65,14 @@ const BUFFER_TAG: u8 = 0xf0;
 /// What parasim's `refine` hands to `accumulate` for one work item.
 ///
 /// Accumulate sees neither the work-item payload nor the package, so everything it acts on has to
-/// travel through here — the new head, or the core-assignment command the item carried. They are
-/// two variants of one type rather than two shapes of one struct so that accumulate cannot
-/// confuse them: a command has no para and no lineage, and applying or parking it as a head would
+/// travel through here — the new head, or the upward messages the item carried. They are two
+/// variants of one type rather than two shapes of one struct so that accumulate cannot confuse
+/// them: an upward message has no para and no lineage, and applying or parking it as a head would
 /// corrupt whichever para happened to decode out of it.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum ParasimWorkOutput {
 	Head(RefinedHead),
-	Command(Command),
+	Upward(UpwardMessages),
 }
 
 /// A parachain block's new head, and what accumulate needs to place it in the para's lineage.
@@ -138,10 +139,10 @@ fn refine_inner(
 	service_id: ServiceId,
 	payload: &WorkPayload,
 ) -> Result<ParasimWorkOutput, ParasimRefineError> {
-	// Before the para id, because a parked core has no para at all and a command is exactly what
+	// Before the para id, because a parked core has no para at all and control is exactly what
 	// gets sent to one.
-	if let Some(command) = payload_command(sudo(), &payload.0)? {
-		return Ok(ParasimWorkOutput::Command(command));
+	if sudo() {
+		return control_messages(&payload.0).map(ParasimWorkOutput::Upward);
 	}
 
 	// The para id comes from the authorizer config's `Vec<ParaId>` prefix and nowhere else (the
@@ -169,20 +170,18 @@ fn refine_inner(
 	}))
 }
 
-/// The command a work-item payload carries, or `None` if it carries a parachain block.
+/// The upward messages a control payload carries.
 ///
-/// `sudo` is the authorizer's verdict, not the submitter's claim, which is what keeps the command
-/// lane closed to ordinary packages. A command arriving without it is refused rather than read as
-/// a block: it is either a mistake or an attempt to smuggle one past the authorizer, and both are
-/// worth seeing in the log.
-fn payload_command(sudo: bool, payload: &[u8]) -> Result<Option<Command>, ParasimRefineError> {
-	let Some(encoded) = payload.strip_prefix(CONTROL_COMMAND_PREFIX) else { return Ok(None) };
-	if !sudo {
-		return Err(ParasimRefineError::CommandWithoutSudo);
-	}
-	Command::decode_all(&mut &encoded[..])
-		.map(Some)
-		.map_err(|_| ParasimRefineError::MalformedCommand)
+/// The sudo lane itself is the discriminator: the payload has no marker of its own, because the
+/// real parachain service will not have one either — its `AssignCore` arrives as a plain encoded
+/// message from the Coretime chain. So a payload is control if and only if the authorizer said
+/// so, and the submitter cannot claim it.
+///
+/// `decode_all` is what makes "control" mean exactly a message list: a parachain block misrouted
+/// onto this lane is refused rather than read as a truncated one.
+fn control_messages(payload: &[u8]) -> Result<UpwardMessages, ParasimRefineError> {
+	UpwardMessages::decode_all(&mut &payload[..])
+		.map_err(|_| ParasimRefineError::MalformedControl)
 }
 
 /// Whether the authorizer admitted this package through its `sudo` lane.
@@ -195,34 +194,92 @@ fn sudo() -> bool {
 		.is_ok_and(|trace| trace.sudo)
 }
 
+/// Run the upward messages a control package carried.
+///
+/// parasim implements `AssignCore` and nothing else. Every other variant is logged by name and
+/// dropped: parasim is not the real service, and a control message that vanished without a trace
+/// is indistinguishable from one that never arrived.
+fn apply_upward(me: ServiceId, messages: UpwardMessages) {
+	for message in messages.into_inner() {
+		match message {
+			UpwardMessage::AssignCore { core, queue, new_assigner, jam_slot } => {
+				assign_core(me, core, &queue, new_assigner, jam_slot)
+			},
+			other => {
+				jam_pvm_common::error!(
+					"parasim: dropping upward message {}, which only the real service implements",
+					variant_name(&other)
+				);
+			},
+		}
+	}
+}
+
 /// Fill a core's authorizer queue, which is how a core is both assigned and freed.
 ///
 /// The only `assign` call parasim makes, and the assigner it passes is `me` — accumulate's own
-/// service-id argument — never anything a caller could influence. `assign`'s third argument is
-/// the core's *new* assigner, so any other value hands the core away for good, and a rejected
+/// service-id argument — never what the message asked for. `assign`'s third argument is the
+/// core's *new* assigner, so any other value hands the core away for good, and a rejected
 /// `assign` writes nothing to the chain: the mistake would surface only as a core that had
-/// quietly stopped listening.
-fn apply_command(me: ServiceId, command: Command) {
-	let (core, authorizer) = match command {
-		Command::Assign { para_id, core, authorizer } => {
-			jam_pvm_common::error!(
-				"parasim: assigning core {core} to para {para_id:?}, authorizer {authorizer:02x?}"
-			);
-			(core, authorizer)
-		},
-		Command::Free { core, parked_authorizer } => {
-			jam_pvm_common::error!(
-				"parasim: parking core {core}, authorizer {parked_authorizer:02x?}"
-			);
-			(core, parked_authorizer)
-		},
+/// quietly stopped listening. A message naming someone else is therefore overridden and said out
+/// loud rather than obeyed.
+///
+/// `jam_slot` is the slot the real service would schedule the write for. parasim keeps fake
+/// timing and writes immediately, so the slot is logged rather than honoured.
+fn assign_core(
+	me: ServiceId,
+	core: ParaCoreIndex,
+	queue: &[[u8; HASH_LEN]],
+	new_assigner: Option<ServiceId>,
+	jam_slot: Timeslot,
+) {
+	if let Some(other) = new_assigner.filter(|assigner| *assigner != me) {
+		jam_pvm_common::error!(
+			"parasim: ignoring new_assigner {other} for core {core}; service {me} keeps it"
+		);
+	}
+	// An empty queue cancels a scheduled assign in the real service. parasim schedules nothing,
+	// so there is nothing to cancel — and no hash to write either.
+	let Some(head) = queue.first() else {
+		jam_pvm_common::error!("parasim: assign for core {core} carries an empty queue");
+		return;
 	};
-	if let Err(error) =
-		jam_pvm_common::accumulate::assign(core, &AuthQueue::new(AuthorizerHash(authorizer)), me)
-	{
+	jam_pvm_common::error!(
+		"parasim: assigning core {core} to authorizer {head:02x?} now, ignoring jam_slot {jam_slot}"
+	);
+	// A queue shorter than the protocol's is cycle-repeated, as the real service does (D-7).
+	let auth_queue = AuthQueue::from_fn(|i| AuthorizerHash(queue[i % queue.len()]));
+	if let Err(error) = jam_pvm_common::accumulate::assign(core, &auth_queue, me) {
 		jam_pvm_common::error!(
 			"parasim: assign for core {core} failed: {error:?} (service {me} is not its assigner)"
 		);
+	}
+}
+
+/// The name of an upward message's variant, for the log line that says it was dropped.
+///
+/// A name rather than the whole `Debug` rendering: the payloads run to kilobytes, and the variant
+/// is the only part that says what parasim did not do.
+fn variant_name(message: &UpwardMessage) -> &'static str {
+	match message {
+		UpwardMessage::RequestCodeUpgrade { .. } => "RequestCodeUpgrade",
+		UpwardMessage::Solicit { .. } => "Solicit",
+		UpwardMessage::EjectService { .. } => "EjectService",
+		UpwardMessage::SetServiceSupervisor { .. } => "SetServiceSupervisor",
+		UpwardMessage::CreateService(_) => "CreateService",
+		UpwardMessage::Forget { .. } => "Forget",
+		UpwardMessage::RemoveServiceStorage { .. } => "RemoveServiceStorage",
+		UpwardMessage::SetKV { .. } => "SetKV",
+		UpwardMessage::RemoveKV { .. } => "RemoveKV",
+		UpwardMessage::TransferOut(_) => "TransferOut",
+		UpwardMessage::AssignCore { .. } => "AssignCore",
+		UpwardMessage::SetValidatorKeys { .. } => "SetValidatorKeys",
+		UpwardMessage::CleanUpBucketsUpTo(_) => "CleanUpBucketsUpTo",
+		UpwardMessage::UpgradeService { .. } => "UpgradeService",
+		UpwardMessage::ParachainSetHead { .. } => "ParachainSetHead",
+		UpwardMessage::ParachainSetValidationCode { .. } => "ParachainSetValidationCode",
+		UpwardMessage::ParachainCleanUp(_) => "ParachainCleanUp",
+		UpwardMessage::ParachainSetStateBalance { .. } => "ParachainSetStateBalance",
 	}
 }
 
@@ -303,9 +360,9 @@ fn accumulate_one(me: ServiceId, slot: Slot, result: &WorkOutput) {
 		return;
 	};
 	let output = match output {
-		// Commands never touch the head store or the reorder buffer; they have no para to belong
-		// to and no lineage to be judged against.
-		ParasimWorkOutput::Command(command) => return apply_command(me, command),
+		// Control messages never touch the head store or the reorder buffer; they have no para to
+		// belong to and no lineage to be judged against.
+		ParasimWorkOutput::Upward(messages) => return apply_upward(me, messages),
 		ParasimWorkOutput::Head(head) => head,
 	};
 	let para_id = output.para_id;
@@ -487,11 +544,9 @@ pub enum ParasimRefineError {
 	/// package speaks for. Every authorizer parasim runs under carries the prefix; the null one
 	/// does not, and packages on an unassigned core are refused rather than guessed at.
 	NoParaId,
-	/// The payload is marked as a core-assignment command, but the authorization did not come
-	/// through the `sudo` lane, so this package may not carry one.
-	CommandWithoutSudo,
-	/// The payload is marked as a core-assignment command but does not decode as one.
-	MalformedCommand,
+	/// The package came through the `sudo` lane, so its payload is control, but it does not decode
+	/// as a list of upward messages.
+	MalformedControl,
 }
 #[cfg(test)]
 mod tests {
@@ -538,48 +593,67 @@ mod tests {
 		assert_eq!(buffer_key(ParaId(3)), vec![0xf0, 3, 0, 0, 0]);
 	}
 
-	fn command() -> Command {
-		Command::Free { core: 1, parked_authorizer: [7u8; HASH_LEN] }
+	/// A control payload's messages: the assign every `assign-core`/`free-core` sends.
+	fn control() -> UpwardMessages {
+		vec![UpwardMessage::AssignCore {
+			core: 1,
+			queue: vec![[7u8; HASH_LEN]],
+			new_assigner: None,
+			jam_slot: 42,
+		}]
+		.try_into()
+		.expect("one message is within the digest bound; qed")
 	}
 
-	fn command_payload() -> Vec<u8> {
-		let mut payload = CONTROL_COMMAND_PREFIX.to_vec();
-		command().encode_to(&mut payload);
-		payload
+	/// A parachain block's payload, which is what travels on the ordinary lane.
+	fn block_payload() -> Vec<u8> {
+		parachain_service_interface::candidate::ParachainCandidate {
+			validation_code_hash: parachain_service_interface::types::ValidationCodeHash(
+				[3u8; HASH_LEN],
+			),
+			pov: vec![1, 2, 3],
+		}
+		.encode()
 	}
 
-	/// The prefix is the only thing that makes a payload a command, and `sudo` — the authorizer's
-	/// verdict, which the submitter cannot forge — is the only thing that makes refine read it.
-	/// Without the second half, any collator could assign any core by putting the right bytes in
-	/// a block it was going to send anyway.
+	/// The sudo lane is the whole discriminator — there is no marker in the payload, because the
+	/// real service will not have one — so a control payload has to be exactly a list of upward
+	/// messages and nothing else. `decode_all` is what enforces the "nothing else": a parachain
+	/// block misrouted onto the sudo lane must be refused rather than read as a short list, and a
+	/// message list with bytes bolted onto it must not be read as the list alone.
 	#[test]
-	fn a_command_needs_both_the_prefix_and_sudo_works() {
-		assert_eq!(payload_command(true, &command_payload()), Ok(Some(command())));
-		// The same command bytes on the ordinary collator lane do nothing at all.
+	fn a_control_payload_is_exactly_the_messages_works() {
+		assert_eq!(control_messages(&control().encode()), Ok(control()));
 		assert_eq!(
-			payload_command(false, &command_payload()),
-			Err(ParasimRefineError::CommandWithoutSudo)
+			control_messages(&block_payload()),
+			Err(ParasimRefineError::MalformedControl)
 		);
-		// A parachain block is not a command even with the privilege to run one.
-		assert_eq!(payload_command(true, &command().encode()), Ok(None));
-		assert_eq!(
-			payload_command(true, CONTROL_COMMAND_PREFIX),
-			Err(ParasimRefineError::MalformedCommand)
-		);
+		let mut trailing = control().encode();
+		trailing.push(0);
+		assert_eq!(control_messages(&trailing), Err(ParasimRefineError::MalformedControl));
 	}
 
-	/// Accumulate matches on the variant, so a command can never reach the head store or the
-	/// reorder buffer — it has no para to belong to. Pinned because the two used to be one
-	/// output type told apart by whether it decoded.
+	/// Accumulate matches on the variant, so control can never reach the head store or the
+	/// reorder buffer — it has no para to belong to. Pinned because the two used to be one output
+	/// type told apart by whether it decoded.
 	#[test]
-	fn a_command_output_is_not_a_head_works() {
-		let encoded = ParasimWorkOutput::Command(command()).encode();
+	fn a_control_output_is_not_a_head_works() {
+		let encoded = ParasimWorkOutput::Upward(control()).encode();
 		assert!(matches!(
 			ParasimWorkOutput::decode_all(&mut &encoded[..]),
-			Ok(ParasimWorkOutput::Command(_))
+			Ok(ParasimWorkOutput::Upward(_))
 		));
 		assert!(RefinedHead::decode_all(&mut &encoded[..]).is_err());
 		// Nor is it a rejection: a control package that reached accumulate did not fail.
 		assert!(ParasimRefineError::decode_all(&mut &encoded[..]).is_err());
+	}
+
+	/// The wire contract with the real parachain service: `AssignCore` is discriminant 10 there,
+	/// and parasim's payload is the same encoding, so a control package this tool builds today is
+	/// one the real service could read tomorrow. `service-interface`'s own ABI test pins the
+	/// whole enum; this pins that parasim's payload is that enum and not a wrapper around it.
+	#[test]
+	fn a_control_payload_is_the_real_wire_format_works() {
+		assert_eq!(control().encode()[..2], [0x04, 0x0a], "one message, then AssignCore");
 	}
 }

@@ -5,9 +5,10 @@
 //!
 //! - **bootstrap** — service 0, the assigner of every core at genesis. Instructions ride an
 //!   unassigned core.
-//! - **parasim** — a control package carrying the command as its work-item payload. Rides a core
-//!   already under an AURA authorizer this tool can name, which need not be the target core, and
-//!   may be a parked one: parking keeps the authorizer, so a parked core still takes commands.
+//! - **parasim** — a control package carrying an `UpwardMessage::AssignCore` as its work-item
+//!   payload. Rides a core already under an AURA authorizer this tool can name, which need not be
+//!   the target core, and may be a parked one: parking keeps the authorizer, so a parked core
+//!   still takes control packages.
 //!
 //! So the bootstrap order is: install the first AURA queue on a core, *then* hand that core's
 //! assigner privilege to parasim. The other way round leaves a core parasim owns but cannot be
@@ -17,10 +18,10 @@ use codec::Encode as _;
 use jam_bootstrap_service_common::Instruction;
 use jam_interface::JamChainSource;
 use jam_rpc_interface::JamRpcInterface;
-use jam_types::{AuthQueue, AuthorizerHash, CoreIndex, ServiceId};
+use jam_types::{AuthQueue, AuthorizerHash, CoreIndex, ServiceId, Slot};
 use parachain_service_interface::{
-	authorization::{Command, CONTROL_COMMAND_PREFIX},
 	types::ParaId,
+	upward_message::{UpwardMessage, UpwardMessages},
 };
 
 use crate::{
@@ -113,31 +114,30 @@ pub async fn assign(
 ) -> Result<(), String> {
 	let target = args.aura.hash(para);
 	tracing::info!("core {core} → para {} (authorizer 0x{})", para.0, hex(&target.0));
-	route(jam, args, core, target, Command::Assign { para_id: para, core, authorizer: target.0 })
-		.await?;
+	route(jam, args, core, target).await?;
 	cores::report(jam, core, target).await
 }
 
-/// Park `core`: no para on it, but the same AURA authorizer, so commands still reach it.
+/// Park `core`: no para on it, but the same AURA authorizer, so control still reaches it.
 ///
-/// The parked config is built from `--collators`/`--scheme` — normally the very values the core
-/// was assigned with — because the hash has to travel with the command: accumulate cannot read an
-/// authorizer config, not even its own package's, so it can no more derive a parked hash than an
-/// assigned one.
+/// The same assign as [`assign`], with the parked hash in the queue — freeing has no message of
+/// its own, exactly as it will not have one on the real service. The parked config is built from
+/// `--collators`/`--scheme` — normally the very values the core was assigned with — because the
+/// hash has to travel in the message: accumulate cannot read an authorizer config, not even its
+/// own package's, so it can no more derive a parked hash than an assigned one.
 pub async fn free(jam: &JamRpcInterface, args: &Args, core: CoreIndex) -> Result<(), String> {
 	let target = args.aura.parked_hash();
 	tracing::info!("core {core} → parked (authorizer 0x{})", hex(&target.0));
-	route(jam, args, core, target, Command::Free { core, parked_authorizer: target.0 }).await?;
+	route(jam, args, core, target).await?;
 	cores::report(jam, core, target).await
 }
 
-/// Send `command` down whichever lane the core's assigner leaves open.
+/// Fill `core`'s queue with `target`, down whichever lane the core's assigner leaves open.
 async fn route(
 	jam: &JamRpcInterface,
 	args: &Args,
 	core: CoreIndex,
 	target: AuthorizerHash,
-	command: Command,
 ) -> Result<(), String> {
 	let best = jam.best_block().await.map_err(|e| format!("best block: {e}"))?.header_hash;
 	match cores::assigner(jam, best, core).await? {
@@ -154,7 +154,7 @@ async fn route(
 			)
 			.await
 		},
-		assigner if assigner == args.service => control_package(jam, args, core, command).await,
+		assigner if assigner == args.service => control_package(jam, args, core, target).await,
 		other => Err(format!(
 			"core {core}'s assigner is service {other}, not the bootstrap service and not parasim \
 			 ({}); nothing this tool can submit will assign it",
@@ -163,17 +163,19 @@ async fn route(
 	}
 }
 
-/// Submit a package whose only job is to carry `command`.
+/// Submit a package whose only job is to fill `target_core`'s queue with `target`.
 ///
-/// The command *is* the work item's payload: accumulate, which is where `assign` has to be
-/// called, sees neither the package nor its authorization, so refine reads the command and hands
-/// it on in its work output. The token rides the sudo lane — [`sudo_token`] — which is what gets
-/// the package past an authorizer that has no para to match the item against.
+/// The upward messages *are* the work item's payload, SCALE-encoded exactly as the real parachain
+/// service will one day receive them: accumulate, which is where `assign` has to be called, sees
+/// neither the package nor its authorization, so refine decodes them and hands them on in its
+/// work output. Nothing marks the payload as control — the token rides the sudo lane
+/// ([`sudo_token`]), and that is both what gets the package past an authorizer with no para to
+/// match the item against and what tells parasim's refine to read the payload this way.
 async fn control_package(
 	jam: &JamRpcInterface,
 	args: &Args,
 	target_core: CoreIndex,
-	command: Command,
+	target: AuthorizerHash,
 ) -> Result<(), String> {
 	let core = args.via_core.unwrap_or(target_core);
 	let anchor = Anchor::fetch(jam, args.service).await?;
@@ -201,11 +203,28 @@ async fn control_package(
 		}
 	);
 
-	let mut payload = CONTROL_COMMAND_PREFIX.to_vec();
-	command.encode_to(&mut payload);
+	let payload = assign_core(target_core, target, anchor.context.lookup_anchor_slot).encode();
 	let mut package = anchor.package(authorizer, vec![anchor.item(args.service, payload)]);
 	package.authorization = sudo_token();
 	submit_and_follow(jam, core, &package).await
+}
+
+/// The one message a control package carries: fill `core`'s whole queue with `target`.
+///
+/// The queue is sent at its full protocol length rather than as the single hash the real service
+/// would cycle-repeat, so the bytes say exactly what the core ends up holding.
+///
+/// `new_assigner` is `None` — "keep this service as the assigner". parasim overrides anything
+/// else anyway, and naming a new assigner is one-way: it would strand the core.
+///
+/// `jam_slot` is the slot the real service would schedule the write for; parasim applies
+/// immediately and logs the slot it ignored, so the anchor's slot is what the package is honestly
+/// built against.
+fn assign_core(core: CoreIndex, target: AuthorizerHash, jam_slot: Slot) -> UpwardMessages {
+	let queue = AuthQueue::new(target).iter().map(|hash| hash.0).collect();
+	vec![UpwardMessage::AssignCore { core, queue, new_assigner: None, jam_slot }]
+		.try_into()
+		.expect("one message is within the digest bound; qed")
 }
 
 /// Both hashes the carrier credential can produce, so the operator can see which one the core was

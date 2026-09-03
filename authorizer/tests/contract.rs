@@ -28,8 +28,8 @@ use parachain_authorizer::{
 use parachain_authorizer_ed25519::Ed25519;
 use parachain_authorizer_sr25519::Sr25519;
 use parachain_service_interface::{
-	authorization::{Command, CONTROL_COMMAND_PREFIX},
 	types::ParaId,
+	upward_message::{UpwardMessage, UpwardMessages},
 };
 use primitive_types::{H256, U256};
 
@@ -164,18 +164,23 @@ fn package(anchor_byte: u8, slot: Slot, payload: Vec<u8>) -> WorkPackage {
 	}
 }
 
-/// A parachain block, as far as the authorizer is concerned: any payload without the command
-/// prefix.
+/// A parachain block, as far as the authorizer is concerned: any payload at all. Nothing in a
+/// payload tells the two apart — the sudo lane does, which is why it is a property of the token.
 fn block(anchor_byte: u8, slot: Slot) -> WorkPackage {
 	package(anchor_byte, slot, b"contract".to_vec())
 }
 
-/// The package a core-assignment command rides in: the command *is* the payload.
-fn commanding(anchor_byte: u8, slot: Slot) -> WorkPackage {
-	let command = Command::Free { core: 1, parked_authorizer: [0xcd; 32] };
-	let mut payload = CONTROL_COMMAND_PREFIX.to_vec();
-	command.encode_to(&mut payload);
-	package(anchor_byte, slot, payload)
+/// The package a core assignment rides in: the upward messages *are* the payload.
+fn controlling(anchor_byte: u8, slot: Slot) -> WorkPackage {
+	let messages: UpwardMessages = vec![UpwardMessage::AssignCore {
+		core: 1,
+		queue: vec![[0xcd; 32]],
+		new_assigner: None,
+		jam_slot: 0,
+	}]
+	.try_into()
+	.expect("one message is within the digest bound; qed");
+	package(anchor_byte, slot, messages.encode())
 }
 
 /// Run the decision the guest runs, under `scheme`'s verifier.
@@ -297,10 +302,10 @@ fn a_token_does_not_carry_over_to_a_re_anchored_package_works() {
 	}
 }
 
-/// A command now travels in a work item, so the package hash covers it: a signature cannot be
-/// lifted from an innocent package onto one that reassigns a core. Phase 6 bound the command into
-/// the signing payload by hand because it lived outside the hash; this is that property, held by
-/// the hash itself.
+/// A core assignment now travels in a work item, so the package hash covers it: a signature
+/// cannot be lifted from an innocent package onto one that reassigns a core. Phase 6 bound the
+/// command into the signing payload by hand because it lived outside the hash; this is that
+/// property, held by the hash itself.
 #[test]
 fn a_signature_does_not_carry_over_to_another_payload_works() {
 	for scheme in [Scheme::Ed25519, Scheme::Sr25519] {
@@ -311,8 +316,8 @@ fn a_signature_does_not_carry_over_to_another_payload_works() {
 
 		assert!(admits(scheme, &config, token, &signed), "{scheme:?}: rejected on its own package");
 		assert!(
-			!admits(scheme, &config, token, &commanding(1, 0)),
-			"{scheme:?}: an innocent package's signature authorized a command"
+			!admits(scheme, &config, token, &controlling(1, 0)),
+			"{scheme:?}: an innocent package's signature authorized a core assignment"
 		);
 	}
 }
@@ -332,8 +337,8 @@ fn a_parked_core_admits_no_ordinary_package_works() {
 			authorize_under(scheme, &parked, token, &package),
 			Err(AuthorizationError::InvalidWorkItemCount)
 		));
-		// Nor does putting a command in it help without the privilege to run one.
-		let control = commanding(1, 0);
+		// Nor does putting an assignment in it help without the privilege to run one.
+		let control = controlling(1, 0);
 		assert!(matches!(
 			authorize_under(scheme, &parked, &collators.tokens(&control)[0], &control),
 			Err(AuthorizationError::InvalidWorkItemCount)
@@ -341,21 +346,21 @@ fn a_parked_core_admits_no_ordinary_package_works() {
 	}
 }
 
-/// The sentinel key is what gets a command onto a parked core, and it is a deliberate hole: no
-/// proof and no signature are checked at all. Pinned so that widening it any further has to be a
-/// conscious edit — and so that the trace says `sudo`, which is the only thing stopping refine
-/// running a command that came in on the ordinary lane.
+/// The sentinel key is what gets a control package onto a parked core, and it is a deliberate
+/// hole: no proof and no signature are checked at all. Pinned so that widening it any further has
+/// to be a conscious edit — and so that the trace says `sudo`, which is the only thing telling
+/// refine to read the payload as control at all.
 #[test]
 fn a_sudo_token_reaches_a_parked_core_unsigned_works() {
 	for scheme in [Scheme::Ed25519, Scheme::Sr25519] {
 		let collators = Collators::new(scheme, &["//Alice"]);
 		let parked = collators.config(Vec::new());
-		let control = commanding(1, 0);
+		let control = controlling(1, 0);
 
 		let forged = AuthToken { proof: Vec::new(), key: SUDO_KEY, signature: [0u8; 64] };
 		let trace = authorize_under(scheme, &parked, &forged, &control)
 			.expect("the sentinel key admits a package nobody signed");
-		assert!(trace.sudo, "{scheme:?}: the trace must tell refine the command may run");
+		assert!(trace.sudo, "{scheme:?}: the trace must tell refine to read the payload as control");
 		assert_eq!(trace.author_key, SUDO_KEY);
 
 		// The hole is exactly this wide: the target-service check still applies, so a parked
@@ -376,7 +381,7 @@ fn a_sudo_token_reaches_a_parked_core_unsigned_works() {
 fn only_the_sentinel_key_opens_the_sudo_lane_works() {
 	for scheme in [Scheme::Ed25519, Scheme::Sr25519] {
 		let collators = Collators::new(scheme, &["//Alice"]);
-		let control = commanding(1, 0);
+		let control = controlling(1, 0);
 
 		// A sentinel token dressed up as an ordinary one — real proof, real signature — is still
 		// the sudo lane, on a parked core and on an assigned one alike: the key decides before

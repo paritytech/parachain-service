@@ -20,6 +20,7 @@ use jam_interface::{
 };
 use jam_rpc_interface::JamRpcInterface;
 use jam_types::WorkDigest;
+use parachain_service_interface::upward_message::{UpwardMessage, UpwardMessages};
 use parasim_service::{ParasimRefineError, ParasimWorkOutput, RefinedHead};
 
 use crate::{
@@ -181,8 +182,8 @@ fn describe(args: &Args, digest: &WorkDigest) -> Option<String> {
 /// What parasim's refine put in the work output.
 enum Refined {
 	Head(RefinedHead),
-	/// A core-assignment command on its way to accumulate, which is where it takes effect.
-	Command(parachain_service_interface::authorization::Command),
+	/// Control messages on their way to accumulate, which is where they take effect.
+	Upward(UpwardMessages),
 	Rejected(ParasimRefineError),
 	/// parasim's output, but nothing this tool's version of parasim understands.
 	Unknown,
@@ -200,7 +201,7 @@ enum Refined {
 fn decode_output(bytes: &[u8]) -> Refined {
 	match ParasimWorkOutput::decode_all(&mut &bytes[..]) {
 		Ok(ParasimWorkOutput::Head(head)) => return Refined::Head(head),
-		Ok(ParasimWorkOutput::Command(command)) => return Refined::Command(command),
+		Ok(ParasimWorkOutput::Upward(messages)) => return Refined::Upward(messages),
 		Err(_) => {},
 	}
 	match ParasimRefineError::decode_all(&mut &bytes[..]) {
@@ -218,8 +219,32 @@ fn matches_para(para: Option<u32>, refined: &Refined) -> bool {
 		(None, _) => true,
 		(Some(wanted), Refined::Head(output)) => output.para_id.0 == wanted,
 		(Some(_), Refined::Foreign) => false,
-		(Some(_), Refined::Command(_) | Refined::Rejected(_) | Refined::Unknown) => true,
+		(Some(_), Refined::Upward(_) | Refined::Rejected(_) | Refined::Unknown) => true,
 	}
+}
+
+/// One short line for the messages a control package carries.
+///
+/// `AssignCore` is spelled out by hand because every assign this tool sends fills the whole
+/// 80-slot queue with one hash, and the derived `Debug` for that is some three thousand
+/// characters — enough to drown every other row in the table.
+fn describe_upward(messages: &UpwardMessages) -> String {
+	messages.iter().map(describe_message).collect::<Vec<_>>().join("; ")
+}
+
+fn describe_message(message: &UpwardMessage) -> String {
+	let UpwardMessage::AssignCore { core, queue, new_assigner, jam_slot } = message else {
+		return format!("{message:?}");
+	};
+	let head = match queue.first() {
+		Some(hash) => format!("0x{}…", &hex(hash)[..HASH_DIGITS]),
+		None => "(empty queue)".to_string(),
+	};
+	let assigner = match new_assigner {
+		Some(service) => format!(", handing it to service {service}"),
+		None => String::new(),
+	};
+	format!("AssignCore core {core} → {head} ×{}, jam slot {jam_slot}{assigner}", queue.len())
 }
 
 fn render(refined: &Refined, len: usize) -> String {
@@ -236,7 +261,7 @@ fn render(refined: &Refined, len: usize) -> String {
 				Err(error) => format!("head {} bytes, undecodable header: {error}", head.len()),
 			}
 		},
-		Refined::Command(command) => format!("COMMAND: {command:?}"),
+		Refined::Upward(messages) => format!("UPWARD: {}", describe_upward(messages)),
 		Refined::Rejected(error) => format!("REJECTED: {error:?}"),
 		Refined::Unknown => format!("{len} bytes, not a parasim result"),
 		Refined::Foreign => format!("{len} bytes"),
@@ -260,18 +285,41 @@ mod tests {
 		};
 		let encoded = ParasimWorkOutput::Head(head.clone()).encode();
 		assert!(matches!(decode_output(&encoded), Refined::Head(decoded) if decoded == head));
-		// A control package's output is a command, and must not read as a head of para 0.
-		let command = parachain_service_interface::authorization::Command::Free {
+		// A control package's output is a message list, and must not read as a head of para 0.
+		let messages: UpwardMessages = vec![UpwardMessage::AssignCore {
 			core: 1,
-			parked_authorizer: [3u8; 32],
-		};
-		let encoded = ParasimWorkOutput::Command(command).encode();
-		assert!(matches!(decode_output(&encoded), Refined::Command(_)));
+			queue: vec![[3u8; 32]],
+			new_assigner: None,
+			jam_slot: 0,
+		}]
+		.try_into()
+		.expect("one message is within the digest bound; qed");
+		let encoded = ParasimWorkOutput::Upward(messages).encode();
+		assert!(matches!(decode_output(&encoded), Refined::Upward(_)));
 		assert!(matches!(
 			decode_output(&ParasimRefineError::InvalidProof.encode()),
 			Refined::Rejected(ParasimRefineError::InvalidProof)
 		));
 		assert!(matches!(decode_output(&[0xff, 0xff]), Refined::Unknown));
+	}
+
+	/// The table has one line per package, and a full queue is 80 identical 32-byte hashes: the
+	/// derived `Debug` for one assign runs to thousands of characters, which is what this row used
+	/// to print. The summary has to name the core, the hash and the length, and stay short.
+	#[test]
+	fn an_assign_is_summarised_not_dumped_works() {
+		let messages: UpwardMessages = vec![UpwardMessage::AssignCore {
+			core: 3,
+			queue: vec![[0xab; 32]; 80],
+			new_assigner: None,
+			jam_slot: 77,
+		}]
+		.try_into()
+		.expect("one message is within the digest bound; qed");
+
+		let line = describe_upward(&messages);
+		assert_eq!(line, "AssignCore core 3 → 0xabababab… ×80, jam slot 77");
+		assert!(line.len() < 100, "a row this long drowns the table: {line}");
 	}
 
 	#[test]
