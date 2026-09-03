@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use clap::{Args as ClapArgs, Parser, Subcommand};
-use jam_interface::{CoreIndex, ServiceId};
+use cumulus_jam_interface::{CoreIndex, ServiceId};
 use jam_types::CodeHash;
 use parachain_service_interface::types::ParaId;
 

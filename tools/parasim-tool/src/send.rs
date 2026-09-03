@@ -28,8 +28,8 @@ use crate::{
 	format::hex,
 	package::{submit_and_follow, Anchor},
 };
-use jam_interface::{JamChainSource, JamStateSource, StorageKey};
-use jam_rpc_interface::JamRpcInterface;
+use cumulus_jam_interface::{JamChainSource, JamStateSource, StorageKey};
+use cumulus_jam_rpc_interface::JamRpcInterface;
 use jam_state_helpers::StateProof;
 use jam_types::{ServiceId, WorkPackage};
 use parachain_service_interface::{
@@ -279,7 +279,7 @@ fn describe_head(head: Option<&[u8]>) -> String {
 ///
 /// polkajam's `RangeProof` has no SCALE codec at all — it is a host-side, base64/JSON type — so
 /// the wire form parasim reads is deliberately our own.
-fn to_state_proof(proof: &jam_interface::RangeProof) -> StateProof {
+fn to_state_proof(proof: &cumulus_jam_interface::RangeProof) -> StateProof {
 	StateProof {
 		nodes: proof.nodes.iter().map(|node| **node).collect(),
 		values: proof.values.iter().map(|(key, value)| (**key, value.to_vec())).collect(),

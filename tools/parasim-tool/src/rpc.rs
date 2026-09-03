@@ -1,6 +1,6 @@
 //! Connecting to a JAM node.
 
-use jam_rpc_interface::JamRpcInterface;
+use cumulus_jam_rpc_interface::JamRpcInterface;
 
 /// Connect and spawn the connection worker.
 ///

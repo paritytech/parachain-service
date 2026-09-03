@@ -7,8 +7,10 @@
 use std::time::Duration;
 
 use codec::Decode as _;
-use jam_interface::{HeaderHash, JamChainSource, JamStateSource, ServiceId, VersionedParameters};
-use jam_rpc_interface::JamRpcInterface;
+use cumulus_jam_interface::{
+	HeaderHash, JamChainSource, JamStateSource, ServiceId, VersionedParameters,
+};
+use cumulus_jam_rpc_interface::JamRpcInterface;
 use parachain_service_interface::types::ParaId;
 use parasim_service::buffer::{BufferedCandidate, StoredHead, BUFFER_CAP};
 

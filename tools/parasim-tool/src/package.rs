@@ -9,8 +9,10 @@ use std::time::Duration;
 
 use futures::StreamExt as _;
 
-use jam_interface::{JamChainSource, JamStateSource, JamWorkPackageSubmission, WorkPackageStatus};
-use jam_rpc_interface::JamRpcInterface;
+use cumulus_jam_interface::{
+	JamChainSource, JamStateSource, JamWorkPackageSubmission, WorkPackageStatus,
+};
+use cumulus_jam_rpc_interface::JamRpcInterface;
 use jam_types::{
 	Authorization, Authorizer, CodeHash, RefineContext, ServiceId, WorkItem, WorkPackage,
 	WorkPackageHash, WorkPayload,
@@ -166,7 +168,7 @@ async fn wait_for_code(
 	jam: &JamRpcInterface,
 	service: ServiceId,
 	code_hash: [u8; HASH_LEN],
-) -> Result<jam_interface::BlockDesc, String> {
+) -> Result<cumulus_jam_interface::BlockDesc, String> {
 	use jam_std_common::Node as _;
 
 	let deadline = tokio::time::Instant::now() + CODE_WAIT_TIMEOUT;

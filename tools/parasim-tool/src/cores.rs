@@ -7,9 +7,9 @@
 
 use std::time::Duration;
 
+use cumulus_jam_interface::{HeaderHash, JamChainSource, JamStateSource, StorageKey};
+use cumulus_jam_rpc_interface::JamRpcInterface;
 use jam_codec::DecodeAll as _;
-use jam_interface::{HeaderHash, JamChainSource, JamStateSource, StorageKey};
-use jam_rpc_interface::JamRpcInterface;
 use jam_std_common::{Privileges, SystemKey};
 use jam_types::{AuthConfig, Authorizer, AuthorizerHash, CoreIndex, ServiceId};
 

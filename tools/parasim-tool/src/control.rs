@@ -15,9 +15,9 @@
 //! reached on — see the note in `grant`.
 
 use codec::Encode as _;
+use cumulus_jam_interface::JamChainSource;
+use cumulus_jam_rpc_interface::JamRpcInterface;
 use jam_bootstrap_service_common::Instruction;
-use jam_interface::JamChainSource;
-use jam_rpc_interface::JamRpcInterface;
 use jam_types::{AuthQueue, AuthorizerHash, CoreIndex, ServiceId, Slot};
 use parachain_service_interface::{
 	types::ParaId,

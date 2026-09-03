@@ -8,17 +8,17 @@
 //! checks pass, so a rejected item is one export short and JAM replaces its output. The reason
 //! stays in the guarantor's log.
 //!
-//! Two codecs meet here. The state values are jam-codec (decoded by `jam-interface`); parasim's
-//! own work output nested inside them is parity-scale-codec, because that is what parasim encodes
-//! it with.
+//! Two codecs meet here. The state values are jam-codec (decoded by `cumulus-jam-interface`);
+//! parasim's own work output nested inside them is parity-scale-codec, because that is what
+//! parasim encodes it with.
 
 use std::{collections::BTreeMap, time::Duration};
 
 use codec::DecodeAll as _;
-use jam_interface::{
+use cumulus_jam_interface::{
 	HeaderHash, JamChainSource, JamStateSource, ServiceId, Slot, VersionedParameters, WorkReport,
 };
-use jam_rpc_interface::JamRpcInterface;
+use cumulus_jam_rpc_interface::JamRpcInterface;
 use jam_types::WorkDigest;
 use parachain_service_interface::upward_message::{UpwardMessage, UpwardMessages};
 use parasim_service::{ParasimRefineError, ParasimWorkOutput, RefinedHead};

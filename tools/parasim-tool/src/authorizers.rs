@@ -10,10 +10,10 @@
 
 use std::time::Duration;
 
-use jam_interface::{
+use cumulus_jam_interface::{
 	AuthorizerHash, HeaderHash, JamChainSource, JamStateSource, VersionedParameters,
 };
-use jam_rpc_interface::JamRpcInterface;
+use cumulus_jam_rpc_interface::JamRpcInterface;
 use parachain_service_interface::types::ParaId;
 
 use crate::{aura::Aura, cores, format::hex};

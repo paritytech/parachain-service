@@ -11,7 +11,7 @@ pub fn hex(bytes: &[u8]) -> String {
 }
 
 /// Parse a `0x`-prefixed or bare 32-byte hex header hash.
-pub fn parse_header_hash(text: &str) -> Result<jam_interface::HeaderHash, String> {
+pub fn parse_header_hash(text: &str) -> Result<cumulus_jam_interface::HeaderHash, String> {
 	use crate::header::HASH_LEN;
 	let text = text.strip_prefix("0x").unwrap_or(text);
 	if text.len() != HASH_LEN * 2 {

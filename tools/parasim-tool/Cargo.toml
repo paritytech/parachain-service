@@ -14,12 +14,12 @@ path = "src/main.rs"
 [dependencies]
 clap = { workspace = true }
 codec = { workspace = true, features = ["std"] }
+cumulus-jam-interface = { workspace = true }
+cumulus-jam-rpc-interface = { workspace = true }
 futures = { workspace = true }
 jam-codec = { workspace = true, features = ["std"] }
-jam-interface = { workspace = true }
 jam-bootstrap-service-common = { workspace = true }
 jam-null-authorizer-bin = { workspace = true }
-jam-rpc-interface = { workspace = true }
 jam-state-helpers = { workspace = true, features = ["std"] }
 jam-std-common = { workspace = true }
 jam-types = { workspace = true, features = ["std"] }

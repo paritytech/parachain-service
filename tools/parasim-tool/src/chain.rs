@@ -1,9 +1,9 @@
 //! `display-chain`: the most recent blocks, newest first.
 
-use jam_interface::JamChainSource;
+use cumulus_jam_interface::JamChainSource;
 
 use crate::format::hex;
-use jam_rpc_interface::JamRpcInterface;
+use cumulus_jam_rpc_interface::JamRpcInterface;
 
 /// Print the last `count` blocks of the best or finalized chain.
 ///

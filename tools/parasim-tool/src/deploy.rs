@@ -7,9 +7,9 @@
 
 use std::{path::Path, time::Duration};
 
+use cumulus_jam_interface::JamChainSource;
+use cumulus_jam_rpc_interface::JamRpcInterface;
 use jam_bootstrap_service_common::Instruction;
-use jam_interface::JamChainSource;
-use jam_rpc_interface::JamRpcInterface;
 use jam_std_common::Node as _;
 use jam_types::ToAny as _;
 

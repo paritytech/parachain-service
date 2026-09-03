@@ -6,8 +6,6 @@ members = [
     "authorizer-sr25519",
     "authorizer-sr25519/bin",
     "cumulus",
-    "cumulus/jam-interface",
-    "cumulus/jam-rpc-interface",
     "cumulus/jam-state-helpers",
     "runtimes/frameless",
     "service",
@@ -84,8 +82,11 @@ parachain-authorizer-sr25519 = { path = "authorizer-sr25519" }
 parachain-authorizer-sr25519-bin = { path = "authorizer-sr25519/bin" }
 parachain-service-interface = { path = "service-interface", default-features = false }
 parasim-service = { path = "testing/parasim-service" }
-jam-interface = { path = "cumulus/jam-interface" }
-jam-rpc-interface = { path = "cumulus/jam-rpc-interface" }
+# These two used to live here as `cumulus/jam-{,rpc-}interface`; polkadot-sdk upstreamed them
+# verbatim (`cumulus/jam/{interface,rpc-interface}`, commit ca25145db9), so we consume theirs and
+# keep no second copy to drift. The sibling-checkout path follows `tools/executor`'s precedent.
+cumulus-jam-interface = { path = "../polkadot-sdk-master/cumulus/jam/interface" }
+cumulus-jam-rpc-interface = { path = "../polkadot-sdk-master/cumulus/jam/rpc-interface" }
 jam-state-helpers = { path = "cumulus/jam-state-helpers", default-features = false }
 
 codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }
@@ -97,6 +98,13 @@ executor = { path = "tools/executor" }
 pvm-builder = { path = "tools/pvm-builder" }
 tiny-keccak = { version = "2.0.2", default-features = false, features = ["keccak"] }
 sp-io = { path = "vendor/polkadot-sdk-companion/substrate/primitives/io", default-features = false }
+
+# `cumulus-jam-{,rpc-}interface` pull polkajam from git at polkadot-sdk's rev; everything else here
+# uses the vendored pin. Left unpatched that is two distinct `jam-std-common` crates, and types
+# crossing the interface traits would not unify. Redirect the git source onto the vendored copy.
+[patch."ssh://git@github.com/paritytech/polkajam.git"]
+jam-std-common = { path = "vendor/polkajam/crates/jam-std-common" }
+jam-types = { path = "vendor/polkajam/crates/jam-types" }
 
 [profile.production]
 inherits = "release"

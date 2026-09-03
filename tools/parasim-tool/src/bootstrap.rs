@@ -9,9 +9,9 @@
 //! refuses any work item not addressed to the parachain service — which is exactly what it is
 //! for, and the reason the bootstrap steps have to come first.
 
+use cumulus_jam_interface::{JamChainSource, JamStateSource};
+use cumulus_jam_rpc_interface::JamRpcInterface;
 use jam_bootstrap_service_common::{Instruction, Instructions, PayloadSalt};
-use jam_interface::{JamChainSource, JamStateSource};
-use jam_rpc_interface::JamRpcInterface;
 use jam_types::{AuthConfig, Authorizer, CoreIndex};
 
 use crate::{
@@ -62,7 +62,7 @@ pub async fn instruct(
 /// The lowest core still holding the unassigned authorizer.
 async fn unassigned_core(
 	jam: &JamRpcInterface,
-	at: jam_interface::HeaderHash,
+	at: cumulus_jam_interface::HeaderHash,
 ) -> Result<CoreIndex, String> {
 	let queues = jam.auth_queues(at).await.map_err(|e| format!("reading the queues: {e}"))?;
 	queues
