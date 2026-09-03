@@ -124,7 +124,9 @@ impl Service for ParasimService {
 						);
 						accumulate_one(id, slot, &result);
 					},
-					Err(e) => jam_pvm_common::error!("parasim: accumulate work-item Err: {e:?}"),
+					Err(e) => {
+						jam_pvm_common::error!("parasim: accumulate work-item Err: {e:?}");
+					},
 				}
 			}
 		}
