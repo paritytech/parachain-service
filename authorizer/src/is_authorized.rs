@@ -58,5 +58,5 @@ pub fn is_authorized(_core: CoreIndex) -> Result<AuthTrace, AuthorizationError> 
 		.try_into_trace(&config, &package, collator_index)
 		.map_err(AuthorizationError::BadAuthToken)?;
 
-	Ok(AuthTrace(trace.encode()))
+	Ok(AuthTrace(trace.author_key.encode()))
 }

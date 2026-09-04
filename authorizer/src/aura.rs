@@ -49,10 +49,6 @@ pub struct AuthToken {
 #[cfg_attr(feature = "test-utils", derive(codec::MaxEncodedLen))]
 pub struct AuthTrace {
 	pub author_key: CollatorKey,
-	/// Whether the package was admitted through a privileged control lane.
-	/// This branch has no such lane and always emits `false`; the field keeps
-	/// the wire shape aligned with the deployed sr25519 authorizer.
-	pub sudo: bool,
 }
 
 /// Authorization token validation failed.
@@ -137,7 +133,7 @@ impl AuthToken {
 		self.check_proof(config, collator_index)?;
 		self.check_signature(wp_hash)?;
 
-		Ok(AuthTrace { author_key: self.key, sudo: false })
+		Ok(AuthTrace { author_key: self.key })
 	}
 }
 
