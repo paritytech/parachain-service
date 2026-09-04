@@ -84,9 +84,13 @@ parachain-service-interface = { path = "service-interface", default-features = f
 parasim-service = { path = "testing/parasim-service" }
 # These two used to live here as `cumulus/jam-{,rpc-}interface`; polkadot-sdk upstreamed them
 # verbatim (`cumulus/jam/{interface,rpc-interface}`, commit ca25145db9), so we consume theirs and
-# keep no second copy to drift. The sibling-checkout path follows `tools/executor`'s precedent.
-cumulus-jam-interface = { path = "../polkadot-sdk-master/cumulus/jam/interface" }
-cumulus-jam-rpc-interface = { path = "../polkadot-sdk-master/cumulus/jam/rpc-interface" }
+# keep no second copy to drift. Fetched from GitHub so a fresh checkout needs no sibling
+# polkadot-sdk directory; for local development against uncommitted polkadot-sdk changes, swap
+# in the commented path form (sibling checkout named `polkadot-sdk-master`).
+cumulus-jam-interface = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "mku-jam-collator-poc-2" }
+cumulus-jam-rpc-interface = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "mku-jam-collator-poc-2" }
+# cumulus-jam-interface = { path = "../polkadot-sdk-master/cumulus/jam/interface" }
+# cumulus-jam-rpc-interface = { path = "../polkadot-sdk-master/cumulus/jam/rpc-interface" }
 jam-state-helpers = { path = "cumulus/jam-state-helpers", default-features = false }
 
 codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }

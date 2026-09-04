@@ -994,6 +994,7 @@ dependencies = [
 [[package]]
 name = "cumulus-jam-interface"
 version = "0.1.0"
+source = "git+https://github.com/paritytech/polkadot-sdk.git?branch=mku-jam-collator-poc-2#387f6e0bef31a05e5e3fdb5c0f84173ada3dfa79"
 dependencies = [
  "async-trait",
  "futures",
@@ -1005,6 +1006,7 @@ dependencies = [
 [[package]]
 name = "cumulus-jam-rpc-interface"
 version = "0.1.0"
+source = "git+https://github.com/paritytech/polkadot-sdk.git?branch=mku-jam-collator-poc-2#387f6e0bef31a05e5e3fdb5c0f84173ada3dfa79"
 dependencies = [
  "async-stream",
  "async-trait",
