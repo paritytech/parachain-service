@@ -360,6 +360,34 @@ fn duplicate_set_head_errors() {
 	assert_eq!(expect_log(outcome), RefineLog::MissingHeadDeclaration);
 }
 
+// The authorizer is deployed as its own blob, so refine cannot assume the
+// trace matches its compiled-in `aura::AuthTrace`. A foreign trace (here the
+// sr25519 authorizer's `author_key ++ sudo` wire shape, one byte longer) must
+// surface as a loggable digest for the named para, not trap the whole refine.
+#[test]
+fn foreign_auth_trace_errors() {
+	let sr25519_era_trace = {
+		let AuthTrace(mut raw) = good_trace();
+		raw.push(0x00);
+		AuthTrace(raw)
+	};
+	let work_items = vec![refine_work_item(SERVICE, Vec::new(), vec![])];
+	let (engine, code_hash, mut context) = refine_args(
+		SERVICE,
+		AUTHORIZER,
+		good_config(1),
+		good_token(),
+		sr25519_era_trace,
+		work_items,
+		&[],
+		0,
+	);
+
+	let outcome = pj::refine(&engine, code_hash, &mut context);
+
+	assert_eq!(expect_log(outcome), RefineLog::MalformedAuthTrace);
+}
+
 // Empty WPs are invalid per GP, hence panic.
 #[test]
 #[should_panic(expected = "the len is 0 but the index is 0")]

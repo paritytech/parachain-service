@@ -26,9 +26,6 @@ pub fn refine(
 	let Ok(para_ids) = Vec::<ParaId>::decode(&mut &raw_auth_config[..]) else {
 		panic!("The AuthConfig already passed IsAuthorized, it must be valid")
 	};
-	let Ok(_auth_trace) = aura::AuthTrace::decode_all(&mut &raw_auth_trace[..]) else {
-		panic!("The AuthTrace was produced by IsAuthorized, it must be valid")
-	};
 
 	let work_items = refine::work_items_summary();
 	assert!(item_index < work_items.len(), "Out of bounds item_index is invalid per GP");
@@ -42,6 +39,13 @@ pub fn refine(
 		panic!("Only single-item work packages are supported")
 	};
 	let para_id = para_ids[item_index];
+
+	// The authorizer deploys as its own blob, so `is_authorized` vouches for
+	// the trace's contract, not for ours: a shape this service cannot decode
+	// is logged against the para instead of trapping the whole refine.
+	if aura::AuthTrace::decode_all(&mut &raw_auth_trace[..]).is_err() {
+		return ParachainWorkDigest::Err { para_id, error: RefineLog::MalformedAuthTrace };
+	}
 
 	let Ok(candidate) = ParachainCandidate::decode_all(&mut &raw_payload.0[..]) else {
 		return ParachainWorkDigest::Err { para_id, error: RefineLog::MalformedPayload };
