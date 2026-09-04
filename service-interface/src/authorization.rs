@@ -22,11 +22,4 @@ pub type CollatorSignature = [u8; 64];
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, MaxEncodedLen)]
 pub struct AuthTrace {
 	pub author_key: CollatorKey,
-	/// Whether the package was admitted through the authorizer's `sudo` lane.
-	///
-	/// It is what tells the service's Refine to read the payload as control messages rather than
-	/// as a parachain block, so control cannot be smuggled in on the ordinary collator lane: the
-	/// trace is the only thing refine gets to see of the authorization, and only the authorizer
-	/// can set it.
-	pub sudo: bool,
 }

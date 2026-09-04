@@ -12,6 +12,8 @@ workspace = true
 [dependencies]
 parachain-service = { workspace = true }
 parachain-authorizer = { workspace = true }
+parachain-authorizer-ed25519 = { workspace = true }
+parachain-authorizer-sr25519 = { workspace = true }
 jam-types = { workspace = true }
 parachain-service-interface = { workspace = true }
 primitive-types = { workspace = true }

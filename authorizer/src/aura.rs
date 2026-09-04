@@ -20,7 +20,7 @@ pub struct AuthConfig {
 	/// exactly this prefix.
 	pub para_ids: Vec<ParaId>,
 	/// The JAM service every work item must target. Prevents para-specific
-	/// coretime being spent on other JAM work (SPEC_GAPS #7).
+	/// coretime being spent on other JAM work.
 	/// TODO: not yet in the design's §7.1 config; needs upstreaming.
 	pub parachain_service: ServiceId,
 	/// Root of a binary Merkle trie over the collator public keys.
@@ -32,33 +32,13 @@ pub struct AuthConfig {
 	pub slot_duration: u32,
 }
 
-/// The collator key that means "admit this package without any of the checks a collator has to
-/// pass": no signature, and no para assigned to the core.
-///
-/// It is the only way a core-assignment command reaches a *parked* core, whose config names no
-/// para and therefore admits no work item at all — including the one carrying the command that
-/// would un-park it.
-///
-/// The escalation rides the key rather than a field of its own so that [`AuthToken`] stays
-/// exactly the design's three fields: a collator that has never heard of this encodes the same
-/// bytes it always did.
-///
-/// All-ones is no key's encoding — the low 255 bits of a compressed point are a coordinate
-/// reduced modulo the two curves' shared field prime, and all-ones is not reduced — so no keygen
-/// can emit it, no collator set can hold it, and no honest token can collide with it. The
-/// contract tests pin that.
-///
-/// FIXME: a dev-network debugging bypass. It widens command access to anyone, on any core this
-/// authorizer guards. Accepted for the POC (user decision, 2026-09-02); it must not ship.
-pub const SUDO_KEY: CollatorKey = [0xFF; 32];
-
 #[derive(Clone, Debug, Encode, Decode)]
 pub struct AuthToken {
 	/// Proof that the `key` is at the slot-selected leaf index in the collator
 	/// set trie committed to by `collator_set_root`.
 	pub proof: Vec<H256>,
 
-	/// Key of the collator that authored the work package, or [`SUDO_KEY`].
+	/// Key of the collator that authored the work package.
 	pub key: CollatorKey,
 
 	/// Signature by the `key` over [`signable_work_package_hash`].
@@ -86,14 +66,14 @@ pub enum TokenError {
 impl AuthToken {
 	/// Verify that `key` sits at leaf `collator_index` of the collator-set trie.
 	///
-	/// Protocol pinned here (SPEC_GAPS #7 — spec leaves hash function and bit
-	/// order undefined):
+	/// Protocol pinned here (the spec leaves the hash function and bit order
+	/// undefined):
 	///
 	/// - **Leaf hash**: blake2b-32 over the raw 32-byte key.
 	/// - **Node hash**: blake2b-32 over the concatenated left–right pair.
-	/// - **Sibling ordering**: LSB-first from `collator_index`; bit = 0 means the
-	///   current node is the left child (proof sibling is right), bit = 1 means
-	///   the current node is the right child (proof sibling is left).
+	/// - **Sibling ordering**: LSB-first from `collator_index`; bit = 0 means the current node is
+	///   the left child (proof sibling is right), bit = 1 means the current node is the right child
+	///   (proof sibling is left).
 	/// - **Padding**: tree is zero-hash-padded to the next power of two.
 	/// - **Proof length**: ⌈log₂(collator_set_size)⌉.
 	///
@@ -122,9 +102,9 @@ impl AuthToken {
 
 	/// Verify the collator's signature over the token-free package hash, under `S`.
 	///
-	/// The hash is the whole of what a collator signs. Everything a package says — its items and
-	/// so any command they carry, its authorizer, its context — is already inside it; only the
-	/// token is not, which is what lets the signature sit inside the token.
+	/// The hash is the whole of what a collator signs. Everything a package says — its items, its
+	/// authorizer, its context — is already inside it; only the token is not, which is what lets
+	/// the signature sit inside the token.
 	pub fn check_signature<S: SignatureScheme>(
 		&self,
 		work_package_hash: H256,
@@ -147,7 +127,7 @@ impl AuthToken {
 		self.check_proof(config, collator_index)?;
 		self.check_signature::<S>(wp_hash)?;
 
-		Ok(AuthTrace { author_key: self.key, sudo: false })
+		Ok(AuthTrace { author_key: self.key })
 	}
 }
 
@@ -181,9 +161,8 @@ fn join(left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
 ///
 /// Lives next to `check_proof` on purpose: it is that function's inverse, and everything the
 /// scheme leaves open — leaf hashing, node hashing, sibling order, padding — is pinned once, in
-/// the doc comment there, by code both sides share. The collator, `parasim-tool` and the tests
-/// all build their roots here, so a change to the protocol cannot move one side without the
-/// other.
+/// the doc comment there, by code both sides share. The collator and the tests all build their
+/// roots here, so a change to the protocol cannot move one side without the other.
 ///
 /// Panics on an empty set: a collator set nobody is in authorizes nothing.
 pub fn build_collator_tree(keys: &[CollatorKey]) -> (H256, Vec<Vec<H256>>) {

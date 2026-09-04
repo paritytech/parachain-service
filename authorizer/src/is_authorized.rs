@@ -9,8 +9,7 @@ pub enum AuthorizationError {
 	UndecodableAuthToken,
 	InvalidWorkItemCount,
 	/// A work item targets a service other than the configured Parachain
-	/// Service — para-specific coretime must not authorize other JAM work
-	/// (SPEC_GAPS #7).
+	/// Service — para-specific coretime must not authorize other JAM work.
 	WrongTargetService,
 	/// `collator_set_size == 0` — no collator could ever be selected.
 	ZeroCollatorSetSize,
@@ -54,23 +53,10 @@ pub fn authorize<S: SignatureScheme>(
 	package: &WorkPackage,
 	lookup_anchor_slot: Slot,
 ) -> Result<aura::AuthTrace, AuthorizationError> {
-	// Deliberately outside the sudo bypass: para-specific coretime must not be spent on other
-	// JAM work whatever a package carries (SPEC_GAPS #7).
+	// Para-specific coretime must not be spent on other JAM work, whatever a package carries.
 	if package.items.iter().any(|item| item.service != config.parachain_service) {
 		return Err(AuthorizationError::WrongTargetService);
 	}
-
-	// The sudo lane, which a token asks for by carrying `SUDO_KEY` instead of a collator's. A
-	// parked core's config names no para, so the item-count check below refuses every package
-	// sent to it — including the control package carrying the command that would un-park it. This
-	// is the way past that, and the trace says the package came through here so that Refine can
-	// tell a command it may execute from one it may not.
-	//
-	// FIXME: see [`aura::SUDO_KEY`]; it must not ship.
-	if token.key == aura::SUDO_KEY {
-		return Ok(aura::AuthTrace { author_key: token.key, sudo: true });
-	}
-
 	if config.para_ids.len() != package.items.len() {
 		return Err(AuthorizationError::InvalidWorkItemCount);
 	}

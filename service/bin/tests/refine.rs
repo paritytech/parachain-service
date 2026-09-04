@@ -9,7 +9,7 @@ use frameless::{
 	blake2_256, hash_state, BlockData, Config, HeadData, MockAction, State, ValidationParams,
 };
 use jam_types::{AuthConfig, AuthTrace, Authorization as AuthToken, Hash};
-use parachain_authorizer_bin::BLOB as AUTHORIZER;
+use parachain_authorizer_ed25519_bin::BLOB as AUTHORIZER;
 use parachain_service::{
 	refine::ParachainCandidate,
 	work_digest::{validation_code_hash, ParachainWorkDigest, RefineLog},

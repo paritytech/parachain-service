@@ -1,5 +1,5 @@
 [package]
-name = "parachain-authorizer-ed25519-bin"
+name = "authorizer-builder"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
@@ -12,7 +12,3 @@ workspace = true
 
 [dependencies]
 jam-pvm-builder = { workspace = true }
-
-[build-dependencies]
-authorizer-builder = { workspace = true }
-parachain-authorizer-ed25519 = { workspace = true }

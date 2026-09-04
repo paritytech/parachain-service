@@ -19,10 +19,7 @@ jam-types = { workspace = true }
 parachain-service-interface = { workspace = true }
 jam-pvm-common = { workspace = true, features = ["authorizer", "logging"] }
 codec = { workspace = true }
-# `uninline_portable` keeps blake2b's compression function a real function instead of one fully
-# unrolled body. It is worth ~13 kB of the 64 kB authorizer ceiling, and the authorizer hashes a
-# few dozen bytes per call.
-blake2b_simd = { workspace = true, features = ["uninline_portable"] }
+blake2b_simd = { workspace = true }
 primitive-types = { workspace = true }
 
 # The cross-scheme contract tests live here, next to the core they are the drift alarm for: they

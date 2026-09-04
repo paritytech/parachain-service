@@ -46,10 +46,9 @@ impl SignatureScheme for Sr25519 {
 	/// group with a canonical encoding, so `PublicKey::from_bytes` already rejects what
 	/// `verify_strict` exists to reject.
 	fn verify(key: &CollatorKey, signature: &CollatorSignature, payload: &[u8]) -> bool {
-		let (Ok(key), Ok(signature)) = (
-			schnorrkel::PublicKey::from_bytes(key),
-			schnorrkel::Signature::from_bytes(signature),
-		) else {
+		let (Ok(key), Ok(signature)) =
+			(schnorrkel::PublicKey::from_bytes(key), schnorrkel::Signature::from_bytes(signature))
+		else {
 			return false;
 		};
 		key.verify_simple(SIGNING_CONTEXT, payload, &signature).is_ok()
