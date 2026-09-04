@@ -122,7 +122,7 @@ pub fn good_token() -> AuthToken {
 }
 
 pub fn good_trace() -> AuthTrace {
-	let trace = aura::AuthTrace { author_key: [0; 32] };
+	let trace = aura::AuthTrace { author_key: [0; 32], sudo: false };
 	AuthTrace(trace.encode())
 }
 
@@ -170,7 +170,7 @@ pub fn make_auth_with_seed(
 	let sig_bytes: [u8; 64] = signing_key.sign(wp_hash.as_bytes()).to_bytes();
 
 	let token = aura::AuthToken { proof, key: key_bytes, signature: sig_bytes };
-	let trace = aura::AuthTrace { author_key: key_bytes };
+	let trace = aura::AuthTrace { author_key: key_bytes, sudo: false };
 
 	(config_enc, AuthToken(token.encode()), AuthTrace(trace.encode()))
 }

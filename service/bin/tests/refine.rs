@@ -361,12 +361,12 @@ fn duplicate_set_head_errors() {
 }
 
 // The authorizer is deployed as its own blob, so refine cannot assume the
-// trace matches its compiled-in `aura::AuthTrace`. A foreign trace (here the
-// sr25519 authorizer's `author_key ++ sudo` wire shape, one byte longer) must
-// surface as a loggable digest for the named para, not trap the whole refine.
+// trace matches its compiled-in `aura::AuthTrace`. A foreign trace (here one
+// trailing byte longer than ours) must surface as a loggable digest for the
+// named para, not trap the whole refine.
 #[test]
 fn foreign_auth_trace_errors() {
-	let sr25519_era_trace = {
+	let foreign_trace = {
 		let AuthTrace(mut raw) = good_trace();
 		raw.push(0x00);
 		AuthTrace(raw)
@@ -377,7 +377,7 @@ fn foreign_auth_trace_errors() {
 		AUTHORIZER,
 		good_config(1),
 		good_token(),
-		sr25519_era_trace,
+		foreign_trace,
 		work_items,
 		&[],
 		0,
