@@ -1,0 +1,29 @@
+[package]
+name = "parachain-authorizer-sr25519"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+jam-types = { workspace = true }
+jam-pvm-common = { workspace = true, features = ["authorizer", "logging"] }
+parachain-authorizer = { workspace = true }
+polkavm-derive = { workspace = true }
+# `default-features = false` is what keeps `getrandom` out: schnorrkel defaults to
+# `std` + `getrandom`, and a bare RISC-V guest has no `getrandom` backend to link. The
+# verify-only path never draws randomness.
+schnorrkel = { workspace = true, features = ["alloc"] }
+
+[features]
+std = [
+	"jam-pvm-common/std",
+	"jam-types/std",
+	"parachain-authorizer/std",
+	"schnorrkel/std",
+]
