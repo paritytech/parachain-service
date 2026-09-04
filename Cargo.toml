@@ -1,13 +1,17 @@
 [workspace]
 members = [
     "authorizer",
-    "authorizer/bin",
+    "authorizer-ed25519",
+    "authorizer-ed25519/bin",
+    "authorizer-sr25519",
+    "authorizer-sr25519/bin",
     "cumulus",
     "runtimes/frameless",
     "service",
     "service/bin",
     "service-interface",
     "testing/mock-dest-service",
+    "tools/authorizer-builder",
     "tools/executor",
 ]
 exclude = [
@@ -33,6 +37,9 @@ jam-pvm-common = { path = "vendor/polkajam/crates/jam-pvm-common", default-featu
 jam-std-common = { path = "vendor/polkajam/crates/jam-std-common" }
 blake2b_simd = { version = "1", default-features = false }
 ed25519-dalek = { version = "2", default-features = false }
+schnorrkel = { version = "0.11.5", default-features = false }
+sp-core = { path = "vendor/polkadot-sdk-companion/substrate/primitives/core", default-features = false }
+sp-keystore = { path = "vendor/polkadot-sdk-companion/substrate/primitives/keystore" }
 primitive-types = { version = "0.13.1", default-features = false, features = ["codec"] }
 jam-pvm-builder = { version = "0.1.28" }
 polkavm-derive = { version = "0.36.0", default-features = false }
@@ -46,7 +53,10 @@ mock-dest-service = { path = "testing/mock-dest-service" }
 parachain-service = { path = "service" }
 parachain-service-bin = { path = "service/bin" }
 parachain-authorizer = { path = "authorizer" }
-parachain-authorizer-bin = { path = "authorizer/bin" }
+parachain-authorizer-ed25519 = { path = "authorizer-ed25519" }
+parachain-authorizer-ed25519-bin = { path = "authorizer-ed25519/bin" }
+parachain-authorizer-sr25519 = { path = "authorizer-sr25519" }
+parachain-authorizer-sr25519-bin = { path = "authorizer-sr25519/bin" }
 parachain-service-interface = { path = "service-interface", default-features = false }
 
 codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }
@@ -56,6 +66,7 @@ codec = { version = "3.7", package = "parity-scale-codec", default-features = fa
 # misdecoded by the 0.30 VM (wide stores / memcpy / memset corrupt or trap). `sp-io` moves with it
 # to keep a single, consistent SDK source.
 substrate-wasm-builder = { path = "vendor/polkadot-sdk-companion/substrate/utils/wasm-builder" }
+authorizer-builder = { path = "tools/authorizer-builder" }
 executor = { path = "tools/executor" }
 tiny-keccak = { version = "2.0.2", default-features = false, features = ["keccak"] }
 sp-io = { path = "vendor/polkadot-sdk-companion/substrate/primitives/io", default-features = false }
@@ -67,3 +78,11 @@ codegen-units = 1
 debug = false
 debug-assertions = false
 overflow-checks = false
+
+# Authorizer blobs have a hard 64 kB ceiling (`C_maxauthcodesize`) and 50 M gas for one call;
+# service blobs have 4 MB and gas that is actually under pressure. So they are optimised for
+# different things: `tools/authorizer-builder` builds authorizers with this profile, and
+# `jam_pvm_builder::build_service` builds services with `production`.
+[profile.production-authorizer]
+inherits = "production"
+opt-level = "z"

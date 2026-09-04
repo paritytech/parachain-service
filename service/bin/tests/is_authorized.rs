@@ -5,7 +5,7 @@
 //! requires every authorizer config to begin with a `Vec<ParaId>` (spec §3.2, §7.1).
 
 use executor::pj;
-use parachain_authorizer_bin::BLOB as AUTHORIZER;
+use parachain_authorizer_ed25519_bin::BLOB as AUTHORIZER;
 use parachain_service_bin::mock::{
 	good_config, good_token, is_authorized_args, make_auth, make_auth_with_seed,
 	make_single_collator_args_with_key, make_wrong_collator_index_args, work_items,

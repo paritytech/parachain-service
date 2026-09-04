@@ -44,21 +44,22 @@ fn report(name: &str, gas: u64, elapsed: std::time::Duration, digest_len: usize)
 /// Pinned gas measurements for the benchmarks below.
 mod gas {
 	/// 1024-solicit digest — the heaviest reachable digest replay.
-	pub const MAX_SOLICITS: u64 = 7_779_759;
+	pub const MAX_SOLICITS: u64 = 7_779_769;
 	/// 1024 KV writes filling the report's elective-data limit.
-	pub const MAX_KV_WRITES: u64 = 6_187_865;
+	pub const MAX_KV_WRITES: u64 = 6_186_851;
 	/// 331 outbound transfers to a friendly destination.
-	pub const MAX_TRANSFER_OUTS: u64 = 740_563;
+	pub const MAX_TRANSFER_OUTS: u64 = 740_573;
 	/// 331 outbound transfers to a destination demanding the full cap.
-	pub const MAX_GAS_TRANSFER_OUTS: u64 = 731_578;
+	pub const MAX_GAS_TRANSFER_OUTS: u64 = 731_588;
 	/// Gas for 1024 incoming transfers recorded in one bucket write.
 	pub const MAX_INCOMING_TRANSFERS: u64 = 1_626_053;
 	/// Due `assign` flush for all 341 cores in one block.
 	pub const ALL_DUE_ASSIGNS: u64 = 9_944_072;
 	/// Marginal cost of a realistic destination's memo handler, per transfer.
 	pub const DEST_HANDLER_PER_TRANSFER: u64 = 1_665;
-	/// Gas for one Ed25519 authorization.
-	pub const IS_AUTHORIZED_ED25519: u64 = 1_010_744;
+	/// Gas for one Ed25519 authorization. Built with the `production-authorizer` profile
+	/// (`opt-level = "z"`), which trades this for the 64 kB code ceiling the blob has to fit.
+	pub const IS_AUTHORIZED_ED25519: u64 = 1_230_885;
 }
 
 /// Checks the pinned gas measurements against their budgets.
@@ -236,7 +237,7 @@ fn due_assign_bench_works() {
 #[test]
 fn is_authorized_ed25519_gas_works() {
 	use executor::pj;
-	use parachain_authorizer_bin::BLOB as AUTHORIZER;
+	use parachain_authorizer_ed25519_bin::BLOB as AUTHORIZER;
 	use parachain_service_bin::mock::{is_authorized_args, make_auth, work_items};
 
 	let items = work_items(1);

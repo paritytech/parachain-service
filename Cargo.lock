@@ -489,6 +489,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
+name = "authorizer-builder"
+version = "0.1.0"
+dependencies = [
+ "jam-pvm-builder 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "autocfg"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -937,6 +944,8 @@ version = "0.1.0"
 dependencies = [
  "jam-types",
  "parachain-authorizer",
+ "parachain-authorizer-ed25519",
+ "parachain-authorizer-sr25519",
  "parachain-service",
  "parachain-service-interface",
  "primitive-types",
@@ -2844,23 +2853,59 @@ name = "parachain-authorizer"
 version = "0.1.0"
 dependencies = [
  "blake2b_simd",
+ "jam-pvm-common",
+ "jam-types",
+ "parachain-authorizer",
+ "parachain-authorizer-ed25519",
+ "parachain-authorizer-sr25519",
+ "parachain-service",
+ "parachain-service-interface",
+ "parity-scale-codec",
+ "primitive-types",
+ "sp-core",
+ "sp-keystore",
+]
+
+[[package]]
+name = "parachain-authorizer-ed25519"
+version = "0.1.0"
+dependencies = [
+ "blake2b_simd",
  "ed25519-dalek",
  "jam-pvm-common",
  "jam-types",
  "parachain-authorizer",
- "parachain-service",
- "parachain-service-interface",
- "parity-scale-codec",
  "polkavm-derive 0.36.0",
- "primitive-types",
 ]
 
 [[package]]
-name = "parachain-authorizer-bin"
+name = "parachain-authorizer-ed25519-bin"
 version = "0.1.0"
 dependencies = [
+ "authorizer-builder",
  "jam-pvm-builder 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "parachain-authorizer-ed25519",
+]
+
+[[package]]
+name = "parachain-authorizer-sr25519"
+version = "0.1.0"
+dependencies = [
+ "blake2b_simd",
+ "jam-pvm-common",
+ "jam-types",
  "parachain-authorizer",
+ "polkavm-derive 0.36.0",
+ "schnorrkel",
+]
+
+[[package]]
+name = "parachain-authorizer-sr25519-bin"
+version = "0.1.0"
+dependencies = [
+ "authorizer-builder",
+ "jam-pvm-builder 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
+ "parachain-authorizer-sr25519",
 ]
 
 [[package]]
@@ -2886,7 +2931,6 @@ name = "parachain-service-bin"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "blake2b_simd",
  "ed25519-dalek",
  "executor",
  "frameless",
@@ -2896,7 +2940,7 @@ dependencies = [
  "jam-types",
  "mock-dest-service",
  "parachain-authorizer",
- "parachain-authorizer-bin",
+ "parachain-authorizer-ed25519-bin",
  "parachain-service",
  "parachain-service-bin",
  "parachain-service-interface",

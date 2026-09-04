@@ -1,0 +1,36 @@
+[package]
+name = "parachain-authorizer-sr25519"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+jam-types = { workspace = true }
+jam-pvm-common = { workspace = true, features = ["authorizer", "logging"] }
+parachain-authorizer = { workspace = true }
+# `uninline_portable` keeps blake2b's compression function a real function instead of one fully
+# unrolled body. It is worth ~13 kB of the 64 kB authorizer ceiling, and the authorizer hashes a
+# few dozen bytes per call. Set here rather than on the shared core because the core is also a
+# dependency of `parachain-service`, whose blob wants the unrolled body: its accumulate gas is
+# under real pressure and its 4 MB ceiling is not.
+blake2b_simd = { workspace = true, features = ["uninline_portable"] }
+polkavm-derive = { workspace = true }
+# `default-features = false` is what keeps `getrandom` out: schnorrkel defaults to
+# `std` + `getrandom`, and a bare RISC-V guest has no `getrandom` backend to link. The
+# verify-only path never draws randomness.
+schnorrkel = { workspace = true, features = ["alloc"] }
+
+[features]
+std = [
+	"blake2b_simd/std",
+	"jam-pvm-common/std",
+	"jam-types/std",
+	"parachain-authorizer/std",
+	"schnorrkel/std",
+]
