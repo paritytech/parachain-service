@@ -2,6 +2,7 @@
 
 #![cfg_attr(any(target_arch = "riscv32", target_arch = "riscv64"), no_std)]
 
+pub mod authorization;
 pub mod candidate;
 pub mod host_call;
 pub mod types;

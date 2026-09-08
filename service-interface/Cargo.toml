@@ -21,6 +21,10 @@ jam-types = { workspace = true }
 num_enum = { workspace = true }
 bounded-collections = { workspace = true }
 
+[dev-dependencies]
+# Integration tests only see the crate itself and its dev-dependencies, and the ABI pins encode.
+codec = { workspace = true, features = ["std"] }
+
 [features]
 std = [
 	"codec/std",

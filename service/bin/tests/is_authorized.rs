@@ -5,19 +5,20 @@
 //! requires every authorizer config to begin with a `Vec<ParaId>` (spec §3.2, §7.1).
 
 use executor::pj;
-use parachain_authorizer_bin::BLOB as AUTHORIZER;
+
 use parachain_service_bin::mock::{
 	good_config, good_token, is_authorized_args, make_auth, make_auth_with_seed,
 	make_single_collator_args_with_key, make_wrong_collator_index_args, work_items,
 	MOCK_SERVICE_ID,
 };
 use parachain_service_interface::types::ParaId;
+use parachain_service_bin::{authorizer_blob as authorizer};
 
 #[test]
 fn trivial_works() {
 	let items = work_items(1);
-	let (config, token, _) = make_auth(AUTHORIZER, vec![ParaId(0)], &items);
-	let (engine, package, storage) = is_authorized_args(AUTHORIZER, config, token, items);
+	let (config, token, _) = make_auth(&authorizer(), vec![ParaId(0)], &items);
+	let (engine, package, storage) = is_authorized_args(&authorizer(), config, token, items);
 	pj::is_authorized(&engine, &package, 0, &storage)
 		.expect("is_authorized should run to completion (not trap)");
 }
@@ -27,8 +28,8 @@ fn trivial_works() {
 #[test]
 fn two_work_items_works() {
 	let items = work_items(2);
-	let (config, token, _) = make_auth(AUTHORIZER, vec![ParaId(0), ParaId(1)], &items);
-	let (engine, package, storage) = is_authorized_args(AUTHORIZER, config, token, items);
+	let (config, token, _) = make_auth(&authorizer(), vec![ParaId(0), ParaId(1)], &items);
+	let (engine, package, storage) = is_authorized_args(&authorizer(), config, token, items);
 	pj::is_authorized(&engine, &package, 0, &storage)
 		.expect("is_authorized should run to completion (not trap)");
 }
@@ -36,7 +37,7 @@ fn two_work_items_works() {
 #[test]
 fn more_work_items_than_para_ids_errors() {
 	let (engine, package, storage) =
-		is_authorized_args(AUTHORIZER, good_config(1), good_token(), work_items(2));
+		is_authorized_args(&authorizer(), good_config(1), good_token(), work_items(2));
 
 	pj::is_authorized(&engine, &package, 0, &storage)
 		.expect_err("is_authorized should error (not trap)");
@@ -45,7 +46,7 @@ fn more_work_items_than_para_ids_errors() {
 #[test]
 fn fewer_work_items_than_para_ids_errors() {
 	let (engine, package, storage) =
-		is_authorized_args(AUTHORIZER, good_config(2), good_token(), work_items(1));
+		is_authorized_args(&authorizer(), good_config(2), good_token(), work_items(1));
 
 	pj::is_authorized(&engine, &package, 0, &storage)
 		.expect_err("is_authorized should error (not trap)");
@@ -55,7 +56,7 @@ fn fewer_work_items_than_para_ids_errors() {
 #[test]
 fn no_work_items_errors() {
 	let (engine, package, storage) =
-		is_authorized_args(AUTHORIZER, good_config(0), good_token(), work_items(0));
+		is_authorized_args(&authorizer(), good_config(0), good_token(), work_items(0));
 
 	pj::is_authorized(&engine, &package, 0, &storage)
 		.expect_err("is_authorized should error (not trap)");
@@ -66,7 +67,7 @@ fn config_trailing_data_errors() {
 	let mut config = good_config(1);
 	config.0.extend_from_slice(b"trailing data");
 	let (engine, package, storage) =
-		is_authorized_args(AUTHORIZER, config, good_token(), work_items(1));
+		is_authorized_args(&authorizer(), config, good_token(), work_items(1));
 
 	pj::is_authorized(&engine, &package, 0, &storage)
 		.expect_err("is_authorized should error (not trap)");
@@ -77,7 +78,7 @@ fn token_trailing_data_errors() {
 	let mut token = good_token();
 	token.0.extend_from_slice(b"trailing data");
 	let (engine, package, storage) =
-		is_authorized_args(AUTHORIZER, good_config(1), token, work_items(1));
+		is_authorized_args(&authorizer(), good_config(1), token, work_items(1));
 
 	pj::is_authorized(&engine, &package, 0, &storage)
 		.expect_err("is_authorized should error (not trap)");
@@ -90,7 +91,7 @@ fn token_trailing_data_errors() {
 fn small_order_key_errors() {
 	let small_order_key = [0u8; 32];
 	let (engine, package, storage) = make_single_collator_args_with_key(
-		AUTHORIZER,
+		&authorizer(),
 		vec![ParaId(0)],
 		work_items(1),
 		small_order_key,
@@ -107,7 +108,7 @@ fn small_order_key_errors() {
 fn undecodable_collator_key_errors() {
 	let bad_key = [2u8; 32];
 	let (engine, package, storage) = make_single_collator_args_with_key(
-		AUTHORIZER,
+		&authorizer(),
 		vec![ParaId(0)],
 		work_items(1),
 		bad_key,
@@ -125,7 +126,8 @@ fn undecodable_collator_key_errors() {
 fn proof_for_wrong_index_errors() {
 	let seeds = [[0x42u8; 32], [0x43u8; 32]];
 	let (engine, package, storage) =
-		make_wrong_collator_index_args(AUTHORIZER, vec![ParaId(0)], work_items(1), &seeds, 1);
+		make_wrong_collator_index_args(
+			&authorizer(), vec![ParaId(0)], work_items(1), &seeds, 1);
 	pj::is_authorized(&engine, &package, 0, &storage)
 		.expect_err("Merkle proof for index 1 must be rejected for expected index 0");
 }
@@ -147,8 +149,8 @@ fn ed25519_known_answer_vector_works() {
 	];
 
 	let items = work_items(1);
-	let (config, token, _) = make_auth_with_seed(AUTHORIZER, vec![ParaId(0)], &items, rfc8032_seed);
-	let (engine, package, storage) = is_authorized_args(AUTHORIZER, config, token, items);
+	let (config, token, _) = make_auth_with_seed(&authorizer(), vec![ParaId(0)], &items, rfc8032_seed);
+	let (engine, package, storage) = is_authorized_args(&authorizer(), config, token, items);
 	let outcome = pj::is_authorized(&engine, &package, 0, &storage)
 		.expect("RFC 8032 §7.1 Test Vector 1 must pass is_authorized through the PVM");
 	eprintln!("ed25519_known_answer_vector_works: gas_used={}", outcome.gas_used);

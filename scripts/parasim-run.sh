@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Deploy parasim on a running polkajam testnet and walk a para's head forward, then show that a
+# package with a bad ancestry proof is rejected and leaves the head where it was.
+#
+# This is the phase-4 story end to end: a package must prove what the para's previous head was, so
+# heads advance only by chaining onto the stored one.
+#
+# Prereqs:
+#   - a polkajam testnet with RPC at ${JAM_RPC:-ws://localhost:19800}
+#   - a built `jamt` at the default path below, or JAMT pointing at one
+#
+# Usage: scripts/parasim-run.sh [num_heads [service_id]]
+
+set -euo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$HERE/.." && pwd)"
+NUM_HEADS="${1:-2}"
+SERVICE_ID="${2:-5}"
+JAMT="${JAMT:-/home/miszka/parity/46-jam-cummulus-side-2/polkajam/target/release/jamt}"
+# Funds the service's state balance, which is what pays for set_storage. Without it accumulate
+# fails with "Balance too low for storage change" and no head is ever written.
+ENDOWMENT="${ENDOWMENT:-1000000000000000000}"
+
+cd "$ROOT"
+
+cargo build --release -p parasim-service-bin -p parasim-tool
+BLOB="$(find target -type f -name 'parasim-service.jam' | head -n1)"
+test -s "$BLOB" || { echo "no parasim blob built (was SKIP_PVM_BUILDS set?)" >&2; exit 1; }
+TOOL="target/release/parasim-tool"
+
+NEW_ID="$("$JAMT" create-service "$BLOB" "$ENDOWMENT" --register=parasim --raw --id "$SERVICE_ID")"
+echo "parasim service id: $NEW_ID"
+
+# No sleep needed here: the sender waits for the service code to reach the lookup anchor, which is
+# what a fresh deploy has to wait for (otherwise JAM answers BadCode and refine never runs).
+
+# The first package proves the para has no head yet and so starts it; each later one chains onto
+# the head the previous package stored.
+for n in $(seq "$NUM_HEADS"); do
+	echo
+	echo "=== package $n ==="
+	"$TOOL" --service "$SERVICE_ID" send
+done
+
+echo
+echo "=== tampered proof: refine must reject, and the head must not move ==="
+"$TOOL" --service "$SERVICE_ID" send --tamper || echo "(rejected, as expected)"

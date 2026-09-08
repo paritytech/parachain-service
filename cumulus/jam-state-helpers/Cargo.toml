@@ -1,0 +1,25 @@
+[package]
+name = "jam-state-helpers"
+description = "no_std JAM state-key derivation and GP-trie state-proof verification"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+blake2b_simd = { workspace = true }
+codec = { workspace = true }
+
+[dev-dependencies]
+# Byte-pin the derivation and the trie roots against polkajam's own (std-only) implementations,
+# so this crate cannot drift from the node that serves the proofs.
+jam-std-common = { workspace = true }
+polkajam-trie = { workspace = true }
+
+[features]
+default = []
+std = ["blake2b_simd/std", "codec/std"]
