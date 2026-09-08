@@ -43,3 +43,6 @@ parachain-service-bin = { workspace = true, optional = true }
 # byte-compat test with `--features test-utils`.
 [dev-dependencies]
 parachain-service-interface = { workspace = true }
+
+[package.metadata.jam]
+type = "service"

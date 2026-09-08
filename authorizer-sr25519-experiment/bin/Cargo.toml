@@ -12,10 +12,10 @@ publish = false
 workspace = true
 
 [dependencies]
-jam-pvm-builder = { version = "0.1.28" }
+cargo-jam-build = { path = "../../vendor/polkajam/crates/cargo-jam-build" }
 
 [build-dependencies]
-pvm-builder = { path = "../../tools/pvm-builder" }
+jam-blob = { path = "../../tools/jam-blob" }
 parachain-authorizer-sr25519-experiment = { path = ".." }
 
 # `tests/gas.rs` only. It drives both blobs through the PolkaJAM interpreter itself instead of
@@ -24,7 +24,6 @@ parachain-authorizer-sr25519-experiment = { path = ".." }
 [dev-dependencies]
 parachain-authorizer-sr25519-experiment = { path = ".." }
 parachain-authorizer = { path = "../../authorizer" }
-parachain-authorizer-ed25519-bin = { path = "../../authorizer-ed25519/bin" }
 jam-node = { path = "../../vendor/polkajam/crates/node", default-features = false, features = ["hazmat"] }
 jam-std-common = { path = "../../vendor/polkajam/crates/jam-std-common" }
 jam-types = { path = "../../vendor/polkajam/crates/jam-types", features = ["std"] }

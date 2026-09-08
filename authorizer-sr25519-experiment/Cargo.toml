@@ -53,3 +53,7 @@ primitive-types = { version = "0.13.1", default-features = false, features = ["c
 # `std` + `getrandom`, and on a bare RISC-V guest there is no `getrandom` backend to link. The
 # verify-only path never draws randomness, so `alloc` alone is enough — see `README.md`.
 schnorrkel = { version = "0.11.5", default-features = false, features = ["alloc"] }
+
+[package.metadata.jam]
+type = "authorizer"
+profile = "production-authorizer"

@@ -130,7 +130,7 @@ macro_rules! auth {
 
 #[test]
 fn ed25519_vs_sr25519_gas() {
-	let ed_blob = parachain_authorizer_ed25519_bin::BLOB;
+	let ed_blob = &parachain_authorizer_sr25519_experiment_bin::ed25519_blob();
 	let signing_key = ed25519_dalek::SigningKey::from_bytes(&SEED);
 	let (config, token) = {
 		use ed25519_dalek::Signer;
@@ -143,7 +143,7 @@ fn ed25519_vs_sr25519_gas() {
 	};
 	let ed_gas = run(ed_blob, config, token);
 
-	let sr_blob = parachain_authorizer_sr25519_experiment_bin::BLOB;
+	let sr_blob = &parachain_authorizer_sr25519_experiment_bin::blob();
 	let keypair = schnorrkel::MiniSecretKey::from_bytes(&SEED)
 		.expect("valid mini secret key")
 		.expand_to_keypair(schnorrkel::ExpansionMode::Ed25519);

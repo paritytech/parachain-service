@@ -24,3 +24,7 @@ std = [
 	"jam-types/std",
 	"parachain-authorizer/std",
 ]
+
+[package.metadata.jam]
+type = "authorizer"
+profile = "production-authorizer"

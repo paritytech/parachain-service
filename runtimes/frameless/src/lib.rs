@@ -43,11 +43,6 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 	unsafe { core::arch::asm!("unimp", options(noreturn)) }
 }
 
-// The runtime blob `substrate-wasm-builder` embeds for the host build:
-// `WASM_BINARY: Option<&[u8]>`. Absent in the guest build.
-#[cfg(feature = "std")]
-include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
-
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use tiny_keccak::{Hasher as _, Keccak};

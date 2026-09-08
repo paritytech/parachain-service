@@ -8,8 +8,8 @@ license.workspace = true
 publish = false
 
 # Plain `rlib` (the default): see the note in `service/Cargo.toml`. This crate is not a blob of
-# its own; `parachain-authorizer-{ed25519,sr25519}` are, and each build-depends on itself for
-# `MANIFEST_DIR` while `jam-pvm-builder` forces `--crate-type=cdylib` for the blob.
+# its own; `parachain-authorizer-{ed25519,sr25519}` are, and each declares itself one in its
+# `[package.metadata.jam]`.
 
 [lints]
 workspace = true

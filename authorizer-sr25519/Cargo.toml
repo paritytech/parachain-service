@@ -27,3 +27,7 @@ std = [
 	"parachain-authorizer/std",
 	"schnorrkel/std",
 ]
+
+[package.metadata.jam]
+type = "authorizer"
+profile = "production-authorizer"

@@ -1,21 +1,39 @@
-//! PVM blob builder for the parachain service.
+//! The PVM blobs the parachain service's tests need.
 //!
-//! The blob is compiled from the `parachain-service` guest crate by this crate's
-//! `build.rs` (via `jam-pvm-builder`) and embedded here at compile time. Depend on
-//! this crate to get the service blob without a separate `just build` step; a bare
-//! `cargo test` rebuilds it automatically when the guest source changes.
+//! Each is compiled from its guest crate on demand by `cargo-jam-build`, at most once per
+//! process, and the guest's own `[package.metadata.jam]` says how. Nothing is embedded at compile
+//! time, so building this crate does not build a blob.
 
 /// The service's JAM program blob.
-pub const BLOB: &[u8] = jam_pvm_builder::pvm_binary!("parachain-service");
+pub fn blob() -> Vec<u8> {
+	cargo_jam_build::blob("parachain-service")
+}
 
-/// Blake2b-256 hash of [`BLOB`] (its JAM code hash).
-pub const HASH: [u8; 32] = *jam_pvm_builder::pvm_binary_hash!("parachain-service");
+/// Blake2b-256 hash of [`blob`] (its JAM code hash).
+pub fn hash() -> [u8; 32] {
+	cargo_jam_build::hash("parachain-service")
+}
 
 /// The mock transfer-destination service blob (gas benchmarks only) — a
 /// realistic memo handler standing in for a legitimate `TransferOut`
 /// destination, to size `MAX_TRANSFER_GAS`.
 #[cfg(feature = "test-utils")]
-pub const MOCK_DEST_BLOB: &[u8] = jam_pvm_builder::pvm_binary!("mock-dest-service");
+pub fn mock_dest_blob() -> Vec<u8> {
+	cargo_jam_build::blob("mock-dest-service")
+}
+
+/// The ed25519 authorizer's JAM program blob, which the service's tests authorize with.
+#[cfg(feature = "test-utils")]
+pub fn authorizer_blob() -> Vec<u8> {
+	cargo_jam_build::blob("parachain-authorizer-ed25519")
+}
+
+/// The frameless runtime's PVF: the linked program, not a JAM container, because that is what
+/// the service resolves `jam_validate_block` out of and runs as a nested PVM.
+#[cfg(feature = "test-utils")]
+pub fn frameless_pvf() -> Vec<u8> {
+	cargo_jam_build::program("frameless")
+}
 
 #[cfg(feature = "test-utils")]
 pub mod mock;

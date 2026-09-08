@@ -751,6 +751,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "camino"
+version = "1.2.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb1307f12aa967b5a58416e87b3653360e0fd614a016b6e970db08fecbb1b80d"
+dependencies = [
+ "serde_core",
+]
+
+[[package]]
+name = "cargo-jam-build"
+version = "0.1.28"
+dependencies = [
+ "anyhow",
+ "blake2b_simd",
+ "cargo_metadata",
+ "clap",
+ "jam-codec",
+ "jam-program-blob-common",
+ "polkavm-linker",
+ "serde_json",
+]
+
+[[package]]
+name = "cargo-platform"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e35af189006b9c0f00a064685c727031e3ed2d8020f7ba284d78cc2671bd36ea"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "cargo_metadata"
+version = "0.19.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd5eb614ed4c27c5d706420e4320fbe3216ab31fa1c33cd8246ac36dae4479ba"
+dependencies = [
+ "camino",
+ "cargo-platform",
+ "semver",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "castaway"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1568,7 +1614,6 @@ dependencies = [
  "parachain-service-interface",
  "parity-scale-codec",
  "polkavm-derive 0.36.0",
- "pvm-builder",
  "sp-io",
  "tiny-keccak",
 ]
@@ -2214,26 +2259,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8f42a60cbdf9a97f5d2305f08a87dc4e09308d1276d28c869c684d7777685682"
 
 [[package]]
-name = "jam-bootstrap-service"
-version = "0.1.28"
-dependencies = [
- "bounded-collections",
- "jam-bootstrap-service-common",
- "jam-codec",
- "jam-pvm-common",
- "jam-types",
- "polkavm-derive 0.30.0",
-]
-
-[[package]]
-name = "jam-bootstrap-service-bin"
-version = "0.1.28"
-dependencies = [
- "jam-bootstrap-service",
- "jam-pvm-builder 0.1.28",
-]
-
-[[package]]
 name = "jam-bootstrap-service-common"
 version = "0.1.28"
 dependencies = [
@@ -2243,6 +2268,18 @@ dependencies = [
  "rand 0.9.5",
  "serde",
  "thiserror 2.0.19",
+]
+
+[[package]]
+name = "jam-chainspec"
+version = "0.1.28"
+dependencies = [
+ "bounded-collections",
+ "jam-codec",
+ "jam-std-common",
+ "jam-types",
+ "thiserror 2.0.19",
+ "tinyjson",
 ]
 
 [[package]]
@@ -2284,6 +2321,7 @@ dependencies = [
  "blake2b_simd",
  "bounded-collections",
  "bytes",
+ "cargo-jam-build",
  "castaway",
  "chrono",
  "derive-where",
@@ -2294,11 +2332,11 @@ dependencies = [
  "futures",
  "hex-literal",
  "im",
- "jam-bootstrap-service-bin",
  "jam-bootstrap-service-common",
+ "jam-chainspec",
  "jam-codec",
  "jam-null-authorizer-bin",
- "jam-program-blob-common 0.1.28",
+ "jam-program-blob-common",
  "jam-std-common",
  "jam-types",
  "log",
@@ -2343,46 +2381,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jam-program-blob-common"
-version = "0.1.28"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96f007b097811de6c3fbd7d48773afc627409a13dc445e133ff8973f0ce30f6e"
-dependencies = [
- "jam-codec",
- "polkavm",
-]
-
-[[package]]
-name = "jam-pvm-builder"
-version = "0.1.28"
-dependencies = [
- "blake2b_simd",
- "jam-codec",
- "jam-program-blob-common 0.1.28",
- "jobserver",
- "polkavm-linker",
- "serde",
- "serde_json",
- "toml",
-]
-
-[[package]]
-name = "jam-pvm-builder"
-version = "0.1.28"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9d29d3b18d5680af215b1e536e5051e0b8e51cf9f7b23893ca68f8172a477e27"
-dependencies = [
- "blake2b_simd",
- "jam-codec",
- "jam-program-blob-common 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "jobserver",
- "polkavm-linker",
- "serde",
- "serde_json",
- "toml",
-]
-
-[[package]]
 name = "jam-pvm-common"
 version = "0.1.28"
 dependencies = [
@@ -2413,6 +2411,7 @@ dependencies = [
  "blake2b_simd",
  "bounded-collections",
  "bytes",
+ "castaway",
  "ed25519-consensus",
  "futures",
  "jam-codec",
@@ -2482,16 +2481,6 @@ checksum = "38c0b942f458fe50cdac086d2f946512305e5631e720728f2a61aabcd47a6264"
 dependencies = [
  "quote",
  "syn 2.0.119",
-]
-
-[[package]]
-name = "jobserver"
-version = "0.1.35"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c00acbd29eabad4a2392fa0e921c874934dbbf4194312ad20f04a0ed67a3cb3"
-dependencies = [
- "getrandom 0.4.3",
- "libc",
 ]
 
 [[package]]
@@ -3089,15 +3078,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "parachain-authorizer-ed25519-bin"
-version = "0.1.0"
-dependencies = [
- "jam-pvm-builder 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "parachain-authorizer-ed25519",
- "pvm-builder",
-]
-
-[[package]]
 name = "parachain-authorizer-sr25519"
 version = "0.1.0"
 dependencies = [
@@ -3106,15 +3086,6 @@ dependencies = [
  "parachain-authorizer",
  "polkavm-derive 0.36.0",
  "schnorrkel",
-]
-
-[[package]]
-name = "parachain-authorizer-sr25519-bin"
-version = "0.1.0"
-dependencies = [
- "jam-pvm-builder 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "parachain-authorizer-sr25519",
- "pvm-builder",
 ]
 
 [[package]]
@@ -3141,22 +3112,19 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "blake2b_simd",
+ "cargo-jam-build",
  "ed25519-dalek",
  "executor",
  "frameless",
  "jam-node",
- "jam-pvm-builder 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
  "jam-std-common",
  "jam-types",
- "mock-dest-service",
  "parachain-authorizer",
- "parachain-authorizer-ed25519-bin",
  "parachain-service",
  "parachain-service-bin",
  "parachain-service-interface",
  "parity-scale-codec",
  "primitive-types",
- "pvm-builder",
  "tiny-keccak",
 ]
 
@@ -3183,15 +3151,6 @@ dependencies = [
  "parachain-service-interface",
  "parity-scale-codec",
  "polkavm-derive 0.36.0",
-]
-
-[[package]]
-name = "parasim-service-bin"
-version = "0.1.0"
-dependencies = [
- "jam-pvm-builder 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "parasim-service",
- "pvm-builder",
 ]
 
 [[package]]
@@ -3626,18 +3585,6 @@ dependencies = [
  "memchr",
  "parking_lot",
  "thiserror 1.0.69",
-]
-
-[[package]]
-name = "pvm-builder"
-version = "0.1.0"
-dependencies = [
- "blake2b_simd",
- "jam-codec",
- "jam-program-blob-common 0.1.28 (registry+https://github.com/rust-lang/crates.io-index)",
- "jobserver",
- "polkavm-linker",
- "serde_json",
 ]
 
 [[package]]
@@ -4249,6 +4196,10 @@ name = "semver"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
+dependencies = [
+ "serde",
+ "serde_core",
+]
 
 [[package]]
 name = "serde"

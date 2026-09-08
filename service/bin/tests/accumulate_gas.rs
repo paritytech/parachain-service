@@ -13,7 +13,6 @@ mod common;
 use codec::Encode;
 use common::*;
 use jam_types::{AccumulateItem, Memo as JamMemo, TransferRecord};
-use parachain_service_bin::MOCK_DEST_BLOB;
 use parachain_service::{
 	constants::{CORE_COUNT, MAX_TRANSFER_GAS},
 	state::{
@@ -26,6 +25,7 @@ use parachain_service_interface::{
 	types::{CoreIndex, Hash, ParaId, ASSET_HUB_PARA_ID},
 	upward_message::{Target, UpwardMessage, MAX_UPWARD_MESSAGES_PER_DIGEST},
 };
+use parachain_service_bin::{mock_dest_blob as mock_dest_blob, authorizer_blob as authorizer};
 
 const NOW: u32 = 100;
 const PARA: ParaId = ParaId(1000);
@@ -57,22 +57,22 @@ fn report(name: &str, gas: u64, elapsed: std::time::Duration, digest_len: usize)
 /// the margin invariant against the new value.
 mod measured {
 	/// 1024-solicit digest — the heaviest reachable digest replay.
-	pub const SOLICIT_FLOOD: u64 = 7_767_371;
+	pub const SOLICIT_FLOOD: u64 = 7_834_768;
 	/// 1024 small KV writes.
-	pub const SET_KV_FLOOD: u64 = 5_912_858;
+	pub const SET_KV_FLOOD: u64 = 6_005_581;
 	/// 1024 outbound transfers to a friendly destination (digest exceeds `Wr`).
-	pub const TRANSFER_OUT_FLOOD: u64 = 3_286_907;
+	pub const TRANSFER_OUT_FLOOD: u64 = 3_241_390;
 	/// 331 outbound transfers to a destination demanding the full cap (F-13).
-	pub const HOSTILE_DEST_FLOOD: u64 = 34_018_632;
+	pub const HOSTILE_DEST_FLOOD: u64 = 34_007_761;
 	/// 1024 incoming transfers recorded in one bucket write (D-8).
-	pub const INCOMING_TRANSFER_FLOOD: u64 = 1_588_351;
+	pub const INCOMING_TRANSFER_FLOOD: u64 = 1_588_348;
 	/// Due `assign` flush for all 341 cores in one block (F-12).
-	pub const DUE_ASSIGN_FLOOD: u64 = 9_083_722;
+	pub const DUE_ASSIGN_FLOOD: u64 = 9_083_718;
 	/// Marginal cost of a realistic destination's memo handler, per transfer.
 	pub const DEST_HANDLER_PER_TRANSFER: u64 = 1_638;
 	/// Gas for a single real ed25519 is_authorized call (Merkle proof + ed25519
 	/// verify_strict) — must stay under Gi/5 per the 20% margin requirement.
-	pub const IS_AUTHORIZED_ED25519: u64 = 1_019_411;
+	pub const IS_AUTHORIZED_ED25519: u64 = 1_228_262;
 }
 
 /// The F-10 invariant, statically: every reachable worst case must leave real
@@ -233,11 +233,11 @@ fn dest_handler_flood_works() {
 	// transfer). The empty-block run isolates the per-transfer marginal cost
 	// from the invocation overhead.
 	let (empty, _, _) =
-		run_block_for(MOCK_DEST_BLOB, fresh_storage_for(MOCK_DEST_BLOB, |_| {}), vec![], NOW);
+		run_block_for(&mock_dest_blob(), fresh_storage_for(&mock_dest_blob(), |_| {}), vec![], NOW);
 	let items = (0..FLOOD).map(dest_transfer_item).collect();
 
 	let (outcome, storage, _) =
-		run_block_for(MOCK_DEST_BLOB, fresh_storage_for(MOCK_DEST_BLOB, |_| {}), items, NOW);
+		run_block_for(&mock_dest_blob(), fresh_storage_for(&mock_dest_blob(), |_| {}), items, NOW);
 
 	let per_transfer = (outcome.gas_used - empty.gas_used) / FLOOD as u64;
 	report("dest_handler_flood", outcome.gas_used, outcome.elapsed, 0);
@@ -317,13 +317,12 @@ fn due_assign_flood_works() {
 #[test]
 fn is_authorized_ed25519_gas_works() {
 	use executor::pj;
-	use parachain_authorizer_ed25519_bin::BLOB as AUTHORIZER;
 	use parachain_service_bin::mock::{is_authorized_args, make_auth, work_items};
 	use parachain_service_interface::types::ParaId;
 
 	let items = work_items(1);
-	let (config, token, _) = make_auth(AUTHORIZER, vec![ParaId(0)], &items);
-	let (engine, package, storage) = is_authorized_args(AUTHORIZER, config, token, items);
+	let (config, token, _) = make_auth(&authorizer(), vec![ParaId(0)], &items);
+	let (engine, package, storage) = is_authorized_args(&authorizer(), config, token, items);
 
 	let outcome = pj::is_authorized(&engine, &package, 0, &storage)
 		.expect("is_authorized must succeed with real ed25519 signature");

@@ -22,14 +22,13 @@ use parachain_service::{
 	state_balance::{baseline_for, preimage_footprint},
 	work_digest::{ParachainWorkDigest, RefineLog, ValidationCodeHash, ValidationCodeRef},
 };
-use parachain_service_bin::{
-	mock::{accumulate_context, provide_preimage, MOCK_SERVICE_ID},
-	BLOB as SERVICE,
-};
+use parachain_service_bin::mock::{accumulate_context, provide_preimage, MOCK_SERVICE_ID};
+
 use parachain_service_interface::{
 	types::{Balance, ParaId, ServiceId, Timeslot},
 	upward_message::{TransferOutArgs, UpwardMessage},
 };
+use parachain_service_bin::{blob as service};
 
 pub const SVC: ServiceId = MOCK_SERVICE_ID;
 /// A generously funded default `total_state_balance`.
@@ -63,7 +62,7 @@ pub fn run_block(
 	items: Vec<AccumulateItem>,
 	slot: Timeslot,
 ) -> (AccumulateOutcome, Storage, jam_node::vm::StateMutations) {
-	run_block_for(SERVICE, storage, items, slot)
+	run_block_for(&service(), storage, items, slot)
 }
 
 /// [`run_block`] for an arbitrary service `blob` (e.g. the mock transfer
@@ -85,7 +84,7 @@ pub fn run_block_for(
 
 /// Fresh storage holding the service blob, seeded via `seed`.
 pub fn fresh_storage(seed: impl FnOnce(&mut Storage)) -> Storage {
-	fresh_storage_for(SERVICE, seed)
+	fresh_storage_for(&service(), seed)
 }
 
 /// [`fresh_storage`] for an arbitrary service `blob`.
