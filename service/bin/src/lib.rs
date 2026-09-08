@@ -29,10 +29,11 @@ pub fn authorizer_blob() -> Vec<u8> {
 }
 
 /// The frameless runtime's PVF: the linked program, not a JAM container, because that is what
-/// the service resolves `jam_validate_block` out of and runs as a nested PVM.
+/// the service resolves `jam_validate_block` out of and runs as a nested PVM. The crate declares
+/// `keep-symbols`, which is what makes its blob that program.
 #[cfg(feature = "test-utils")]
 pub fn frameless_pvf() -> Vec<u8> {
-	cargo_jam_build::program("frameless")
+	cargo_jam_build::blob("frameless")
 }
 
 #[cfg(feature = "test-utils")]

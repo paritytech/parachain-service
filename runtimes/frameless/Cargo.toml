@@ -35,3 +35,6 @@ workspace = true
 type = "generic"
 cargo-args = ["--no-default-features"]
 rustflags = ["--cfg", "substrate_runtime"]
+# A PVF is entered by name: the service resolves `jam_validate_block` and runs it as a nested
+# PVM, so it needs the export table and the raw program rather than a JAM container.
+keep-symbols = true

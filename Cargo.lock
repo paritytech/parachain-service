@@ -771,6 +771,7 @@ dependencies = [
  "jam-program-blob-common",
  "polkavm-linker",
  "serde_json",
+ "toml",
 ]
 
 [[package]]
