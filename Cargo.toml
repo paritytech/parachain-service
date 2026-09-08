@@ -3,6 +3,7 @@ members = [
     "authorizer",
     "authorizer-ed25519",
     "authorizer-sr25519",
+    "chain-spec",
     "cumulus",
     "cumulus/jam-state-helpers",
     "runtimes/frameless",
@@ -42,6 +43,7 @@ polkajam-trie = { package = "trie", path = "vendor/polkajam/crates/trie" }
 jam-null-authorizer-bin = { path = "vendor/polkajam/services/null-authorizer-bin" }
 cargo-jam-build = { path = "vendor/polkajam/crates/cargo-jam-build" }
 jam-bootstrap-service-common = { path = "vendor/polkajam/services/bootstrap-service/common", features = ["std"] }
+jam-chainspec = { path = "vendor/polkajam/crates/jam-chainspec" }
 sp-core = { path = "vendor/polkadot-sdk-companion/substrate/primitives/core", default-features = false }
 sp-keystore = { path = "vendor/polkadot-sdk-companion/substrate/primitives/keystore" }
 async-stream = "0.3"
@@ -88,6 +90,7 @@ cumulus-jam-rpc-interface = { git = "https://github.com/paritytech/polkadot-sdk.
 jam-state-helpers = { path = "cumulus/jam-state-helpers", default-features = false }
 
 codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }
+thiserror = "2.0"
 # Every PVM blob, the frameless PVF included, is linked by the vendored polkajam's
 # `cargo-jam-build` (polkavm-linker 0.30) and NOT by the vendored companion's
 # `substrate-wasm-builder` (whose workspace pins polkavm-linker 0.36): a 0.36-linked blob emits

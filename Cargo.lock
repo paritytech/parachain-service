@@ -3090,6 +3090,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "parachain-chain-spec"
+version = "0.1.0"
+dependencies = [
+ "blake2b_simd",
+ "jam-chainspec",
+ "jam-std-common",
+ "jam-types",
+ "parachain-authorizer",
+ "parachain-service",
+ "parachain-service-interface",
+ "parity-scale-codec",
+ "primitive-types",
+ "thiserror 2.0.19",
+]
+
+[[package]]
 name = "parachain-service"
 version = "0.1.0"
 dependencies = [
