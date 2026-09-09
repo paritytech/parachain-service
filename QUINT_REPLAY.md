@@ -547,7 +547,7 @@ neither in its proposed manifest — while `service/bin` dev-depends on it.
 `service/bin` already has the `test-utils` feature and a self dev-dependency that
 pulls in `jam-node`, `executor`, `codec` and `jam-std-common`. So:
 
-- `service/bin/tests/common/itf/` — `mod.rs`, `value.rs`, `codex.rs`,
+- `service/bin/tests/quint_replay/itf/` — `mod.rs`, `value.rs`, `codex.rs`,
   `seed.rs`, `classify.rs`, `compare.rs`, `ledger.rs`
 - `service/bin/tests/quint_replay.rs` — the test entry point
 - `service/bin/tests/fixtures/quint/*.itf.json` — normalized traces
@@ -676,13 +676,13 @@ not exist yet.
 | `scripts/common.justfile` | Edit | `QUINT_SPEC`, `QUINT_FIXTURES` (no `../`) |
 | `scripts/quint.justfile` | New | generate / replay targets |
 | `service/bin/Cargo.toml` | Edit | `serde_json = "1"` in `[dev-dependencies]` |
-| `service/bin/tests/common/itf/mod.rs` | New | module wiring + public entry points |
-| `service/bin/tests/common/itf/value.rs` | New | `ItfValue` + extractors |
-| `service/bin/tests/common/itf/codex.rs` | New | int ↔ hash ↔ preimage-bytes ↔ head-data |
-| `service/bin/tests/common/itf/seed.rs` | New | initial-frame seeding incl. preimage status |
-| `service/bin/tests/common/itf/classify.rs` | New | frame classifier |
-| `service/bin/tests/common/itf/ledger.rs` | New | divergence ledger |
-| `service/bin/tests/common/itf/compare.rs` | New | full-field compare + structured diff |
+| `service/bin/tests/quint_replay/itf/mod.rs` | New | module wiring + public entry points |
+| `service/bin/tests/quint_replay/itf/value.rs` | New | `ItfValue` + extractors |
+| `service/bin/tests/quint_replay/itf/codex.rs` | New | int ↔ hash ↔ preimage-bytes ↔ head-data |
+| `service/bin/tests/quint_replay/itf/seed.rs` | New | initial-frame seeding incl. preimage status |
+| `service/bin/tests/quint_replay/itf/classify.rs` | New | frame classifier |
+| `service/bin/tests/quint_replay/itf/ledger.rs` | New | divergence ledger |
+| `service/bin/tests/quint_replay/itf/compare.rs` | New | full-field compare + structured diff |
 | `service/bin/tests/quint_replay.rs` | New | one `#[test]` per trace |
 | `service/bin/tests/fixtures/quint/*.itf.json` | New | 11 normalized fixtures (`just quint trace-generate`) |
 | `QUINT_REPLAY.md` | This file | |

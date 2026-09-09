@@ -3,7 +3,7 @@
 
 use serde_json::{json, Value};
 
-use crate::common::itf::replay;
+use crate::itf::replay;
 
 #[test]
 fn too_many_validator_keys_works() {
