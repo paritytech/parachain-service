@@ -215,3 +215,9 @@ fn stale_parent_candidate_rejected_works() {
 	))
 	.expect("Quint and Rust state should agree after every frame");
 }
+
+#[test]
+fn refine_error_replay_works() {
+	common::itf::replay::trace(include_str!("fixtures/quint/refine_error_replay.itf.json"))
+		.expect("a logged RefineLogEntry and a gray-paper work error should both replay");
+}

@@ -3,6 +3,7 @@
 pub mod classify;
 pub mod codex;
 pub mod compare;
+pub mod refine_log;
 pub mod replay;
 pub mod seed;
 pub mod value;

@@ -2,7 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use jam_std_common::hash_raw;
 use jam_types::{AuthTrace, AuthorizerHash, Hash};
-use parachain_service::work_digest::{ValidationCodeHash, ValidationCodeRef};
+use parachain_service::work_digest::{
+	ValidationCodeHash, ValidationCodeRef, MAX_REFINE_OUTPUT_SIZE,
+};
 use parachain_service_bin::blob as service;
 use parachain_service_interface::types::{HeadData, ParaId};
 
@@ -131,8 +133,10 @@ impl Codex {
 	pub fn auth_trace(len: i128) -> Result<AuthTrace, String> {
 		let len =
 			usize::try_from(len).map_err(|_| format!("auth trace length out of range: {len}"))?;
-		if len > 256 {
-			return Err(format!("auth trace length exceeds 256: {len}"));
+		if len > MAX_REFINE_OUTPUT_SIZE {
+			return Err(format!(
+				"auth trace length exceeds the report limit {MAX_REFINE_OUTPUT_SIZE}: {len}"
+			));
 		}
 		Ok(AuthTrace(vec![0xaa; len]))
 	}
@@ -199,7 +203,9 @@ mod tests {
 	}
 
 	#[test]
-	fn auth_trace_over_cap_errors() {
-		assert!(Codex::auth_trace(257).unwrap_err().contains("exceeds 256"));
+	fn auth_trace_over_report_limit_errors() {
+		assert!(Codex::auth_trace((MAX_REFINE_OUTPUT_SIZE + 1) as i128)
+			.unwrap_err()
+			.contains("exceeds the report limit"));
 	}
 }

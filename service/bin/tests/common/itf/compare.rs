@@ -2,13 +2,16 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use jam_node::vm::Storage;
 use parachain_service::state::{
-	para_info::ParaInfo, preimage_registry::PreimageEntry, storage_key, Tag,
+	log::{LogEntry, ParachainLog, StoredAuthTrace},
+	para_info::ParaInfo,
+	preimage_registry::PreimageEntry,
+	storage_key, Tag,
 };
 use parachain_service_bin::mock::MOCK_SERVICE_ID;
 use parachain_service_interface::types::Hash;
 use serde_json::Value;
 
-use super::{codex::Codex, replay::*, seed::validation_code};
+use super::{codex::Codex, refine_log::refine_log, replay::*, seed::validation_code};
 use crate::common::get_state;
 
 /// Compare every field of every Quint parachain record with Rust storage.
@@ -73,7 +76,60 @@ pub fn state(
 	}
 
 	service_code_hash(storage, svc, codex, frame)?;
+	parachain_logs(storage, svc, codex, frame)?;
 	preimages(storage, svc, codex, frame)?;
+	Ok(())
+}
+
+fn parachain_logs(
+	storage: &Storage,
+	svc: &Value,
+	codex: &mut Codex,
+	frame: usize,
+) -> Result<(), String> {
+	let mut expected = BTreeMap::new();
+	for (para_value, log_value) in map_entries(field(svc, "parachainLog")?)? {
+		let para = para_id(para_value, codex)?;
+		let entries = log_value.as_array().ok_or("parachainLog value must be a list")?;
+		let mut log = ParachainLog::with_capacity(entries.len());
+		for entry in entries {
+			let pair = tuple(entry)?;
+			if pair.len() != 2 {
+				return Err("parachainLog entry must contain a timeslot and LogEntry".into());
+			}
+			let slot = u32::try_from(integer(&pair[0])?)
+				.map_err(|_| "parachainLog timeslot out of range")?;
+			let (tag, value) = variant(&pair[1])?;
+			let entry = match tag {
+				"RefineLogEntry" => {
+					let error = refine_log(field(value, "error")?)?;
+					let trace = Codex::auth_trace(integer(field(value, "authTrace")?)?)?;
+					let auth_trace: StoredAuthTrace = trace.0.try_into().map_err(|_| {
+						"stored auth trace exceeds the 256-byte service limit".to_string()
+					})?;
+					LogEntry::Refine { error, auth_trace }
+				},
+				other => return Err(format!("unsupported parachain log entry {other}")),
+			};
+			log.push((slot, entry));
+		}
+		if expected.insert(para, log).is_some() {
+			return Err(format!("duplicate svc.parachainLog key for para {}", para.0));
+		}
+	}
+
+	let paras = codex.paras().collect::<Vec<_>>();
+	for para in paras {
+		let actual: ParachainLog =
+			get_state(storage, &storage_key(Tag::ParachainLog, &para)).unwrap_or_default();
+		let expected = expected.get(&para).cloned().unwrap_or_default();
+		if actual != expected {
+			return Err(format!(
+				"frame {frame}: svc.parachainLog[{}] differs; Quint={expected:?}; Rust={actual:?}",
+				para.0
+			));
+		}
+	}
 	Ok(())
 }
 
@@ -214,6 +270,7 @@ impl RequestStatus {
 #[cfg(test)]
 mod tests {
 	use jam_types::CodeHash;
+	use parachain_service::work_digest::RefineLog;
 
 	use super::*;
 	use crate::common::{fresh_storage, set_state};
@@ -276,6 +333,25 @@ mod tests {
 
 		let error = state(&storage, frame, &mut codex, 0).unwrap_err();
 		assert!(error.contains("svc.preimageStatus[(1, 65536)] differs"));
+	}
+
+	#[test]
+	fn parachain_log_diff_errors() {
+		let fixture = fixture();
+		let frame = &fixture["states"][0];
+		let (mut storage, mut codex) = seeded(frame);
+		let para = Codex::para_id(1).unwrap();
+		let log = vec![(
+			0,
+			LogEntry::Refine {
+				error: RefineLog::InvalidCodeHash,
+				auth_trace: StoredAuthTrace::default(),
+			},
+		)];
+		set_state(&mut storage, &storage_key(Tag::ParachainLog, &para), &log);
+
+		let error = state(&storage, frame, &mut codex, 0).unwrap_err();
+		assert!(error.contains("svc.parachainLog[1] differs"));
 	}
 
 	#[test]
