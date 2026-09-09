@@ -1,4 +1,6 @@
+#[path = "../common/mod.rs"]
 mod common;
+mod refine_errors;
 
 use common::*;
 use jam_node::vm::Storage;
@@ -179,7 +181,7 @@ fn assert_state_eq(storage: &Storage, expected: &Value, slot_label: &str) -> Res
 
 #[test]
 fn minimal_replay_works() {
-	let fixture = include_str!("fixtures/quint/minimal_replay.itf.json");
+	let fixture = include_str!("../fixtures/quint/minimal_replay.itf.json");
 	let itf: Value = serde_json::from_str(fixture).expect("valid ITF JSON");
 	let states = itf["states"].as_array().expect("states array");
 	assert!(states.len() >= 2, "need at least init + 1 block");
@@ -211,13 +213,13 @@ fn minimal_replay_works() {
 #[test]
 fn stale_parent_candidate_rejected_works() {
 	common::itf::replay::trace(include_str!(
-		"fixtures/quint/staleParentCandidateRejectedTest.itf.json"
+		"../fixtures/quint/staleParentCandidateRejectedTest.itf.json"
 	))
 	.expect("Quint and Rust state should agree after every frame");
 }
 
 #[test]
 fn refine_error_replay_works() {
-	common::itf::replay::trace(include_str!("fixtures/quint/refine_error_replay.itf.json"))
+	common::itf::replay::trace(include_str!("../fixtures/quint/refine_error_replay.itf.json"))
 		.expect("a logged RefineLogEntry and a gray-paper work error should both replay");
 }
