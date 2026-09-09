@@ -1,18 +1,26 @@
 [workspace]
 members = [
     "authorizer",
-    "authorizer/bin",
+    "authorizer-ed25519",
+    "authorizer-sr25519",
+    "chain-spec",
     "cumulus",
+    "cumulus/jam-state-helpers",
     "runtimes/frameless",
     "service",
     "service/bin",
     "service-interface",
     "testing/mock-dest-service",
+    "testing/parasim-service",
     "tools/executor",
+    "tools/parasim-tool",
 ]
 exclude = [
     "vendor/polkadot-sdk-companion",
     "vendor/polkajam",
+    # An experiment, not part of the product: `authorizer-sr25519-experiment/README.md` says what
+    # it measures. Its own workspace on purpose, so a normal workspace build never touches it.
+    "authorizer-sr25519-experiment",
 ]
 resolver = "2"
 
@@ -31,10 +39,30 @@ jam-types = { path = "vendor/polkajam/crates/jam-types", default-features = fals
 jam-codec = { version = "0.1.1", default-features = false, features = ["derive"] }
 jam-pvm-common = { path = "vendor/polkajam/crates/jam-pvm-common", default-features = false }
 jam-std-common = { path = "vendor/polkajam/crates/jam-std-common" }
+polkajam-trie = { package = "trie", path = "vendor/polkajam/crates/trie" }
+jam-null-authorizer-bin = { path = "vendor/polkajam/services/null-authorizer-bin" }
+cargo-jam-build = { path = "vendor/polkajam/crates/cargo-jam-build" }
+jam-bootstrap-service-common = { path = "vendor/polkajam/services/bootstrap-service/common", features = ["std"] }
+jam-chainspec = { path = "vendor/polkajam/crates/jam-chainspec" }
+sp-core = { path = "vendor/polkadot-sdk-companion/substrate/primitives/core", default-features = false }
+sp-keystore = { path = "vendor/polkadot-sdk-companion/substrate/primitives/keystore" }
+async-stream = "0.3"
+async-trait = "0.1"
+bytes = { version = "1.7.1", default-features = false }
+futures = "0.3"
+jsonrpsee = { version = "0.26.0", default-features = false }
+serde = { version = "1", default-features = false }
+serde_json = "1"
+tokio = { version = "1", default-features = false }
+tracing = { version = "0.1", default-features = false }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+clap = { version = "4.5", features = ["derive", "env"] }
+url = "2.5"
+binary-merkle-tree = { version = "16.1.1", default-features = false }
 blake2b_simd = { version = "1", default-features = false }
 ed25519-dalek = { version = "2", default-features = false }
+schnorrkel = { version = "0.11.5", default-features = false }
 primitive-types = { version = "0.13.1", default-features = false, features = ["codec"] }
-jam-pvm-builder = { version = "0.1.28" }
 polkavm-derive = { version = "0.36.0", default-features = false }
 bounded-collections = { version = "0.3.2", default-features = false, features = ["scale-codec"] }
 polkavm = { version = "0.30.0", default-features = false }
@@ -46,19 +74,38 @@ mock-dest-service = { path = "testing/mock-dest-service" }
 parachain-service = { path = "service" }
 parachain-service-bin = { path = "service/bin" }
 parachain-authorizer = { path = "authorizer" }
-parachain-authorizer-bin = { path = "authorizer/bin" }
+parachain-authorizer-ed25519 = { path = "authorizer-ed25519" }
+parachain-authorizer-sr25519 = { path = "authorizer-sr25519" }
 parachain-service-interface = { path = "service-interface", default-features = false }
+parasim-service = { path = "testing/parasim-service" }
+# These two used to live here as `cumulus/jam-{,rpc-}interface`; polkadot-sdk upstreamed them
+# verbatim (`cumulus/jam/{interface,rpc-interface}`, commit ca25145db9), so we consume theirs and
+# keep no second copy to drift. Fetched from GitHub so a fresh checkout needs no sibling
+# polkadot-sdk directory; for local development against uncommitted polkadot-sdk changes, swap
+# in the commented path form (sibling checkout named `polkadot-sdk-master`).
+cumulus-jam-interface = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "mku-jam-collator-poc-2" }
+cumulus-jam-rpc-interface = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "mku-jam-collator-poc-2" }
+# cumulus-jam-interface = { path = "../polkadot-sdk-master/cumulus/jam/interface" }
+# cumulus-jam-rpc-interface = { path = "../polkadot-sdk-master/cumulus/jam/rpc-interface" }
+jam-state-helpers = { path = "cumulus/jam-state-helpers", default-features = false }
 
 codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }
-# Sourced from the vendored companion (not a polkadot-sdk git rev) so `substrate-wasm-builder`
-# links the runtime PVF with the companion's `polkavm-linker`, pinned to 0.30 to match the JamV1
-# instruction encoding the vendored polkajam host (`polkavm 0.30`) decodes. A 0.36-linked blob is
-# misdecoded by the 0.30 VM (wide stores / memcpy / memset corrupt or trap). `sp-io` moves with it
-# to keep a single, consistent SDK source.
-substrate-wasm-builder = { path = "vendor/polkadot-sdk-companion/substrate/utils/wasm-builder" }
+thiserror = "2.0"
+# Every PVM blob, the frameless PVF included, is linked by the vendored polkajam's
+# `cargo-jam-build` (polkavm-linker 0.30) and NOT by the vendored companion's
+# `substrate-wasm-builder` (whose workspace pins polkavm-linker 0.36): a 0.36-linked blob emits
+# `unlikely`/wide instructions the vendored polkajam host (`polkavm 0.30`) can't decode, trapping
+# the inner PVM. `sp-io` stays sourced from the vendored companion (single SDK source).
 executor = { path = "tools/executor" }
 tiny-keccak = { version = "2.0.2", default-features = false, features = ["keccak"] }
 sp-io = { path = "vendor/polkadot-sdk-companion/substrate/primitives/io", default-features = false }
+
+# `cumulus-jam-{,rpc-}interface` pull polkajam from git at polkadot-sdk's rev; everything else here
+# uses the vendored pin. Left unpatched that is two distinct `jam-std-common` crates, and types
+# crossing the interface traits would not unify. Redirect the git source onto the vendored copy.
+[patch."ssh://git@github.com/paritytech/polkajam.git"]
+jam-std-common = { path = "vendor/polkajam/crates/jam-std-common" }
+jam-types = { path = "vendor/polkajam/crates/jam-types" }
 
 [profile.production]
 inherits = "release"
@@ -67,3 +114,11 @@ codegen-units = 1
 debug = false
 debug-assertions = false
 overflow-checks = false
+
+# Authorizer blobs have a hard 64 kB ceiling (`C_maxauthcodesize`) and 50 M gas for one call;
+# service blobs have 4 MB and gas that is actually under pressure. So they are optimised for
+# different things, and each authorizer crate names this profile in its own
+# `[package.metadata.jam]` — at `production` they come out around 87 kB, over the ceiling.
+[profile.production-authorizer]
+inherits = "production"
+opt-level = "z"

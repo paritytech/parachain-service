@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use jam_std_common::hash_raw;
 use jam_types::{AuthTrace, AuthorizerHash, Hash};
 use parachain_service::work_digest::{ValidationCodeHash, ValidationCodeRef};
-use parachain_service_bin::BLOB as SERVICE;
+use parachain_service_bin::blob as service;
 use parachain_service_interface::types::{HeadData, ParaId};
 
 /// Deterministic mapping between Quint's abstract integers and Rust values.
@@ -18,7 +18,7 @@ impl Default for Codex {
 	fn default() -> Self {
 		let mut codex =
 			Self { lengths: BTreeMap::new(), hashes: BTreeMap::new(), paras: BTreeSet::new() };
-		codex.hashes.insert(0, hash_raw(SERVICE));
+		codex.hashes.insert(0, hash_raw(&service()));
 		codex
 	}
 }
@@ -195,7 +195,7 @@ mod tests {
 	#[test]
 	fn service_hash_zero_works() {
 		let mut codex = Codex::default();
-		assert_eq!(codex.hash(0, SERVICE.len() as u32).unwrap(), hash_raw(SERVICE));
+		assert_eq!(codex.hash(0, service().len() as u32).unwrap(), hash_raw(&service()));
 	}
 
 	#[test]

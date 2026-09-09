@@ -1,0 +1,28 @@
+[package]
+name = "parachain-chain-spec"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+
+# Host-side builder: describes the parachain service's genesis — registered parachains, their
+# validation-code preimages and authorizers — and compiles it into a `GenesisService`.
+
+[lints]
+workspace = true
+
+[dependencies]
+codec = { workspace = true }
+jam-chainspec = { workspace = true }
+jam-std-common = { workspace = true }
+jam-types = { workspace = true }
+parachain-authorizer = { workspace = true }
+parachain-service = { workspace = true, features = ["std"] }
+parachain-service-interface = { workspace = true, features = ["std"] }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+blake2b_simd = { workspace = true }
+primitive-types = { workspace = true }

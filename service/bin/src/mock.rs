@@ -12,7 +12,7 @@ use jam_types::{
 	ExtrinsicHash, ExtrinsicSpec, FixedVec, ProtocolParameters, RefineContext, ServiceId, WorkItem,
 	WorkPackage, WorkPayload,
 };
-use parachain_authorizer::{aura, ParaId};
+use parachain_authorizer::{aura, aura::build_collator_tree, ParaId};
 use primitive_types::H256;
 
 const SERVICE_ID: ServiceId = 0;
@@ -32,56 +32,6 @@ fn blake2b_32(data: &[u8]) -> [u8; 32] {
 /// Blake2b-32 leaf hash for a collator public key (mirrors the authorizer's check_proof).
 pub fn collator_leaf_hash(key: &[u8; 32]) -> H256 {
 	H256::from_slice(&blake2b_32(key))
-}
-
-/// Build a binary Merkle tree over a set of collator public-key bytes.
-///
-/// Returns `(root, proofs)` where `proofs[i]` is the Vec<H256> of sibling hashes
-/// for collator `i` (leaf-to-root, LSB-first — matching check_proof in aura.rs).
-/// The tree is zero-hash-padded to the next power of two.
-pub fn build_collator_tree(keys: &[[u8; 32]]) -> (H256, Vec<Vec<H256>>) {
-	assert!(!keys.is_empty());
-	let n = keys.len();
-	let size = n.next_power_of_two();
-	let zero = [0u8; 32];
-
-	let mut levels: Vec<Vec<[u8; 32]>> = Vec::new();
-	let mut leaf_level: Vec<[u8; 32]> = keys.iter().map(|k| blake2b_32(k)).collect();
-	while leaf_level.len() < size {
-		leaf_level.push(zero);
-	}
-	levels.push(leaf_level);
-
-	while levels.last().unwrap().len() > 1 {
-		let prev = levels.last().unwrap().clone();
-		let next: Vec<[u8; 32]> = prev
-			.chunks(2)
-			.map(|c| {
-				let mut input = [0u8; 64];
-				input[..32].copy_from_slice(&c[0]);
-				input[32..].copy_from_slice(&c[1]);
-				blake2b_32(&input)
-			})
-			.collect();
-		levels.push(next);
-	}
-
-	let root = H256::from_slice(&levels.last().unwrap()[0]);
-
-	let mut proofs: Vec<Vec<H256>> = Vec::new();
-	for idx in 0..n {
-		let mut proof: Vec<H256> = Vec::new();
-		let mut i = idx;
-		for level in &levels[..levels.len() - 1] {
-			let sibling_idx = i ^ 1;
-			let sib = level.get(sibling_idx).copied().unwrap_or(zero);
-			proof.push(H256::from_slice(&sib));
-			i >>= 1;
-		}
-		proofs.push(proof);
-	}
-
-	(root, proofs)
 }
 
 /// An authorizer config whose `ParaId` prefix authorizes `para_ids` packages,
@@ -122,7 +72,7 @@ pub fn good_token() -> AuthToken {
 }
 
 pub fn good_trace() -> AuthTrace {
-	let trace = aura::AuthTrace { author_key: [0; 32] };
+	let trace = aura::AuthTrace { author_key: [0; 32], sudo: false };
 	AuthTrace(trace.encode())
 }
 
@@ -170,7 +120,7 @@ pub fn make_auth_with_seed(
 	let sig_bytes: [u8; 64] = signing_key.sign(wp_hash.as_bytes()).to_bytes();
 
 	let token = aura::AuthToken { proof, key: key_bytes, signature: sig_bytes };
-	let trace = aura::AuthTrace { author_key: key_bytes };
+	let trace = aura::AuthTrace { author_key: key_bytes, sudo: false };
 
 	(config_enc, AuthToken(token.encode()), AuthTrace(trace.encode()))
 }

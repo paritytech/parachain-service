@@ -9,19 +9,18 @@ use frameless::{
 	blake2_256, hash_state, BlockData, Config, HeadData, MockAction, State, ValidationParams,
 };
 use jam_types::{AuthConfig, AuthTrace, Authorization as AuthToken, Hash};
-use parachain_authorizer_bin::BLOB as AUTHORIZER;
 use parachain_service::{
 	refine::ParachainCandidate,
 	work_digest::{validation_code_hash, ParachainWorkDigest, RefineLog},
 };
 use parachain_service_bin::{
 	mock::{good_config, good_config_for, good_token, good_trace, refine_args, refine_work_item},
-	BLOB as SERVICE,
 };
 use parachain_service_interface::{
 	types::{Balance, ParaId, ServiceId, ASSET_HUB_PARA_ID, CORETIME_PARA_ID},
 	upward_message::{CreateServiceArgs, Target, TransferOutArgs, UpwardMessage, UpwardMessages},
 };
+use parachain_service_bin::{blob as service, authorizer_blob as authorizer};
 
 /// A deferred `TransferOut` from this service's regular balance — the only shape
 /// the vendored GP 0.7.2 host can execute (§5.1).
@@ -44,22 +43,22 @@ fn run_block(
 	add: u64,
 	para_ids: Vec<ParaId>,
 ) -> anyhow::Result<RefineOutcome> {
-	let pvf = frameless::WASM_BINARY.unwrap();
-	let pvf_hash = validation_code_hash(pvf);
+	let pvf = parachain_service_bin::frameless_pvf();
+	let pvf_hash = validation_code_hash(&pvf);
 
 	let block = BlockData { state: State { config, counter: 0 }, add };
 	let params = ValidationParams { parent_head: parent.encode(), block_data: block.encode() };
 	let payload =
 		ParachainCandidate { validation_code_hash: pvf_hash, pov: params.encode() }.encode();
-	let work_items = vec![refine_work_item(SERVICE, payload, vec![Vec::new(), Vec::new()])];
+	let work_items = vec![refine_work_item(&service(), payload, vec![Vec::new(), Vec::new()])];
 	let (engine, code_hash, mut context) = refine_args(
-		SERVICE,
-		AUTHORIZER,
+		&service(),
+		&authorizer(),
 		good_config_for(para_ids),
 		good_token(),
 		good_trace(),
 		work_items,
-		&[pvf],
+		&[&pvf],
 		0,
 	);
 	pj::refine(&engine, code_hash, &mut context)
@@ -365,8 +364,8 @@ fn duplicate_set_head_errors() {
 #[should_panic(expected = "the len is 0 but the index is 0")]
 fn no_work_items_panicks() {
 	let (engine, code_hash, mut context) = refine_args(
-		SERVICE,
-		AUTHORIZER,
+		&service(),
+		&authorizer(),
 		AuthConfig::new(),
 		AuthToken::new(),
 		AuthTrace::new(),
@@ -392,12 +391,12 @@ fn expect_work_error(res: anyhow::Result<RefineOutcome>) {
 #[test]
 fn two_work_items_errors() {
 	let work_items = vec![
-		refine_work_item(SERVICE, Vec::new(), vec![]),
-		refine_work_item(SERVICE, Vec::new(), vec![]),
+		refine_work_item(&service(), Vec::new(), vec![]),
+		refine_work_item(&service(), Vec::new(), vec![]),
 	];
 	let (engine, code_hash, mut context) = refine_args(
-		SERVICE,
-		AUTHORIZER,
+		&service(),
+		&authorizer(),
 		good_config(2),
 		good_token(),
 		good_trace(),
@@ -411,10 +410,10 @@ fn two_work_items_errors() {
 
 #[test]
 fn more_para_ids_than_work_items_errors() {
-	let work_items = vec![refine_work_item(SERVICE, Vec::new(), vec![])];
+	let work_items = vec![refine_work_item(&service(), Vec::new(), vec![])];
 	let (engine, code_hash, mut context) = refine_args(
-		SERVICE,
-		AUTHORIZER,
+		&service(),
+		&authorizer(),
 		good_config(2),
 		good_token(),
 		good_trace(),
@@ -429,12 +428,12 @@ fn more_para_ids_than_work_items_errors() {
 #[test]
 fn less_para_ids_than_work_items_errors() {
 	let work_items = vec![
-		refine_work_item(SERVICE, Vec::new(), vec![]),
-		refine_work_item(SERVICE, Vec::new(), vec![]),
+		refine_work_item(&service(), Vec::new(), vec![]),
+		refine_work_item(&service(), Vec::new(), vec![]),
 	];
 	let (engine, code_hash, mut context) = refine_args(
-		SERVICE,
-		AUTHORIZER,
+		&service(),
+		&authorizer(),
 		good_config(1),
 		good_token(),
 		good_trace(),

@@ -12,7 +12,7 @@ use parachain_service::{
 		storage_key, Tag,
 	},
 };
-use parachain_service_bin::MOCK_DEST_BLOB;
+use parachain_service_bin::mock_dest_blob;
 use parachain_service_interface::{
 	types::{CoreIndex, Hash, ParaId, ASSET_HUB_PARA_ID},
 	upward_message::{Target, UpwardMessage, MAX_UPWARD_MESSAGES_PER_DIGEST},
@@ -44,21 +44,21 @@ fn report(name: &str, gas: u64, elapsed: std::time::Duration, digest_len: usize)
 /// Pinned gas measurements for the benchmarks below.
 mod gas {
 	/// 1024-solicit digest — the heaviest reachable digest replay.
-	pub const MAX_SOLICITS: u64 = 7_779_759;
+	pub const MAX_SOLICITS: u64 = 7_725_400;
 	/// 1024 KV writes filling the report's elective-data limit.
-	pub const MAX_KV_WRITES: u64 = 6_187_865;
+	pub const MAX_KV_WRITES: u64 = 6_153_186;
 	/// 331 outbound transfers to a friendly destination.
-	pub const MAX_TRANSFER_OUTS: u64 = 740_563;
+	pub const MAX_TRANSFER_OUTS: u64 = 769_609;
 	/// 331 outbound transfers to a destination demanding the full cap.
-	pub const MAX_GAS_TRANSFER_OUTS: u64 = 731_578;
+	pub const MAX_GAS_TRANSFER_OUTS: u64 = 760_745;
 	/// Gas for 1024 incoming transfers recorded in one bucket write.
-	pub const MAX_INCOMING_TRANSFERS: u64 = 1_626_053;
+	pub const MAX_INCOMING_TRANSFERS: u64 = 1_582_415;
 	/// Due `assign` flush for all 341 cores in one block.
-	pub const ALL_DUE_ASSIGNS: u64 = 9_944_072;
+	pub const ALL_DUE_ASSIGNS: u64 = 9_664_052;
 	/// Marginal cost of a realistic destination's memo handler, per transfer.
-	pub const DEST_HANDLER_PER_TRANSFER: u64 = 1_665;
+	pub const DEST_HANDLER_PER_TRANSFER: u64 = 1_638;
 	/// Gas for one Ed25519 authorization.
-	pub const IS_AUTHORIZED_ED25519: u64 = 1_010_744;
+	pub const IS_AUTHORIZED_ED25519: u64 = 1_228_262;
 }
 
 /// Checks the pinned gas measurements against their budgets.
@@ -183,10 +183,10 @@ fn dest_transfer_item(i: u32) -> AccumulateItem {
 /// Benchmarks the marginal gas used by the destination transfer handler.
 #[test]
 fn dest_handler_bench_works() {
-	let storage = || fresh_storage_for(MOCK_DEST_BLOB, |_| {});
-	let (baseline, _, _) = run_block_for(MOCK_DEST_BLOB, storage(), vec![], NOW);
+	let storage = || fresh_storage_for(&mock_dest_blob(), |_| {});
+	let (baseline, _, _) = run_block_for(&mock_dest_blob(), storage(), vec![], NOW);
 	let items = (0..MAX_UMPS).map(dest_transfer_item).collect();
-	let (outcome, _, _) = run_block_for(MOCK_DEST_BLOB, storage(), items, NOW);
+	let (outcome, _, _) = run_block_for(&mock_dest_blob(), storage(), items, NOW);
 
 	let per_transfer = (outcome.gas_used - baseline.gas_used) / MAX_UMPS as u64;
 	report("dest_handler_bench", outcome.gas_used, outcome.elapsed, 0);
@@ -236,12 +236,12 @@ fn due_assign_bench_works() {
 #[test]
 fn is_authorized_ed25519_gas_works() {
 	use executor::pj;
-	use parachain_authorizer_bin::BLOB as AUTHORIZER;
+	use parachain_service_bin::authorizer_blob as authorizer;
 	use parachain_service_bin::mock::{is_authorized_args, make_auth, work_items};
 
 	let items = work_items(1);
-	let (config, token, _) = make_auth(AUTHORIZER, vec![ParaId(0)], &items);
-	let (engine, package, storage) = is_authorized_args(AUTHORIZER, config, token, items);
+	let (config, token, _) = make_auth(&authorizer(), vec![ParaId(0)], &items);
+	let (engine, package, storage) = is_authorized_args(&authorizer(), config, token, items);
 
 	let outcome = pj::is_authorized(&engine, &package, 0, &storage)
 		.expect("is_authorized must succeed with real ed25519 signature");

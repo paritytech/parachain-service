@@ -14,3 +14,6 @@ workspace = true
 jam-types = { workspace = true }
 jam-pvm-common = { workspace = true, features = ["service", "logging"] }
 polkavm-derive = { workspace = true }
+
+[package.metadata.jam]
+type = "service"

@@ -15,11 +15,13 @@ use parachain_service::{
 		Tag,
 	},
 };
-use parachain_service_bin::{mock::accumulate_context_with_privileges, BLOB as SERVICE};
+use parachain_service_bin::mock::accumulate_context_with_privileges;
+
 use parachain_service_interface::{
 	types::{ValidatorKey, ASSET_HUB_PARA_ID},
 	upward_message::UpwardMessage,
 };
+use parachain_service_bin::{blob as service};
 
 const NOW: u32 = 100;
 const AH_CODE: &[u8] = b"ah-code";
@@ -65,7 +67,7 @@ fn run_block_with_privileges(
 ) -> (executor::pj::AccumulateOutcome, jam_node::vm::Storage, jam_node::vm::StateMutations) {
 	let engine = jam_node::vm::Engine::new(Some(jam_node::PvmBackend::Interpreter))
 		.expect("interpreter engine should initialize");
-	let code_hash = CodeHash(hash_raw(SERVICE));
+	let code_hash = CodeHash(hash_raw(&service()));
 	let mut context = accumulate_context_with_privileges(storage, items, slot, privileges);
 	let outcome = pj::accumulate(&engine, code_hash, &mut context)
 		.expect("accumulate should run to completion (not trap)");
