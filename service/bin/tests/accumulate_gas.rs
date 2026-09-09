@@ -44,21 +44,21 @@ fn report(name: &str, gas: u64, elapsed: std::time::Duration, digest_len: usize)
 /// Pinned gas measurements for the benchmarks below.
 mod gas {
 	/// 1024-solicit digest — the heaviest reachable digest replay.
-	pub const MAX_SOLICITS: u64 = 7_725_400;
+	pub const MAX_SOLICITS: u64 = 7_247_842;
 	/// 1024 KV writes filling the report's elective-data limit.
-	pub const MAX_KV_WRITES: u64 = 6_153_186;
+	pub const MAX_KV_WRITES: u64 = 6_069_291;
 	/// 331 outbound transfers to a friendly destination.
-	pub const MAX_TRANSFER_OUTS: u64 = 769_609;
+	pub const MAX_TRANSFER_OUTS: u64 = 709_572;
 	/// 331 outbound transfers to a destination demanding the full cap.
-	pub const MAX_GAS_TRANSFER_OUTS: u64 = 760_745;
+	pub const MAX_GAS_TRANSFER_OUTS: u64 = 701_173;
 	/// Gas for 1024 incoming transfers recorded in one bucket write.
-	pub const MAX_INCOMING_TRANSFERS: u64 = 1_582_415;
+	pub const MAX_INCOMING_TRANSFERS: u64 = 1_341_872;
 	/// Due `assign` flush for all 341 cores in one block.
-	pub const ALL_DUE_ASSIGNS: u64 = 9_664_052;
+	pub const ALL_DUE_ASSIGNS: u64 = 9_123_566;
 	/// Marginal cost of a realistic destination's memo handler, per transfer.
-	pub const DEST_HANDLER_PER_TRANSFER: u64 = 1_638;
+	pub const DEST_HANDLER_PER_TRANSFER: u64 = 1_463;
 	/// Gas for one Ed25519 authorization.
-	pub const IS_AUTHORIZED_ED25519: u64 = 1_228_262;
+	pub const IS_AUTHORIZED_ED25519: u64 = 1_224_518;
 }
 
 /// Checks the pinned gas measurements against their budgets.
