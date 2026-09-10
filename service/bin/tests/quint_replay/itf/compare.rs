@@ -78,6 +78,7 @@ pub fn state(
 	service_code_hash(storage, svc, codex, frame)?;
 	parachain_logs(storage, svc, codex, frame)?;
 	preimages(storage, svc, codex, frame)?;
+	super::compare_storage::state(storage, svc, codex, frame)?;
 	Ok(())
 }
 
