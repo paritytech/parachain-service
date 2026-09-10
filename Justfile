@@ -31,6 +31,14 @@ fmt:
 fmt-check:
 	cargo +nightly fmt --all --check
 
+# Pretty-print Quint replay fixtures in place for review.
+quint-fmt:
+	python3 scripts/format-quint-replays.py pretty
+
+# Restore compact Quint replay fixtures before committing.
+quint-compact:
+	python3 scripts/format-quint-replays.py compact
+
 # Short for check
 c: check
 check:

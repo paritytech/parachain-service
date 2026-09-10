@@ -2,6 +2,7 @@
 """Generate normalized ITF fixtures with Quint 0.32.0 and the vendored model."""
 
 import json
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -25,8 +26,12 @@ def main():
             check=True,
         )
         traces = sorted(Path(output).glob("*.itf.json"))
-        if len(traces) != 10:
-            raise SystemExit(f"Expected 10 traces, found {len(traces)}")
+        expected = set(re.findall(
+            r"^  run (\w+_works) =", (FIXTURES / "refine_errors.qnt").read_text(), re.MULTILINE
+        ))
+        actual = {path.name.removesuffix(".itf.json") for path in traces}
+        if actual != expected:
+            raise SystemExit(f"Trace mismatch: missing={expected - actual}, extra={actual - expected}")
         destination = FIXTURES / "refine_errors"
         destination.mkdir(exist_ok=True)
         for path in traces:
@@ -38,7 +43,7 @@ def main():
             for state in trace["states"]:
                 state.pop("#meta", None)
             (destination / path.name).write_text(
-                json.dumps(trace, indent=2, sort_keys=True) + "\n"
+                json.dumps(trace, separators=(",", ":"), sort_keys=True) + "\n"
             )
 
 
