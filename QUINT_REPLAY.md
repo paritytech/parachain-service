@@ -220,66 +220,9 @@ not in the ledger fails the test.**
 
 ### D-1 — Balance encoding width (DECISIONS.md D-3)
 
-> **Resolved upstream in spec `459985739f`** ("Use correct balances type"). §6.1
-> and `quint/state_balance.qnt` now size balances as `u64`, matching Rust, so
-> the two sides agree and no shift is needed. The normalization below is kept
-> only because `fixtures/quint/minimal_replay.itf.json` was generated under the
-> old pin; it goes away when the fixture is regenerated.
-
-Quint sized balances as `Compact<u128>` (17 B worst case,
-`quint/state_balance.qnt:19`); Rust uses `Balance = u64` → 9 B
-(`service/src/state_balance.rs:8-10`).
-
-Computed both sides:
-
-| constant | Quint | Rust | Δ (quint − rust) |
-|---|---|---|---|
-| ParaInfo entry | 4 262 | 4 246 | **+16** |
-| `BaselineFootprint` | 69 847 | 69 831 | **+16** |
-| incoming-transfer bucket | 204 | 196 | **+8** |
-| Asset Hub global items | 1 442 660 | 1 434 664 | **+7 996** |
-| Asset Hub baseline | 1 512 507 | 1 504 495 | **+8 012** |
-
-The +16 is exactly the two `ParaInfo` balance fields (17+17 vs 9+9). The
-+7 996 is 1 000 buckets × 8, less 4 for D-3 below.
-
-The Quint figures reproduce the trace's init frame exactly — Coretime
-`271140/135570`, Asset Hub `1713800/1578230` — so this is arithmetic, not
-inference.
-
-**Normalization — compare in baseline-relative units.** Define
-
-```
-shift(p) = quintBaseline(p) - rustBaseline(p)     // 16, or 8012 for Asset Hub
-```
-
-Every *delta* the two sides apply agrees exactly (`preimageFootprint`,
-`kvEntryFootprint` — see the equivalence list below), and Asset Hub
-pre-provisions its transfer buckets at registration rather than charging them
-incrementally. So the divergence enters `used_state_balance` at exactly one
-point: **when a side computes a baseline from scratch**, i.e. registration.
-
-Therefore:
-
-- **Seeding (frame 0)** — shift *both* fields down so headroom is preserved bit
-  for bit:
-  ```
-  rust_used(p)  = quint_used(p)  - shift(p)
-  rust_total(p) = quint_total(p) - shift(p)
-  ```
-  Shifting `total` too is the point: `total - used` is what gates every
-  write-time check, and leaving `total` unshifted would hand Rust `shift(p)`
-  units of free headroom at seeded paras.
-- **Comparison** — the harness records the shift it applied per para (`0` for
-  paras registered during the replay, since their `total` comes from the
-  message) and asserts `quint_used(p) == rust_used(p) + shift_applied(p)`.
-
-Concrete case this is load-bearing for: `paraRegisterOperateCleanupTest` asserts
-`usedStateBalance == BaselineFootprint` after registering para 4 — 69 847 in the
-model, 69 831 in Rust. Without this normalization that trace fails on its first
-block for a reason that has nothing to do with the code under test.
-
-**This is why the original plan's "every field, no subsetting" fails immediately.**
+Resolved upstream in spec `459985739f` ("Use correct balances type").
+The regenerated minimal fixture now uses the shared runner; balances are seeded
+and compared directly, without the old baseline normalization.
 
 ### D-2 — Always-accumulate on non-block steps
 

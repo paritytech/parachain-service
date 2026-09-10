@@ -1,0 +1,46 @@
+//! Empty blocks must preserve the state produced by preceding work.
+
+use crate::itf::replay;
+
+#[test]
+fn empty_blocks_between_errors_works() {
+	replay::trace(include_str!(
+		"../fixtures/quint/blocks/empty_blocks_between_errors_works.itf.json"
+	))
+	.expect("Quint and Rust should agree after work and empty blocks");
+}
+
+#[test]
+fn empty_blocks_between_candidates_works() {
+	replay::trace(include_str!(
+		"../fixtures/quint/blocks/empty_blocks_between_candidates_works.itf.json"
+	))
+	.expect("Quint and Rust should agree after work and empty blocks");
+}
+
+#[test]
+fn empty_blocks_between_error_and_candidate_works() {
+	replay::trace(include_str!(
+		"../fixtures/quint/blocks/empty_blocks_between_error_and_candidate_works.itf.json"
+	))
+	.expect("Quint and Rust should agree after work and empty blocks");
+}
+
+#[test]
+fn empty_block_removes_log_errors() {
+	let mut trace: serde_json::Value = serde_json::from_str(include_str!(
+		"../fixtures/quint/blocks/empty_blocks_between_errors_works.itf.json"
+	))
+	.unwrap();
+	let states = trace["states"].as_array_mut().unwrap();
+	let frame = (1..states.len())
+		.find(|&i| {
+			states[i]["now"] != states[i - 1]["now"] &&
+				states[i]["lastStepWorkResults"].as_array().unwrap().is_empty() &&
+				!states[i]["svc"]["parachainLog"]["#map"].as_array().unwrap().is_empty()
+		})
+		.expect("empty block after a logged error");
+	states[frame]["svc"]["parachainLog"] = serde_json::json!({"#map": []});
+	let error = replay::trace(&trace.to_string()).unwrap_err();
+	assert!(error.contains(&format!("frame {frame}: svc.parachainLog[1] differs")), "{error}");
+}

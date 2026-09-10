@@ -99,7 +99,7 @@ fn digest_ok(value: &Value, codex: &mut Codex) -> Result<ParachainWorkDigest, St
 		integer(field(field(validation, "hash")?, "vchBytes")?)?,
 		integer(field(validation, "len")?)?,
 	)?;
-	let parent = Codex::head(integer(field(field(value, "parentHeadHash")?, "headBytes")?)?)?;
+	let parent = Codex::head(integer(field(field(value, "parentHeadHash")?, "hashBytes")?)?)?;
 	let messages = field(value, "upwardMessages")?
 		.as_array()
 		.ok_or("upwardMessages must be a list")?
