@@ -3,14 +3,13 @@
 
 #![allow(dead_code)]
 
-pub mod itf;
-
 use codec::{Decode, Encode};
 use executor::pj::{self, AccumulateOutcome};
 use jam_node::vm::Storage;
 use jam_std_common::hash_raw;
 use jam_types::{
-	AccumulateItem, AuthTrace, CodeHash, Memo, TransferRecord, WorkItemRecord, WorkOutput,
+	AccumulateItem, AuthTrace, CodeHash, Memo, TransferRecord, WorkError, WorkItemRecord,
+	WorkOutput,
 };
 use parachain_service::{
 	state::{
@@ -26,11 +25,11 @@ use parachain_service::{
 };
 use parachain_service_bin::mock::{accumulate_context, provide_preimage, MOCK_SERVICE_ID};
 
+use parachain_service_bin::blob as service;
 use parachain_service_interface::{
 	types::{Balance, BucketId, ParaId, ServiceId, Timeslot},
 	upward_message::{TransferOutArgs, UpwardMessage},
 };
-use parachain_service_bin::{blob as service};
 
 pub const SVC: ServiceId = MOCK_SERVICE_ID;
 /// A generously funded default `total_state_balance`.
@@ -233,6 +232,15 @@ pub fn err_digest(para: ParaId, error: RefineLog) -> ParachainWorkDigest {
 
 /// Wrap a digest as the work-item operand accumulate receives.
 pub fn work_item(digest: &ParachainWorkDigest) -> AccumulateItem {
+	work_item_with_auth_trace(digest, AuthTrace(vec![0xAA; 300]))
+}
+
+/// Wrap a digest with an explicit authorizer trace as the work-item operand
+/// accumulate receives.
+pub fn work_item_with_auth_trace(
+	digest: &ParachainWorkDigest,
+	auth_output: AuthTrace,
+) -> AccumulateItem {
 	AccumulateItem::WorkItem(WorkItemRecord {
 		package: Default::default(),
 		exports_root: Default::default(),
@@ -240,7 +248,22 @@ pub fn work_item(digest: &ParachainWorkDigest) -> AccumulateItem {
 		payload: Default::default(),
 		gas_limit: 0,
 		result: Ok(WorkOutput(digest.encode())),
-		auth_output: AuthTrace(vec![0xAA; 300]),
+		auth_output,
+	})
+}
+
+/// A work item whose refine was replaced by a gray-paper work error — JAM
+/// substituted it before the service's refine ran, so Accumulate skips it
+/// entirely (§3.3).
+pub fn work_item_skipped(auth_output: AuthTrace) -> AccumulateItem {
+	AccumulateItem::WorkItem(WorkItemRecord {
+		package: Default::default(),
+		exports_root: Default::default(),
+		authorizer_hash: Default::default(),
+		payload: Default::default(),
+		gas_limit: 0,
+		result: Err(WorkError::Panic),
+		auth_output,
 	})
 }
 

@@ -1,6 +1,7 @@
 use codec::Compact;
 use jam_node::vm::Storage;
 use jam_std_common::hash_raw;
+use jam_types::AccumulateItem;
 use parachain_service::work_digest::ParachainWorkDigest;
 use parachain_service_bin::mock::MOCK_SERVICE_ID;
 use parachain_service_interface::{types::ParaId, upward_message::UpwardMessage};
@@ -9,9 +10,13 @@ use serde_json::Value;
 use super::{
 	classify::{classify, FrameKind},
 	codex::Codex,
-	compare, seed,
+	compare,
+	refine_log::refine_log,
+	seed,
 };
-use crate::common::{accumulate_block, fresh_storage, work_item};
+use crate::common::{
+	accumulate_block, fresh_storage, work_item_skipped, work_item_with_auth_trace,
+};
 
 /// Replay a normalized Quint trace. Blocks are deliberately limited to one WP.
 pub fn trace(json: &str) -> Result<(), String> {
@@ -40,9 +45,7 @@ pub fn trace(json: &str) -> Result<(), String> {
 				}
 				let items = results
 					.first()
-					.map(|result| {
-						work_result(result, &mut codex).map(|digest| vec![work_item(&digest)])
-					})
+					.map(|result| work_items(result, &mut codex))
 					.transpose()?
 					.unwrap_or_default();
 				let slot = integer(field(&pair[1], "now")?)? as u32;
@@ -61,23 +64,43 @@ pub fn trace(json: &str) -> Result<(), String> {
 	Ok(())
 }
 
-fn work_result(value: &Value, codex: &mut Codex) -> Result<ParachainWorkDigest, String> {
+fn work_items(value: &Value, codex: &mut Codex) -> Result<Vec<AccumulateItem>, String> {
+	let auth_trace = Codex::auth_trace(integer(field(value, "authTrace")?)?)?;
 	let (tag, value) = variant(field(value, "result")?)?;
-	if tag != "WorkOk" {
-		return Err(format!("unsupported work result {tag}"));
+	match tag {
+		"WorkOk" => Ok(vec![work_item_with_auth_trace(&work_digest(value, codex)?, auth_trace)]),
+		// Gray paper `WorkExecResult::Error`: JAM substituted an error for this
+		// work-item before the service's refine ran, so Accumulate sees the
+		// no-op case (§3.3).
+		"WorkErr" => Ok(vec![work_item_skipped(auth_trace)]),
+		_other => Err(format!("unsupported work result {tag}")),
 	}
-	let (tag, digest) = variant(value)?;
-	if tag != "Ok" {
-		return Err(format!("unsupported refine result {tag}"));
+}
+
+fn work_digest(value: &Value, codex: &mut Codex) -> Result<ParachainWorkDigest, String> {
+	let (tag, value) = variant(value)?;
+	match tag {
+		"Ok" => digest_ok(value, codex),
+		"Err" => digest_err(value, codex),
+		_other => Err(format!("unsupported refine result {tag}")),
 	}
-	let para = para_id(field(digest, "paraId")?, codex)?;
-	let validation = field(digest, "validationCode")?;
+}
+
+fn digest_err(value: &Value, codex: &mut Codex) -> Result<ParachainWorkDigest, String> {
+	let para = para_id(field(value, "paraId")?, codex)?;
+	let error = refine_log(field(value, "error")?)?;
+	Ok(ParachainWorkDigest::Err { para_id: para, error })
+}
+
+fn digest_ok(value: &Value, codex: &mut Codex) -> Result<ParachainWorkDigest, String> {
+	let para = para_id(field(value, "paraId")?, codex)?;
+	let validation = field(value, "validationCode")?;
 	let validation_code = codex.validation_code(
 		integer(field(field(validation, "hash")?, "vchBytes")?)?,
 		integer(field(validation, "len")?)?,
 	)?;
-	let parent = Codex::head(integer(field(field(digest, "parentHeadHash")?, "headBytes")?)?)?;
-	let messages = field(digest, "upwardMessages")?
+	let parent = Codex::head(integer(field(field(value, "parentHeadHash")?, "headBytes")?)?)?;
+	let messages = field(value, "upwardMessages")?
 		.as_array()
 		.ok_or("upwardMessages must be a list")?
 		.iter()
@@ -87,9 +110,9 @@ fn work_result(value: &Value, codex: &mut Codex) -> Result<ParachainWorkDigest, 
 		para_id: para,
 		validation_code,
 		parent_head_hash: hash_raw(&parent),
-		head_data: Codex::head(integer(field(digest, "headData")?)?)?,
+		head_data: Codex::head(integer(field(value, "headData")?)?)?,
 		upward_messages: messages.try_into().map_err(|_| "too many upward messages")?,
-		lookup_anchor: integer(field(digest, "lookupAnchor")?)? as u32,
+		lookup_anchor: integer(field(value, "lookupAnchor")?)? as u32,
 	})
 }
 
@@ -217,10 +240,10 @@ pub(crate) fn map_entries(value: &Value) -> Result<Vec<(&Value, &Value)>, String
 		})
 		.collect()
 }
-pub(crate) fn para_id(value: &Value, _codex: &Codex) -> Result<ParaId, String> {
+pub(crate) fn para_id(value: &Value, codex: &mut Codex) -> Result<ParaId, String> {
 	let (tag, value) = variant(value)?;
 	if tag != "MkParaId" {
 		return Err(format!("expected MkParaId, got {tag}"));
 	}
-	Codex::para_id(integer(value)?)
+	codex.register_para(integer(value)?)
 }

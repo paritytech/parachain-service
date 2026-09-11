@@ -1,8 +1,10 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use jam_std_common::hash_raw;
 use jam_types::{AuthTrace, AuthorizerHash, Hash};
-use parachain_service::work_digest::{ValidationCodeHash, ValidationCodeRef};
+use parachain_service::work_digest::{
+	ValidationCodeHash, ValidationCodeRef, MAX_REFINE_OUTPUT_SIZE,
+};
 use parachain_service_bin::blob as service;
 use parachain_service_interface::types::{HeadData, ParaId};
 
@@ -11,11 +13,13 @@ use parachain_service_interface::types::{HeadData, ParaId};
 pub struct Codex {
 	lengths: BTreeMap<i128, u32>,
 	hashes: BTreeMap<i128, Hash>,
+	paras: BTreeSet<ParaId>,
 }
 
 impl Default for Codex {
 	fn default() -> Self {
-		let mut codex = Self { lengths: BTreeMap::new(), hashes: BTreeMap::new() };
+		let mut codex =
+			Self { lengths: BTreeMap::new(), hashes: BTreeMap::new(), paras: BTreeSet::new() };
 		codex.hashes.insert(0, hash_raw(&service()));
 		codex
 	}
@@ -28,6 +32,16 @@ impl Codex {
 
 	pub fn para_int(value: ParaId) -> i128 {
 		value.0.into()
+	}
+
+	pub fn register_para(&mut self, value: i128) -> Result<ParaId, String> {
+		let para = Self::para_id(value)?;
+		self.paras.insert(para);
+		Ok(para)
+	}
+
+	pub fn paras(&self) -> impl Iterator<Item = ParaId> + '_ {
+		self.paras.iter().copied()
 	}
 
 	pub fn head(value: i128) -> Result<HeadData, String> {
@@ -83,6 +97,17 @@ impl Codex {
 			.ok_or_else(|| format!("hash is not registered in the Quint codex: {hash:?}"))
 	}
 
+	/// Every abstract preimage for which the trace has established a length.
+	///
+	/// Comparisons use this to check absence as well as presence: a known hash
+	/// that disappeared from a Quint map must also have disappeared from Rust.
+	pub fn preimages(&self) -> Vec<(i128, Hash, u32)> {
+		self.lengths
+			.iter()
+			.filter_map(|(value, len)| self.hashes.get(value).map(|hash| (*value, *hash, *len)))
+			.collect()
+	}
+
 	pub fn blob(value: i128, len: u32) -> Result<Vec<u8>, String> {
 		let value = u64::try_from(value).map_err(|_| format!("hashBytes out of range: {value}"))?;
 		let mut blob = vec![0; len as usize];
@@ -108,8 +133,10 @@ impl Codex {
 	pub fn auth_trace(len: i128) -> Result<AuthTrace, String> {
 		let len =
 			usize::try_from(len).map_err(|_| format!("auth trace length out of range: {len}"))?;
-		if len > 256 {
-			return Err(format!("auth trace length exceeds 256: {len}"));
+		if len > MAX_REFINE_OUTPUT_SIZE {
+			return Err(format!(
+				"auth trace length exceeds the report limit {MAX_REFINE_OUTPUT_SIZE}: {len}"
+			));
 		}
 		Ok(AuthTrace(vec![0xaa; len]))
 	}
@@ -176,7 +203,9 @@ mod tests {
 	}
 
 	#[test]
-	fn auth_trace_over_cap_errors() {
-		assert!(Codex::auth_trace(257).unwrap_err().contains("exceeds 256"));
+	fn auth_trace_over_report_limit_errors() {
+		assert!(Codex::auth_trace((MAX_REFINE_OUTPUT_SIZE + 1) as i128)
+			.unwrap_err()
+			.contains("exceeds the report limit"));
 	}
 }

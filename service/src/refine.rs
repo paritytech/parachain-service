@@ -34,9 +34,14 @@ pub fn refine(
 	assert!(item_index < work_items.len(), "Out of bounds item_index is invalid per GP");
 
 	// Package-level failures are all settled before a `para_id` becomes
-	// authoritative, so none of them can name a para to log against and all
-	// panic (§4.2). A config that will not decode at all never gets here:
-	// `is_authorized` fails on it first, so it never becomes a work report.
+	// authoritative, so none of them can name a para to log against. The two
+	// length checks below are unreachable: `is_authorized` ran first and
+	// already rejected an undecodable config (`UndecodableAuthConfig`) and a
+	// config naming a different number of paras than the package has items
+	// (`InvalidWorkItemCount`). The single-item check is the one genuine
+	// restriction here — the service supports only one-item packages (§3.2),
+	// which is_authorized does not enforce, so a multi-item package panics the
+	// whole refine invocation into a gray-paper work error (§4.2).
 	assert_eq!(work_items.len(), para_ids.len(), "AuthConfig must name one para per work item");
 	let Ok([_work_item]): Result<&[_; 1], _> = work_items.as_slice().try_into() else {
 		panic!("Only single-item work packages are supported")
