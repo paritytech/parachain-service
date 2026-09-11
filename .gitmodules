@@ -5,7 +5,7 @@
 [submodule "vendor/polkajam"]
 	path = vendor/polkajam
 	url = https://github.com/paritytech/polkajam.git
-	branch = oty-parachain-service-companion
+	branch = mku-jam-collator-poc-2
 [submodule "vendor/polkadot-sdk-cumulus"]
 	path = vendor/polkadot-sdk-cumulus
 	url = https://github.com/paritytech/polkadot-sdk.git

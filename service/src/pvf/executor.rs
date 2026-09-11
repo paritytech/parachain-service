@@ -20,10 +20,10 @@ use crate::{
 	constants::AUTHORIZER_QUEUE_LEN,
 	work_digest::{HeadData, RefineLog, MAX_REPORT_ERROR_PAYLOAD},
 };
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 use codec::{DecodeAll, Encode};
 use jam_pvm_common::refine;
-use jam_types::Hash;
+use jam_types::{Hash, PageMode};
 use parachain_service_interface::{
 	host_call::HostCall,
 	types::ParaId,
@@ -36,12 +36,72 @@ use polkavm::Reg;
 /// Returned in `A0` by buffer-returning calls when the value does not exist.
 pub const ABSENT: u64 = u64::MAX;
 
+/// Caps on what one `log` host call may copy out of the child, so a malformed guest
+/// cannot force an unbounded peek on a diagnostics path.
+const MAX_LOG_TARGET: u64 = 128;
+const MAX_LOG_MESSAGE: u64 = 4096;
+
 const A0: usize = Reg::A0 as usize;
 const A1: usize = Reg::A1 as usize;
 const A2: usize = Reg::A2 as usize;
 const A3: usize = Reg::A3 as usize;
 const A4: usize = Reg::A4 as usize;
 const A5: usize = Reg::A5 as usize;
+
+/// The child PVF's heap: a byte break plus the pages backing it.
+///
+/// The service drives the inner PVM's memory itself (`pages` host calls), so it tracks
+/// the heap the guest grows, mirroring JAM's own `grow_heap` bounds in gp-v0.8.0
+/// (host `grow_heap` at `crates/node/src/chain/exec/vm/host.rs`): the break starts at
+/// the heap base `a` and may grow up to the address-space limit `b`
+/// (`heap_base + max_heap_size`).
+pub struct Heap {
+	/// The page size of the inner PVM's memory map.
+	pub page_size: u64,
+	/// The current break: the byte end of the region the guest has grown to.
+	pub top: u64,
+	/// The byte end of the pages mapped (zeroed) so far; always page-aligned.
+	pub mapped_until: u64,
+	/// The address-space limit `b` = `heap_base + max_heap_size`.
+	pub limit: u64,
+}
+
+impl Heap {
+	/// Lay out the heap of the inner PVM `pvm.rs` set up: the break starts at the
+	/// memory map's heap base, the pages up to the end of the initialised RW data are
+	/// already mapped, and growth is bounded by the address-space limit `b`.
+	pub fn new(memory: &polkavm::MemoryMap) -> Self {
+		Self {
+			page_size: u64::from(memory.page_size()),
+			top: u64::from(memory.heap_base()),
+			// `rw_data_address + rw_data_size` is the page-aligned end of the RW mapping
+			// `pvm.rs` set up; the heap starts (possibly mid-page) at `heap_base` and
+			// grows upward into the "heap slack" the builder leaves before the stack.
+			mapped_until: u64::from(memory.rw_data_address()) + u64::from(memory.rw_data_size()),
+			limit: u64::from(memory.heap_base()) + u64::from(memory.max_heap_size()),
+		}
+	}
+
+	/// The new break after growing by `delta` bytes, or `None` if it would overflow or
+	/// exceed the address-space limit `b` (gp-v0.8.0's `pages > address_space_limit`
+	/// refusal, in byte terms).
+	fn grow_to(&self, delta: u64) -> Option<u64> {
+		let new_top = self.top.checked_add(delta)?;
+		(new_top <= self.limit).then_some(new_top)
+	}
+}
+
+/// The `(page, count, end)` range of pages in `[mapped_until, new_top)` that are not yet
+/// mapped and must be zero-mapped to back the growth; `None` if `new_top` is already
+/// within the mapped pages.
+///
+/// Whole pages are mapped, including the one containing `new_top`: the guest's allocator
+/// only writes past the old break after the grow returns, so the over-mapped tail is
+/// fresh, and `mapped_until` only ever advances, so no page is ever re-zeroed.
+pub fn fresh_pages(mapped_until: u64, new_top: u64, page_size: u64) -> Option<(u64, u64, u64)> {
+	let end = new_top.div_ceil(page_size) * page_size;
+	(end > mapped_until).then(|| (mapped_until / page_size, (end - mapped_until) / page_size, end))
+}
 
 /// Side-effect buffer during the refine invoke-PVM loop.
 pub struct ExecutorState {
@@ -58,10 +118,12 @@ pub struct ExecutorState {
 	set_validator_keys_called: bool,
 	/// Running encoded size of `umps`, against the §4.3 budget.
 	umps_bytes: usize,
+	/// The child's heap: break tracking + on-demand page mapping for `grow_heap`.
+	heap: Heap,
 }
 
 impl ExecutorState {
-	pub fn new(para_id: ParaId) -> Self {
+	pub fn new(para_id: ParaId, heap: Heap) -> Self {
 		Self {
 			para_id,
 			umps: UpwardMessages::new(),
@@ -69,7 +131,14 @@ impl ExecutorState {
 			head_data: None,
 			set_validator_keys_called: false,
 			umps_bytes: 0,
+			heap,
 		}
+	}
+
+	/// The child's heap state (break, mapped boundary, limit) — public for the
+	/// `grow_heap` contract tests in the blob test crate.
+	pub fn heap(&self) -> &Heap {
+		&self.heap
 	}
 
 	/// Consume the state after the PVF halted: both head declarations are
@@ -96,8 +165,14 @@ impl ExecutorState {
 		let Ok(call) = HostCall::try_from(index) else {
 			// Unknown host-call index: the PVF is malformed and fails the whole
 			// refine invocation (§4.2).
-			panic!("PVF invoked unknown host call {index}; §4.2 whole-refine failure");
+			panic!("PVF invoked unknown host call {index}; §4.2 whole-refine failure")
 		};
+		jam_pvm_common::info!(
+			"PVF dispatch probe: call={} a0={:#x} a1={:#x}",
+			index,
+			regs[A0],
+			regs[A1]
+		);
 
 		match call {
 			// --- Data access (§4.3) -------------------------------------------------
@@ -105,11 +180,39 @@ impl ExecutorState {
 				regs[A0] = refine::gas();
 			},
 			HostCall::GrowHeap => {
-				// The child's RW region is the inner PVM this service drives, not
-				// JAM's own, so JAM's `grow_heap` is not what the child needs and
-				// cannot be relayed.
-				// FIXME: give the child a heap-growth path, or drop the index from §4.3.
-				panic!("PVF `grow_heap` is not relayable; §4.2 whole-refine failure");
+				// Child heap growth (§4.3): the guest allocator (sp-io's riscv
+				// `global_alloc_riscv.rs`) calls `grow_heap(delta: usize) -> usize` — a
+				// byte delta returning the *previous* break, or `0` on failure, and
+				// `delta == 0` queries the current break. The service tracks the break
+				// and maps the pages backing it into the inner PVM on demand, mirroring
+				// gp-v0.8.0's host `grow_heap` bounds (break `h` vs limit `b`).
+				let delta = regs[A0];
+				if delta == 0 {
+					regs[A0] = self.heap.top;
+				} else {
+					let Some(new_top) = self.heap.grow_to(delta) else {
+						// Would overflow or exceed the address-space limit `b`: refuse.
+						regs[A0] = 0;
+						return Ok(());
+					};
+					if let Some((page, count, end)) =
+						fresh_pages(self.heap.mapped_until, new_top, self.heap.page_size)
+					{
+						refine::zero(handle, page, count, PageMode::ReadWrite).unwrap_or_else(
+							|_| {
+								panic!("PVF `grow_heap` page mapping failed; §4.2 whole-refine failure")
+							},
+						);
+						self.heap.mapped_until = end;
+					}
+					let old_top = self.heap.top;
+					self.heap.top = new_top;
+					regs[A0] = old_top;
+					jam_pvm_common::info!(
+						"PVF grow_heap probe: delta={delta} break={old_top:#x}->{new_top:#x} mapped={:#x}",
+						self.heap.mapped_until
+					);
+				}
 			},
 			HostCall::Fetch => {
 				// Forwarded unchanged (§4.3): the child's `(kind, a, b)` go straight
@@ -127,6 +230,14 @@ impl ExecutorState {
 						regs[A5],
 					)
 				};
+				jam_pvm_common::info!(
+					"PVF fetch probe: kind={} a={} b={} full={} cap={}",
+					regs[A3],
+					regs[A4],
+					regs[A5],
+					full,
+					cap
+				);
 				relay_out(handle, full, &buf, out_ptr, cap, "fetch");
 				regs[A0] = full;
 			},
@@ -184,6 +295,24 @@ impl ExecutorState {
 					panic!("PVF `send_upward_message` payload did not decode; §4.2 whole-refine failure")
 				});
 				self.push(msg)?;
+			},
+			HostCall::Log => {
+				// Diagnostics only (§4.3): no state, no digest, no bearing on the
+				// result. This is how a guest panic leaves a message — `sp_io`'s riscv
+				// panic handler formats the `PanicInfo` and sends it here, so an
+				// assertion inside `jam_validate_block` shows up as text instead of a
+				// bare trap at some program counter.
+				let target = peek_bytes(handle, regs[A1], regs[A2].min(MAX_LOG_TARGET));
+				let message = peek_bytes(handle, regs[A3], regs[A4].min(MAX_LOG_MESSAGE));
+				let target = String::from_utf8_lossy(&target);
+				let message = String::from_utf8_lossy(&message);
+				match regs[A0] {
+					0 => jam_pvm_common::error!("PVF [{target}] {message}"),
+					1 => jam_pvm_common::warn!("PVF [{target}] {message}"),
+					2 => jam_pvm_common::info!("PVF [{target}] {message}"),
+					3 => jam_pvm_common::debug!("PVF [{target}] {message}"),
+					_ => jam_pvm_common::trace!("PVF [{target}] {message}"),
+				}
 			},
 			HostCall::ReportError => {
 				// Abort the PVF, failing Refine with the opaque payload; bytes

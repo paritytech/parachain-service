@@ -143,10 +143,12 @@ fn package(anchor_byte: u8, slot: Slot, payload: Vec<u8>) -> WorkPackage {
 		},
 		context: RefineContext {
 			anchor: HeaderHash([anchor_byte; 32]),
+			anchor_slot: slot,
 			state_root: Default::default(),
 			beefy_root: Default::default(),
 			lookup_anchor: HeaderHash([anchor_byte; 32]),
 			lookup_anchor_slot: slot,
+			lookup_anchor_state_root: Default::default(),
 			prerequisites: Default::default(),
 		},
 		items: vec![WorkItem {

@@ -51,6 +51,7 @@ impl Anchor {
 		let finalized = wait_for_code(jam, service, *info.code_hash).await?;
 		let context = RefineContext {
 			anchor: anchor.header_hash,
+			anchor_slot: anchor.slot,
 			state_root: jam
 				.state_root(anchor.header_hash)
 				.await
@@ -61,6 +62,7 @@ impl Anchor {
 				.map_err(|e| format!("beefy root: {e}"))?,
 			lookup_anchor: finalized.header_hash,
 			lookup_anchor_slot: finalized.slot,
+			lookup_anchor_state_root: Default::default(),
 			prerequisites: Default::default(),
 		};
 		Ok(Self {

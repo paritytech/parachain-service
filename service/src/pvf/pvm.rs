@@ -6,11 +6,11 @@
 //! carries structured spec errors from the child host calls.
 
 use crate::{
-	pvf::{executor::ExecutorState, PVF_ENTRY_POINT},
+	pvf::{executor::{ExecutorState, Heap}, PVF_ENTRY_POINT},
 	work_digest::{HeadData, RefineLog},
 };
 use jam_pvm_common::{refine, InvokeOutcome};
-use jam_types::{Hash, PageMode, PAGE_SIZE};
+use jam_types::{Hash, PageMode, UnsignedGas, PAGE_SIZE};
 use parachain_service_interface::{types::ParaId, upward_message::UpwardMessages};
 use polkavm::Reg;
 
@@ -71,6 +71,11 @@ pub fn parse_pvf(code: &[u8]) -> Result<ParsedPvf, PvfParseError> {
 	Ok(ParsedPvf { code, entry_pc: entry_pc as u64, ro_data, rw_data, memory })
 }
 
+/// Gas withheld from the inner PVM's loan: the host's `invoke` base cost `M_K` (968), the
+/// `gas` host call that reads the counter (48), and slack for the instructions between the
+/// two. The node keeps its own copy of `M_K` for the same reason (`gas_costs::INVOKE`).
+const INVOKE_GAS_RESERVE: UnsignedGas = 2048;
+
 /// Instantiate the parsed PVF as an inner PVM and invoke `jam_validate_block()` (spec §4.2).
 /// The entry point takes no arguments; the PVF reads its inputs through the
 /// `work_item_payload` host call and declares its results through `set_parent_head_hash`
@@ -89,7 +94,8 @@ pub fn run(
 	};
 	let mem = &pvf.memory;
 
-	// Map + fill the guest's RO, RW (incl. zeroed BSS + heap arena) and stack regions.
+	// Map + fill the guest's RO, RW (incl. zeroed BSS) and stack regions. The heap
+	// beyond the RW data is mapped on demand by the `grow_heap` handler.
 	// TODO: map the RO region read-only once poking into protected pages is confirmed.
 	alloc_pages(handle, mem.ro_data_address(), mem.ro_data_size());
 	poke_bytes(handle, mem.ro_data_address(), &pvf.ro_data);
@@ -101,12 +107,24 @@ pub fn run(
 	regs[Reg::SP as usize] = mem.stack_address_high() as u64;
 	regs[Reg::RA as usize] = polkavm::RETURN_TO_HOST;
 
-	let mut exe = ExecutorState::new(para_id);
+	let mut exe = ExecutorState::new(para_id, Heap::new(&pvf.memory));
 
 	let result: Result<(), RefineLog> = loop {
-		let (outcome, _gas, out_regs) = refine::invoke(handle, refine::gas() as i64, regs)
+		// The host charges `M_K + g_R` for an invoke, so the lent `g_R` has to leave `M_K`
+		// behind: lending the whole counter always overshoots it, which drains refine to
+		// zero without ever entering the child.
+		let lent = refine::gas().saturating_sub(INVOKE_GAS_RESERVE) as i64;
+		let (outcome, _gas, out_regs) = refine::invoke(handle, lent, regs)
 			.unwrap_or_else(|_| panic!("PVF inner PVM invoke failed; §4.2 whole-refine failure"));
 		regs = out_regs;
+		let tag = match outcome {
+			InvokeOutcome::Halt => "halt",
+			InvokeOutcome::HostCallFault(_) => "host",
+			InvokeOutcome::PageFault(_) => "fault",
+			InvokeOutcome::Panic => "panic",
+			InvokeOutcome::OutOfGas => "oog",
+		};
+		jam_pvm_common::info!("PVF invoke probe: {tag}");
 
 		match outcome {
 			InvokeOutcome::Halt => break Ok(()),
@@ -124,6 +142,10 @@ pub fn run(
 	};
 
 	let _ = refine::expunge(handle);
+	match &result {
+		Ok(()) => jam_pvm_common::info!("PVF run probe: OK"),
+		Err(_) => jam_pvm_common::info!("PVF run probe: Err RefineLog"),
+	}
 	result?;
 	exe.finish()
 }

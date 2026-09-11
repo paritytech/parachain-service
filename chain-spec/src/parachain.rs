@@ -11,8 +11,7 @@ use parachain_service_interface::types::{Balance, ParaId};
 /// Every aspect but the id is optional: a para registered without a
 /// [`validation_code`](Self::validation_code) is a valid registration still waiting
 /// for its preimage, and a para without a [`state_balance`](Self::state_balance)
-/// has unlimited headroom (`Balance::MAX`), mirroring the
-/// [`GenesisService`](jam_chainspec::GenesisService) default.
+/// has unlimited headroom (`Balance::MAX`), mirroring the service spec's default.
 #[derive(Clone, Debug)]
 pub struct ParachainSpec {
 	pub(crate) id: ParaId,

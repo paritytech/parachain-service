@@ -42,23 +42,28 @@ fn report(name: &str, gas: u64, elapsed: std::time::Duration, digest_len: usize)
 }
 
 /// Pinned gas measurements for the benchmarks below.
+///
+/// Re-baselined 2026-09-09 after PS's vendored polkajam moved to the merged gp-v0.8.0 HEAD
+/// (`2c34621b`, polkavm-linker 0.36): the polkavm 0.30→0.36 interpreter gas model charges
+/// roughly 3.5–12.6× what the 0.30 model charged for the same guest code, so every pin below
+/// moves to the value the new model measures.
 mod gas {
 	/// 1024-solicit digest — the heaviest reachable digest replay.
-	pub const MAX_SOLICITS: u64 = 7_725_400;
+	pub const MAX_SOLICITS: u64 = 64_246_958;
 	/// 1024 KV writes filling the report's elective-data limit.
-	pub const MAX_KV_WRITES: u64 = 6_153_186;
+	pub const MAX_KV_WRITES: u64 = 49_200_957;
 	/// 331 outbound transfers to a friendly destination.
-	pub const MAX_TRANSFER_OUTS: u64 = 769_609;
+	pub const MAX_TRANSFER_OUTS: u64 = 5_421_808;
 	/// 331 outbound transfers to a destination demanding the full cap.
-	pub const MAX_GAS_TRANSFER_OUTS: u64 = 760_745;
+	pub const MAX_GAS_TRANSFER_OUTS: u64 = 5_387_843;
 	/// Gas for 1024 incoming transfers recorded in one bucket write.
-	pub const MAX_INCOMING_TRANSFERS: u64 = 1_582_415;
+	pub const MAX_INCOMING_TRANSFERS: u64 = 8_655_792;
 	/// Due `assign` flush for all 341 cores in one block.
-	pub const ALL_DUE_ASSIGNS: u64 = 9_664_052;
+	pub const ALL_DUE_ASSIGNS: u64 = 58_603_328;
 	/// Marginal cost of a realistic destination's memo handler, per transfer.
-	pub const DEST_HANDLER_PER_TRANSFER: u64 = 1_638;
+	pub const DEST_HANDLER_PER_TRANSFER: u64 = 20_691;
 	/// Gas for one Ed25519 authorization.
-	pub const IS_AUTHORIZED_ED25519: u64 = 1_228_262;
+	pub const IS_AUTHORIZED_ED25519: u64 = 4_391_698;
 }
 
 /// Checks the pinned gas measurements against their budgets.
