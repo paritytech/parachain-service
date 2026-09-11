@@ -52,8 +52,7 @@ anyhow = "1" # TODO pull up to workspace
 parachain-service-interface = { workspace = true }
 serde_json = "1"
 # The real-PVF test (`tests/real_pvf_executes.rs`) drives the inner PVM with the
-# same polkavm 0.36 the service pins, plus the JAM invoke/outcome types and
-# blake2b for deriving the parent-head hash the runtime verifies against.
+# same polkavm 0.36 the service pins, plus the JAM invoke/outcome types for the
+# host-call shims.
 polkavm = { workspace = true }
 jam-types = { workspace = true }
-blake2b_simd = { workspace = true }

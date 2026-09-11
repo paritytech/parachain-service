@@ -2399,6 +2399,7 @@ version = "0.1.0"
 dependencies = [
  "blake2b_simd",
  "jam-std-common",
+ "parachain-service-interface",
  "parity-scale-codec",
  "trie",
 ]

@@ -185,7 +185,7 @@ fn authorizer_hash_raw_matches_blake2b_simd() {
 /// with polkavm-linker 0.35, `min_stack_size!` 2 MiB. Parses under the host's polkavm
 /// 0.30 (verified); full execution on the 0.30 host is gated on the suite run (T10).
 /// sha256 (verified with `sha256sum` before this test relies on it):
-/// `a41954ea2444635df1c0993ce4f718913995af492950a467d36e50f4529615f9`.
+/// `ac1816f3461d84956b977f8a9f24fbff25222078b6dc3b62130760ac2e721791`.
 /// Where the canonical blob lives. `POLKAVM_BLOB` overrides it (CI, and machines whose sibling
 /// checkout is named differently); the default reaches the sibling SDK checkout's evidence dir
 /// by the same relative traversal the SDK's `cumulus/zombienet/jam-tests/Cargo.toml` uses to
@@ -198,7 +198,7 @@ const POLKAVM_BLOB: &str = match option_env!("POLKAVM_BLOB") {
 		"jam-zombienet-real-service/parachain-template-runtime.polkavm"
 	),
 };
-const POLKAVM_BLOB_LEN: usize = 7_004_302;
+const POLKAVM_BLOB_LEN: usize = 7_014_288;
 
 /// The collator hashes the validation-code blob with `sp_crypto_hashing::blake2_256`
 /// (SDK `cumulus/polkadot-omni-node/lib/src/nodes/jam/collation_task.rs:450`) and carries it

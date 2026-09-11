@@ -17,9 +17,11 @@
 
 extern crate alloc;
 
+pub mod para_info;
 pub mod proof;
 pub mod state_key;
 
+pub use para_info::{para_info_key, ParaInfo};
 pub use proof::{verify, ProofError, StateProof};
 pub use state_key::service_value_state_key;
 

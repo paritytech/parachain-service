@@ -1,21 +1,31 @@
-//! Proves the real `parachain-template-runtime` PolkaVM blob executes as a child PVF
-//! under the service's real executor (`service/src/pvf/pvm.rs::run`), outside any JAM
-//! network: parse (polkavm 0.36 vs the 0.35-linked blob), inner-PVM instantiation,
-//! the `grow_heap` path that used to panic, and `jam_validate_block`'s read/declare
-//! host-call surface.
+//! Proves the repo's own `frameless` runtime blob executes as a child PVF under the
+//! service's real executor (`service/src/pvf/pvm.rs::run`), outside any JAM network:
+//! parse (polkavm 0.36 vs the blob's linker), inner-PVM instantiation, and
+//! `jam_validate_block`'s read/declare host-call surface.
 //!
 //! The service runs here as native Rust. Its child-PVM host calls (`machine`, `invoke`,
 //! `peek`, `poke`, `pages`, `gas`, `expunge`, `export`, `fetch`, `historical_lookup`,
 //! `log`) are JAM imports that only link inside a guest build; the shims below provide
 //! them, backed by a real polkavm 0.36 `RawInstance` in thread-local state, mirroring
-//! what polkajam's own `machine`/`invoke`/`pages` host calls do. Unlike the `grow_heap.rs`
-//! shims (which panic on contact), these genuinely execute the child PVM.
+//! what polkajam's own `machine`/`invoke`/`pages` host calls do.
+//!
+//! The frameless guest reads its work item's payload via `work_item_payload(0)` (fetch
+//! kind 13) and declares its results through the mandatory `set_parent_head_hash` (200)
+//! and `set_head` (201) host calls. Unlike the SDK runtime this used to drive, frameless
+//! needs no relay-chain state, so `jam_validate_block` completes — `run` returns the new
+//! head and the parent-head hash, exactly as `refine.rs` asserts end-to-end.
 
 use std::{cell::RefCell, collections::HashMap};
 
+use codec::{Decode, Encode};
+use frameless::{blake2_256, hash_state, BlockData, Config, HeadData, State, ValidationParams};
 use jam_types::InvokeOutcomeCode;
-use parachain_service::pvf::pvm::{parse_pvf, run};
-use parachain_service_interface::types::ParaId;
+use parachain_service::{
+	pvf::pvm::{parse_pvf, run},
+	refine::ParachainCandidate,
+	work_digest::validation_code_hash,
+};
+use parachain_service_interface::{types::ParaId, upward_message::UpwardMessages};
 use polkavm::{
 	ArcBytes, GasMeteringKind, InterruptKind, MemoryProtection, ModuleConfig, ProgramBlob,
 	ProgramCounter, ProgramParts, Reg,
@@ -32,6 +42,7 @@ struct VmState {
 	instances: HashMap<u64, polkavm::RawInstance>,
 	next_handle: u64,
 	gas_remaining: i64,
+	/// The work-item payload, served for `fetch` kind 13 (`work_item_payload(0)`).
 	payload: Vec<u8>,
 	preimages: HashMap<[u8; 32], Vec<u8>>,
 	logs: Vec<String>,
@@ -290,164 +301,64 @@ pub extern "C" fn historical_lookup(
 	})
 }
 
-// --- Fixture: the canonical runtime blob -------------------------------------
-
-const POLKAVM_BLOB: &str = match option_env!("POLKAVM_BLOB") {
-	Some(path) => path,
-	None => concat!(
-		env!("CARGO_MANIFEST_DIR"),
-		"/../../../polkadot-sdk3/.omo/evidence/",
-		"jam-zombienet-real-service/parachain-template-runtime.polkavm"
-	),
-};
-const POLKAVM_BLOB_LEN: usize = 7_004_302;
-
-fn blob() -> Vec<u8> {
-	let blob = std::fs::read(POLKAVM_BLOB)
-		.expect("the canonical PolkaVM runtime blob must exist at the evidence path; qed");
-	assert_eq!(blob.len(), POLKAVM_BLOB_LEN, "T2 recorded byte length");
-	assert_eq!(&blob[..4], b"PVM\0", "the blob must be a PolkaVM program, not WASM");
-	blob
-}
-
-// --- Minimal SCALE encoders ---------------------------------------------------
-
-fn compact(n: u64) -> Vec<u8> {
-	if n < 1 << 6 {
-		vec![(n as u8) << 2]
-	} else if n < 1 << 14 {
-		vec![((n as u8) & 0x3f) << 2 | 0b01, (n >> 6) as u8]
-	} else if n < 1 << 30 {
-		let mut out = vec![((n as u8) & 0x3f) << 2 | 0b10];
-		out.extend_from_slice(&(n >> 6).to_le_bytes()[..3]);
-		out
-	} else {
-		let mut out = vec![0b11];
-		out.extend_from_slice(&(n as u32).to_le_bytes());
-		out
-	}
-}
-
-fn bytes(data: &[u8]) -> Vec<u8> {
-	let mut out = compact(data.len() as u64);
-	out.extend_from_slice(data);
-	out
-}
-
-fn blake2b_256(data: &[u8]) -> [u8; 32] {
-	let mut out = [0u8; 32];
-	out.copy_from_slice(blake2b_simd::Params::new().hash_length(32).hash(data).as_bytes());
-	out
-}
-
-// --- The work-item payload the runtime's `jam_validate_block` reads -----------
-
-/// SCALE-encoded `sp_runtime::generic::Header<u32, BlakeTwo256>` for the parent head.
-///
-/// `state_root` is the Blake2-256 empty trie root, so an empty `CompactProof` in the
-/// block data verifies against it (`CompactProof::to_memory_db` checks the decoded
-/// root against the parent head's state root) — the deepest a synthetic, relay-less
-/// block reaches before `frame_executive::initial_checks` needs a real genesis state
-/// (`block_hash(0)` must equal the parent head hash).
-const EMPTY_TRIE_ROOT: [u8; 32] = [
-	0x03, 0x17, 0x0a, 0x2e, 0x75, 0x97, 0xb7, 0xb7, 0xe3, 0xd8, 0x4c, 0x05, 0x39, 0x1d, 0x13, 0x9a,
-	0x62, 0xb1, 0x57, 0xe7, 0x87, 0x86, 0xd8, 0xc0, 0x82, 0xf2, 0x9d, 0xcf, 0x4c, 0x11, 0x13, 0x14,
-];
-
-fn parent_head() -> Vec<u8> {
-	let mut header = Vec::new();
-	header.extend_from_slice(&[0u8; 32]); // parent_hash
-	header.extend_from_slice(&0u32.to_le_bytes()); // number
-	header.extend_from_slice(&EMPTY_TRIE_ROOT);
-	header.extend_from_slice(&[0u8; 32]); // extrinsics_root
-	header.push(0x00); // digest: empty
-	header
-}
-
-/// SCALE-encoded `ParachainBlockData::V1` with one block and an empty compact proof.
-fn block_data(parent_hash: [u8; 32], extrinsics: Vec<Vec<u8>>) -> Vec<u8> {
-	// Block: Header ++ Vec<UncheckedExtrinsic>.
-	let mut block = Vec::new();
-	block.extend_from_slice(&parent_hash);
-	block.extend_from_slice(&1u32.to_le_bytes()); // block number 1
-	block.extend_from_slice(&[0u8; 32]); // state_root
-	block.extend_from_slice(&[0u8; 32]); // extrinsics_root
-	block.push(0x00); // digest: empty
-	block.extend_from_slice(&compact(extrinsics.len() as u64));
-	for uxt in &extrinsics {
-		block.extend_from_slice(&bytes(uxt));
-	}
-
-	let mut data = vec![0x01]; // ParachainBlockData::V1
-	data.extend_from_slice(&compact(1)); // one block
-	data.extend_from_slice(&bytes(&block));
-	data.push(0x00); // CompactProof: empty
-	data
-}
-
-/// SCALE-encoded `MemoryOptimizedValidationParams` (extension `None`, V1/V2 path).
-fn params(parent_head: Vec<u8>, block_data: Vec<u8>, relay_parent_number: u32) -> Vec<u8> {
-	let mut p = bytes(&parent_head);
-	p.extend_from_slice(&bytes(&block_data));
-	p.extend_from_slice(&relay_parent_number.to_le_bytes());
-	p.extend_from_slice(&[0u8; 32]); // relay_parent_storage_root
-	p // extension: None encodes nothing
-}
-
 // --- The test ----------------------------------------------------------------
 
 #[test]
 fn real_runtime_executes_as_child_pvf() {
-	let blob_bytes = blob();
-	let parsed = match parse_pvf(&blob_bytes) {
+	// The repo's own freshly built frameless blob, not a foreign SDK runtime.
+	let pvf = parachain_service_bin::frameless_pvf();
+	let parsed = match parse_pvf(&pvf) {
 		Ok(parsed) => parsed,
-		Err(_) => panic!("polkavm 0.36 failed to parse the 0.35-linked blob"),
+		Err(_) => panic!("polkavm 0.36 failed to parse the frameless blob"),
 	};
-	let parent = parent_head();
-	let parent_hash = blake2b_256(&parent);
-	let payload = params(parent.clone(), block_data(parent_hash, Vec::new()), 1);
+
+	// One Coretime block (`counter += 512`) on top of genesis — the same shape
+	// `refine.rs::run_block` drives end-to-end, only with the payload hand-served.
+	let config = Config::Coretime;
+	let parent = HeadData {
+		number: 0,
+		parent_hash: [0; 32],
+		post_state: hash_state(&State { config: config.clone(), counter: 0 }),
+	};
+	let block = BlockData { state: State { config, counter: 0 }, add: 512 };
+	let params = ValidationParams { parent_head: parent.encode(), block_data: block.encode() };
+	// The work-item payload `jam_validate_block` decodes via `work_item_payload(0)`.
+	let payload = ParachainCandidate {
+		validation_code_hash: validation_code_hash(&pvf),
+		pov: params.encode(),
+	}
+	.encode();
 
 	with_vm(|vm| {
 		vm.payload = payload;
 		vm.gas_remaining = 1_000_000_000;
-		vm.preimages.insert(blake2b_256(&blob_bytes), blob_bytes.clone());
 	});
 
 	let outcome =
 		std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(&parsed, ParaId(0))));
 
 	with_vm(|vm| {
-		// The runtime's allocator (`sp_io` riscv `grow_heap`, import index 1) must have been
-		// exercised — the handler that used to panic under the pre-real-PVF shims. Observed
-		// through the executor's own `grow_heap probe` log line, so this proves the dispatch
-		// genuinely ran the child PVM.
-		let grew = vm.logs.iter().any(|line| line.contains("grow_heap probe:"));
-		// `set_parent_head_hash` (import 100) is only reachable after the runtime decoded the
-		// `MemoryOptimizedValidationParams` work-item payload and entered `jam_validate_block`.
-		let declared = vm.logs.iter().any(|line| line.contains("dispatch probe: call=100"));
+		// The guest reads its payload via fetch kind 13 (`work_item_payload(0)`) and declares
+		// its results through the mandatory `set_parent_head_hash` (200) + `set_head` (201) —
+		// observed through the executor's own probe log lines.
+		let fetched = vm.logs.iter().any(|line| line.contains("fetch probe: kind=13"));
+		let declared = vm.logs.iter().any(|line| line.contains("dispatch probe: call=200"));
+		let set_head = vm.logs.iter().any(|line| line.contains("dispatch probe: call=201"));
 		println!("host-call log:\n{}", vm.logs.join("\n"));
-		println!("grow_heap exercised: {grew}");
+		println!("work-item payload fetched (kind 13): {fetched}");
 		println!("set_parent_head_hash reached: {declared}");
+		println!("set_head reached: {set_head}");
 		println!("abnormal exit: {:?}", vm.trap);
-		assert!(grew, "the runtime's allocator must call `grow_heap` during validation");
-		assert!(
-			declared,
-			"the runtime must decode the work-item payload and reach jam_validate_block"
-		);
+		assert!(fetched, "the runtime must fetch its work-item payload via kind 13");
+		assert!(declared, "the runtime must decode the candidate and declare the parent head");
+		assert!(set_head, "the runtime must set the new head after the parent declaration");
 	});
 
-	// The work-item input is a synthetic, relay-less block, so full block validation is not
-	// expected to complete: the runtime executes and reaches block execution, then stops at a
-	// guest panic. A completed `jam_validate_block` (head set) would be the e2e success; the
-	// abnormal-exit report below is the residual the owner asked to see.
-	match outcome {
-		Ok(Ok((_parent_head_hash, head, _umps))) => {
-			assert!(!head.as_slice().is_empty(), "the runtime set a non-empty head");
-			println!("jam_validate_block COMPLETED: head_len={}", head.as_slice().len());
-		},
-		Ok(Err(err)) => {
-			eprintln!("jam_validate_block returned RefineLog::{err:?}");
-		},
+	// Frameless needs no relay-chain state, so `jam_validate_block` completes: run returns the
+	// new head and the parent-head hash (blake2-256 over the encoded parent head, D-5).
+	let (parent_head_hash, head_data, upward_messages) = match outcome {
+		Ok(Ok(ok)) => ok,
+		Ok(Err(err)) => panic!("jam_validate_block returned RefineLog::{err:?}"),
 		Err(panic) => {
 			let msg = panic
 				.downcast_ref::<String>()
@@ -455,11 +366,18 @@ fn real_runtime_executes_as_child_pvf() {
 				.or_else(|| panic.downcast_ref::<&str>().map(|s| s.to_string()))
 				.unwrap_or_else(|| "<non-string panic>".to_owned());
 			with_vm(|vm| {
-				eprintln!(
-					"the runtime executed but the synthetic block was rejected:\n  panic: {msg}\n  trap: {:?}",
+				panic!(
+					"the runtime panicked instead of completing:\n  panic: {msg}\n  trap: {:?}",
 					vm.trap
-				);
-			});
+				)
+			})
 		},
-	}
+	};
+	assert_eq!(parent_head_hash, blake2_256(&params.parent_head));
+	assert_eq!(upward_messages, UpwardMessages::new());
+	let head =
+		HeadData::decode(&mut &head_data.into_inner()[..]).expect("run returned valid HeadData");
+	assert_eq!(head.number, 1);
+	assert_eq!(head.parent_hash, parent.hash());
+	assert_eq!(head.post_state, hash_state(&State { config: Config::Coretime, counter: 512 }));
 }
