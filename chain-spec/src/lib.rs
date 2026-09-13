@@ -2,13 +2,13 @@
 //!
 //! [`ParachainServiceSpec`] describes the service at genesis — the registered
 //! parachains, each para's validation code and authorizer — and builds a
-//! [`GenesisService`](jam_chainspec::GenesisService) for a
-//! [`ChainSpecConfig`](jam_chainspec::ChainSpecConfig). The service's storage
-//! carries the per-parachain records and the preimage registry in exactly the
-//! layout [`parachain_service`] writes (§3.1), the validation-code and authorizer
-//! blobs are hosted as preimages of the service, and the authorizer hashes come
-//! back from [`ParachainServiceSpec::authorizer_hashes`] to fill the cores'
-//! queues.
+//! [`BuiltParachainService`] whose parts a caller places into a
+//! [`ChainSpecConfig`](jam_chainspec::ChainSpecConfig) under the service's id.
+//! The service's storage carries the per-parachain records and the preimage
+//! registry in exactly the layout [`parachain_service`] writes (§3.1), the
+//! validation-code and authorizer blobs are hosted as preimages of the service,
+//! and the authorizer hashes come back from
+//! [`ParachainServiceSpec::authorizer_hashes`] to fill the cores' queues.
 //!
 //! ```
 //! use parachain_authorizer::aura::AuthConfig;
@@ -43,4 +43,4 @@ mod tests;
 
 pub use error::Error;
 pub use parachain::ParachainSpec;
-pub use service_spec::ParachainServiceSpec;
+pub use service_spec::{BuiltParachainService, ParachainServiceSpec};

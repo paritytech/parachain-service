@@ -324,13 +324,13 @@ mod host {
 		#[polkavm_import(index = 8)]
 		fn export_raw(ptr: u32, len: u32) -> u64;
 		// --- Parachain Service host functions (§4.3) ---
-		#[polkavm_import(index = 100)]
+		#[polkavm_import(index = 200)]
 		fn set_parent_head_hash_raw(hash_ptr: u32);
-		#[polkavm_import(index = 101)]
+		#[polkavm_import(index = 201)]
 		fn set_head_raw(ptr: u32, len: u32);
-		#[polkavm_import(index = 102)]
+		#[polkavm_import(index = 202)]
 		fn send_upward_message_raw(ptr: u32, len: u32);
-		#[polkavm_import(index = 103)]
+		#[polkavm_import(index = 203)]
 		fn report_error_raw(ptr: u32, len: u32);
 	}
 

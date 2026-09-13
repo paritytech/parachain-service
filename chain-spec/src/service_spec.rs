@@ -87,11 +87,11 @@ impl ParachainServiceSpec {
 	/// Fails when a para's head exceeds the 4 KiB bound or the same para id is
 	/// registered twice; both are programming errors that would otherwise corrupt
 	/// the state layout silently.
-	pub fn build(self) -> Result<GenesisService, Error> {
-		let mut service = GenesisService::new(self.id, self.code);
-		if let Some(balance) = self.balance {
-			service = service.balance(balance);
-		}
+	pub fn build(self) -> Result<BuiltParachainService, Error> {
+		// `Balance::MAX` when unset — the unlimited default the suite relies on — spelled
+		// explicitly because jam-chainspec's own `new` default is `MinimumPlus(0)`.
+		let balance = self.balance.unwrap_or(Balance::MAX);
+		let mut service = GenesisService::new(self.code).balance(balance);
 
 		// Deterministic output: paras run in ParaId order, whatever the insertion
 		// order, and two specs for one id are a bug — the later `ParaInfo` row would
@@ -159,8 +159,33 @@ impl ParachainServiceSpec {
 		for blob in preimages {
 			service = service.preimage(blob);
 		}
-		Ok(service)
+		Ok(BuiltParachainService {
+			id: self.id,
+			balance,
+			storage: service.storage.into_iter().map(|(key, value)| (key.0, value.0)).collect(),
+			preimages: service
+				.preimages
+				.into_iter()
+				.map(|blob| blob.read().expect("built blobs are bytes, not paths; qed"))
+				.collect(),
+		})
 	}
+}
+
+/// The built service, spelled the way the suite's genesis writer consumes it: jam-chainspec
+/// carries the service under `services[id]`, and the overrides writer reads the balance,
+/// storage and preimages straight off the built value.
+#[derive(Debug, Clone)]
+pub struct BuiltParachainService {
+	/// The service's id.
+	pub id: ServiceId,
+	/// The starting balance: `Balance::MAX` unless [`ParachainServiceSpec::balance`] said
+	/// otherwise.
+	pub balance: Balance,
+	/// The service's storage entries, raw key and value bytes.
+	pub storage: BTreeMap<Vec<u8>, Vec<u8>>,
+	/// The blobs the service hosts as preimages, in insertion order.
+	pub preimages: Vec<Vec<u8>>,
 }
 
 /// Add `blob` to `preimages` unless some already-hosted blob has the same bytes.

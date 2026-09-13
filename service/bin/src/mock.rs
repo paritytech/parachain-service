@@ -378,10 +378,12 @@ pub fn work_package(
 		authorizer: Authorizer { code_hash: CodeHash(hash_raw(authorizer_blob)), config },
 		context: RefineContext {
 			anchor: Default::default(),
+			anchor_slot: 0,
 			state_root: Default::default(),
 			beefy_root: Default::default(),
 			lookup_anchor: Default::default(),
 			lookup_anchor_slot: 0,
+			lookup_anchor_state_root: Default::default(),
 			prerequisites: Default::default(),
 		},
 		items: work_items.try_into().expect("work-item count exceeds the JAM bound"),

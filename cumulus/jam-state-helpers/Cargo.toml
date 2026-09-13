@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 blake2b_simd = { workspace = true }
 codec = { workspace = true }
+parachain-service-interface = { workspace = true }
 
 [dev-dependencies]
 # Byte-pin the derivation and the trie roots against polkajam's own (std-only) implementations,
@@ -22,4 +23,4 @@ polkajam-trie = { workspace = true }
 
 [features]
 default = []
-std = ["blake2b_simd/std", "codec/std"]
+std = ["blake2b_simd/std", "codec/std", "parachain-service-interface/std"]

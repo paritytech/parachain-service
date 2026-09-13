@@ -115,7 +115,7 @@ async fn sample(
 
 	let availability = jam.availability(at).await.map_err(|e| format!("availability: {e}"))?;
 	for assignment in availability.iter().flatten() {
-		collect(&mut rows, args, AVAILABLE, &assignment.report, assignment.report_slot, 0);
+		collect(&mut rows, args, AVAILABLE, assignment.report(), assignment.guarantee.slot, 0);
 	}
 
 	// The queue is indexed by epoch phase, so dating its entries needs the block's own slot.
