@@ -11,3 +11,6 @@ pub mod refine_log;
 pub mod replay;
 pub mod seed;
 pub mod value;
+
+#[cfg(test)]
+mod numeric_rejection;

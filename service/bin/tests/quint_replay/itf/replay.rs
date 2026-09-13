@@ -34,7 +34,9 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 	let states = document.get("states").and_then(Value::as_array).ok_or("missing states")?;
 	let first = states.first().ok_or("trace has no states")?;
 	let mut codex = Codex::default();
-	let mut storage = fresh_storage(|storage| seed::seed(storage, first, &mut codex).unwrap());
+	let mut seeded = Ok(());
+	let mut storage = fresh_storage(|storage| seeded = seed::seed(storage, first, &mut codex));
+	seeded?;
 	compare::state(&storage, first, &mut codex, 0)?;
 
 	for (index, pair) in states.windows(2).enumerate() {
@@ -56,7 +58,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 					.map(|result| work_items(result, &mut codex))
 					.transpose()?
 					.unwrap_or_default();
-				let slot = integer(field(&pair[1], "now")?)? as u32;
+				let slot = bounded_integer::<u32>(field(&pair[1], "now")?, "now")?;
 				let (_, next, _) = accumulate_block(storage, items, slot);
 				storage = next;
 			},
@@ -120,7 +122,7 @@ fn digest_ok(value: &Value, codex: &mut Codex) -> Result<ParachainWorkDigest, St
 		parent_head_hash: hash_raw(&parent),
 		head_data: Codex::head(integer(field(value, "headData")?)?)?,
 		upward_messages: messages.try_into().map_err(|_| "too many upward messages")?,
-		lookup_anchor: integer(field(value, "lookupAnchor")?)? as u32,
+		lookup_anchor: bounded_integer::<u32>(field(value, "lookupAnchor")?, "lookupAnchor")?,
 	})
 }
 
@@ -160,7 +162,7 @@ fn upward_message(
 		},
 		"ParachainSetStateBalance" => Ok(UpwardMessage::ParachainSetStateBalance {
 			para_id: para_id(field(value, "paraId")?, codex)?,
-			new_total: Compact(integer(field(value, "newTotal")?)? as u64),
+			new_total: Compact(bounded_integer::<u64>(field(value, "newTotal")?, "newTotal")?),
 		}),
 		"ParachainSetValidationCode" => {
 			let len = integer(field(value, "newValidationCodeLen")?)?;
@@ -194,14 +196,14 @@ fn provision(
 		}
 		let key = tuple(key)?;
 		let abstract_hash = integer(field(&key[0], "hashBytes")?)?;
-		let len = integer(&key[1])? as u32;
+		let len = bounded_integer::<u32>(&key[1], "preimage length")?;
 		let blob = Codex::blob(abstract_hash, len)?;
 		let expected_hash = codex.hash(abstract_hash, len)?;
 		if hash_raw(&blob) != expected_hash {
 			return Err("codex preimage hash mismatch".into());
 		}
 		storage
-			.provide(integer(field(current, "now")?)? as u32, MOCK_SERVICE_ID, &blob)
+			.provide(bounded_integer::<u32>(field(current, "now")?, "now")?, MOCK_SERVICE_ID, &blob)
 			.map_err(|_| "host rejected provisioned preimage")?;
 		storage.commit();
 		debug_assert!(storage
@@ -214,6 +216,12 @@ fn provision(
 
 pub(crate) fn field<'a>(value: &'a Value, name: &str) -> Result<&'a Value, String> {
 	value.get(name).ok_or_else(|| format!("missing field {name}"))
+}
+/// Convert model integers without wrapping negative or oversized values.
+pub(crate) fn bounded_integer<T: TryFrom<i128>>(value: &Value, name: &str) -> Result<T, String> {
+	let value = integer(value)?;
+	T::try_from(value)
+		.map_err(|_| format!("{name} out of {} range: {value}", std::any::type_name::<T>()))
 }
 pub(crate) fn integer(value: &Value) -> Result<i128, String> {
 	if let Some(value) = value.get("#bigint").and_then(Value::as_str) {

@@ -37,7 +37,10 @@ pub fn state(
 			("None", _) => None,
 			("Some", pair) => {
 				let pair = tuple(pair)?;
-				Some((validation_code(&pair[0], codex)?, integer(&pair[1])? as u32))
+				Some((
+					validation_code(&pair[0], codex)?,
+					bounded_integer::<u32>(&pair[1], "pendingUpgrade deadline")?,
+				))
 			},
 			(tag, _) => return Err(format!("unexpected pendingUpgrade variant {tag}")),
 		};
@@ -47,11 +50,19 @@ pub fn state(
 			("pendingUpgrade", actual.pending_upgrade == expected_pending),
 			(
 				"totalStateBalance",
-				actual.total_state_balance == integer(field(value, "totalStateBalance")?)? as u64,
+				actual.total_state_balance ==
+					bounded_integer::<u64>(
+						field(value, "totalStateBalance")?,
+						"totalStateBalance",
+					)?,
 			),
 			(
 				"usedStateBalance",
-				actual.used_state_balance == integer(field(value, "usedStateBalance")?)? as u64,
+				actual.used_state_balance ==
+					bounded_integer::<u64>(
+						field(value, "usedStateBalance")?,
+						"usedStateBalance",
+					)?,
 			),
 			(
 				"isDeregistering",
