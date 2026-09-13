@@ -3,6 +3,13 @@
 use crate::itf::replay;
 
 #[test]
+fn ump_ordering_works() {
+	replay::trace(include_str!("../fixtures/quint/blocks/ump_ordering_works.itf.json")).expect(
+		"UMP ordering, shared references, and refunds should match Quint across WPs and blocks",
+	);
+}
+
+#[test]
 fn two_work_packages_works() {
 	replay::trace(include_str!("../fixtures/quint/blocks/two_work_packages_works.itf.json"))
 		.expect("both parachain heads and their combined commitment should match Quint");

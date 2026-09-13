@@ -92,7 +92,7 @@ benchmarks.
 The generator samples zero, one, or two WPs per block, both registered parachains,
 valid candidates, stale parents, invalid code, missing head declarations,
 reported PVF errors, PVF panic, JAM WorkErr, auth-trace lengths, time gaps, and
-lookup anchors. It also samples external provision of initial code preimages.
+lookup anchors. It also samples external provision of solicited preimages.
 Each WP independently samples its para, outcome, auth-trace length, and lookup
 anchor. Same-para pairs either compete for the pre-block head or chain the second
 candidate off the first candidate's proposed head. Both refine against pre-block
@@ -102,8 +102,16 @@ Selecting whole outcome classes keeps successful candidates reachable frequently
 Time gaps are at most `MaxLookupAge`, so sampled anchors lie between the valid
 lookback floor and the previous block slot.
 
-This initial profile emits no upward messages: registration, cleanup, upgrade
-lifecycle, and incoming transfers are not fuzzed yet. Malformed
+Each WP independently samples zero, one, or two upward messages from `Solicit`
+and `Forget`. Two shared hashes at length 1024 exercise duplicate requests,
+shared references, refunds, and provision/forget/re-solicit lifecycles. Active-code
+messages exercise pinning and unpinning. Forget targets include the caller and
+both registered paras, allowing Quint Refine to reject unauthorized foreign
+calls. Messages are also sampled for failed work and stale-parent candidates;
+Quint determines whether they reach Accumulate and take effect. The codex requires
+one length per abstract hash, so conflicting lengths are excluded.
+
+Registration, cleanup, upgrade lifecycle, and incoming transfers are not fuzzed yet. Malformed
 authorizer configuration and invalid item counts are excluded because their
 model Refine-log representations cannot be replayed as Rust Refine errors.
 Other comparator limitations remain those in [README.md](README.md). Unsupported

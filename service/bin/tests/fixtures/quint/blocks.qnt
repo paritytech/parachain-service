@@ -40,6 +40,25 @@ module blocks {
   run two_work_packages_works =
     multipleWorkPackagesAccumulateTest
 
+  // Both paras share a preimage. The second WP then releases Asset Hub's
+  // reference, which must see the first WP's solicitation in the same block.
+  run ump_ordering_works = {
+    val h = { hashBytes: 7 }
+    val solicit = Solicit({ hash: h, len: 1024 })
+    val forgetHub = Forget({ paraId: AssetHubParaId, hash: h, len: 1024 })
+    val forgetCore = Forget({ paraId: CoretimeParaId, hash: h, len: 1024 })
+    init
+      .then(applyHappyPaths(List(
+        (AssetHubParaId, { vchBytes: 2 }, List(solicit, solicit)),
+        (CoretimeParaId, { vchBytes: 1 }, List(solicit, forgetHub))
+      )))
+      .then(expectThat(svc.preimageRegistry.get((h, 1024)).referencers == Set(CoretimeParaId)))
+      .then(applyHappyPath(CoretimeParaId, { vchBytes: 1 }, List(forgetCore)))
+      .then(expectThat(not(svc.preimageRegistry.keys().contains((h, 1024)))))
+      .then(applyHappyPath(AssetHubParaId, { vchBytes: 2 }, List(forgetHub, solicit)))
+      .then(expectThat(svc.preimageRegistry.get((h, 1024)).referencers == Set(AssetHubParaId)))
+  }
+
   run work_error_between_candidates_works =
     init.then(candidate).then(expectThat(svc.paraInfo(CoretimeParaId).headData == 1))
       .then(applyWork(WorkErr, 7))
