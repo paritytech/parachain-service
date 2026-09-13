@@ -89,16 +89,21 @@ benchmarks.
 
 ## Initial input domain and known findings
 
-The generator samples zero or one WP per block, both registered parachains,
+The generator samples zero, one, or two WPs per block, both registered parachains,
 valid candidates, stale parents, invalid code, missing head declarations,
 reported PVF errors, PVF panic, JAM WorkErr, auth-trace lengths, time gaps, and
 lookup anchors. It also samples external provision of initial code preimages.
+Each WP independently samples its para, outcome, auth-trace length, and lookup
+anchor. Same-para pairs either compete for the pre-block head or chain the second
+candidate off the first candidate's proposed head. Both refine against pre-block
+state; Quint decides which results accumulate successfully. Empty blocks are
+sampled independently of work outcomes. Modes 0 and 8 both select valid work.
 Selecting whole outcome classes keeps successful candidates reachable frequently.
 Time gaps are at most `MaxLookupAge`, so sampled anchors lie between the valid
 lookback floor and the previous block slot.
 
 This initial profile emits no upward messages: registration, cleanup, upgrade
-lifecycle, incoming transfers, and multiple WPs are not fuzzed yet. Malformed
+lifecycle, and incoming transfers are not fuzzed yet. Malformed
 authorizer configuration and invalid item counts are excluded because their
 model Refine-log representations cannot be replayed as Rust Refine errors.
 Other comparator limitations remain those in [README.md](README.md). Unsupported

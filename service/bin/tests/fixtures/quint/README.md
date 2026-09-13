@@ -69,7 +69,7 @@ Coretime and one for Asset Hub. Both heads advance from 0 to 1; replay checks
 their storage and the combined returned head commitment.
 
 Replay processes all work results in order in one Accumulate invocation per block.
-The streaming fuzz generator still samples zero or one WP per block.
+The streaming fuzz generator samples zero, one, or two WPs per block.
 Nonempty incoming transfers
 are unsupported because the model and Rust use different bucket layouts.
 Accumulate-log decoding currently supports `ForgetAgainAt`; other event variants
