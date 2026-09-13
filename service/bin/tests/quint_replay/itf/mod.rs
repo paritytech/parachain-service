@@ -3,6 +3,8 @@
 pub mod classify;
 pub mod codex;
 pub mod compare;
+#[cfg(test)]
+mod compare_rejection;
 mod compare_storage;
 pub mod refine_log;
 pub mod replay;
