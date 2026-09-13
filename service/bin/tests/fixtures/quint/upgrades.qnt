@@ -9,6 +9,59 @@ module upgrades {
 
   import tests.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/tests"
 
+  run activation_works = {
+    val oldCode: ValidationCodeHash = { vchBytes: 1 }
+    val newCode: ValidationCodeHash = { vchBytes: 778 }
+    val oldKey = (vchAsHash(oldCode), FixedCodeLen)
+    val newKey = (vchAsHash(newCode), FixedCodeLen)
+    init
+      .then(applyHappyPath(CoretimeParaId, oldCode, List(
+        RequestCodeUpgrade({ hash: newCode, len: FixedCodeLen }))))
+      .then(expectThat(all {
+        svc.paraInfo(CoretimeParaId).validationCode ==
+          initialState.paraInfo(CoretimeParaId).validationCode,
+        svc.paraInfo(CoretimeParaId).pendingUpgrade == Some((
+          { ref: { hash: newCode, len: FixedCodeLen }, pinned: false },
+          now + UpgradeTimeoutTimeslots)),
+        svc.preimageStatus.get(newKey) == Unprovided,
+        svc.hasReferencer(vchAsHash(newCode), FixedCodeLen, CoretimeParaId),
+        svc.paraInfo(CoretimeParaId).usedStateBalance >
+          prevSvc.paraInfo(CoretimeParaId).usedStateBalance
+      }))
+      // Clear per-block work results before external preimage provision.
+      .then(applyHappyPaths(List()))
+      .then(provide(vchAsHash(newCode), FixedCodeLen))
+      .then(expectThat(all {
+        svc.preimageStatus.get(newKey) == Provided,
+        svc.paraInfo(CoretimeParaId) == prevSvc.paraInfo(CoretimeParaId)
+      }))
+      // Provision alone does not activate; old-code candidates remain valid.
+      .then(applyHappyPath(CoretimeParaId, oldCode, List()))
+      .then(expectThat(all {
+        svc.paraInfo(CoretimeParaId).headData == 2,
+        svc.paraInfo(CoretimeParaId).pendingUpgrade ==
+          prevSvc.paraInfo(CoretimeParaId).pendingUpgrade,
+        svc.paraInfo(CoretimeParaId).validationCode ==
+          initialState.paraInfo(CoretimeParaId).validationCode
+      }))
+      .then(applyHappyPath(CoretimeParaId, newCode, List()))
+      .then(expectThat(all {
+        svc.paraInfo(CoretimeParaId).headData == 3,
+        svc.paraInfo(CoretimeParaId).pendingUpgrade == None,
+        svc.paraInfo(CoretimeParaId).validationCode == Some(
+          { ref: { hash: newCode, len: FixedCodeLen }, pinned: false }),
+        svc.preimageStatus.get(newKey) == Provided,
+        not(svc.preimageStatus.keys().contains(oldKey)),
+        not(svc.preimageRegistry.keys().contains(oldKey)),
+        svc.hasReferencer(vchAsHash(newCode), FixedCodeLen, CoretimeParaId),
+        svc.paraInfo(CoretimeParaId).usedStateBalance ==
+          initialState.paraInfo(CoretimeParaId).usedStateBalance,
+        svc.paraInfo(CoretimeParaId).totalStateBalance ==
+          initialState.paraInfo(CoretimeParaId).totalStateBalance,
+        svc.parachainLog == prevSvc.parachainLog
+      }))
+  }
+
   // Jump to a later block slot without manufacturing intermediate state.
   action workErrorAt(slot: Timeslot): bool = {
     val out = accumulateBlock(

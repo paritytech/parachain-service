@@ -1,4 +1,4 @@
-//! Lazy upgrade expiry runs on a candidate, even after WorkErr crossed the deadline.
+//! Upgrade provision, candidate-triggered activation, and lazy expiry.
 
 use serde_json::{json, Value};
 
@@ -6,6 +6,38 @@ use crate::itf::replay;
 
 const TRACE: &str =
 	include_str!("../fixtures/quint/upgrades/work_error_across_upgrade_deadline_works.itf.json");
+const ACTIVATION: &str = include_str!("../fixtures/quint/upgrades/activation_works.itf.json");
+
+#[test]
+fn activation_works() {
+	replay::trace(ACTIVATION).expect("the new-code candidate activates the provided upgrade");
+}
+
+fn unchanged_activation_field_errors(field: &str) {
+	let mut trace: Value = serde_json::from_str(ACTIVATION).unwrap();
+	let states = trace["states"].as_array_mut().unwrap();
+	let frame = (1..states.len())
+		.rfind(|&i| states[i]["now"] != states[i - 1]["now"])
+		.expect("activation candidate block");
+	let before = coretime_info(&mut states[frame - 1])[field].clone();
+	assert_ne!(coretime_info(&mut states[frame])[field], before);
+	coretime_info(&mut states[frame])[field] = before;
+	let error = replay::trace(&trace.to_string()).unwrap_err();
+	assert!(
+		error.starts_with(&format!("frame {frame}: svc.parachains[1].{field} differs;")),
+		"{error}"
+	);
+}
+
+#[test]
+fn activation_retains_old_code_errors() {
+	unchanged_activation_field_errors("validationCode");
+}
+
+#[test]
+fn activation_retains_pending_upgrade_errors() {
+	unchanged_activation_field_errors("pendingUpgrade");
+}
 
 #[test]
 fn work_error_across_upgrade_deadline_works() {

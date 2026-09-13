@@ -1,7 +1,7 @@
 These fixtures replay recorded work results through Rust Accumulate in the PVM
 and compare storage with Quint's expected states. They do not execute Rust Refine.
 
-Regenerate the refine-error, skipped-work, empty-block, upgrade-expiry, log-pruning, minimal, and stale-parent traces
+Regenerate the refine-error, skipped-work, empty-block, upgrade-lifecycle, log-pruning, minimal, and stale-parent traces
 using Python 3 and Quint 0.32.0 from the repository root:
 
 ```sh
@@ -25,6 +25,17 @@ the candidate clears it, removes the never-provided code's registry entry
 and preimage request, and refunds its state-balance charge. The trace jumps
 directly to the later block slot. This covers expiry of unprovided code;
 preimage provision and upgrade activation are not covered by this trace.
+
+`upgrades/activation_works.itf.json` requests an upgrade and provides the new code.
+A further old-code candidate keeps the upgrade pending;
+the first new-code candidate activates it and clears the pending upgrade. Replay
+compares storage after every transition, including external provision. The old
+code is initially unprovided: activation removes its registry entry and request,
+refunds its charge, and emits no log. The new code remains provided. Mutation tests
+reject retaining either the old active code or the pending upgrade at activation.
+Activation over provided old code has a known log mismatch: Rust emits
+`ForgetAgainAt`, while the pinned model discards the event. See
+[the reproduction](../../../../../upstream-feedback/upgrade-activation-log.md).
 
 `log_pruning/refine_log_boundary_works.itf.json` logs Refine errors at slots
 1 and 2, then accepts a candidate anchored at slot 2. The older entry is

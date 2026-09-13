@@ -1,9 +1,17 @@
 # Quint Trace Replay — Accumulate Equivalence Testing
 
-> Every format, constant and CLI flag in this document was checked against
-> `quint 0.32.0`, the vendored spec at `vendor/polkadot-sdk-quint`
-> (`4a22816d`), and the Rust tree. Claims that are **not** yet verified are
-> marked **(unverified)** and are resolved by Phase 0.
+This document is the original implementation plan. Sections below describe
+proposed behavior, including features that are not implemented. For current
+commands, coverage, and limitations, see the
+[fixture README](service/bin/tests/fixtures/quint/README.md).
+
+Current replay covers one work result per block, including multi-block error
+and candidate sequences, WorkErr, upgrade expiry and activation, external
+preimage provision, and Refine/Accumulate log pruning. Incoming transfers,
+multiple work results per block, returned head commitments, and JAM
+assignment/staging outputs are not covered. Accumulate-log decoding supports
+`ForgetAgainAt` only. Activation over provided old code exposes a
+[model/Rust log discrepancy](upstream-feedback/upgrade-activation-log.md).
 
 ## Goal
 
