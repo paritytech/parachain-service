@@ -15,7 +15,7 @@ def main():
     version = subprocess.check_output(["quint", "--version"], text=True).strip()
     if version != "0.32.0":
         raise SystemExit(f"Expected Quint 0.32.0, found {version}")
-    for source in ["refine_errors", "blocks"]:
+    for source in ["refine_errors", "blocks", "upgrades"]:
         generate(source)
 
 

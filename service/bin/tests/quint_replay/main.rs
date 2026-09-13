@@ -3,6 +3,7 @@ mod blocks;
 mod common;
 mod itf;
 mod refine_errors;
+mod upgrades;
 
 #[test]
 fn minimal_replay_works() {
