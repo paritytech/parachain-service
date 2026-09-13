@@ -1,6 +1,14 @@
-//! Empty blocks must preserve the state produced by preceding work.
+//! Empty blocks and skipped work must preserve the state produced by preceding work.
 
 use crate::itf::replay;
+
+#[test]
+fn work_error_between_candidates_works() {
+	replay::trace(include_str!(
+		"../fixtures/quint/blocks/work_error_between_candidates_works.itf.json"
+	))
+	.expect("skipped work should preserve the head used by the next candidate");
+}
 
 #[test]
 fn empty_blocks_between_errors_works() {

@@ -37,6 +37,12 @@ module blocks {
   run minimal_replay_works =
     init.then(candidate).then(expectThat(svc.paraInfo(CoretimeParaId).headData == 1))
 
+  run work_error_between_candidates_works =
+    init.then(candidate).then(expectThat(svc.paraInfo(CoretimeParaId).headData == 1))
+      .then(applyWork(WorkErr, 7))
+      .then(expectThat(svc == prevSvc and svc.paraInfo(CoretimeParaId).headData == 1))
+      .then(candidate).then(expectThat(svc.paraInfo(CoretimeParaId).headData == 2))
+
   run empty_blocks_between_errors_works =
     init.then(emptyBlock).then(expectThat(svc == prevSvc))
       .then(logError(MissingHeadDeclaration, 7))
