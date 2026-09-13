@@ -5,6 +5,9 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { once } = require('node:events');
 
+// Rust owns campaign progress. Disable Quint's terminal bar, preserving stderr diagnostics.
+process.stderr.isTTY = false;
+
 function quintRoot() {
   if (process.env.QUINT_PACKAGE) return process.env.QUINT_PACKAGE;
   const executable = (process.env.PATH || '').split(path.delimiter)

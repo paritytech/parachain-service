@@ -28,8 +28,10 @@ Configuration:
 
 For an indefinite campaign, set `QUINT_FUZZ_TRACES=0`. Choose workers based on the
 available CPUs and memory: each worker owns a Node process as well as a Rust
-thread. Adding `--release` to Cargo optimizes the host harness; the service blob
-already uses its production build profile. The current PVM helper uses the
+thread. `just quint-fuzz` uses the `testnet` Cargo profile: release optimizations
+with debug assertions and overflow checks enabled. Add `--profile testnet` to
+the Cargo commands here to use the same profile. The service blob already uses
+its production build profile. The current PVM helper uses the
 interpreter. This remains an integration test; a separate executable can reuse
 the parsed-document replay entry point later.
 
@@ -75,9 +77,13 @@ node scripts/quint-replay-stream.cjs \
 
 Adapter arguments are model path, first seed, seed stride, trace count (0 means
 unbounded), and steps. Its stdout is exclusively the JSON protocol; diagnostics
-go to stderr. Progress from the Rust runner includes generation time, replay
-time, and wall-clock throughput. First-use blob building is included in timing,
-so initial figures are not steady-state benchmarks.
+go to stderr. Rust aggregates successful replays across all workers into one
+progress line, at most once every five seconds as traces complete. It reports
+traces/s and transitions/s since the previous update, total completed traces and
+transitions, and elapsed wall time. The final summary reports average throughput
+over the whole run. Quint's per-simulation terminal bar is disabled. First-use
+blob building is included in timing, so initial figures are not steady-state
+benchmarks.
 
 ## Initial input domain and known findings
 

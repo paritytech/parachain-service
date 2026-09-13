@@ -39,6 +39,22 @@ quint-fmt:
 quint-compact:
 	python3 scripts/format-quint-replays.py compact
 
+# Replay 100 random-seeded traces with eight workers; --infinite runs until failure or interruption.
+[positional-arguments]
+quint-fuzz mode="":
+	#!/usr/bin/env sh
+	set -eu
+	case "$1" in
+		"") quint_fuzz_traces=100 ;;
+		--infinite) quint_fuzz_traces=0 ;;
+		*) echo "Usage: just quint-fuzz [--infinite]" >&2; exit 2 ;;
+	esac
+	QUINT_FUZZ_SEED="${QUINT_FUZZ_SEED:-$(node -e 'console.log(require("node:crypto").randomInt(1, 2 ** 32))')}"
+	echo "Quint fuzz starting seed: $QUINT_FUZZ_SEED"
+	QUINT_FUZZ_SEED="$QUINT_FUZZ_SEED" QUINT_FUZZ_TRACES="$quint_fuzz_traces" QUINT_FUZZ_STEPS=30 QUINT_FUZZ_WORKERS=8 \
+		cargo test --profile testnet -p parachain-service-bin --test quint_replay \
+		fuzz::generated_traces_works -- --ignored --nocapture
+
 # Short for check
 c: check
 check:

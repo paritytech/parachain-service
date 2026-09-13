@@ -7,12 +7,14 @@ use std::{
 	process::{Child, Command, Stdio},
 	sync::atomic::{AtomicBool, Ordering},
 	thread,
-	time::{Duration, Instant},
 };
 
 use serde_json::Value;
 
 use super::itf::replay;
+
+mod progress;
+use progress::Progress;
 
 fn root() -> PathBuf {
 	Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -73,15 +75,12 @@ fn worker(
 	count: u64,
 	steps: u64,
 	stop: &AtomicBool,
+	progress: &Progress,
 ) -> Result<u64, String> {
 	let mut child =
 		Generator(generator(seed, stride, count, steps).spawn().map_err(|e| e.to_string())?);
 	let mut reader = BufReader::new(child.0.stdout.take().ok_or("missing generator stdout")?);
-	let started = Instant::now();
-	let mut report_at = Instant::now();
 	let mut completed = 0;
-	let mut generation_ms = 0.0;
-	let mut replay_time = Duration::ZERO;
 	let mut line = String::new();
 	loop {
 		if stop.load(Ordering::Relaxed) {
@@ -107,7 +106,6 @@ fn worker(
 		if trace["states"].as_array().map(|s| s.len() as u64) != Some(steps + 1) {
 			return Err("Quint returned a truncated trace".into());
 		}
-		let replay_start = Instant::now();
 		let result =
 			std::panic::catch_unwind(|| replay::document_trace(trace)).unwrap_or_else(|panic| {
 				Err(format!(
@@ -126,15 +124,9 @@ fn worker(
 			})?;
 			return Err(format!("seed {expected_seed}: {error}; saved {}", artifact.display()));
 		}
-		replay_time += replay_start.elapsed();
-		generation_ms += envelope["generation_ms"].as_f64().ok_or("missing generation timing")?;
+		envelope["generation_ms"].as_f64().ok_or("missing generation timing")?;
 		completed += 1;
-		if report_at.elapsed() >= Duration::from_secs(10) || completed == count {
-			eprintln!("Quint worker {seed}: {completed} traces / {} transitions, {:.1} traces/s; Quint {:.2}s, Rust {:.2}s",
-				completed * steps, completed as f64 / started.elapsed().as_secs_f64(),
-				generation_ms / 1000.0, replay_time.as_secs_f64());
-			report_at = Instant::now();
-		}
+		progress.completed();
 	}
 	let status = child.0.wait().map_err(|e| e.to_string())?;
 	if !status.success() || count == 0 || completed != count {
@@ -156,10 +148,12 @@ fn generated_traces_works() {
 	// Keep numeric CLI limits exactly representable in JavaScript.
 	assert!(count <= (1u64 << 53) - 1 && workers <= (1u64 << 53) - 1);
 	let stop = AtomicBool::new(false);
+	let progress = Progress::new(count, steps);
 	let results = thread::scope(|scope| {
 		let handles: Vec<_> = (0..workers.min(if count == 0 { workers } else { count }))
 			.map(|i| {
 				let stop = &stop;
+				let progress = &progress;
 				scope.spawn(move || {
 					let n = if count == 0 {
 						0
@@ -172,6 +166,7 @@ fn generated_traces_works() {
 						n,
 						steps,
 						stop,
+						progress,
 					);
 					if result.is_err() {
 						stop.store(true, Ordering::Relaxed);
@@ -193,6 +188,7 @@ fn generated_traces_works() {
 			Err(e) => failures.push(e),
 		}
 	}
+	progress.finish(failures.is_empty() && completed == count);
 	assert!(failures.is_empty(), "{}", failures.join("\n"));
 	assert_eq!(completed, count);
 }

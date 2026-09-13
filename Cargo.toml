@@ -110,6 +110,12 @@ sp-io = { path = "vendor/polkadot-sdk-companion/substrate/primitives/io", defaul
 jam-std-common = { path = "vendor/polkajam/crates/jam-std-common" }
 jam-types = { path = "vendor/polkajam/crates/jam-types" }
 
+# Optimized host tests with runtime correctness checks retained.
+[profile.testnet]
+inherits = "release"
+debug-assertions = true
+overflow-checks = true
+
 [profile.production]
 inherits = "release"
 lto = true
