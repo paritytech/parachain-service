@@ -75,8 +75,7 @@ fn parent_head_mismatch_works() {
 
 #[test]
 fn wrong_code_errors() {
-	// §5.1 step 5: the authoritative validation-code check rejects the candidate,
-	// and a rejected candidate changes nothing at all — not even a log entry.
+	// The authoritative validation-code check rejects the candidate's head update.
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let digest = ok_digest(PARA, b"some-other-code", b"genesis", b"head-1", vec![], 0);
 
@@ -87,34 +86,25 @@ fn wrong_code_errors() {
 }
 
 #[test]
-fn rejected_candidate_does_not_prune_works() {
+fn stale_parent_candidate_pruning_works() {
 	use parachain_service::state::{storage_key, Tag};
 
-	// §5.1: a rejected candidate changes NOTHING. Pruning in particular must not
-	// happen: the lookup-anchor is chosen by whoever submitted the package, so a
-	// rejected candidate that pruned would let anyone holding coretime erase a
-	// parachain's log at any rank, bypassing the eviction ranking. The log here
-	// is seeded with an old `Opaque` (rank 1) that a prune to `now` would
-	// destroy.
+	// The pinned §5.1 / Quint behavior prunes even when the parent is stale.
+	// Track the proposed accepted-only rule in parachain-service#35.
+	let entry = LogEntry::Refine {
+		error: RefineLog::Opaque(vec![0xCD; 64].try_into().expect("within 1024")),
+		auth_trace: vec![].try_into().expect("empty is within the cap"),
+	};
+	let log = vec![(1, entry.clone()), (50, entry.clone()), (75, entry)];
 	let storage = fresh_storage(|s| {
 		seed_para(s, PARA, b"genesis", CODE, RICH);
-		let log = vec![(
-			1,
-			LogEntry::Refine {
-				error: RefineLog::Opaque(vec![0xCD; 64].try_into().expect("within 1024")),
-				auth_trace: vec![].try_into().expect("empty is within the cap"),
-			},
-		)];
 		set_state(s, &storage_key(Tag::ParachainLog, &PARA), &log);
 	});
-	assert_eq!(para_log(&storage, PARA).len(), 1);
 
-	// A stale-parent (rejected) candidate with a lookup-anchor far above the
-	// seeded entry's timeslot: were it to prune, the entry would be gone.
-	let digest = ok_digest(PARA, CODE, b"not-the-parent", b"head-1", vec![], 500);
+	let digest = ok_digest(PARA, CODE, b"not-the-parent", b"head-1", vec![], 50);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
-	assert_eq!(para_log(&storage, PARA).len(), 1, "rejected candidate must not prune");
+	assert_eq!(para_log(&storage, PARA), log[1..], "preserve entries at or above the anchor");
 	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"genesis");
 }
 

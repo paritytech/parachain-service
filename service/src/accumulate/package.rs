@@ -41,16 +41,18 @@ pub fn process(now: Slot, service_id: ServiceId, record: &WorkItemRecord, heads:
 			upward_messages,
 			lookup_anchor,
 		} => {
+			// §5.1 / Quint `accumulateOnePackage`: every Refine-success candidate
+			// prunes below its lookup-anchor, including candidates rejected below.
+			// FIXME: Revisit rejected-candidate pruning when the spec resolves
+			// https://github.com/paritytech/parachain-service/issues/35.
+			ParachainLogs::prune_below(para_id, lookup_anchor);
+
 			// Step 1: registration check. A not-registered OR deregistering para
-			// is treated as if it no longer exists — silent drop, no log (§6.4).
+			// is treated as if it no longer exists — no new log entry (§6.4).
 			let Some(pi) = Parachains::get(para_id) else { return };
 			if pi.is_deregistering {
 				return;
 			}
-
-			// Steps 3-5 only decide accept/reject. A candidate rejected at any of
-			// them changes nothing at all: no state, no log entry, no pruning
-			// (§5.1) — so nothing below writes until every check has passed.
 
 			// Step 3: parent-head check — reject candidates built on a stale,
 			// skipped, or non-canonical parent.
@@ -84,12 +86,6 @@ pub fn process(now: Slot, service_id: ServiceId, record: &WorkItemRecord, heads:
 
 			// The candidate is accepted; its effects may now be applied.
 			let mut logs: Vec<AccumulateLog> = Vec::new();
-
-			// §5.1: an accepted candidate prunes entries below its lookup-anchor
-			// before any of its own effects land. Only accepted candidates prune —
-			// the anchor is chosen by whoever submitted the package, so letting a
-			// rejected one prune would let anyone holding coretime wipe the log.
-			ParachainLogs::prune_below(para_id, lookup_anchor);
 
 			// Step 4 (apply): release the expired pending code.
 			if expired {

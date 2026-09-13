@@ -96,13 +96,13 @@ model Refine-log representations cannot be replayed as Rust Refine errors.
 Other comparator limitations remain those in [README.md](README.md). Unsupported
 values fail explicitly; the runner does not discard failing traces.
 
-The campaign currently finds a real model/Rust disagreement: the pinned model
-prunes logs for stale-parent candidates, while Rust preserves them. Seed 1 fails
-at frame 11 with 30 steps; seed 2 fails at frame 14. See the
-[reproduction and code locations](../../../../../upstream-feedback/stale-parent-log-pruning.md).
-The runner intentionally reports this; a long campaign is not expected to stay
-green until the disagreement is resolved. No production behavior or model pin
-is changed by this work.
+The initial campaign found that the pinned model prunes logs for stale-parent
+candidates while Rust preserved them (seed 1, frame 11; seed 2, frame 14).
+Rust now follows the pinned model. Whether rejected candidates should prune is
+tracked in [issue #35](https://github.com/paritytech/parachain-service/issues/35);
+see also [the reproduction](../../../../../upstream-feedback/stale-parent-log-pruning.md).
+The seed-1 prefix is retained in the ordinary replay suite as
+`log_pruning/stale_parent_seed_1_works.itf.json`.
 
 A small machinery check that precedes those failures, plus CLI parity:
 

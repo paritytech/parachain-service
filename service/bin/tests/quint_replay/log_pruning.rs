@@ -3,6 +3,12 @@
 use crate::itf::replay;
 use serde_json::Value;
 
+#[test]
+fn stale_parent_seed_1_works() {
+	replay::trace(include_str!("../fixtures/quint/log_pruning/stale_parent_seed_1_works.itf.json"))
+		.expect("rejected candidates prune logs under the pinned spec");
+}
+
 const REFINE_TRACE: &str =
 	include_str!("../fixtures/quint/log_pruning/refine_log_boundary_works.itf.json");
 
