@@ -1,6 +1,10 @@
 These fixtures replay recorded work results through Rust Accumulate in the PVM
 and compare storage with Quint's expected states. They do not execute Rust Refine.
 
+For nondeterministic generation and replay over stdout pipes, see
+[FUZZING.md](FUZZING.md). Successful fuzz traces stay in memory; only failures
+are saved.
+
 Regenerate the refine-error, skipped-work, empty-block, upgrade-lifecycle, log-pruning, minimal, and stale-parent traces
 using Python 3 and Quint 0.32.0 from the repository root:
 

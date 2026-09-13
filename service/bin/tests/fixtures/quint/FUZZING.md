@@ -1,0 +1,113 @@
+# Streaming Quint replay
+
+The opt-in Rust test starts a persistent Node/Quint process per worker. Quint
+chooses inputs and computes expected states; Rust replays the resulting work
+results through Accumulate in the PVM and compares storage after every transition.
+Rust Refine is not executed. `fuzz.qnt` defines the input domain, not a sequence
+of actions or expected states. It calls the pinned model's `refine`,
+`accumulateBlock`, and `provisionPreimage` implementations.
+
+Run from the repository root with Node and Quint **0.32.0** on PATH:
+
+```sh
+QUINT_FUZZ_TRACES=100 QUINT_FUZZ_STEPS=30 QUINT_FUZZ_WORKERS=4 \
+  cargo test -p parachain-service-bin --test quint_replay \
+  fuzz::generated_traces_works -- --ignored --nocapture
+```
+
+Configuration:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `QUINT_FUZZ_TRACES` | `100` | Total traces across workers; `0` runs until failure/interruption |
+| `QUINT_FUZZ_STEPS` | `30` | Transitions per trace, 1–10000 |
+| `QUINT_FUZZ_WORKERS` | `1` | Independent Rust workers and generator processes |
+| `QUINT_FUZZ_SEED` | `1` | First seed; worker i uses seed+i, then increments by worker count |
+| `QUINT_FUZZ_FAILURE_DIR` | `target/quint-fuzz` | Saved mismatch reports |
+| `QUINT_PACKAGE` | resolved from `quint` on PATH | Optional installed npm package directory |
+
+For an indefinite campaign, set `QUINT_FUZZ_TRACES=0`. Choose workers based on the
+available CPUs and memory: each worker owns a Node process as well as a Rust
+thread. Adding `--release` to Cargo optimizes the host harness; the service blob
+already uses its production build profile. The current PVM helper uses the
+interpreter. This remains an integration test; a separate executable can reuse
+the parsed-document replay entry point later.
+
+## Transport and reproducibility
+
+No trace files are written during successful generation/replay. Each generator
+parses and typechecks the model once, then emits newline-delimited JSON envelopes
+through its stdout pipe. Each envelope contains `seed`, `steps`, `version`,
+`generation_ms`, and the complete ITF `trace`. Rust parses that document once and
+passes it directly to the existing comparator. The OS pipe and Node's awaited
+write backpressure bound the queue; generation can overlap Rust replay. There
+are no named pipes, temporary trace directories, or CLI launches per trace.
+Memory remains proportional to trace length and worker count, not campaign length.
+
+Quint 0.32.0's CLI does not expose this transport, so
+`scripts/quint-replay-stream.cjs` uses the CLI's internal TypeScript simulator and
+ITF converter. It requires exactly that version. The `stream_matches_cli_works`
+test compares two streamed seeds with independent CLI invocations, including a
+second trace from the same persistent process. A future Quint update must check
+this adapter explicitly. The simulator is invoked once per trace; the model
+parse/typecheck is reused. This is not the Quint Rust simulation backend.
+
+Workers stop on a mismatch, unsupported input, or replay panic, and terminate
+their generators. A mismatch report contains the complete generated trace, seed,
+limits, version, error, and repository/gitlink revisions. Replaying that report
+does not require Quint and does not regenerate a potentially changed model:
+
+```sh
+QUINT_REPLAY_TRACE=target/quint-fuzz/failure-PID-SEED.json \
+  cargo test -p parachain-service-bin --test quint_replay \
+  fuzz::replay_input_works -- --ignored --nocapture
+```
+
+The replay input test also accepts an ITF document or a single stream envelope
+on stdin. For example, this generates and replays one trace without trace files:
+
+```sh
+node scripts/quint-replay-stream.cjs \
+  service/bin/tests/fixtures/quint/fuzz.qnt 1 1 1 10 |
+  cargo test -p parachain-service-bin --test quint_replay \
+    fuzz::replay_input_works -- --ignored --nocapture
+```
+
+Adapter arguments are model path, first seed, seed stride, trace count (0 means
+unbounded), and steps. Its stdout is exclusively the JSON protocol; diagnostics
+go to stderr. Progress from the Rust runner includes generation time, replay
+time, and wall-clock throughput. First-use blob building is included in timing,
+so initial figures are not steady-state benchmarks.
+
+## Initial input domain and known findings
+
+The generator samples zero or one WP per block, both registered parachains,
+valid candidates, stale parents, invalid code, missing head declarations,
+reported PVF errors, PVF panic, JAM WorkErr, auth-trace lengths, time gaps, and
+lookup anchors. It also samples external provision of initial code preimages.
+Selecting whole outcome classes keeps successful candidates reachable frequently.
+Time gaps are at most `MaxLookupAge`, so sampled anchors lie between the valid
+lookback floor and the previous block slot.
+
+This initial profile emits no upward messages: registration, cleanup, upgrade
+lifecycle, incoming transfers, and multiple WPs are not fuzzed yet. Malformed
+authorizer configuration and invalid item counts are excluded because their
+model Refine-log representations cannot be replayed as Rust Refine errors.
+Other comparator limitations remain those in [README.md](README.md). Unsupported
+values fail explicitly; the runner does not discard failing traces.
+
+The campaign currently finds a real model/Rust disagreement: the pinned model
+prunes logs for stale-parent candidates, while Rust preserves them. Seed 1 fails
+at frame 11 with 30 steps; seed 2 fails at frame 14. See the
+[reproduction and code locations](../../../../../upstream-feedback/stale-parent-log-pruning.md).
+The runner intentionally reports this; a long campaign is not expected to stay
+green until the disagreement is resolved. No production behavior or model pin
+is changed by this work.
+
+A small machinery check that precedes those failures, plus CLI parity:
+
+```sh
+QUINT_FUZZ_TRACES=2 QUINT_FUZZ_STEPS=10 QUINT_FUZZ_WORKERS=2 \
+  cargo test -p parachain-service-bin --test quint_replay fuzz:: \
+  -- --ignored --skip replay_input_works --nocapture
+```

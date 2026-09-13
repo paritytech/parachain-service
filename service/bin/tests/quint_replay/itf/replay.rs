@@ -24,8 +24,13 @@ use crate::common::{
 /// Replay a normalized Quint trace. Blocks are deliberately limited to one WP.
 pub fn trace(json: &str) -> Result<(), String> {
 	let document: Value = serde_json::from_str(json).map_err(|error| error.to_string())?;
+	document_trace(&document)
+}
+
+/// Replay an already parsed trace, avoiding a serialize/parse round trip for streams.
+pub fn document_trace(document: &Value) -> Result<(), String> {
 	// Validate every Quint value strictly before using the ergonomic JSON view.
-	super::value::ItfValue::try_from(&document)?;
+	super::value::ItfValue::try_from(document)?;
 	let states = document.get("states").and_then(Value::as_array).ok_or("missing states")?;
 	let first = states.first().ok_or("trace has no states")?;
 	let mut codex = Codex::default();

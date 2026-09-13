@@ -1,3 +1,5 @@
+For the implemented streaming fuzz runner, see [FUZZING.md](service/bin/tests/fixtures/quint/FUZZING.md).
+
 # Quint Trace Replay — Accumulate Equivalence Testing
 
 This document is the original implementation plan. Sections below describe

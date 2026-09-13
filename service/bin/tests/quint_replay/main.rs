@@ -1,4 +1,5 @@
 mod blocks;
+mod fuzz;
 #[path = "../common/mod.rs"]
 mod common;
 mod itf;
