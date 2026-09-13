@@ -68,5 +68,17 @@ are unsupported because the model and Rust use different bucket layouts.
 Accumulate-log decoding currently supports `ForgetAgainAt`; other event variants
 are rejected explicitly. `Solicit` targets the sending parachain, and `Forget`
 supports parachain targets; service targets are not represented by these model
-messages. Returned head commitments and JAM assignment/staging outputs are not
-compared.
+messages. Returned head commitments are checked after every block. The output codex
+validates Quint's abstract Merkle root from its changed heads, then independently
+builds the concrete SCALE/Keccak tree and compares it with the PVM return value.
+Missing, unexpected, or incorrect roots fail replay.
+
+Assignment and validator-key inputs are not supported by the replay adapter.
+Blocks must therefore expect no assignments and no staging-set change; unexpected
+Rust assignment, privilege, designation, transfer, provide, create, or eject
+effects fail replay. Nonempty assignment expectations and staging changes fail
+explicitly pending input/service-id codex support. `solicitedSet` is model ghost
+state, not a returned JAM output.
+
+The older `refine_error_replay.itf.json` explicitly includes empty assignment and
+staging fields for its two error-only blocks.

@@ -41,6 +41,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 
 	for (index, pair) in states.windows(2).enumerate() {
 		let frame = index + 1;
+		let mut output = None;
 		match classify(&pair[0], &pair[1])? {
 			FrameKind::Noop => continue,
 			FrameKind::Block => {
@@ -59,7 +60,8 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 					.transpose()?
 					.unwrap_or_default();
 				let slot = bounded_integer::<u32>(field(&pair[1], "now")?, "now")?;
-				let (_, next, _) = accumulate_block(storage, items, slot);
+				let (outcome, next, mutations) = accumulate_block(storage, items, slot);
+				output = Some((outcome.yielded, mutations));
 				storage = next;
 			},
 			FrameKind::ProvisionPreimage => {
@@ -70,6 +72,11 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 			},
 		}
 		compare::state(&storage, &pair[1], &mut codex, frame)?;
+		if let Some((yielded, mutations)) = output {
+			super::compare_output::state(
+				&pair[0], &pair[1], yielded, &mutations, &mut codex, frame,
+			)?;
+		}
 	}
 	Ok(())
 }

@@ -3,6 +3,8 @@
 The opt-in Rust test starts a persistent Node/Quint process per worker. Quint
 chooses inputs and computes expected states; Rust replays the resulting work
 results through Accumulate in the PVM and compares storage after every transition.
+After each block it also checks the returned head commitment and rejects JAM
+host effects outside the supported input domain (see [README.md](README.md)).
 Rust Refine is not executed. `fuzz.qnt` defines the input domain, not a sequence
 of actions or expected states. It calls the pinned model's `refine`,
 `accumulateBlock`, and `provisionPreimage` implementations.

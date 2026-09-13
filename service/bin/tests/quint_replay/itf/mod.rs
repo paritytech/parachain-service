@@ -14,3 +14,5 @@ pub mod value;
 
 #[cfg(test)]
 mod numeric_rejection;
+
+mod compare_output;
