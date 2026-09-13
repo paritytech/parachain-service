@@ -1,7 +1,7 @@
 These fixtures replay recorded work results through Rust Accumulate in the PVM
 and compare storage with Quint's expected states. They do not execute Rust Refine.
 
-Regenerate the refine-error, skipped-work, empty-block, upgrade-expiry, minimal, and stale-parent traces
+Regenerate the refine-error, skipped-work, empty-block, upgrade-expiry, log-pruning, minimal, and stale-parent traces
 using Python 3 and Quint 0.32.0 from the repository root:
 
 ```sh
@@ -25,6 +25,11 @@ the candidate clears it, removes the never-provided code's registry entry
 and preimage request, and refunds its state-balance charge. The trace jumps
 directly to the later block slot. This covers expiry of unprovided code;
 preimage provision and upgrade activation are not covered by this trace.
+
+`log_pruning/refine_log_boundary_works.itf.json` logs Refine errors at slots
+1 and 2, then accepts a candidate anchored at slot 2. The older entry is
+removed and the entry exactly at the anchor survives. Mutation tests reject
+both retaining the older entry and removing the boundary entry.
 
 - `just quint-fmt` expands all fixtures in place for review.
 - `just quint-compact` restores compact JSON before committing.

@@ -2,6 +2,7 @@ mod blocks;
 #[path = "../common/mod.rs"]
 mod common;
 mod itf;
+mod log_pruning;
 mod refine_errors;
 mod upgrades;
 
