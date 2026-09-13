@@ -37,6 +37,9 @@ module blocks {
   run minimal_replay_works =
     init.then(candidate).then(expectThat(svc.paraInfo(CoretimeParaId).headData == 1))
 
+  run two_work_packages_works =
+    multipleWorkPackagesAccumulateTest
+
   run work_error_between_candidates_works =
     init.then(candidate).then(expectThat(svc.paraInfo(CoretimeParaId).headData == 1))
       .then(applyWork(WorkErr, 7))

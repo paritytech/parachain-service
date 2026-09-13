@@ -21,7 +21,7 @@ use crate::common::{
 	accumulate_block, fresh_storage, work_item_skipped, work_item_with_auth_trace,
 };
 
-/// Replay a normalized Quint trace. Blocks are deliberately limited to one WP.
+/// Replay a normalized Quint trace, preserving work-result order within each block.
 pub fn trace(json: &str) -> Result<(), String> {
 	let document: Value = serde_json::from_str(json).map_err(|error| error.to_string())?;
 	document_trace(&document)
@@ -48,17 +48,10 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 				let results = field(&pair[1], "lastStepWorkResults")?
 					.as_array()
 					.ok_or("lastStepWorkResults must be a list")?;
-				if results.len() > 1 {
-					return Err(format!(
-						"frame {frame}: one-WP replay does not support {} work results",
-						results.len()
-					));
-				}
 				let items = results
-					.first()
-					.map(|result| work_items(result, &mut codex))
-					.transpose()?
-					.unwrap_or_default();
+					.iter()
+					.map(|result| work_item(result, &mut codex))
+					.collect::<Result<Vec<_>, _>>()?;
 				let slot = bounded_integer::<u32>(field(&pair[1], "now")?, "now")?;
 				let (outcome, next, mutations) = accumulate_block(storage, items, slot);
 				output = Some((outcome.yielded, mutations));
@@ -81,15 +74,15 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 	Ok(())
 }
 
-fn work_items(value: &Value, codex: &mut Codex) -> Result<Vec<AccumulateItem>, String> {
+fn work_item(value: &Value, codex: &mut Codex) -> Result<AccumulateItem, String> {
 	let auth_trace = Codex::auth_trace(integer(field(value, "authTrace")?)?)?;
 	let (tag, value) = variant(field(value, "result")?)?;
 	match tag {
-		"WorkOk" => Ok(vec![work_item_with_auth_trace(&work_digest(value, codex)?, auth_trace)]),
+		"WorkOk" => Ok(work_item_with_auth_trace(&work_digest(value, codex)?, auth_trace)),
 		// Gray paper `WorkExecResult::Error`: JAM substituted an error for this
 		// work-item before the service's refine ran, so Accumulate sees the
 		// no-op case (§3.3).
-		"WorkErr" => Ok(vec![work_item_skipped(auth_trace)]),
+		"WorkErr" => Ok(work_item_skipped(auth_trace)),
 		_other => Err(format!("unsupported work result {tag}")),
 	}
 }

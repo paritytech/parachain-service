@@ -7,11 +7,12 @@ proposed behavior, including features that are not implemented. For current
 commands, coverage, and limitations, see the
 [fixture README](service/bin/tests/fixtures/quint/README.md).
 
-Current replay covers one work result per block, including multi-block error
-and candidate sequences, WorkErr, upgrade expiry and activation, external
-preimage provision, and Refine/Accumulate log pruning. Incoming transfers,
-multiple work results per block, returned head commitments, and JAM
-assignment/staging outputs are not covered. Accumulate-log decoding supports
+Current replay covers multiple work results per block, including a two-parachain
+block fixture, multi-block error and candidate sequences, WorkErr, upgrade expiry
+and activation, external preimage provision, and Refine/Accumulate log pruning.
+Incoming transfers
+and nonempty JAM assignment/staging outputs are not covered. Returned head
+commitments are checked after every block. Accumulate-log decoding supports
 `ForgetAgainAt` only. Activation over provided old code exposes a
 [model/Rust log discrepancy](upstream-feedback/upgrade-activation-log.md).
 

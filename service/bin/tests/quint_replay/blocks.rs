@@ -1,6 +1,12 @@
-//! Empty blocks and skipped work must preserve the state produced by preceding work.
+//! Replay empty blocks, skipped work, and multiple work packages in one block.
 
 use crate::itf::replay;
+
+#[test]
+fn two_work_packages_works() {
+	replay::trace(include_str!("../fixtures/quint/blocks/two_work_packages_works.itf.json"))
+		.expect("both parachain heads and their combined commitment should match Quint");
+}
 
 #[test]
 fn work_error_between_candidates_works() {

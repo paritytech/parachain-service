@@ -63,7 +63,14 @@ Mutation tests reject both pruning mistakes and an incorrect event deadline.
 - `just quint-fmt` expands all fixtures in place for review.
 - `just quint-compact` restores compact JSON before committing.
 
-Replay supports at most one work result per block. Nonempty incoming transfers
+`blocks/two_work_packages_works.itf.json` reuses the pinned model's
+`multipleWorkPackagesAccumulateTest`: one block contains a successful WP for
+Coretime and one for Asset Hub. Both heads advance from 0 to 1; replay checks
+their storage and the combined returned head commitment.
+
+Replay processes all work results in order in one Accumulate invocation per block.
+The streaming fuzz generator still samples zero or one WP per block.
+Nonempty incoming transfers
 are unsupported because the model and Rust use different bucket layouts.
 Accumulate-log decoding currently supports `ForgetAgainAt`; other event variants
 are rejected explicitly. `Solicit` targets the sending parachain, and `Forget`
