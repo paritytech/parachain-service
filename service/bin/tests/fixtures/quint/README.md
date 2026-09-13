@@ -31,10 +31,20 @@ preimage provision and upgrade activation are not covered by this trace.
 removed and the entry exactly at the anchor survives. Mutation tests reject
 both retaining the older entry and removing the boundary entry.
 
+`log_pruning/accumulate_log_boundary_works.itf.json` solicits and provides two
+preimages, then successfully unrequests them at slots 3 and 4. Each first-stage
+forget emits `ForgetAgainAt` with the preimage hash, length, and cleanup deadline.
+A candidate anchored at slot 4 removes the older event and preserves the boundary
+event without changing preimage status, registry entries, or the held balance.
+Mutation tests reject both pruning mistakes and an incorrect event deadline.
+
 - `just quint-fmt` expands all fixtures in place for review.
 - `just quint-compact` restores compact JSON before committing.
 
 Replay supports at most one work result per block. Nonempty incoming transfers
 are unsupported because the model and Rust use different bucket layouts.
-Accumulate-log entries are unsupported. Returned head commitments and JAM
-assignment/staging outputs are not compared.
+Accumulate-log decoding currently supports `ForgetAgainAt`; other event variants
+are rejected explicitly. `Solicit` targets the sending parachain, and `Forget`
+supports parachain targets; service targets are not represented by these model
+messages. Returned head commitments and JAM assignment/staging outputs are not
+compared.

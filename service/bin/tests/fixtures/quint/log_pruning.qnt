@@ -50,4 +50,39 @@ module log_pruning {
         svc.parachainLog.get(CoretimeParaId) == List(
           (2, RefineLogEntry({ error: Opaque(42), authTrace: 0 })))
       }))
+
+  // Forgetting provided preimages succeeds by unrequesting them and recording
+  // when the second forget may expunge them. These are not rejection events.
+  run accumulate_log_boundary_works = {
+    val first: Hash = { hashBytes: 701 }
+    val second: Hash = { hashBytes: 702 }
+    val len = 32
+    init
+      .then(applyHappyPath(CoretimeParaId, { vchBytes: 1 }, List(
+        Solicit({ hash: first, len: len }), Solicit({ hash: second, len: len }))))
+      // Clear per-block work results before the external provision actions.
+      .then(applyHappyPaths(List()))
+      .then(provide(first, len))
+      .then(provide(second, len))
+      .then(applyHappyPath(CoretimeParaId, { vchBytes: 1 }, List(
+        Forget({ paraId: CoretimeParaId, hash: first, len: len }))))
+      .then(applyHappyPath(CoretimeParaId, { vchBytes: 1 }, List(
+        Forget({ paraId: CoretimeParaId, hash: second, len: len }))))
+      .then(expectThat(all {
+        svc.parachainLog.get(CoretimeParaId) == List(
+          (3, AccumulateLogEntry(List(ForgetAgainAt({ hash: first, len: len, due: 3 + ExpungePeriod })))),
+          (4, AccumulateLogEntry(List(ForgetAgainAt({ hash: second, len: len, due: 4 + ExpungePeriod }))))),
+        svc.preimageStatus.get((first, len)) == Unrequested(3),
+        svc.preimageStatus.get((second, len)) == Unrequested(4)
+      }))
+      .then(candidateAt(4))
+      .then(expectThat(all {
+        svc.paraInfo(CoretimeParaId).headData == 4,
+        svc.parachainLog.get(CoretimeParaId) == List(
+          (4, AccumulateLogEntry(List(ForgetAgainAt({ hash: second, len: len, due: 4 + ExpungePeriod }))))),
+        svc.preimageRegistry == prevSvc.preimageRegistry,
+        svc.preimageStatus == prevSvc.preimageStatus,
+        svc.paraInfo(CoretimeParaId).usedStateBalance == prevSvc.paraInfo(CoretimeParaId).usedStateBalance
+      }))
+  }
 }

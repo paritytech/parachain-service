@@ -4,7 +4,10 @@ use jam_std_common::hash_raw;
 use jam_types::AccumulateItem;
 use parachain_service::work_digest::ParachainWorkDigest;
 use parachain_service_bin::mock::MOCK_SERVICE_ID;
-use parachain_service_interface::{types::ParaId, upward_message::UpwardMessage};
+use parachain_service_interface::{
+	types::ParaId,
+	upward_message::{Target, UpwardMessage},
+};
 use serde_json::Value;
 
 use super::{
@@ -104,7 +107,7 @@ fn digest_ok(value: &Value, codex: &mut Codex) -> Result<ParachainWorkDigest, St
 		.as_array()
 		.ok_or("upwardMessages must be a list")?
 		.iter()
-		.map(|message| upward_message(message, codex))
+		.map(|message| upward_message(message, para, codex))
 		.collect::<Result<Vec<_>, _>>()?;
 	Ok(ParachainWorkDigest::Ok {
 		para_id: para,
@@ -116,9 +119,31 @@ fn digest_ok(value: &Value, codex: &mut Codex) -> Result<ParachainWorkDigest, St
 	})
 }
 
-fn upward_message(value: &Value, codex: &mut Codex) -> Result<UpwardMessage, String> {
+fn upward_message(
+	value: &Value,
+	caller: ParaId,
+	codex: &mut Codex,
+) -> Result<UpwardMessage, String> {
 	let (tag, value) = variant(value)?;
 	match tag {
+		"Solicit" | "Forget" => {
+			let len = u32::try_from(integer(field(value, "len")?)?)
+				.map_err(|_| "preimage length out of range")?;
+			let hash = codex.hash(integer(field(field(value, "hash")?, "hashBytes")?)?, len)?;
+			if tag == "Solicit" {
+				Ok(UpwardMessage::Solicit {
+					target: Target::Parachain(caller),
+					hash,
+					len: Compact(len),
+				})
+			} else {
+				Ok(UpwardMessage::Forget {
+					target: Target::Parachain(para_id(field(value, "paraId")?, codex)?),
+					hash,
+					len: Compact(len),
+				})
+			}
+		},
 		"RequestCodeUpgrade" => {
 			let len = integer(field(value, "len")?)?;
 			let reference =

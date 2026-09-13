@@ -110,6 +110,14 @@ fn parachain_logs(
 					})?;
 					LogEntry::Refine { error, auth_trace }
 				},
+				"AccumulateLogEntry" => LogEntry::Accumulate {
+					entries: value
+						.as_array()
+						.ok_or("AccumulateLogEntry must be a list")?
+						.iter()
+						.map(|event| super::accumulate_log::accumulate_log(event, codex))
+						.collect::<Result<Vec<_>, _>>()?,
+				},
 				other => return Err(format!("unsupported parachain log entry {other}")),
 			};
 			log.push((slot, entry));
