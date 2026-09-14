@@ -14,7 +14,7 @@ use crate::{
 	state_balance,
 };
 use alloc::vec::Vec;
-use jam_pvm_common::accumulate::{is_available, upgrade};
+use jam_pvm_common::accumulate::{is_available, my_info, upgrade};
 use jam_types::{CodeHash, ServiceId, Slot};
 use parachain_service_interface::{
 	types::ParaId,
@@ -94,6 +94,10 @@ pub fn apply(
 		UpwardMessage::CreateService(args) => foreign_services::create(args, logs),
 
 		UpwardMessage::Forget { target: Target::Parachain(para_id), hash, len } => {
+			// §5.4: expunging the running service code would prevent future accumulation.
+			if hash == my_info().code_hash.0 {
+				return;
+			}
 			// `para_id` names whose reference is released (Coretime may name any
 			// para, §6.4); a dead target is a no-op.
 			let Some(mut pi) = Parachains::get(para_id) else { return };

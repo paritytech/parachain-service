@@ -324,3 +324,61 @@ fn pinned_code_survives_upgrade_works() {
 	assert_eq!(info.used_state_balance, used_both, "old code still paid for");
 	assert!(accumulate_logs(&storage, PARA).is_empty());
 }
+
+#[test]
+fn forget_running_service_code_works() {
+	use parachain_service::state::{preimage_registry::PreimageEntry, storage_key, Tag};
+	use parachain_service_interface::types::{ASSET_HUB_PARA_ID, CORETIME_PARA_ID};
+
+	// Both Asset Hub itself and Coretime acting on its behalf must preserve the code.
+	for origin in [ASSET_HUB_PARA_ID, CORETIME_PARA_ID] {
+		let blob = parachain_service_bin::blob();
+		let own = code_ref(&blob);
+		let other = code_ref(BLOB);
+		let storage = fresh_storage(|s| {
+			seed_para(s, ASSET_HUB_PARA_ID, b"genesis", CODE, RICH);
+			if origin != ASSET_HUB_PARA_ID {
+				seed_para(s, origin, b"genesis", b"coretime-code", RICH);
+			}
+			for reference in [own, other] {
+				set_state(
+					s,
+					&storage_key(Tag::PreimageRegistry, &(reference.hash.0, reference.len)),
+					&PreimageEntry { referencers: [ASSET_HUB_PARA_ID].into_iter().collect() },
+				);
+			}
+			s.solicit(0, SVC, other.hash.0, other.len).unwrap();
+			let mut info = para_info(s, ASSET_HUB_PARA_ID).unwrap();
+			info.used_state_balance += preimage_footprint(own.len) + preimage_footprint(other.len);
+			set_state(s, &storage_key(Tag::Parachains, &ASSET_HUB_PARA_ID), &info);
+		});
+		let before = para_info(&storage, ASSET_HUB_PARA_ID).unwrap().used_state_balance;
+		let digest = ok_digest(
+			origin,
+			if origin == ASSET_HUB_PARA_ID { CODE } else { b"coretime-code" },
+			b"genesis",
+			b"head-1",
+			vec![
+				UpwardMessage::Forget {
+					target: Target::Parachain(ASSET_HUB_PARA_ID),
+					hash: own.hash.0,
+					len: own.len.into(),
+				},
+				UpwardMessage::Forget {
+					target: Target::Parachain(ASSET_HUB_PARA_ID),
+					hash: other.hash.0,
+					len: other.len.into(),
+				},
+			],
+			0,
+		);
+		let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+		assert!(registry_entry(&storage, own).unwrap().referencers.contains(&ASSET_HUB_PARA_ID));
+		assert!(registry_entry(&storage, other).is_none());
+		assert_eq!(
+			para_info(&storage, ASSET_HUB_PARA_ID).unwrap().used_state_balance,
+			before - preimage_footprint(other.len)
+		);
+		assert!(accumulate_logs(&storage, origin).is_empty());
+	}
+}
