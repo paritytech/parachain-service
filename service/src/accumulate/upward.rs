@@ -40,6 +40,9 @@ pub fn apply(
 			// `target` names who is charged; only the Coretime chain may name a
 			// para other than itself (§6.1), and a dead target is a no-op.
 			let Some(mut pi) = Parachains::get(target) else { return };
+			if pi.is_deregistering {
+				return;
+			}
 			// For the target's own active/pending validation code this only sets
 			// `pinned`: the code is already referenced by the service, so no
 			// extra balance is charged (§5.2).

@@ -341,7 +341,11 @@ fn jam_forget(hash: &Hash, len: u32) {
 /// per §6.1. Rejected (state unchanged, `FromSetKV` logged) when a positive
 /// delta exceeds headroom.
 pub fn apply_set_kv(para_id: ParaId, key: &[u8], value: &[u8]) -> Result<(), AccumulateLog> {
-	let mut pi = Parachains::get(para_id).expect("caller checked the para is live; qed");
+	// Check the lifecycle using the same read that supplies the balance check.
+	let Some(mut pi) = Parachains::get(para_id) else { return Ok(()) };
+	if pi.is_deregistering {
+		return Ok(());
+	}
 	let old = KeyValueStorage::get(para_id, key);
 	// Signed delta in balance units: a fresh entry pays the full footprint, an
 	// overwrite pays only the value-size difference (§6.1).

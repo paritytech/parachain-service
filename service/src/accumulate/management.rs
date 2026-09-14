@@ -64,6 +64,9 @@ pub fn set_state_balance(
 			}
 		},
 		Some(mut pi) => {
+			if pi.is_deregistering {
+				return;
+			}
 			if new_total < pi.used_state_balance {
 				// The Coretime chain cannot strand currently-paid-for state.
 				logs.push(AccumulateLog::StateBalanceUpdateRejected {
@@ -92,6 +95,9 @@ pub fn set_head(
 	logs: &mut Vec<AccumulateLog>,
 ) {
 	let Some(mut pi) = Parachains::get(para_id) else { return };
+	if pi.is_deregistering {
+		return;
+	}
 	heads.touch(para_id);
 	pi.head_data = new_head;
 	// A head overwrite can grow the `ParaInfo` entry; a backstop write failure
@@ -115,6 +121,9 @@ pub fn set_validation_code(
 	logs: &mut Vec<AccumulateLog>,
 ) {
 	let Some(pi) = Parachains::get(para_id) else { return };
+	if pi.is_deregistering {
+		return;
+	}
 
 	// TODO: hash-only comparisons per the Quint model, although the registry is
 	// keyed by (hash, len). Needs upstreaming.
