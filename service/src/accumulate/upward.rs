@@ -176,7 +176,7 @@ pub fn apply(
 			logs,
 		),
 
-		UpwardMessage::ParachainCleanUp(para_id) => management::clean_up(para_id, now, logs),
+		UpwardMessage::ParachainCleanUp(para_id) => management::clean_up(para_id, now, logs, heads),
 
 		UpwardMessage::ParachainSetStateBalance { para_id, new_total } => {
 			management::set_state_balance(para_id, new_total.0, logs, heads)

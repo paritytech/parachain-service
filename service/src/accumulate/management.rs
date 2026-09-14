@@ -197,7 +197,12 @@ pub fn set_validation_code(
 /// the two-step forget; if any cannot be expunged yet, sets `is_deregistering`
 /// and stops (Coretime retries once strictly past the logged `due`). Once every
 /// code is expunged, drops all per-para state.
-pub fn clean_up(para_id: ParaId, now: Slot, logs: &mut Vec<AccumulateLog>) {
+pub fn clean_up(
+	para_id: ParaId,
+	now: Slot,
+	logs: &mut Vec<AccumulateLog>,
+	heads: &mut HeadTracker,
+) {
 	let Some(pi) = Parachains::get(para_id) else { return };
 
 	if pi.used_state_balance > clean_up_allowed_balance(&pi, para_id) {
@@ -240,6 +245,9 @@ pub fn clean_up(para_id: ParaId, now: Slot, logs: &mut Vec<AccumulateLog>) {
 	// necessarily empty here: any entry would raise `used_state_balance` above
 	// the allowed clean-up balance checked above (JAM storage has no prefix
 	// iteration, so a sweep would be impossible anyway).
+	// Preserve the pre-block head if Coretime re-registers this para later in
+	// the same block. Registration must not mistake its prior head for absent.
+	heads.touch(para_id);
 	Parachains::remove(para_id);
 	ParachainLogs::remove(para_id);
 	if para_id == ASSET_HUB_PARA_ID {
