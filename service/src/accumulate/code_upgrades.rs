@@ -90,7 +90,9 @@ pub fn request_code_upgrade(
 
 	// Supersede a different in-flight upgrade: release it unless pinned.
 	if let Some((old_pending, _)) = &pi.pending_upgrade {
-		release_code_if_not_pinned(para_id, old_pending, now, logs);
+		// FIXME: Quint's requestCodeUpgrade discards superseded-code cleanup logs.
+		// Match it pending https://github.com/paritytech/parachain-service/issues/36.
+		release_code_if_not_pinned(para_id, old_pending, now, &mut Vec::new());
 	}
 
 	let mut pi = Parachains::get(para_id).expect("still live; qed");
@@ -110,12 +112,7 @@ pub fn request_code_upgrade(
 	}
 }
 
-/// Whether `pi`'s pending upgrade has passed its deadline and so must be treated
-/// as already gone when this candidate's validation code is checked (§5.1 step 4).
-///
-/// Kept separate from [`reap_timed_out_upgrade`] so step 5 can consult the
-/// post-reap view without writing anything: a candidate rejected at step 5 must
-/// leave `pending_upgrade` untouched.
+/// Whether `pi`'s pending upgrade has reached its deadline (§5.1 step 4).
 pub fn pending_upgrade_expired(pi: &ParaInfo, now: Slot) -> bool {
 	pi.pending_upgrade.as_ref().is_some_and(|(_, deadline)| *deadline <= now)
 }

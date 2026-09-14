@@ -11,9 +11,10 @@ module refine_errors {
   action applyWork(result: WorkExecResult, authTrace: int): bool = {
     val out = accumulateBlock(
       svc, now + 1, jamStagingSet, solicitedSet, FixedCodeLen,
-      List({ result: result, authTrace: authTrace }))
+      List({ result: result, authTrace: authTrace }), foreignServices)
     all {
       svc' = out.state,
+      foreignServices' = out.foreign,
       now' = now + 1,
       jamStagingSet' = out.staging,
       solicitedSet' = out.solicited,
@@ -29,7 +30,7 @@ module refine_errors {
     applyWork(WorkOk(Err({ paraId: CoretimeParaId, error: error })), authTrace)
 
   run too_many_validator_keys_works =
-    init.then(logError(SetValidatorKeysTooManyKeys, 7)).then(applyWork(WorkErr, 7))
+    init.then(logError(TooManyValidatorKeys, 7)).then(applyWork(WorkErr, 7))
 
   run too_many_upward_messages_works =
     init.then(logError(TooManyUpwardMessages, 7)).then(applyWork(WorkErr, 7))
@@ -68,10 +69,10 @@ module refine_errors {
     init.then(logError(InvalidCodeHash, 0)).then(logError(InvalidCodeHash, 255)).then(logError(InvalidCodeHash, 256)).then(logError(InvalidCodeHash, 257))
 
   run too_many_validator_keys_unregistered_works =
-    init.then(applyWork(WorkOk(Err({ paraId: MkParaId(999), error: SetValidatorKeysTooManyKeys })), 300))
+    init.then(applyWork(WorkOk(Err({ paraId: MkParaId(999), error: TooManyValidatorKeys })), 300))
 
   run too_many_validator_keys_auth_trace_boundaries_works =
-    init.then(logError(SetValidatorKeysTooManyKeys, 0)).then(logError(SetValidatorKeysTooManyKeys, 255)).then(logError(SetValidatorKeysTooManyKeys, 256)).then(logError(SetValidatorKeysTooManyKeys, 257))
+    init.then(logError(TooManyValidatorKeys, 0)).then(logError(TooManyValidatorKeys, 255)).then(logError(TooManyValidatorKeys, 256)).then(logError(TooManyValidatorKeys, 257))
 
   run too_many_upward_messages_unregistered_works =
     init.then(applyWork(WorkOk(Err({ paraId: MkParaId(999), error: TooManyUpwardMessages })), 300))
@@ -104,7 +105,7 @@ module refine_errors {
     init.then(logError(MissingHeadDeclaration, 7)).then(logError(MissingHeadDeclaration, 7)).then(applyWork(WorkErr, 300))
 
   run mixed_errors_preserve_log_works =
-    init.then(logError(InvalidCodeHash, 7)).then(logError(SetValidatorKeysTooManyKeys, 7)).then(logError(TooManyUpwardMessages, 7)).then(logError(RestrictedHostFunction, 7)).then(logError(RefineOutputTooLarge, 7)).then(logError(MissingHeadDeclaration, 7)).then(logError(Opaque(1024), 7)).then(applyWork(WorkErr, 0))
+    init.then(logError(InvalidCodeHash, 7)).then(logError(TooManyValidatorKeys, 7)).then(logError(TooManyUpwardMessages, 7)).then(logError(RestrictedHostFunction, 7)).then(logError(RefineOutputTooLarge, 7)).then(logError(MissingHeadDeclaration, 7)).then(logError(Opaque(1024), 7)).then(applyWork(WorkErr, 0))
 
   run unregistered_error_preserves_other_log_works =
     init.then(logError(Opaque(42), 7)).then(applyWork(WorkOk(Err({ paraId: MkParaId(999), error: MissingHeadDeclaration })), 300))

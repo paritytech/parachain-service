@@ -75,8 +75,7 @@ fn parent_head_mismatch_works() {
 
 #[test]
 fn wrong_code_errors() {
-	// §5.1 step 5: the authoritative validation-code check rejects the candidate,
-	// and a rejected candidate changes nothing at all — not even a log entry.
+	// The authoritative validation-code check rejects the candidate's head update.
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let digest = ok_digest(PARA, b"some-other-code", b"genesis", b"head-1", vec![], 0);
 
@@ -87,34 +86,24 @@ fn wrong_code_errors() {
 }
 
 #[test]
-fn rejected_candidate_does_not_prune_works() {
+fn stale_parent_candidate_pruning_works() {
 	use parachain_service::state::{storage_key, Tag};
 
-	// §5.1: a rejected candidate changes NOTHING. Pruning in particular must not
-	// happen: the lookup-anchor is chosen by whoever submitted the package, so a
-	// rejected candidate that pruned would let anyone holding coretime erase a
-	// parachain's log at any rank, bypassing the eviction ranking. The log here
-	// is seeded with an old `Opaque` (rank 1) that a prune to `now` would
-	// destroy.
+	// §5.1: a rejected candidate preserves every log entry.
+	let entry = LogEntry::Refine {
+		error: RefineLog::Opaque(vec![0xCD; 64].try_into().expect("within 1024")),
+		auth_trace: vec![].try_into().expect("empty is within the cap"),
+	};
+	let log = vec![(1, entry.clone()), (50, entry.clone()), (75, entry)];
 	let storage = fresh_storage(|s| {
 		seed_para(s, PARA, b"genesis", CODE, RICH);
-		let log = vec![(
-			1,
-			LogEntry::Refine {
-				error: RefineLog::Opaque(vec![0xCD; 64].try_into().expect("within 1024")),
-				auth_trace: vec![].try_into().expect("empty is within the cap"),
-			},
-		)];
 		set_state(s, &storage_key(Tag::ParachainLog, &PARA), &log);
 	});
-	assert_eq!(para_log(&storage, PARA).len(), 1);
 
-	// A stale-parent (rejected) candidate with a lookup-anchor far above the
-	// seeded entry's timeslot: were it to prune, the entry would be gone.
-	let digest = ok_digest(PARA, CODE, b"not-the-parent", b"head-1", vec![], 500);
+	let digest = ok_digest(PARA, CODE, b"not-the-parent", b"head-1", vec![], 50);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
-	assert_eq!(para_log(&storage, PARA).len(), 1, "rejected candidate must not prune");
+	assert_eq!(para_log(&storage, PARA), log, "rejected candidates cannot prune");
 	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"genesis");
 }
 
@@ -274,4 +263,29 @@ fn kv_insufficient_balance_errors() {
 	));
 	// The candidate itself still enacted — only the write was rejected.
 	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"head-1");
+}
+
+#[test]
+fn rejected_candidate_preserves_expired_upgrade_works() {
+	use parachain_service::state::{para_info::ValidationCode, storage_key, Tag};
+	use parachain_service_core::upward_message::UpwardMessage;
+	let pending = b"expired-code";
+	for (candidate_code, messages) in [
+		(&b"wrong-code"[..], vec![]),
+		(&pending[..], vec![]),
+		(CODE, vec![UpwardMessage::ParachainCleanUp(PARA)]),
+	] {
+		let storage = fresh_storage(|s| {
+			seed_para(s, PARA, b"genesis", CODE, RICH);
+			let mut pi = para_info(s, PARA).unwrap();
+			pi.pending_upgrade =
+				Some((ValidationCode { code_ref: code_ref(pending), pinned: false }, NOW - 1));
+			set_state(s, &storage_key(Tag::Parachains, &PARA), &pi);
+		});
+		let before = para_info(&storage, PARA).unwrap();
+		let digest = ok_digest(PARA, candidate_code, b"genesis", b"new-head", messages, NOW);
+		let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+		assert_eq!(para_info(&storage, PARA).unwrap(), before);
+		assert!(para_log(&storage, PARA).is_empty());
+	}
 }

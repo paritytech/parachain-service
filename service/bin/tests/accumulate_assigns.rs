@@ -6,7 +6,7 @@ mod common;
 use common::*;
 use executor::pj;
 use jam_std_common::{hash_raw, Privileges};
-use jam_types::{AccumulateItem, CodeHash, FixedVec};
+use jam_types::{AccumulateItem, AuthTrace, CodeHash, FixedVec};
 use parachain_service::state::{
 	assigns::{PendingAssign, PendingAssignCores},
 	log::{AccumulateLog, LogEntry},
@@ -113,6 +113,48 @@ fn flush_due_works() {
 	}
 	assert!(pending(&storage).is_none());
 	assert!(dirty_cores(&storage).is_empty());
+}
+
+#[test]
+fn work_error_flushes_due_assignment_works() {
+	let due = NOW + 10;
+	let msg = assign_msg(vec![HASH_A, HASH_B], due);
+	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
+	let (_, storage, mutations) = accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
+	assert!(mutations.auths.is_empty());
+	let info = para_info(&storage, CORETIME_PARA_ID).unwrap();
+	assert_eq!(info.head_data.as_slice(), b"ct-1");
+	let log = para_log(&storage, CORETIME_PARA_ID);
+
+	// Skipped work must neither flush early nor bypass always-accumulate when due.
+	let (_, storage, mutations) =
+		accumulate_block(storage, vec![work_item_skipped(AuthTrace(vec![0xAA; 300]))], due - 1);
+	assert!(mutations.auths.is_empty());
+	assert_eq!(
+		pending(&storage),
+		Some(PendingAssign { queue: vec![HASH_A, HASH_B], assigner: None })
+	);
+	assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, due)]);
+	assert_eq!(para_info(&storage, CORETIME_PARA_ID).unwrap(), info);
+	assert_eq!(para_log(&storage, CORETIME_PARA_ID), log);
+
+	let (_, storage, mutations) =
+		accumulate_block(storage, vec![work_item_skipped(AuthTrace(vec![0xAA; 300]))], due);
+	assert_eq!(mutations.auths.len(), 1);
+	let queue: Vec<_> = mutations
+		.auths
+		.get(&CORE)
+		.expect("due assign fired despite WorkErr")
+		.clone()
+		.into();
+	assert_eq!(queue.len(), jam_types::auth_queue_len());
+	for (i, hash) in queue.iter().enumerate() {
+		assert_eq!(hash.0, [HASH_A, HASH_B][i % 2], "cycle-repeat at index {i}");
+	}
+	assert!(pending(&storage).is_none());
+	assert!(dirty_cores(&storage).is_empty());
+	assert_eq!(para_info(&storage, CORETIME_PARA_ID).unwrap(), info);
+	assert_eq!(para_log(&storage, CORETIME_PARA_ID), log);
 }
 
 #[test]

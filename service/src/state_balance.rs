@@ -73,8 +73,8 @@ pub const PARA_LOG_FOOTPRINT: Balance = ENTRY_OVERHEAD + 5 + 65536 + ITEM_DEPOSI
 pub const BASELINE_FOOTPRINT: Balance = PARA_INFO_FOOTPRINT + PARA_LOG_FOOTPRINT;
 
 /// Value octets of one queued transfer (§6.1, with `Compact<u64>` amount per
-/// D-3): ServiceId 4 + amount 9 (worst case) + memo 128.
-pub const INCOMING_TRANSFER_VALUE_OCTETS: u64 = 4 + 9 + 128;
+/// D-3): ServiceId 4 + amount 9 (worst case) + balance selector 1 + memo 128.
+pub const INCOMING_TRANSFER_VALUE_OCTETS: u64 = 4 + 9 + 1 + 128;
 
 /// Full balance-unit cost of one worst-case `incoming_transfers` bucket — a
 /// bucket holding a single transfer (maximal fragmentation, which is what one
@@ -341,7 +341,11 @@ fn jam_forget(hash: &Hash, len: u32) {
 /// per §6.1. Rejected (state unchanged, `FromSetKV` logged) when a positive
 /// delta exceeds headroom.
 pub fn apply_set_kv(para_id: ParaId, key: &[u8], value: &[u8]) -> Result<(), AccumulateLog> {
-	let mut pi = Parachains::get(para_id).expect("caller checked the para is live; qed");
+	// Check the lifecycle using the same read that supplies the balance check.
+	let Some(mut pi) = Parachains::get(para_id) else { return Ok(()) };
+	if pi.is_deregistering {
+		return Ok(());
+	}
 	let old = KeyValueStorage::get(para_id, key);
 	// Signed delta in balance units: a fresh entry pays the full footprint, an
 	// overwrite pays only the value-size difference (§6.1).
@@ -448,14 +452,11 @@ mod tests {
 
 	#[test]
 	fn asset_hub_footprint_works() {
-		// §6.1 says 1 226 396 fixed + 195 × N. The only remaining implementation
-		// delta is the authorizer queue: `AUTHORIZER_QUEUE_LEN` is 80 where §6.1
-		// computes with 79, worth 341 × 32 = 10 912 B. §6.1 now sizes the u16
-		// `CoreIndex` and the endpoint pointer's transfer counter as we do.
-		assert_eq!(INCOMING_TRANSFER_ENTRY_FOOTPRINT, 195);
+		// §6.1: 80 authorizers per core and a balance selector per transfer.
+		assert_eq!(INCOMING_TRANSFER_ENTRY_FOOTPRINT, 196);
 		assert_eq!(
 			ASSET_HUB_GLOBAL_ITEMS_FOOTPRINT,
-			1_237_307 + (MAX_INCOMING_TRANSFERS as u64) * 195
+			1_237_307 + (MAX_INCOMING_TRANSFERS as u64) * 196
 		);
 	}
 

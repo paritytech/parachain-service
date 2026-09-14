@@ -5,7 +5,7 @@ mod common;
 
 use common::*;
 use parachain_service::{
-	state::log::{AccumulateLog, LogEntry},
+	state::log::{AccumulateLog, LogEntry, StateBalanceRejection},
 	state_balance::{baseline_for, preimage_footprint},
 };
 use parachain_service_core::{
@@ -87,10 +87,17 @@ fn registration_below_baseline_errors() {
 	let (_, storage, _) = accumulate_block(coretime_storage(), vec![work_item(&digest)], NOW);
 
 	assert!(para_info(&storage, NEW_PARA).is_none());
-	assert!(matches!(
-		coretime_accumulate_logs(&storage)[..],
-		[AccumulateLog::StateBalanceUpdateRejected { .. }]
-	));
+	assert_eq!(
+		coretime_accumulate_logs(&storage),
+		vec![AccumulateLog::StateBalanceUpdateRejected {
+			para_id: NEW_PARA,
+			attempted: 10.into(),
+			reason: StateBalanceRejection::BelowUsed {
+				current_total: 0.into(),
+				current_used: baseline_for(NEW_PARA).into()
+			}
+		}]
+	);
 }
 
 #[test]
@@ -113,10 +120,17 @@ fn lower_total_than_used_errors() {
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert_eq!(para_info(&storage, NEW_PARA).unwrap().total_state_balance, RICH);
-	assert!(matches!(
-		coretime_accumulate_logs(&storage)[..],
-		[AccumulateLog::StateBalanceUpdateRejected { .. }]
-	));
+	assert_eq!(
+		coretime_accumulate_logs(&storage),
+		vec![AccumulateLog::StateBalanceUpdateRejected {
+			para_id: NEW_PARA,
+			attempted: (used - 1).into(),
+			reason: StateBalanceRejection::BelowUsed {
+				current_total: RICH.into(),
+				current_used: used.into()
+			}
+		}]
+	);
 }
 
 #[test]
@@ -242,4 +256,119 @@ fn cleanup_two_step_works() {
 
 	assert!(para_info(&storage, NEW_PARA).is_none());
 	assert!(registry_entry(&storage, code_ref(NEW_CODE)).is_none());
+}
+
+/// A half-removed para cannot be revived or acquire state through Coretime.
+#[test]
+fn deregistering_updates_works() {
+	let storage = fresh_storage(|s| {
+		seed_para(s, CORETIME_PARA_ID, b"ct-genesis", CT_CODE, RICH);
+		seed_para(s, NEW_PARA, b"para-genesis", NEW_CODE, RICH);
+	});
+	let cleanup =
+		coretime_digest(b"ct-genesis", b"ct-1", vec![UpwardMessage::ParachainCleanUp(NEW_PARA)]);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&cleanup)], NOW);
+	let frozen = para_info(&storage, NEW_PARA).unwrap();
+	assert!(frozen.is_deregistering);
+	let existing_logs = coretime_accumulate_logs(&storage);
+	let new_code = code_ref(b"replacement");
+	let extra = code_ref(b"extra-preimage");
+	let update = coretime_digest(
+		b"ct-1",
+		b"ct-2",
+		vec![
+			UpwardMessage::ParachainSetStateBalance {
+				para_id: NEW_PARA,
+				new_total: (RICH * 2).into(),
+			},
+			UpwardMessage::ParachainSetHead {
+				para_id: NEW_PARA,
+				new_head: b"revived".to_vec().try_into().unwrap(),
+			},
+			UpwardMessage::ParachainSetValidationCode {
+				para_id: NEW_PARA,
+				new_validation_code_hash: new_code.hash,
+				new_validation_code_len: new_code.len.into(),
+			},
+			UpwardMessage::Solicit {
+				target: parachain_service_core::upward_message::Target::Parachain(NEW_PARA),
+				hash: extra.hash.0,
+				len: extra.len.into(),
+			},
+			UpwardMessage::Solicit {
+				target: parachain_service_core::upward_message::Target::Parachain(NEW_PARA),
+				hash: code_ref(NEW_CODE).hash.0,
+				len: code_ref(NEW_CODE).len.into(),
+			},
+		],
+	);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&update)], NOW + 1);
+	assert_eq!(para_info(&storage, NEW_PARA).unwrap(), frozen);
+	assert!(registry_entry(&storage, new_code).is_none());
+	assert!(registry_entry(&storage, extra).is_none());
+	assert_eq!(
+		coretime_accumulate_logs(&storage),
+		[
+			existing_logs.clone(),
+			vec![AccumulateLog::StateBalanceUpdateRejected {
+				para_id: NEW_PARA,
+				attempted: (RICH * 2).into(),
+				reason: StateBalanceRejection::ParachainIsDeregistering
+			}]
+		]
+		.concat()
+	);
+	let [AccumulateLog::ForgetAgainAt { due, .. }] = existing_logs[..] else {
+		panic!("expected cleanup retry")
+	};
+	let retry = coretime_digest(b"ct-2", b"ct-3", vec![UpwardMessage::ParachainCleanUp(NEW_PARA)]);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&retry)], due + 1);
+	assert!(para_info(&storage, NEW_PARA).is_none());
+}
+
+#[test]
+fn deregistering_remove_kv_works() {
+	use parachain_service::state::{storage_key, Tag};
+	let storage = fresh_storage(|s| {
+		seed_para(s, CORETIME_PARA_ID, b"ct-genesis", CT_CODE, RICH);
+		seed_para(s, NEW_PARA, b"para-genesis", NEW_CODE, RICH);
+		let mut pi = para_info(s, NEW_PARA).unwrap();
+		pi.is_deregistering = true;
+		pi.used_state_balance += parachain_service::state_balance::kv_entry_footprint(1, 1);
+		set_state(s, &storage_key(Tag::Parachains, &NEW_PARA), &pi);
+		set_state(s, &storage_key(Tag::KeyValueStorage, &(NEW_PARA, &b"k"[..])), &b"v".to_vec());
+	});
+	let before = para_info(&storage, NEW_PARA).unwrap();
+	let digest = coretime_digest(
+		b"ct-genesis",
+		b"ct-1",
+		vec![UpwardMessage::RemoveKV { para_id: NEW_PARA, key: b"k".to_vec() }],
+	);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+	assert_eq!(para_info(&storage, NEW_PARA).unwrap(), before);
+	assert_eq!(
+		get_state::<Vec<u8>>(&storage, &storage_key(Tag::KeyValueStorage, &(NEW_PARA, &b"k"[..]))),
+		Some(b"v".to_vec())
+	);
+	assert!(coretime_accumulate_logs(&storage).is_empty());
+}
+
+#[test]
+fn set_kv_after_self_cleanup_works() {
+	use parachain_service::state::{storage_key, Tag};
+	let digest = coretime_digest(
+		b"ct-genesis",
+		b"ct-1",
+		vec![
+			UpwardMessage::ParachainCleanUp(CORETIME_PARA_ID),
+			UpwardMessage::SetKV { key: b"k".to_vec(), value: b"v".to_vec() },
+		],
+	);
+	let (_, storage, _) = accumulate_block(coretime_storage(), vec![work_item(&digest)], NOW);
+	assert!(para_info(&storage, CORETIME_PARA_ID).unwrap().is_deregistering);
+	assert!(get_state::<Vec<u8>>(
+		&storage,
+		&storage_key(Tag::KeyValueStorage, &(CORETIME_PARA_ID, &b"k"[..]))
+	)
+	.is_none());
 }

@@ -16,6 +16,8 @@ pub struct QueuedTransfer {
 	pub from: ServiceId,
 	#[codec(compact)]
 	pub amount: Balance,
+	/// Whether JAM credited the supervisor balance instead of the regular balance.
+	pub to_supervisor_balance: bool,
 	pub memo: Memo,
 }
 
@@ -79,6 +81,22 @@ impl TransferQueue {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn transfer_balance_selector_works() {
+		for to_supervisor_balance in [false, true] {
+			let transfer = QueuedTransfer {
+				from: 42,
+				amount: u64::MAX,
+				to_supervisor_balance,
+				memo: [7; 128],
+			};
+			let encoded = transfer.encode();
+			assert_eq!(encoded.len() as u64, crate::state_balance::INCOMING_TRANSFER_VALUE_OCTETS);
+			assert_eq!(encoded[13], u8::from(to_supervisor_balance));
+			assert_eq!(QueuedTransfer::decode(&mut &encoded[..]).unwrap(), transfer);
+		}
+	}
 
 	#[test]
 	fn endpoint_encoding_works() {

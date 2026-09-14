@@ -13,7 +13,9 @@ use crate::{
 use alloc::vec::Vec;
 use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Compact, Decode, Encode};
-use parachain_service_core::types::{Balance, Hash, ParaId, ServiceId, Timeslot};
+use parachain_service_core::types::{
+	Balance, Hash, ParaId, ServiceId, Timeslot, ValidationCodeHash,
+};
 
 /// Why a state-balance reservation failed (spec §3.1, §6.1).
 ///
@@ -125,16 +127,23 @@ pub enum ServiceCreationResult {
 	IdTaken,
 }
 
+/// Why a Coretime state-balance update was rejected (§6.1).
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
+pub enum StateBalanceRejection {
+	BelowUsed { current_total: Compact<Balance>, current_used: Compact<Balance> },
+	ParachainIsDeregistering,
+}
+
 /// Events recorded while Accumulating for a parachain (spec §3.1).
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub enum AccumulateLog {
 	/// Available state balance insufficient for the operation. Spec §6.1.
 	InsufficientStateBalance { reason: InsufficientBalanceReason },
-	/// `parachain_set_state_balance` rejected because `attempted < current_used`.
+	/// `ParachainSetStateBalance` rejected for the named target and reason.
 	StateBalanceUpdateRejected {
+		para_id: ParaId,
 		attempted: Compact<Balance>,
-		current_total: Compact<Balance>,
-		current_used: Compact<Balance>,
+		reason: StateBalanceRejection,
 	},
 	/// JAM `designate` was not called: the assembled key set's length is not in
 	/// `valcount`. The staging buffer is cleared regardless. Spec §5.3.
@@ -164,6 +173,9 @@ pub enum AccumulateLog {
 	ServiceCreation { id: Compact<u64>, result: ServiceCreationResult },
 	/// `parachain_clean_up` rejected: state held beyond baseline + codes. Spec §6.4.
 	TooMuchStateHeld,
+	/// The candidate's code matches neither active nor unexpired pending code. §5.1.
+	/// Appended to preserve the SCALE indices of existing events.
+	InvalidCodeHash { hash: ValidationCodeHash },
 }
 
 /// The auth trace stored with a Refine failure, truncated to 256 bytes (§3.3).

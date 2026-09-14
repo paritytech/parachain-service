@@ -1,8 +1,8 @@
 //! Replay of the upward messages carried in a work digest (spec §5.1 step 7).
 //!
-//! Each variant corresponds 1:1 to a §4.3 side-effect host function. Restriction
-//! enforcement happened in Refine (D-2) and is re-checked package-wide before the
-//! replay starts (see `package.rs`).
+//! The PVF emits these operations through `send_upward_message` (§4.3). Refine
+//! enforces their origin restrictions (D-2), which are re-checked package-wide
+//! before replay starts (see `package.rs`).
 
 use crate::{
 	accumulate::{assigns, code_upgrades, foreign_services, management, transfers, validator_keys},
@@ -14,10 +14,10 @@ use crate::{
 	state_balance,
 };
 use alloc::vec::Vec;
-use jam_pvm_common::accumulate::{is_available, upgrade};
+use jam_pvm_common::accumulate::{is_available, my_info, upgrade};
 use jam_types::{CodeHash, ServiceId, Slot};
 use parachain_service_core::{
-	types::ParaId,
+	types::{ParaId, ASSET_HUB_PARA_ID},
 	upward_message::{Target, UpwardMessage},
 };
 
@@ -40,6 +40,9 @@ pub fn apply(
 			// `target` names who is charged; only the Coretime chain may name a
 			// para other than itself (§6.1), and a dead target is a no-op.
 			let Some(mut pi) = Parachains::get(target) else { return };
+			if pi.is_deregistering {
+				return;
+			}
 			// For the target's own active/pending validation code this only sets
 			// `pinned`: the code is already referenced by the service, so no
 			// extra balance is charged (§5.2).
@@ -91,6 +94,10 @@ pub fn apply(
 		UpwardMessage::CreateService(args) => foreign_services::create(args, logs),
 
 		UpwardMessage::Forget { target: Target::Parachain(para_id), hash, len } => {
+			// §5.4: expunging the running service code would prevent future accumulation.
+			if para_id == ASSET_HUB_PARA_ID && hash == my_info().code_hash.0 {
+				return;
+			}
 			// `para_id` names whose reference is released (Coretime may name any
 			// para, §6.4); a dead target is a no-op.
 			let Some(mut pi) = Parachains::get(para_id) else { return };
@@ -123,7 +130,7 @@ pub fn apply(
 		},
 
 		UpwardMessage::RemoveKV { para_id, key } => {
-			if Parachains::is_live(para_id) {
+			if Parachains::get(para_id).is_some_and(|pi| !pi.is_deregistering) {
 				state_balance::apply_remove_kv(para_id, &key);
 			}
 		},

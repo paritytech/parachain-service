@@ -72,9 +72,9 @@ fn activation_works() {
 	assert!(info.pending_upgrade.is_none());
 	assert_eq!(&info.head_data[..], b"head-2");
 	// The old code was provided, so its release is two-step: still referenced,
-	// follow-up logged.
+	// follow-up notification omitted to match Quint pending issue #36.
 	assert!(registry_entry(&storage, code_ref(CODE)).is_some());
-	assert!(matches!(accumulate_logs(&storage, PARA)[..], [AccumulateLog::ForgetAgainAt { .. }]));
+	assert!(accumulate_logs(&storage, PARA).is_empty());
 }
 
 #[test]
@@ -112,6 +112,46 @@ fn timeout_reap_works() {
 	assert!(registry_entry(&storage, code_ref(NEW_CODE)).is_none());
 }
 
+// Rejection must preserve cleanup, but must not enact the head or upward messages.
+fn expired_candidate(provided: bool) {
+	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
+	let (mut storage, new_ref) = request_upgrade_block(storage);
+	if provided {
+		storage.provide(NOW + 1, SVC, NEW_CODE).expect("upgrade solicited");
+		storage.commit();
+	}
+	let before = para_info(&storage, PARA).unwrap();
+	let deadline = NOW + UPGRADE_TIMEOUT_TIMESLOTS;
+	let replacement = code_ref(b"replacement-code");
+	let message =
+		UpwardMessage::RequestCodeUpgrade { hash: replacement.hash, len: replacement.len.into() };
+
+	// A stale parent is rejected before expiry cleanup, even at the deadline.
+	let stale = ok_digest(PARA, NEW_CODE, b"stale", b"head-2", vec![], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&stale)], deadline);
+	assert_eq!(para_info(&storage, PARA).unwrap(), before);
+	assert!(accumulate_logs(&storage, PARA).is_empty());
+
+	let digest = ok_digest(PARA, NEW_CODE, b"head-1", b"head-2", vec![message], 0);
+	let now = deadline + 1;
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], now);
+	let info = para_info(&storage, PARA).unwrap();
+	assert_eq!(info, before, "a rejected candidate discards the tentative reap");
+	assert!(registry_entry(&storage, replacement).is_none());
+	assert!(registry_entry(&storage, new_ref).is_some());
+	assert!(accumulate_logs(&storage, PARA).is_empty());
+}
+
+#[test]
+fn expired_unprovided_candidate_errors() {
+	expired_candidate(false);
+}
+
+#[test]
+fn expired_provided_candidate_errors() {
+	expired_candidate(true);
+}
+
 #[test]
 fn supersede_works() {
 	// §5.2 phase 2: a different in-flight upgrade is superseded.
@@ -127,6 +167,28 @@ fn supersede_works() {
 	assert_eq!(info.pending_upgrade.as_ref().unwrap().0.code_ref, third_ref);
 	// The superseded (unprovided) v2 code was dropped outright.
 	assert!(registry_entry(&storage, code_ref(NEW_CODE)).is_none());
+}
+
+#[test]
+fn supersede_provided_code_works() {
+	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
+	let (mut storage, new_ref) = request_upgrade_block(storage);
+	storage.provide(NOW + 1, SVC, NEW_CODE).expect("upgrade solicited");
+	storage.commit();
+	let used_before = para_info(&storage, PARA).unwrap().used_state_balance;
+
+	let third_ref = code_ref(b"para-1000-code-v3");
+	let msg = UpwardMessage::RequestCodeUpgrade { hash: third_ref.hash, len: third_ref.len.into() };
+	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![msg], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 2);
+
+	let info = para_info(&storage, PARA).unwrap();
+	assert_eq!(info.pending_upgrade.as_ref().unwrap().0.code_ref, third_ref);
+	// Provided code stays charged until a second forget; Quint omits the
+	// follow-up notification pending issue #36.
+	assert!(registry_entry(&storage, new_ref).is_some_and(|e| e.referencers.contains(&PARA)));
+	assert_eq!(info.used_state_balance, used_before + preimage_footprint(third_ref.len));
+	assert!(accumulate_logs(&storage, PARA).is_empty());
 }
 
 #[test]

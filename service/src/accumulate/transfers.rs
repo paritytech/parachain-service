@@ -48,8 +48,15 @@ pub fn record_incoming(records: &[&TransferRecord]) -> Vec<AccumulateLog> {
 			continue;
 		}
 		queued += 1;
-		let transfer =
-			QueuedTransfer { from: record.source, amount: record.amount, memo: record.memo.0 };
+		let transfer = QueuedTransfer {
+			from: record.source,
+			amount: record.amount,
+			// FIXME: the vendored JAM TransferRecord has no destination-balance selector.
+			// Its transfers only credit the regular balance; preserve the real flag once
+			// the host supports supervisor balances (DIVERGENCE.md M-12).
+			to_supervisor_balance: false,
+			memo: record.memo.0,
+		};
 		match filled.last_mut() {
 			Some((_, open)) if open.len() < MAX_TRANSFERS_PER_BUCKET as usize => {
 				open.try_push(transfer).expect("checked the bound above; qed");

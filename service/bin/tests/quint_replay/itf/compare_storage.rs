@@ -103,10 +103,15 @@ pub fn state(
 		allow(key);
 	}
 
-	// The pinned model still uses a timeslot-linked queue. Rust uses fixed-size
-	// numbered buckets. Do not silently accept nonempty expectations without a codex.
+	// Nonempty incoming queues still require an input and service-id codex.
+	// Historical fixtures use the pre-bucket endpoint name.
 	if !map_entries(field(svc, "incomingTransfers")?)?.is_empty() ||
-		variant(field(svc, "incomingTransferChain")?)?.0 != "None"
+		variant(
+			svc.get("incomingTransferBuckets")
+				.or_else(|| svc.get("incomingTransferChain"))
+				.ok_or("missing incoming transfer endpoints")?,
+		)?
+		.0 != "None"
 	{
 		return Err(format!(
 			"frame {frame}: nonempty incoming transfers require a bucket-layout codex"
@@ -116,7 +121,7 @@ pub fn state(
 		.service_key(MOCK_SERVICE_ID, &storage_key(Tag::IncomingTransferBuckets, &()))
 		.is_some()
 	{
-		return Err(format!("frame {frame}: svc.incomingTransferChain differs"));
+		return Err(format!("frame {frame}: svc.incomingTransferBuckets differs"));
 	}
 
 	// JAM hashes service keys, so their original tags cannot be recovered. Check
@@ -186,7 +191,7 @@ mod tests {
 		for (tag, expected) in [
 			(Tag::PendingAssignCores, "pendingAssignCores"),
 			(Tag::StagedValidatorKeys, "stagedValidatorKeys"),
-			(Tag::IncomingTransferBuckets, "incomingTransferChain"),
+			(Tag::IncomingTransferBuckets, "incomingTransferBuckets"),
 		] {
 			let storage = fresh_storage(|s| match tag {
 				Tag::PendingAssignCores => {
@@ -200,17 +205,16 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn nonempty_fields_works() {
+	fn nonempty_state() -> (Storage, Value) {
 		let mut expected = svc();
 		expected["pendingAssignCores"] = json!({"#map": [[n(2), n(10)]]});
 		expected["pendingAssigns"] = json!({"#map": [[n(2), {
-			"queue": [{"authBytes": n(9)}],
+			"queue": [{"authBytes": n(9)}, {"authBytes": n(10)}],
 			"assigner": {"tag": "Some", "value": {"tag": "MkServiceId", "value": n(5)}}
 		}]]});
-		expected["stagedValidatorKeys"] = json!([n(7)]);
+		expected["stagedValidatorKeys"] = json!([n(7), n(8)]);
 		expected["keyValueStorage"] = json!({"#map": [[
-			{"#tup": [{"tag": "MkParaId", "value": n(3)}, [n(0), n(255)]]}, [n(42)]
+			{"#tup": [{"tag": "MkParaId", "value": n(3)}, [n(0), n(255)]]}, [n(42), n(43)]
 		]]});
 		let storage = fresh_storage(|s| {
 			set_state(s, &storage_key(Tag::PendingAssignCores, &()), &vec![(2u16, 10u32)]);
@@ -218,19 +222,30 @@ mod tests {
 				s,
 				&storage_key(Tag::PendingAssigns, &2u16),
 				&PendingAssign {
-					queue: vec![Codex::authorizer_hash(9).unwrap().0],
+					queue: vec![
+						Codex::authorizer_hash(9).unwrap().0,
+						Codex::authorizer_hash(10).unwrap().0,
+					],
 					assigner: Some(5),
 				},
 			);
 			let mut key = [0u8; 336];
 			key[0] = 7;
-			set_state(s, &storage_key(Tag::StagedValidatorKeys, &()), &vec![key]);
+			let mut second_key = key;
+			second_key[0] = 8;
+			set_state(s, &storage_key(Tag::StagedValidatorKeys, &()), &vec![key, second_key]);
 			set_state(
 				s,
 				&storage_key(Tag::KeyValueStorage, &(Codex::para_id(3).unwrap(), vec![0u8, 255])),
-				&vec![42u8],
+				&vec![42u8, 43],
 			);
 		});
+		(storage, expected)
+	}
+
+	#[test]
+	fn nonempty_fields_works() {
+		let (storage, expected) = nonempty_state();
 		state(&storage, &expected, &mut Codex::default(), 0).unwrap();
 		for field in
 			["pendingAssignCores", "pendingAssigns", "stagedValidatorKeys", "keyValueStorage"]
@@ -239,6 +254,68 @@ mod tests {
 			changed[field] = svc()[field].clone();
 			assert!(state(&storage, &changed, &mut Codex::default(), 0).is_err(), "{field}");
 		}
+	}
+
+	// Start from matching nonempty storage, then corrupt only one expectation.
+	fn rejects_change(pointer: &str, value: Value, field: &str) {
+		let (storage, mut expected) = nonempty_state();
+		state(&storage, &expected, &mut Codex::default(), 4).unwrap();
+		*expected.pointer_mut(pointer).expect("existing expected field") = value;
+		let error = state(&storage, &expected, &mut Codex::default(), 4).unwrap_err();
+		assert!(error.contains(&format!("frame 4: svc.{field}")), "{error}");
+	}
+
+	#[test]
+	fn assignment_values_errors() {
+		rejects_change("/pendingAssignCores/#map/0/1", n(11), "pendingAssignCores");
+		rejects_change("/pendingAssignCores/#map/0/0", n(3), "pendingAssignCores");
+		rejects_change("/pendingAssigns/#map/0/1/queue/0/authBytes", n(11), "pendingAssigns[2]");
+		rejects_change("/pendingAssigns/#map/0/1/assigner/value/value", n(6), "pendingAssigns[2]");
+		rejects_change(
+			"/pendingAssigns/#map/0/1/assigner",
+			json!({"tag": "None", "value": {"#tup": []}}),
+			"pendingAssigns[2]",
+		);
+	}
+
+	#[test]
+	fn assignment_queue_order_errors() {
+		rejects_change(
+			"/pendingAssigns/#map/0/1/queue",
+			json!([{"authBytes": n(10)}, {"authBytes": n(9)}]),
+			"pendingAssigns[2]",
+		);
+	}
+
+	#[test]
+	fn validator_key_value_errors() {
+		rejects_change("/stagedValidatorKeys/0", n(9), "stagedValidatorKeys");
+	}
+
+	#[test]
+	fn validator_key_order_errors() {
+		rejects_change("/stagedValidatorKeys", json!([n(8), n(7)]), "stagedValidatorKeys");
+	}
+
+	#[test]
+	fn kv_value_errors() {
+		rejects_change("/keyValueStorage/#map/0/1/0", n(44), "keyValueStorage");
+		rejects_change("/keyValueStorage/#map/0/1", json!([]), "keyValueStorage");
+	}
+
+	#[test]
+	fn kv_byte_order_errors() {
+		rejects_change("/keyValueStorage/#map/0/1", json!([n(43), n(42)]), "keyValueStorage");
+		rejects_change(
+			"/keyValueStorage/#map/0/0/#tup/1",
+			json!([n(255), n(0)]),
+			"keyValueStorage",
+		);
+	}
+
+	#[test]
+	fn kv_owner_errors() {
+		rejects_change("/keyValueStorage/#map/0/0/#tup/0/value", n(4), "keyValueStorage");
 	}
 
 	#[test]

@@ -4,7 +4,10 @@ use jam_std_common::hash_raw;
 use jam_types::AccumulateItem;
 use parachain_service::work_digest::ParachainWorkDigest;
 use parachain_service_bin::mock::MOCK_SERVICE_ID;
-use parachain_service_core::{types::ParaId, upward_message::UpwardMessage};
+use parachain_service_core::{
+	types::ParaId,
+	upward_message::{Target, UpwardMessage},
+};
 use serde_json::Value;
 
 use super::{
@@ -18,38 +21,40 @@ use crate::common::{
 	accumulate_block, fresh_storage, work_item_skipped, work_item_with_auth_trace,
 };
 
-/// Replay a normalized Quint trace. Blocks are deliberately limited to one WP.
+/// Replay a normalized Quint trace, preserving work-result order within each block.
 pub fn trace(json: &str) -> Result<(), String> {
 	let document: Value = serde_json::from_str(json).map_err(|error| error.to_string())?;
+	document_trace(&document)
+}
+
+/// Replay an already parsed trace, avoiding a serialize/parse round trip for streams.
+pub fn document_trace(document: &Value) -> Result<(), String> {
 	// Validate every Quint value strictly before using the ergonomic JSON view.
-	super::value::ItfValue::try_from(&document)?;
+	super::value::ItfValue::try_from(document)?;
 	let states = document.get("states").and_then(Value::as_array).ok_or("missing states")?;
 	let first = states.first().ok_or("trace has no states")?;
 	let mut codex = Codex::default();
-	let mut storage = fresh_storage(|storage| seed::seed(storage, first, &mut codex).unwrap());
+	let mut seeded = Ok(());
+	let mut storage = fresh_storage(|storage| seeded = seed::seed(storage, first, &mut codex));
+	seeded?;
 	compare::state(&storage, first, &mut codex, 0)?;
 
 	for (index, pair) in states.windows(2).enumerate() {
 		let frame = index + 1;
+		let mut output = None;
 		match classify(&pair[0], &pair[1])? {
 			FrameKind::Noop => continue,
 			FrameKind::Block => {
 				let results = field(&pair[1], "lastStepWorkResults")?
 					.as_array()
 					.ok_or("lastStepWorkResults must be a list")?;
-				if results.len() > 1 {
-					return Err(format!(
-						"frame {frame}: one-WP replay does not support {} work results",
-						results.len()
-					));
-				}
 				let items = results
-					.first()
-					.map(|result| work_items(result, &mut codex))
-					.transpose()?
-					.unwrap_or_default();
-				let slot = integer(field(&pair[1], "now")?)? as u32;
-				let (_, next, _) = accumulate_block(storage, items, slot);
+					.iter()
+					.map(|result| work_item(result, &mut codex))
+					.collect::<Result<Vec<_>, _>>()?;
+				let slot = bounded_integer::<u32>(field(&pair[1], "now")?, "now")?;
+				let (outcome, next, mutations) = accumulate_block(storage, items, slot);
+				output = Some((outcome.yielded, mutations));
 				storage = next;
 			},
 			FrameKind::ProvisionPreimage => {
@@ -60,19 +65,24 @@ pub fn trace(json: &str) -> Result<(), String> {
 			},
 		}
 		compare::state(&storage, &pair[1], &mut codex, frame)?;
+		if let Some((yielded, mutations)) = output {
+			super::compare_output::state(
+				&pair[0], &pair[1], yielded, &mutations, &mut codex, frame,
+			)?;
+		}
 	}
 	Ok(())
 }
 
-fn work_items(value: &Value, codex: &mut Codex) -> Result<Vec<AccumulateItem>, String> {
+fn work_item(value: &Value, codex: &mut Codex) -> Result<AccumulateItem, String> {
 	let auth_trace = Codex::auth_trace(integer(field(value, "authTrace")?)?)?;
 	let (tag, value) = variant(field(value, "result")?)?;
 	match tag {
-		"WorkOk" => Ok(vec![work_item_with_auth_trace(&work_digest(value, codex)?, auth_trace)]),
+		"WorkOk" => Ok(work_item_with_auth_trace(&work_digest(value, codex)?, auth_trace)),
 		// Gray paper `WorkExecResult::Error`: JAM substituted an error for this
 		// work-item before the service's refine ran, so Accumulate sees the
 		// no-op case (§3.3).
-		"WorkErr" => Ok(vec![work_item_skipped(auth_trace)]),
+		"WorkErr" => Ok(work_item_skipped(auth_trace)),
 		_other => Err(format!("unsupported work result {tag}")),
 	}
 }
@@ -99,12 +109,18 @@ fn digest_ok(value: &Value, codex: &mut Codex) -> Result<ParachainWorkDigest, St
 		integer(field(field(validation, "hash")?, "vchBytes")?)?,
 		integer(field(validation, "len")?)?,
 	)?;
-	let parent = Codex::head(integer(field(field(value, "parentHeadHash")?, "headBytes")?)?)?;
+	let parent_hash = field(value, "parentHeadHash")?;
+	let parent = Codex::head(integer(
+		parent_hash
+			.get("headBytes")
+			.or_else(|| parent_hash.get("hashBytes"))
+			.ok_or("missing parent head hash")?,
+	)?)?;
 	let messages = field(value, "upwardMessages")?
 		.as_array()
 		.ok_or("upwardMessages must be a list")?
 		.iter()
-		.map(|message| upward_message(message, codex))
+		.map(|message| upward_message(message, para, codex))
 		.collect::<Result<Vec<_>, _>>()?;
 	Ok(ParachainWorkDigest::Ok {
 		para_id: para,
@@ -112,13 +128,40 @@ fn digest_ok(value: &Value, codex: &mut Codex) -> Result<ParachainWorkDigest, St
 		parent_head_hash: hash_raw(&parent),
 		head_data: Codex::head(integer(field(value, "headData")?)?)?,
 		upward_messages: messages.try_into().map_err(|_| "too many upward messages")?,
-		lookup_anchor: integer(field(value, "lookupAnchor")?)? as u32,
+		lookup_anchor: bounded_integer::<u32>(field(value, "lookupAnchor")?, "lookupAnchor")?,
 	})
 }
 
-fn upward_message(value: &Value, codex: &mut Codex) -> Result<UpwardMessage, String> {
+fn upward_message(
+	value: &Value,
+	caller: ParaId,
+	codex: &mut Codex,
+) -> Result<UpwardMessage, String> {
 	let (tag, value) = variant(value)?;
 	match tag {
+		"Solicit" | "Forget" => {
+			let len = u32::try_from(integer(field(value, "len")?)?)
+				.map_err(|_| "preimage length out of range")?;
+			let hash = codex.hash(integer(field(field(value, "hash")?, "hashBytes")?)?, len)?;
+			let target = if let Some(target) = value.get("target") {
+				let (kind, target) = variant(target)?;
+				match kind {
+					"Parachain" => Target::Parachain(para_id(target, codex)?),
+					// Foreign service outcomes cannot be replayed until the host supports them.
+					other => return Err(format!("unsupported preimage target {other}")),
+				}
+			} else if tag == "Solicit" {
+				// Historical fixtures before the explicit Target vocabulary.
+				Target::Parachain(caller)
+			} else {
+				Target::Parachain(para_id(field(value, "paraId")?, codex)?)
+			};
+			if tag == "Solicit" {
+				Ok(UpwardMessage::Solicit { target, hash, len: Compact(len) })
+			} else {
+				Ok(UpwardMessage::Forget { target, hash, len: Compact(len) })
+			}
+		},
 		"RequestCodeUpgrade" => {
 			let len = integer(field(value, "len")?)?;
 			let reference =
@@ -130,7 +173,7 @@ fn upward_message(value: &Value, codex: &mut Codex) -> Result<UpwardMessage, Str
 		},
 		"ParachainSetStateBalance" => Ok(UpwardMessage::ParachainSetStateBalance {
 			para_id: para_id(field(value, "paraId")?, codex)?,
-			new_total: Compact(integer(field(value, "newTotal")?)? as u64),
+			new_total: Compact(bounded_integer::<u64>(field(value, "newTotal")?, "newTotal")?),
 		}),
 		"ParachainSetValidationCode" => {
 			let len = integer(field(value, "newValidationCodeLen")?)?;
@@ -164,14 +207,14 @@ fn provision(
 		}
 		let key = tuple(key)?;
 		let abstract_hash = integer(field(&key[0], "hashBytes")?)?;
-		let len = integer(&key[1])? as u32;
+		let len = bounded_integer::<u32>(&key[1], "preimage length")?;
 		let blob = Codex::blob(abstract_hash, len)?;
 		let expected_hash = codex.hash(abstract_hash, len)?;
 		if hash_raw(&blob) != expected_hash {
 			return Err("codex preimage hash mismatch".into());
 		}
 		storage
-			.provide(integer(field(current, "now")?)? as u32, MOCK_SERVICE_ID, &blob)
+			.provide(bounded_integer::<u32>(field(current, "now")?, "now")?, MOCK_SERVICE_ID, &blob)
 			.map_err(|_| "host rejected provisioned preimage")?;
 		storage.commit();
 		debug_assert!(storage
@@ -184,6 +227,12 @@ fn provision(
 
 pub(crate) fn field<'a>(value: &'a Value, name: &str) -> Result<&'a Value, String> {
 	value.get(name).ok_or_else(|| format!("missing field {name}"))
+}
+/// Convert model integers without wrapping negative or oversized values.
+pub(crate) fn bounded_integer<T: TryFrom<i128>>(value: &Value, name: &str) -> Result<T, String> {
+	let value = integer(value)?;
+	T::try_from(value)
+		.map_err(|_| format!("{name} out of {} range: {value}", std::any::type_name::<T>()))
 }
 pub(crate) fn integer(value: &Value) -> Result<i128, String> {
 	if let Some(value) = value.get("#bigint").and_then(Value::as_str) {

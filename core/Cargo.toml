@@ -1,0 +1,48 @@
+[package]
+name = "parachain-service-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+
+# Shared support code for the `service`, `authorizer`, and PVF runtimes. Everything
+# both JAM programs (and the collator tooling) need lives here: wire types, storage
+# types and key derivation, the service-id constant, and the child-PVF host-function
+# wrappers. Subsumes the former `parachain-service-interface`, `jam-state-helpers`,
+# and the `cumulus` facade's `authorizer` module. Kept deliberately off the
+# `sp-runtime`/`sp-core` dependency tree so it stays buildable for PolkaVM
+# (riscv32/riscv64), which is why the codec/bounded-collections dependencies are
+# used rather than their Substrate re-exports.
+
+[lints]
+workspace = true
+
+[dependencies]
+blake2b_simd = { workspace = true }
+bounded-collections = { workspace = true }
+codec = { workspace = true }
+jam-null-authorizer-bin = { workspace = true }
+jam-types = { workspace = true }
+num_enum = { workspace = true }
+
+[target.'cfg(any(target_arch = "riscv32", target_arch = "riscv64"))'.dependencies]
+polkavm-derive = { workspace = true }
+
+[dev-dependencies]
+# Byte-pin the derivation and the trie roots against polkajam's own (std-only)
+# implementations, so this crate cannot drift from the node that serves the proofs.
+codec = { workspace = true, features = ["std"] }
+jam-std-common = { workspace = true }
+polkajam-trie = { workspace = true }
+
+[features]
+default = []
+std = [
+	"blake2b_simd/std",
+	"bounded-collections/std",
+	"codec/std",
+	"jam-types/std",
+	"num_enum/std",
+]

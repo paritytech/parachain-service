@@ -42,15 +42,11 @@ pub fn process(now: Slot, service_id: ServiceId, record: &WorkItemRecord, heads:
 			lookup_anchor,
 		} => {
 			// Step 1: registration check. A not-registered OR deregistering para
-			// is treated as if it no longer exists — silent drop, no log (§6.4).
+			// is treated as if it no longer exists — no new log entry (§6.4).
 			let Some(pi) = Parachains::get(para_id) else { return };
 			if pi.is_deregistering {
 				return;
 			}
-
-			// Steps 3-5 only decide accept/reject. A candidate rejected at any of
-			// them changes nothing at all: no state, no log entry, no pruning
-			// (§5.1) — so nothing below writes until every check has passed.
 
 			// Step 3: parent-head check — reject candidates built on a stale,
 			// skipped, or non-canonical parent.
@@ -58,9 +54,8 @@ pub fn process(now: Slot, service_id: ServiceId, record: &WorkItemRecord, heads:
 				return;
 			}
 
-			// Step 4 (decide): a pending upgrade past its deadline is expired
-			// before this candidate is considered, so step 5 must not match
-			// against it. The release itself is deferred to the accept path.
+			// Decide against the post-expiry view without writing state or forwarding
+			// forgets: a rejected candidate must discard the tentative reap (§5.1).
 			let expired = code_upgrades::pending_upgrade_expired(&pi, now);
 
 			// Step 5: authoritative validation-code check, on the post-reap view.
@@ -82,18 +77,14 @@ pub fn process(now: Slot, service_id: ServiceId, record: &WorkItemRecord, heads:
 				return;
 			}
 
-			// The candidate is accepted; its effects may now be applied.
-			let mut logs: Vec<AccumulateLog> = Vec::new();
-
-			// §5.1: an accepted candidate prunes entries below its lookup-anchor
-			// before any of its own effects land. Only accepted candidates prune —
-			// the anchor is chosen by whoever submitted the package, so letting a
-			// rejected one prune would let anyone holding coretime wipe the log.
+			// Only an accepted candidate may prune logs or release expired code.
 			ParachainLogs::prune_below(para_id, lookup_anchor);
-
-			// Step 4 (apply): release the expired pending code.
+			let mut logs: Vec<AccumulateLog> = Vec::new();
 			if expired {
-				code_upgrades::reap_timed_out_upgrade(para_id, now, &mut logs);
+				// FIXME: Quint's accumulateOkPrefix discards expiry cleanup logs.
+				// Match it until https://github.com/paritytech/parachain-service/issues/36
+				// resolves whether the follow-up forget deadline must be emitted.
+				code_upgrades::reap_timed_out_upgrade(para_id, now, &mut Vec::new());
 			}
 
 			// Step 6: head-data update + code-upgrade activation. Activation must
@@ -110,7 +101,13 @@ pub fn process(now: Slot, service_id: ServiceId, record: &WorkItemRecord, heads:
 					reason: InsufficientBalanceReason::ParaInfo,
 				});
 			}
-			code_upgrades::activate_upgrade_if_match(para_id, validation_code.hash, now, &mut logs);
+			// FIXME: Quint discards activation cleanup logs too; match it pending issue #36.
+			code_upgrades::activate_upgrade_if_match(
+				para_id,
+				validation_code.hash,
+				now,
+				&mut Vec::new(),
+			);
 
 			// Step 7: replay the upward messages in order.
 			for message in upward_messages.into_iter() {

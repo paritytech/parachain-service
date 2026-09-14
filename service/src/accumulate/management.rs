@@ -7,7 +7,7 @@
 use crate::{
 	head_commitment::HeadTracker,
 	state::{
-		log::{AccumulateLog, InsufficientBalanceReason, ParachainLogs},
+		log::{AccumulateLog, InsufficientBalanceReason, ParachainLogs, StateBalanceRejection},
 		para_info::{ParaInfo, Parachains, ValidationCode},
 		preimage_registry::PreimageRegistry,
 		validator_keys::StagedValidatorKeys,
@@ -34,9 +34,12 @@ pub fn set_state_balance(
 			let baseline = baseline_for(para_id);
 			if new_total < baseline {
 				logs.push(AccumulateLog::StateBalanceUpdateRejected {
+					para_id,
 					attempted: new_total.into(),
-					current_total: 0u64.into(),
-					current_used: baseline.into(),
+					reason: StateBalanceRejection::BelowUsed {
+						current_total: 0u64.into(),
+						current_used: baseline.into(),
+					},
 				});
 				return;
 			}
@@ -64,12 +67,23 @@ pub fn set_state_balance(
 			}
 		},
 		Some(mut pi) => {
+			if pi.is_deregistering {
+				logs.push(AccumulateLog::StateBalanceUpdateRejected {
+					para_id,
+					attempted: new_total.into(),
+					reason: StateBalanceRejection::ParachainIsDeregistering,
+				});
+				return;
+			}
 			if new_total < pi.used_state_balance {
 				// The Coretime chain cannot strand currently-paid-for state.
 				logs.push(AccumulateLog::StateBalanceUpdateRejected {
+					para_id,
 					attempted: new_total.into(),
-					current_total: pi.total_state_balance.into(),
-					current_used: pi.used_state_balance.into(),
+					reason: StateBalanceRejection::BelowUsed {
+						current_total: pi.total_state_balance.into(),
+						current_used: pi.used_state_balance.into(),
+					},
 				});
 				return;
 			}
@@ -92,6 +106,9 @@ pub fn set_head(
 	logs: &mut Vec<AccumulateLog>,
 ) {
 	let Some(mut pi) = Parachains::get(para_id) else { return };
+	if pi.is_deregistering {
+		return;
+	}
 	heads.touch(para_id);
 	pi.head_data = new_head;
 	// A head overwrite can grow the `ParaInfo` entry; a backstop write failure
@@ -115,6 +132,9 @@ pub fn set_validation_code(
 	logs: &mut Vec<AccumulateLog>,
 ) {
 	let Some(pi) = Parachains::get(para_id) else { return };
+	if pi.is_deregistering {
+		return;
+	}
 
 	// TODO: hash-only comparisons per the Quint model, although the registry is
 	// keyed by (hash, len). Needs upstreaming.

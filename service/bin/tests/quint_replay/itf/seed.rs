@@ -26,7 +26,10 @@ pub fn seed(storage: &mut Storage, frame: &Value, codex: &mut Codex) -> Result<(
 				if pair.len() != 2 {
 					return Err("pendingUpgrade must contain code and deadline".into());
 				}
-				Some((validation_code(&pair[0], codex)?, integer(&pair[1])? as u32))
+				Some((
+					validation_code(&pair[0], codex)?,
+					bounded_integer::<u32>(&pair[1], "pendingUpgrade deadline")?,
+				))
 			},
 			(tag, _) => return Err(format!("unexpected pendingUpgrade variant {tag}")),
 		};
@@ -34,8 +37,14 @@ pub fn seed(storage: &mut Storage, frame: &Value, codex: &mut Codex) -> Result<(
 			head_data: Codex::head(integer(field(info_value, "headData")?)?)?,
 			validation_code: active_validation_code,
 			pending_upgrade,
-			total_state_balance: integer(field(info_value, "totalStateBalance")?)? as u64,
-			used_state_balance: integer(field(info_value, "usedStateBalance")?)? as u64,
+			total_state_balance: bounded_integer::<u64>(
+				field(info_value, "totalStateBalance")?,
+				"totalStateBalance",
+			)?,
+			used_state_balance: bounded_integer::<u64>(
+				field(info_value, "usedStateBalance")?,
+				"usedStateBalance",
+			)?,
 			is_deregistering: boolean(field(info_value, "isDeregistering")?)?,
 		};
 		set_state(storage, &storage_key(Tag::Parachains, &para), &info);
@@ -43,7 +52,7 @@ pub fn seed(storage: &mut Storage, frame: &Value, codex: &mut Codex) -> Result<(
 
 	for (key, entry) in map_entries(field(field(frame, "svc")?, "preimageRegistry")?)? {
 		let key = tuple(key)?;
-		let len = integer(&key[1])? as u32;
+		let len = bounded_integer::<u32>(&key[1], "preimage length")?;
 		let hash = codex.hash(integer(field(&key[0], "hashBytes")?)?, len)?;
 		let referencers = set_values(field(entry, "referencers")?)?
 			.iter()
@@ -58,7 +67,7 @@ pub fn seed(storage: &mut Storage, frame: &Value, codex: &mut Codex) -> Result<(
 
 	for (key, status) in map_entries(field(field(frame, "svc")?, "preimageStatus")?)? {
 		let key = tuple(key)?;
-		let len = integer(&key[1])? as u32;
+		let len = bounded_integer::<u32>(&key[1], "preimage length")?;
 		let hash = codex.hash(integer(field(&key[0], "hashBytes")?)?, len)?;
 		match variant(status)?.0 {
 			"Unprovided" => {
