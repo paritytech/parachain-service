@@ -1,8 +1,8 @@
 //! Replay of the upward messages carried in a work digest (spec §5.1 step 7).
 //!
-//! Each variant corresponds 1:1 to a §4.3 side-effect host function. Restriction
-//! enforcement happened in Refine (D-2) and is re-checked package-wide before the
-//! replay starts (see `package.rs`).
+//! The PVF emits these operations through `send_upward_message` (§4.3). Refine
+//! enforces their origin restrictions (D-2), which are re-checked package-wide
+//! before replay starts (see `package.rs`).
 
 use crate::{
 	accumulate::{assigns, code_upgrades, foreign_services, management, transfers, validator_keys},

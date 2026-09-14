@@ -42,7 +42,7 @@ pub enum Target {
 	Service(ServiceId),
 }
 
-/// Payload of `transfer_out` / `UpwardMessage::TransferOut` (spec §5.1).
+/// Payload of `UpwardMessage::TransferOut` (spec §5.1).
 ///
 /// `source = None` means this service, matching JAM's self sentinel. The two
 /// selectors choose the balance on each side — which of `source`'s is debited and
@@ -64,7 +64,7 @@ pub struct TransferOutArgs {
 	pub deferred: Option<(Memo, u64)>,
 }
 
-/// Payload of `create_service` / `UpwardMessage::CreateService` (spec §6.5).
+/// Payload of `UpwardMessage::CreateService` (spec §6.5).
 ///
 /// `desired_id` names an index in JAM's protected range, honoured only while this
 /// service holds JAM's `registrar` privilege; `None` lets JAM allocate. The two
@@ -73,9 +73,8 @@ pub struct TransferOutArgs {
 /// caller's own handle, echoed back in `AccumulateLog::ServiceCreation` so the
 /// caller can match the assigned `ServiceId` to its own record.
 ///
-/// Doubles as the `create_service` host-call argument encoding: eight fields
-/// exceed the six-register window, so the guest passes this SCALE-encoded (D-10).
-/// Field order is the design doc's, so the two encodings are identical.
+/// This is carried inside a SCALE-encoded upward message passed to
+/// `send_upward_message`; there is no separate child `create_service` host call.
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub struct CreateServiceArgs {
 	pub code_hash: Hash,
@@ -93,42 +92,42 @@ pub struct CreateServiceArgs {
 /// Variant order (SCALE discriminants) follows the design doc's §3.3 listing.
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub enum UpwardMessage {
-	/// From `request_code_upgrade`: start a PVF code upgrade (§5.2).
+	/// Start a PVF code upgrade (§5.2).
 	RequestCodeUpgrade { hash: ValidationCodeHash, len: Compact<u32> },
-	/// From `solicit`: request a preimage be made available. A
+	/// Request a preimage be made available. A
 	/// [`Target::Parachain`] requests it in this service's own store, charged to
 	/// that parachain's `used_state_balance` (§6.1); a para may only name itself,
 	/// while the Coretime chain may name any para. A [`Target::Service`] requests
 	/// it in that supervised service's store, charged against **its** balance
 	/// (Asset Hub only, §6.5).
 	Solicit { target: Target, hash: Hash, len: Compact<u32> },
-	/// From `eject_service`: destroy an empty supervised service, crediting its
+	/// Destroy an empty supervised service, crediting its
 	/// balances to this service (Asset Hub only, §6.5).
 	EjectService { service: ServiceId },
-	/// From `set_service_supervisor`: hand a supervised service to another
+	/// Hand a supervised service to another
 	/// supervisor, or name the service itself to set it free. One-way (Asset Hub
 	/// only, §6.5).
 	SetServiceSupervisor { service: ServiceId, new_supervisor: ServiceId },
-	/// From `create_service`: create a service supervised by this one, funded
+	/// Create a service supervised by this one, funded
 	/// from this service's balance (Asset Hub only, §6.5).
 	CreateService(CreateServiceArgs),
-	/// From `forget`: release a previously solicited preimage. A
+	/// Release a previously solicited preimage. A
 	/// [`Target::Parachain`] names whose reference is released in this service's
 	/// own store; a para may only name itself, while the Coretime chain may name
 	/// any para (§6.1, §6.4). A [`Target::Service`] forgets in that supervised
 	/// service's store instead (Asset Hub only, §6.5).
 	Forget { target: Target, hash: Hash, len: Compact<u32> },
-	/// From `remove_service_storage`: delete `key` from a supervised service's
+	/// Delete `key` from a supervised service's
 	/// own storage (Asset Hub only, §6.5).
 	RemoveServiceStorage { service: ServiceId, key: Vec<u8> },
-	/// From `kv_set`: upsert `key_value_storage[(para_id, key)] = value` (§6.1).
+	/// Upsert `key_value_storage[(para_id, key)] = value` (§6.1).
 	SetKV { key: Vec<u8>, value: Vec<u8> },
-	/// From `kv_remove`: remove `key_value_storage[(para_id, key)]` (§6.1). Same
+	/// Remove `key_value_storage[(para_id, key)]` (§6.1). Same
 	/// `para_id` delegation rule as `Forget`.
 	RemoveKV { para_id: ParaId, key: Vec<u8> },
-	/// From `transfer_out`: move balance between JAM services (Asset Hub only, §5.1).
+	/// Move balance between JAM services (Asset Hub only, §5.1).
 	TransferOut(TransferOutArgs),
-	/// From `assign_core`: schedule a core's `assign` — queue + assigner,
+	/// Schedule a core's `assign` — queue + assigner,
 	/// written atomically (Coretime only, §7.1).
 	///
 	/// An empty `queue` cancels any cached entry for the core (no JAM call).
@@ -140,27 +139,27 @@ pub enum UpwardMessage {
 		new_assigner: Option<ServiceId>,
 		jam_slot: Timeslot,
 	},
-	/// From `set_validator_keys`: append a chunk of upcoming validator keys
+	/// Append a chunk of upcoming validator keys
 	/// (Asset Hub only, §5.3).
 	SetValidatorKeys { keys: Vec<ValidatorKey>, is_last: bool },
-	/// From `clean_up_buckets_up_to`: remove every `incoming_transfers` bucket up
+	/// Remove every `incoming_transfers` bucket up
 	/// to and including this bucket id (Asset Hub only, §5.1).
 	CleanUpBucketsUpTo(BucketId),
-	/// From `parachain_service_upgrade`: replace the Parachain Service's own
+	/// Replace the Parachain Service's own
 	/// service code (Asset Hub only, §5.4).
 	UpgradeService { code_hash: Hash, len: Compact<u32>, min_acc_gas: u64, min_memo_gas: u64 },
-	/// From `parachain_set_head`: upsert a parachain's head data (Coretime only, §6).
+	/// Upsert a parachain's head data (Coretime only, §6).
 	ParachainSetHead { para_id: ParaId, new_head: HeadData },
-	/// From `parachain_set_validation_code`: upsert a parachain's validation
+	/// Upsert a parachain's validation
 	/// code, bypassing the normal upgrade lifecycle (Coretime only, §6).
 	ParachainSetValidationCode {
 		para_id: ParaId,
 		new_validation_code_hash: ValidationCodeHash,
 		new_validation_code_len: Compact<u32>,
 	},
-	/// From `parachain_clean_up`: remove all per-parachain state (Coretime only, §6.4).
+	/// Remove all per-parachain state (Coretime only, §6.4).
 	ParachainCleanUp(ParaId),
-	/// From `parachain_set_state_balance`: overwrite a parachain's total state
+	/// Overwrite a parachain's total state
 	/// balance (Coretime only, §6.1).
 	ParachainSetStateBalance { para_id: ParaId, new_total: Compact<Balance> },
 }
