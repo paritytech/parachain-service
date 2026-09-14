@@ -127,7 +127,7 @@ values fail explicitly; the runner does not discard failing traces.
 
 Rust matches the model by omitting `ForgetAgainAt` when an accepted candidate
 releases provided code during expiry or activation, pending issue #36. Those
-inputs remain enabled, and ordinary regression tests assert strict agreement. See [the reproduction](../../../../../upstream-feedback/upgrade-expiry-replay.md).
+inputs remain enabled, and ordinary regression tests assert strict agreement. See [issue #36](https://github.com/paritytech/parachain-service/issues/36).
 
 Quint `06c2a49202` changed rejection to preserve state. Rust now matches it:
 rejected candidates neither prune logs nor commit tentative expiry cleanup.
