@@ -81,7 +81,10 @@ pub fn process(now: Slot, service_id: ServiceId, record: &WorkItemRecord, heads:
 			ParachainLogs::prune_below(para_id, lookup_anchor);
 			let mut logs: Vec<AccumulateLog> = Vec::new();
 			if expired {
-				code_upgrades::reap_timed_out_upgrade(para_id, now, &mut logs);
+				// FIXME: Quint's accumulateOkPrefix discards expiry cleanup logs.
+				// Match it until https://github.com/paritytech/parachain-service/issues/36
+				// resolves whether the follow-up forget deadline must be emitted.
+				code_upgrades::reap_timed_out_upgrade(para_id, now, &mut Vec::new());
 			}
 
 			// Step 6: head-data update + code-upgrade activation. Activation must

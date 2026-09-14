@@ -16,16 +16,12 @@ fn insufficient_balance_preserves_pending_works() {
 	.expect("a rejected upgrade logs the failed reservation and preserves the pending code");
 }
 
-// Known differences: keep these explicit while the fuzz runner continues to
-// fail on them. See upstream-feedback/upgrade-expiry-replay.md.
 #[test]
-fn provided_upgrade_expiry_log_errors() {
-	let error = replay::trace(include_str!(
+fn provided_upgrade_expiry_log_works() {
+	replay::trace(include_str!(
 		"../fixtures/quint/upgrades/provided_upgrade_expiry_log_works.itf.json"
 	))
-	.unwrap_err();
-	assert!(error.contains("svc.parachainLog[1] differs"), "{error}");
-	assert!(error.contains("Quint=[]") && error.contains("ForgetAgainAt"), "{error}");
+	.expect("expiry cleanup omits its log to match Quint pending issue #36");
 }
 
 #[test]
