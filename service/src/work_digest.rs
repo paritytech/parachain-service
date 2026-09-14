@@ -3,11 +3,11 @@
 use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Decode, Encode};
 use jam_types::Hash;
-use parachain_service_interface::upward_message::UpwardMessages;
+use parachain_service_core::upward_message::UpwardMessages;
 
 // Shared wire types live in the interface crate; re-exported here since they are
 // part of the digest's shape.
-pub use parachain_service_interface::types::{
+pub use parachain_service_core::types::{
 	HeadData, ParaId, Timeslot, ValidationCodeHash, ValidationCodeRef,
 };
 

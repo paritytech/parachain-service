@@ -23,7 +23,7 @@ use crate::{
 };
 use codec::{Compact, Encode};
 use jam_pvm_common::accumulate::{forget, query, solicit, LookupRequestStatus};
-use parachain_service_interface::types::{Balance, Hash, ParaId, Timeslot, ASSET_HUB_PARA_ID};
+use parachain_service_core::types::{Balance, Hash, ParaId, Timeslot, ASSET_HUB_PARA_ID};
 
 /// Gray Paper `C_itemdeposit`.
 pub const ITEM_DEPOSIT: u64 = 10;

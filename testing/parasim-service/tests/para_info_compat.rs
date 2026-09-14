@@ -10,7 +10,7 @@
 
 use codec::Encode;
 use parachain_service::state::para_info::ParaInfo;
-use parachain_service_interface::types::HeadData;
+use parachain_service_core::types::HeadData;
 
 #[test]
 fn parasim_para_info_is_byte_compatible() {

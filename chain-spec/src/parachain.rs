@@ -4,7 +4,7 @@ use codec::Encode;
 use jam_std_common::hash_raw;
 use jam_types::{AuthConfig, Authorizer, AuthorizerHash};
 use parachain_authorizer::aura::AuthConfig as AuraConfig;
-use parachain_service_interface::types::{Balance, ParaId};
+use parachain_service_core::types::{Balance, ParaId};
 
 /// One parachain registered with the service at genesis (spec §6.2).
 ///

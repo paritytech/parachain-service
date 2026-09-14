@@ -16,7 +16,7 @@ use crate::{
 use alloc::vec::Vec;
 use jam_pvm_common::accumulate::designate;
 use jam_types::{OpaqueValKeyset, OpaqueValKeysets};
-use parachain_service_interface::types::ValidatorKey;
+use parachain_service_core::types::ValidatorKey;
 
 /// Replay of `SetValidatorKeys { keys, is_last }` (Asset Hub only, §4.3).
 pub fn apply(chunk: Vec<ValidatorKey>, is_last: bool, logs: &mut Vec<AccumulateLog>) {

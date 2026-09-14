@@ -2,7 +2,7 @@
 
 use crate::state::{self, StorageFull, Tag};
 use codec::{Compact, Decode, Encode};
-use parachain_service_interface::types::{Balance, HeadData, ParaId, Timeslot, ValidationCodeRef};
+use parachain_service_core::types::{Balance, HeadData, ParaId, Timeslot, ValidationCodeRef};
 
 /// A validation code with its reference and `pinned` flag, recording whether the
 /// parachain has *also* solicited it itself, on top of the service's own

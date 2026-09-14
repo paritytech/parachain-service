@@ -7,8 +7,8 @@
 //!   unassigned core.
 //! - **parasim** — a control package carrying an `UpwardMessage::AssignCore` as its work-item
 //!   payload. Rides a core already under an AURA authorizer this tool can name, which need not be
-//!   the target core, and may be a parked one: parking keeps the authorizer, so a parked core
-//!   still takes control packages.
+//!   the target core, and may be a parked one: parking keeps the authorizer, so a parked core still
+//!   takes control packages.
 //!
 //! So the bootstrap order is: install the first AURA queue on a core, *then* hand that core's
 //! assigner privilege to parasim. The other way round leaves a core parasim owns but cannot be
@@ -19,7 +19,7 @@ use cumulus_jam_interface::JamChainSource;
 use cumulus_jam_rpc_interface::JamRpcInterface;
 use jam_bootstrap_service_common::Instruction;
 use jam_types::{AuthQueue, AuthorizerHash, CoreIndex, ServiceId, Slot};
-use parachain_service_interface::{
+use parachain_service_core::{
 	types::ParaId,
 	upward_message::{UpwardMessage, UpwardMessages},
 };
@@ -69,11 +69,12 @@ pub async fn grant(jam: &JamRpcInterface, args: &Args, core: CoreIndex) -> Resul
 			return Ok(());
 		},
 		BOOTSTRAP_SERVICE => {},
-		other =>
+		other => {
 			return Err(format!(
 				"core {core}'s assigner is service {other}, which is neither the bootstrap \
 				 service nor parasim; nothing this tool can submit will move it"
-			)),
+			))
+		},
 	}
 
 	// Keeping the queue means writing back what is already there. `Instruction::Assign` replaces
@@ -142,7 +143,9 @@ async fn route(
 	let best = jam.best_block().await.map_err(|e| format!("best block: {e}"))?.header_hash;
 	match cores::assigner(jam, best, core).await? {
 		BOOTSTRAP_SERVICE => {
-			tracing::info!("core {core} is still assigned by the bootstrap service; going through it");
+			tracing::info!(
+				"core {core} is still assigned by the bootstrap service; going through it"
+			);
 			bootstrap::instruct(
 				jam,
 				None,

@@ -13,7 +13,7 @@
 //! ```
 //! use parachain_authorizer::aura::AuthConfig;
 //! use parachain_chain_spec::{ParachainServiceSpec, ParachainSpec};
-//! use parachain_service_interface::types::ParaId;
+//! use parachain_service_core::types::ParaId;
 //! use primitive_types::H256;
 //!
 //! let config = AuthConfig {

@@ -11,7 +11,7 @@ use cumulus_jam_interface::{
 	HeaderHash, JamChainSource, JamStateSource, ServiceId, VersionedParameters,
 };
 use cumulus_jam_rpc_interface::JamRpcInterface;
-use parachain_service_interface::types::ParaId;
+use parachain_service_core::types::ParaId;
 use parasim_service::buffer::{BufferedCandidate, StoredHead, BUFFER_CAP};
 
 use crate::{
@@ -141,7 +141,7 @@ fn print_para_info(stored: &[u8]) -> Result<(), String> {
 	println!("  is_deregistering    {}", info.is_deregistering);
 
 	println!("\nhead (substrate header)");
-	println!("  hash        0x{}", hex(&jam_state_helpers::blake2_256(&head)));
+	println!("  hash        0x{}", hex(&parachain_service_core::blake2_256(&head)));
 	match header::decode(&head) {
 		Ok(header) => {
 			println!("  parent_hash 0x{}", hex(&header.parent_hash));
@@ -165,8 +165,9 @@ fn print_buffer(stored: &[u8], head: StoredHead) -> Result<(), String> {
 			"stored head unreadable, so accumulate can judge neither lineage nor height (see \
 			 display-key parahead)"
 		),
-		StoredHead::At { hash, number } =>
-			println!("stored head number {number}, hash 0x{}", hex(&hash)),
+		StoredHead::At { hash, number } => {
+			println!("stored head number {number}, hash 0x{}", hex(&hash))
+		},
 	}
 	println!("depth {}/{BUFFER_CAP}", entries.len());
 	if entries.is_empty() {
@@ -226,16 +227,19 @@ fn classify(entries: &[BufferedCandidate], index: usize, head: StoredHead) -> St
 fn describe(status: Status) -> String {
 	match status {
 		Status::DrainsNext => "drains next: its parent is the stored head".into(),
-		Status::ChainsOnto(parent) =>
-			format!("waiting on entry {parent}, which is parked here too"),
-		Status::Overtaken =>
+		Status::ChainsOnto(parent) => {
+			format!("waiting on entry {parent}, which is parked here too")
+		},
+		Status::Overtaken => {
 			"orphaned: the stored head has reached this number, so the next accumulate for this \
 			 para evicts it"
-				.into(),
-		Status::Waiting =>
+				.into()
+		},
+		Status::Waiting => {
 			"waiting: its parent is neither the stored head nor parked here, so it needs a report \
 			 that has not arrived"
-				.into(),
+				.into()
+		},
 	}
 }
 
@@ -246,10 +250,12 @@ fn describe(status: Status) -> String {
 fn header_disagreement(entry: &BufferedCandidate) -> Option<String> {
 	match header::decode(&entry.head_data) {
 		Err(error) => Some(format!("head_data is not a decodable header: {error}")),
-		Ok(header) if header.number != entry.number =>
-			Some(format!("head_data's header says number {}", header.number)),
-		Ok(header) if header.parent_hash != entry.parent_head_hash =>
-			Some(format!("head_data's header says parent 0x{}", hex(&header.parent_hash))),
+		Ok(header) if header.number != entry.number => {
+			Some(format!("head_data's header says number {}", header.number))
+		},
+		Ok(header) if header.parent_hash != entry.parent_head_hash => {
+			Some(format!("head_data's header says parent 0x{}", hex(&header.parent_hash)))
+		},
 		Ok(_) => None,
 	}
 }
@@ -266,7 +272,7 @@ async fn resolve_block(jam: &JamRpcInterface, at: Option<String>) -> Result<Head
 ///
 /// Both, because which of the two an RPC wants is easy to get wrong.
 fn print_location(at: HeaderHash, service: ServiceId, para: ParaId, service_local_key: &[u8]) {
-	let state_key = jam_state_helpers::service_value_state_key(service, service_local_key);
+	let state_key = parachain_service_core::service_value_state_key(service, service_local_key);
 	println!("block       0x{}", hex(&*at));
 	println!("service     {service}");
 	println!("para        {}", para.0);

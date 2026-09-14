@@ -16,7 +16,7 @@
 use codec::{DecodeAll as _, Encode};
 use jam_types::{
 	AuthConfig as RawAuthConfig, Authorization, Authorizer, CodeHash, HeaderHash, RefineContext,
-	ServiceId, Slot, WorkItem, WorkPackage, WorkPayload,
+	Slot, WorkItem, WorkPackage, WorkPayload,
 };
 use parachain_authorizer::{
 	aura::{
@@ -27,9 +27,10 @@ use parachain_authorizer::{
 };
 use parachain_authorizer_ed25519::Ed25519;
 use parachain_authorizer_sr25519::Sr25519;
-use parachain_service_interface::{
+use parachain_service_core::{
 	types::ParaId,
 	upward_message::{UpwardMessage, UpwardMessages},
+	PARACHAIN_SERVICE_ID,
 };
 use primitive_types::{H256, U256};
 
@@ -49,7 +50,6 @@ struct SpecToken {
 
 /// The aura key type, which is the collator identity phase 6a settles on.
 const AURA: sp_core::crypto::KeyTypeId = sp_core::crypto::KeyTypeId(*b"aura");
-const PARACHAIN_SERVICE: ServiceId = 5;
 
 #[derive(Clone, Copy, Debug)]
 enum Scheme {
@@ -72,14 +72,18 @@ impl Collators {
 		let keys = seeds
 			.iter()
 			.map(|seed| match scheme {
-				Scheme::Ed25519 => keystore
-					.ed25519_generate_new(AURA, Some(seed))
-					.expect("the in-memory keystore generates; qed")
-					.0,
-				Scheme::Sr25519 => keystore
-					.sr25519_generate_new(AURA, Some(seed))
-					.expect("the in-memory keystore generates; qed")
-					.0,
+				Scheme::Ed25519 => {
+					keystore
+						.ed25519_generate_new(AURA, Some(seed))
+						.expect("the in-memory keystore generates; qed")
+						.0
+				},
+				Scheme::Sr25519 => {
+					keystore
+						.sr25519_generate_new(AURA, Some(seed))
+						.expect("the in-memory keystore generates; qed")
+						.0
+				},
 			})
 			.collect();
 		Self { keystore, scheme, keys }
@@ -89,18 +93,20 @@ impl Collators {
 		use sp_keystore::Keystore as _;
 		let key = self.keys[index];
 		match self.scheme {
-			Scheme::Ed25519 => self
-				.keystore
-				.ed25519_sign(AURA, &key.into(), payload)
-				.expect("signing does not fail; qed")
-				.expect("the key is in the keystore; qed")
-				.0,
-			Scheme::Sr25519 => self
-				.keystore
-				.sr25519_sign(AURA, &key.into(), payload)
-				.expect("signing does not fail; qed")
-				.expect("the key is in the keystore; qed")
-				.0,
+			Scheme::Ed25519 => {
+				self.keystore
+					.ed25519_sign(AURA, &key.into(), payload)
+					.expect("signing does not fail; qed")
+					.expect("the key is in the keystore; qed")
+					.0
+			},
+			Scheme::Sr25519 => {
+				self.keystore
+					.sr25519_sign(AURA, &key.into(), payload)
+					.expect("signing does not fail; qed")
+					.expect("the key is in the keystore; qed")
+					.0
+			},
 		}
 	}
 
@@ -110,7 +116,7 @@ impl Collators {
 		let (collator_set_root, _) = build_collator_tree(&self.keys);
 		AuthConfig {
 			para_ids,
-			parachain_service: PARACHAIN_SERVICE,
+			parachain_service: PARACHAIN_SERVICE_ID,
 			collator_set_root,
 			collator_set_size: self.keys.len() as u32,
 			slot_duration: 1,
@@ -136,7 +142,7 @@ impl Collators {
 fn package(anchor_byte: u8, slot: Slot, payload: Vec<u8>) -> WorkPackage {
 	WorkPackage {
 		authorization: Authorization::default(),
-		auth_code_host: PARACHAIN_SERVICE,
+		auth_code_host: PARACHAIN_SERVICE_ID,
 		authorizer: Authorizer {
 			code_hash: CodeHash([0xaa; 32]),
 			config: RawAuthConfig::default(),
@@ -152,7 +158,7 @@ fn package(anchor_byte: u8, slot: Slot, payload: Vec<u8>) -> WorkPackage {
 			prerequisites: Default::default(),
 		},
 		items: vec![WorkItem {
-			service: PARACHAIN_SERVICE,
+			service: PARACHAIN_SERVICE_ID,
 			code_hash: CodeHash([0xbb; 32]),
 			refine_gas_limit: 1_000_000,
 			accumulate_gas_limit: 1_000_000,
@@ -279,10 +285,20 @@ fn a_token_is_rejected_by_the_other_verifier_works() {
 	let package = block(1, 0);
 
 	let ed = Collators::new(Scheme::Ed25519, &["//Alice"]);
-	assert!(!admits(Scheme::Sr25519, &ed.config(vec![ParaId(0)]), &ed.tokens(&package)[0], &package));
+	assert!(!admits(
+		Scheme::Sr25519,
+		&ed.config(vec![ParaId(0)]),
+		&ed.tokens(&package)[0],
+		&package
+	));
 
 	let sr = Collators::new(Scheme::Sr25519, &["//Alice"]);
-	assert!(!admits(Scheme::Ed25519, &sr.config(vec![ParaId(0)]), &sr.tokens(&package)[0], &package));
+	assert!(!admits(
+		Scheme::Ed25519,
+		&sr.config(vec![ParaId(0)]),
+		&sr.tokens(&package)[0],
+		&package
+	));
 }
 
 /// The signature is over the package's context, so a token cannot be lifted onto a package built
@@ -362,13 +378,16 @@ fn a_sudo_token_reaches_a_parked_core_unsigned_works() {
 		let forged = AuthToken { proof: Vec::new(), key: SUDO_KEY, signature: [0u8; 64] };
 		let trace = authorize_under(scheme, &parked, &forged, &control)
 			.expect("the sentinel key admits a package nobody signed");
-		assert!(trace.sudo, "{scheme:?}: the trace must tell refine to read the payload as control");
+		assert!(
+			trace.sudo,
+			"{scheme:?}: the trace must tell refine to read the payload as control"
+		);
 		assert_eq!(trace.author_key, SUDO_KEY);
 
 		// The hole is exactly this wide: the target-service check still applies, so a parked
 		// core's coretime cannot be spent on some other JAM service.
 		let mut foreign = control;
-		foreign.items[0].service = PARACHAIN_SERVICE + 1;
+		foreign.items[0].service = PARACHAIN_SERVICE_ID + 1;
 		assert!(matches!(
 			authorize_under(scheme, &parked, &forged, &foreign),
 			Err(AuthorizationError::WrongTargetService)
@@ -421,4 +440,3 @@ fn an_assigned_core_still_counts_items_works() {
 		));
 	}
 }
-

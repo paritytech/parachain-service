@@ -40,7 +40,7 @@ workspace = true
 
 [dependencies]
 jam-types = { path = "../vendor/polkajam/crates/jam-types", default-features = false }
-parachain-service-interface = { path = "../service-interface", default-features = false }
+parachain-service-core = { path = "../core", default-features = false }
 jam-pvm-common = { path = "../vendor/polkajam/crates/jam-pvm-common", default-features = false, features = ["authorizer", "logging"] }
 polkavm-derive = { version = "0.36.0", default-features = false }
 codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }

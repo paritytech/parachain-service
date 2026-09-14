@@ -24,7 +24,7 @@ use alloc::{string::String, vec::Vec};
 use codec::{DecodeAll, Encode};
 use jam_pvm_common::refine;
 use jam_types::{Hash, PageMode};
-use parachain_service_interface::{
+use parachain_service_core::{
 	host_call::HostCall,
 	types::ParaId,
 	upward_message::{

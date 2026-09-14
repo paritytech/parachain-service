@@ -13,8 +13,8 @@
 //! contact, so a test that strays into a path needing real inner-PVM I/O fails loudly
 //! instead of silently passing. The paths under test never touch them.
 
-use parachain_service::pvf::executor::{ExecutorState, Heap, fresh_pages};
-use parachain_service_interface::{host_call::HostCall, types::ParaId};
+use parachain_service::pvf::executor::{fresh_pages, ExecutorState, Heap};
+use parachain_service_core::{host_call::HostCall, types::ParaId};
 
 #[no_mangle]
 pub extern "C" fn gas() -> u64 {

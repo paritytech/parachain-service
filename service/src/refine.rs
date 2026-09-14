@@ -9,9 +9,9 @@ use codec::{Decode, DecodeAll};
 use jam_pvm_common::refine::{self, auth_trace, lookup as historical_lookup};
 use jam_types::{CoreIndex, ServiceId, WorkPackageHash, WorkPayload};
 use parachain_authorizer::aura;
-use parachain_service_interface::types::ParaId;
+use parachain_service_core::types::ParaId;
 
-pub use parachain_service_interface::candidate::ParachainCandidate;
+pub use parachain_service_core::candidate::ParachainCandidate;
 
 pub fn refine(
 	_core_index: CoreIndex,

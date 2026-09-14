@@ -16,7 +16,7 @@ workspace = true
 
 [dependencies]
 jam-types = { workspace = true }
-parachain-service-interface = { workspace = true }
+parachain-service-core = { workspace = true }
 jam-pvm-common = { workspace = true, features = ["authorizer", "logging"] }
 codec = { workspace = true }
 # `uninline_portable` keeps blake2b's compression function a real function instead of one fully
@@ -43,7 +43,7 @@ std = [
 	"jam-pvm-common/std",
 	"jam-types/std",
 	"parachain-authorizer/std",
-	"parachain-service-interface/std",
+	"parachain-service-core/std",
 	"parachain-service/std",
 	"primitive-types/std",
 	"sp-core/std",

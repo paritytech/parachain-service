@@ -6,14 +6,14 @@ use alloc::vec::Vec;
 
 use codec::{Decode, Encode};
 use jam_types::{Encode as JamEncode, ServiceId, Slot, WorkPackage};
-use parachain_service_interface::types::ParaId;
+use parachain_service_core::types::ParaId;
 use primitive_types::H256;
 use schnorrkel::{PublicKey, Signature};
 
 // The service decodes the trace (and so the command in it) without linking this crate, so both
 // live in the shared interface crate; they are re-exported here because this is where the
 // authorizer's wire types read as one set.
-pub use parachain_service_interface::authorization::{
+pub use parachain_service_core::authorization::{
 	AuthTrace, CollatorKey, CollatorSignature, Command,
 };
 
@@ -70,9 +70,9 @@ impl AuthToken {
 	///
 	/// - **Leaf hash**: blake2b-32 over the raw 32-byte key.
 	/// - **Node hash**: blake2b-32 over the concatenated left–right pair.
-	/// - **Sibling ordering**: LSB-first from `collator_index`; bit = 0 means the
-	///   current node is the left child (proof sibling is right), bit = 1 means
-	///   the current node is the right child (proof sibling is left).
+	/// - **Sibling ordering**: LSB-first from `collator_index`; bit = 0 means the current node is
+	///   the left child (proof sibling is right), bit = 1 means the current node is the right child
+	///   (proof sibling is left).
 	/// - **Padding**: tree is zero-hash-padded to the next power of two.
 	/// - **Proof length**: ⌈log₂(collator_set_size)⌉.
 	///

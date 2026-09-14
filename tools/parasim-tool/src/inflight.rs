@@ -20,7 +20,7 @@ use cumulus_jam_interface::{
 };
 use cumulus_jam_rpc_interface::JamRpcInterface;
 use jam_types::WorkDigest;
-use parachain_service_interface::upward_message::{UpwardMessage, UpwardMessages};
+use parachain_service_core::upward_message::{UpwardMessage, UpwardMessages};
 use parasim_service::{ParasimRefineError, ParasimWorkOutput, RefinedHead};
 
 use crate::{
@@ -278,7 +278,7 @@ mod tests {
 		// The whole feature rests on this: a rejected package is an `Ok` work output holding an
 		// error, so the two encodings must not be confusable in either direction.
 		let head = RefinedHead {
-			para_id: parachain_service_interface::types::ParaId(7),
+			para_id: parachain_service_core::types::ParaId(7),
 			head_data: vec![1u8; 40].try_into().expect("40 bytes fit; qed"),
 			parent_head_hash: [2u8; 32],
 			number: 9,
@@ -336,7 +336,7 @@ mod tests {
 	#[test]
 	fn para_filter_keeps_unattributable_rows_works() {
 		let head = Refined::Head(RefinedHead {
-			para_id: parachain_service_interface::types::ParaId(0),
+			para_id: parachain_service_core::types::ParaId(0),
 			head_data: Default::default(),
 			parent_head_hash: [0u8; 32],
 			number: 0,

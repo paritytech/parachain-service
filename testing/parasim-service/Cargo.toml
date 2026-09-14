@@ -29,8 +29,7 @@ test-utils = [
 codec = { workspace = true }
 jam-types = { workspace = true }
 jam-pvm-common = { workspace = true, features = ["service", "logging"] }
-jam-state-helpers = { workspace = true }
-parachain-service-interface = { workspace = true }
+parachain-service-core = { workspace = true }
 polkavm-derive = { workspace = true }
 
 # test-utils only: in-memory engine + real service blob + mock fixtures.
@@ -42,7 +41,7 @@ parachain-service-bin = { workspace = true, optional = true }
 # crates into every `cargo test`, which is the coupling this crate exists to avoid. Run the
 # byte-compat test with `--features test-utils`.
 [dev-dependencies]
-parachain-service-interface = { workspace = true }
+parachain-service-core = { workspace = true }
 
 [package.metadata.jam]
 type = "service"

@@ -13,7 +13,7 @@ use parachain_service::{
 	},
 	state_balance::{excess_transfer_footprint, INCOMING_TRANSFER_ENTRY_FOOTPRINT},
 };
-use parachain_service_interface::{types::ASSET_HUB_PARA_ID, upward_message::UpwardMessage};
+use parachain_service_core::{types::ASSET_HUB_PARA_ID, upward_message::UpwardMessage};
 
 const NOW: u32 = 100;
 const AH_CODE: &[u8] = b"ah-code";

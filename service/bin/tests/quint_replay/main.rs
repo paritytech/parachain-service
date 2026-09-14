@@ -16,7 +16,7 @@ use parachain_service::{
 	state_balance::{baseline_for, preimage_footprint},
 };
 use parachain_service_bin::mock::provide_preimage;
-use parachain_service_interface::types::{Balance, ParaId};
+use parachain_service_core::types::{Balance, ParaId};
 use serde_json::Value;
 
 const CODE: &[u8] = b"para-1000-code";

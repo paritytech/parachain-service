@@ -20,7 +20,7 @@
 use alloc::vec::Vec;
 use codec::{Decode, DecodeAll, Encode};
 use jam_types::Slot;
-use parachain_service_interface::types::HeadData;
+use parachain_service_core::types::HeadData;
 
 use crate::HASH_LEN;
 
@@ -45,7 +45,7 @@ pub struct BufferedCandidate {
 impl BufferedCandidate {
 	/// The hash a child of this head would name as its parent.
 	pub fn head_hash(&self) -> [u8; HASH_LEN] {
-		jam_state_helpers::blake2_256(&self.head_data)
+		parachain_service_core::blake2_256(&self.head_data)
 	}
 }
 
@@ -75,7 +75,7 @@ impl StoredHead {
 		};
 		match crate::pov::header_number(&info.head_data) {
 			Some(number) => {
-				Self::At { hash: jam_state_helpers::blake2_256(&info.head_data), number }
+				Self::At { hash: parachain_service_core::blake2_256(&info.head_data), number }
 			},
 			None => Self::Unreadable,
 		}

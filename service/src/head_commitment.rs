@@ -8,7 +8,7 @@ use crate::{hashing::keccak_256, state::para_info::Parachains};
 use alloc::vec::Vec;
 use codec::Encode;
 use jam_types::Hash;
-use parachain_service_interface::types::ParaId;
+use parachain_service_core::types::ParaId;
 
 /// An element of the commitment tree (§5.5).
 ///

@@ -16,7 +16,7 @@ use crate::{
 };
 use alloc::vec::Vec;
 use jam_types::Slot;
-use parachain_service_interface::types::{
+use parachain_service_core::types::{
 	Balance, HeadData, ParaId, ValidationCodeHash, ValidationCodeRef, ASSET_HUB_PARA_ID,
 };
 

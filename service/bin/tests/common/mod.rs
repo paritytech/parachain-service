@@ -26,7 +26,7 @@ use parachain_service::{
 use parachain_service_bin::mock::{accumulate_context, provide_preimage, MOCK_SERVICE_ID};
 
 use parachain_service_bin::blob as service;
-use parachain_service_interface::{
+use parachain_service_core::{
 	types::{Balance, BucketId, ParaId, ServiceId, Timeslot},
 	upward_message::{TransferOutArgs, UpwardMessage},
 };

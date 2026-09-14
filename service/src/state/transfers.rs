@@ -9,7 +9,7 @@ use crate::{
 };
 use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Compact, Decode, Encode};
-use parachain_service_interface::types::{Balance, BucketId, Memo, ServiceId};
+use parachain_service_core::types::{Balance, BucketId, Memo, ServiceId};
 
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub struct QueuedTransfer {

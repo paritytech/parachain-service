@@ -13,7 +13,7 @@ use crate::{
 use alloc::vec::Vec;
 use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Compact, Decode, Encode};
-use parachain_service_interface::types::{Balance, Hash, ParaId, ServiceId, Timeslot};
+use parachain_service_core::types::{Balance, Hash, ParaId, ServiceId, Timeslot};
 
 /// Why a state-balance reservation failed (spec §3.1, §6.1).
 ///

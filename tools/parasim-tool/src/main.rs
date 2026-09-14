@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use clap::{Args as ClapArgs, Parser, Subcommand};
 use cumulus_jam_interface::{CoreIndex, ServiceId};
 use jam_types::CodeHash;
-use parachain_service_interface::types::ParaId;
+use parachain_service_core::types::ParaId;
 
 mod aura;
 mod authorizers;
@@ -391,12 +391,15 @@ async fn run(cli: Cli) -> Result<(), String> {
 				.ok_or("pass the authorizer blob, or set --authorizer-blob/AUTHORIZER_BLOB")?;
 			deploy::run(&jam, &blob).await
 		},
-		Command::GrantAssigner { core } =>
-			control::grant(&jam, &control_args(&cli, None)?, core).await,
-		Command::AssignCore { para, core, ref via } =>
-			control::assign(&jam, &control_args(&cli, Some(via))?, ParaId(para), core).await,
-		Command::FreeCore { core, ref via } =>
-			control::free(&jam, &control_args(&cli, Some(via))?, core).await,
+		Command::GrantAssigner { core } => {
+			control::grant(&jam, &control_args(&cli, None)?, core).await
+		},
+		Command::AssignCore { para, core, ref via } => {
+			control::assign(&jam, &control_args(&cli, Some(via))?, ParaId(para), core).await
+		},
+		Command::FreeCore { core, ref via } => {
+			control::free(&jam, &control_args(&cli, Some(via))?, core).await
+		},
 		Command::Send { para, core, chain, tamper, tamper_at } => {
 			let args = send::Args {
 				service: cli.service,

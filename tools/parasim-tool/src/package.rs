@@ -144,8 +144,9 @@ pub async fn submit_and_follow(
 					tracing::info!("  reported on chain");
 					return Ok(());
 				},
-				WorkPackageStatus::Failed(reason) =>
-					return Err(format!("the work package failed: {reason}")),
+				WorkPackageStatus::Failed(reason) => {
+					return Err(format!("the work package failed: {reason}"))
+				},
 				WorkPackageStatus::Reportable { .. } => {},
 			}
 		}
@@ -182,7 +183,9 @@ async fn wait_for_code(
 			.await
 			.map_err(|e| format!("looking up the service code: {e}"))?;
 		if let Some(len) = len {
-			tracing::info!("service {service} code ({len} bytes) is available at the lookup anchor");
+			tracing::info!(
+				"service {service} code ({len} bytes) is available at the lookup anchor"
+			);
 			return Ok(finalized);
 		}
 		if tokio::time::Instant::now() >= deadline {
@@ -191,7 +194,9 @@ async fn wait_for_code(
 				 {CODE_WAIT_TIMEOUT:?}; was the service created?"
 			));
 		}
-		tracing::info!("waiting for service {service} code to be available at the lookup anchor...");
+		tracing::info!(
+			"waiting for service {service} code to be available at the lookup anchor..."
+		);
 		tokio::time::sleep(CODE_POLL_INTERVAL).await;
 	}
 }

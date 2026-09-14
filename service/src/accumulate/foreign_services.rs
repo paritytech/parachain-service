@@ -29,7 +29,7 @@ use jam_pvm_common::{
 	ApiError,
 };
 use jam_types::CodeHash;
-use parachain_service_interface::{types::ServiceId, upward_message::CreateServiceArgs};
+use parachain_service_core::{types::ServiceId, upward_message::CreateServiceArgs};
 
 /// The existence half of every §6.5 precondition, and the only half this host
 /// can actually answer.

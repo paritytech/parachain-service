@@ -8,7 +8,7 @@ use crate::{
 use alloc::vec::Vec;
 use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Decode, Encode};
-use parachain_service_interface::types::{AuthorizerHash, CoreIndex, ServiceId, Timeslot};
+use parachain_service_core::types::{AuthorizerHash, CoreIndex, ServiceId, Timeslot};
 
 /// A scheduled JAM `assign` for one core (spec §3.1, §7.1). The queue is
 /// stored rotated to the beginning of its next 80-slot cycle, so no separate

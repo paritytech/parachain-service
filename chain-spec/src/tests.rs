@@ -15,12 +15,14 @@ use parachain_service::{
 	state_balance::{baseline_for, preimage_footprint},
 	work_digest::{validation_code_hash, ValidationCodeRef},
 };
-use parachain_service_interface::types::{HeadData, ParaId, MAX_HEAD_DATA_SIZE};
+use parachain_service_core::{
+	types::{HeadData, ParaId, MAX_HEAD_DATA_SIZE},
+	PARACHAIN_SERVICE_ID,
+};
 use primitive_types::H256;
 
 use crate::{parachain::ParachainSpec, Error, ParachainServiceSpec};
 
-const SVC: u32 = 5;
 const SERVICE_CODE: &[u8] = b"parachain service code";
 const HEAD: &[u8] = b"heads up";
 const CODE: &[u8] = b"validation code";
@@ -30,7 +32,7 @@ const RICH: Balance = 10_000_000;
 fn realm_config(para: ParaId) -> AuthConfig {
 	AuthConfig {
 		para_ids: vec![para],
-		parachain_service: SVC,
+		parachain_service: PARACHAIN_SERVICE_ID,
 		collator_set_root: H256::zero(),
 		collator_set_size: 1,
 		slot_duration: 6,
@@ -64,7 +66,7 @@ fn para_info_entry(service: &crate::BuiltParachainService, para: ParaId) -> Para
 
 #[test]
 fn registered_para_layout() {
-	let service = ParachainServiceSpec::new(SVC, SERVICE_CODE)
+	let service = ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE)
 		.parachain(
 			ParachainSpec::new(ParaId(3))
 				.head_data(HEAD)
@@ -74,7 +76,7 @@ fn registered_para_layout() {
 		.build()
 		.expect("a small spec builds; qed");
 
-	assert_eq!(service.id, SVC);
+	assert_eq!(service.id, PARACHAIN_SERVICE_ID);
 	assert_eq!(service.balance, Balance::MAX, "an unset balance keeps the unlimited default");
 	assert_eq!(service.storage.len(), 2, "one para entry and one registry entry");
 
@@ -98,7 +100,7 @@ fn registered_para_layout() {
 
 #[test]
 fn validation_code_is_hosted_once_with_registry_entry() {
-	let service = ParachainServiceSpec::new(SVC, SERVICE_CODE)
+	let service = ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE)
 		.parachain(ParachainSpec::new(ParaId(3)).validation_code(CODE))
 		.build()
 		.expect("a small spec builds; qed");
@@ -115,7 +117,7 @@ fn validation_code_is_hosted_once_with_registry_entry() {
 
 #[test]
 fn shared_validation_code_is_hosted_once_and_referenced_by_both() {
-	let service = ParachainServiceSpec::new(SVC, SERVICE_CODE)
+	let service = ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE)
 		// Out of order on purpose: output is ParaId-sorted.
 		.parachain(ParachainSpec::new(ParaId(200)).validation_code(CODE))
 		.parachain(ParachainSpec::new(ParaId(100)).validation_code(CODE))
@@ -143,7 +145,7 @@ fn shared_validation_code_is_hosted_once_and_referenced_by_both() {
 fn shared_authorizer_blob_is_hosted_once() {
 	let verifier = b"authorizer blob".to_vec();
 	let config = realm_config(ParaId(7));
-	let service = ParachainServiceSpec::new(SVC, SERVICE_CODE)
+	let service = ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE)
 		.parachain(ParachainSpec::new(ParaId(7)).authorizer(verifier.clone(), &config))
 		.parachain(ParachainSpec::new(ParaId(8)).authorizer(verifier.clone(), &config))
 		.build()
@@ -156,7 +158,7 @@ fn shared_authorizer_blob_is_hosted_once() {
 fn authorizer_hashes_match_blake2b_concat() {
 	let verifier = b"verifier blob".to_vec();
 	let config = realm_config(ParaId(9));
-	let spec = ParachainServiceSpec::new(SVC, SERVICE_CODE)
+	let spec = ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE)
 		.parachain(ParachainSpec::new(ParaId(9)).authorizer(verifier.clone(), &config));
 
 	// Independent computation, rebuilt from the same raw parts the collator uses
@@ -185,7 +187,7 @@ fn authorizer_hash_raw_matches_blake2b_simd() {
 /// with polkavm-linker 0.35, `min_stack_size!` 2 MiB. Parses under the host's polkavm
 /// 0.30 (verified); full execution on the 0.30 host is gated on the suite run (T10).
 /// sha256 (verified with `sha256sum` before this test relies on it):
-/// `ac1816f3461d84956b977f8a9f24fbff25222078b6dc3b62130760ac2e721791`.
+/// `436df0a4bb8954327b8d9fc12b8c01fcb4fcd99c4d7d39c305d5454dc9a9874d`.
 /// Where the canonical blob lives. `POLKAVM_BLOB` overrides it (CI, and machines whose sibling
 /// checkout is named differently); the default reaches the sibling SDK checkout's evidence dir
 /// by the same relative traversal the SDK's `cumulus/zombienet/jam-tests/Cargo.toml` uses to
@@ -198,7 +200,7 @@ const POLKAVM_BLOB: &str = match option_env!("POLKAVM_BLOB") {
 		"jam-zombienet-real-service/parachain-template-runtime.polkavm"
 	),
 };
-const POLKAVM_BLOB_LEN: usize = 7_014_288;
+const POLKAVM_BLOB_LEN: usize = 7_014_285;
 
 /// The collator hashes the validation-code blob with `sp_crypto_hashing::blake2_256`
 /// (SDK `cumulus/polkadot-omni-node/lib/src/nodes/jam/collation_task.rs:450`) and carries it
@@ -233,14 +235,14 @@ fn validation_code_hash_matches_collator_derivation() {
 #[test]
 fn oversized_head_data_is_a_typed_error() {
 	let big = vec![0u8; MAX_HEAD_DATA_SIZE as usize + 1];
-	let err = ParachainServiceSpec::new(SVC, SERVICE_CODE)
+	let err = ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE)
 		.parachain(ParachainSpec::new(ParaId(1)).head_data(big.clone()))
 		.build()
 		.expect_err("head over the bound must be rejected, not panicked");
 	assert!(matches!(err, Error::HeadDataTooLarge { para: 1, len } if len == big.len()));
 
 	// The bound itself fits.
-	ParachainServiceSpec::new(SVC, SERVICE_CODE)
+	ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE)
 		.parachain(ParachainSpec::new(ParaId(1)).head_data(vec![0u8; MAX_HEAD_DATA_SIZE as usize]))
 		.build()
 		.expect("exactly 4 KiB fits; qed");
@@ -248,7 +250,7 @@ fn oversized_head_data_is_a_typed_error() {
 
 #[test]
 fn para_without_validation_code_has_none_and_no_registry_entry() {
-	let service = ParachainServiceSpec::new(SVC, SERVICE_CODE)
+	let service = ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE)
 		.parachain(ParachainSpec::new(ParaId(9)).state_balance(RICH))
 		.build()
 		.expect("a small spec builds; qed");
@@ -265,7 +267,7 @@ fn para_without_validation_code_has_none_and_no_registry_entry() {
 
 #[test]
 fn extra_preimage_duplicate_of_validation_code_is_hosted_once() {
-	let service = ParachainServiceSpec::new(SVC, SERVICE_CODE)
+	let service = ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE)
 		.parachain(ParachainSpec::new(ParaId(1)).validation_code(CODE))
 		.preimage(CODE)
 		.build()
@@ -277,7 +279,7 @@ fn extra_preimage_duplicate_of_validation_code_is_hosted_once() {
 #[test]
 fn build_is_deterministic_regardless_of_insertion_order() {
 	let mk = |order: [ParaId; 3]| {
-		let mut spec = ParachainServiceSpec::new(SVC, SERVICE_CODE);
+		let mut spec = ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE);
 		for id in order {
 			let code: &[u8] = if id.0 % 2 == 0 { CODE } else { CODE_2 };
 			spec = spec.parachain(ParachainSpec::new(id).validation_code(code).state_balance(RICH));
@@ -293,7 +295,7 @@ fn build_is_deterministic_regardless_of_insertion_order() {
 
 #[test]
 fn duplicate_para_id_is_an_error() {
-	let err = ParachainServiceSpec::new(SVC, SERVICE_CODE)
+	let err = ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE)
 		.parachain(ParachainSpec::new(ParaId(1)))
 		.parachain(ParachainSpec::new(ParaId(1)))
 		.build()

@@ -8,7 +8,7 @@ use parachain_service::{
 	state::log::{AccumulateLog, LogEntry},
 	state_balance::{baseline_for, preimage_footprint},
 };
-use parachain_service_interface::{
+use parachain_service_core::{
 	types::{ParaId, CORETIME_PARA_ID},
 	upward_message::UpwardMessage,
 };

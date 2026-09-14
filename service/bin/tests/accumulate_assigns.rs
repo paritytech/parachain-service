@@ -14,11 +14,11 @@ use parachain_service::state::{
 };
 use parachain_service_bin::mock::accumulate_context_with_privileges;
 
-use parachain_service_interface::{
+use parachain_service_bin::blob as service;
+use parachain_service_core::{
 	types::{AuthorizerHash, CoreIndex, CORETIME_PARA_ID},
 	upward_message::UpwardMessage,
 };
-use parachain_service_bin::{blob as service};
 
 const NOW: u32 = 100;
 const CT_CODE: &[u8] = b"coretime-code";

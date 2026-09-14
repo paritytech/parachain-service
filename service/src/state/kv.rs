@@ -2,7 +2,7 @@
 
 use crate::state::{self, StorageFull, Tag};
 use alloc::vec::Vec;
-use parachain_service_interface::types::ParaId;
+use parachain_service_core::types::ParaId;
 
 /// Storage accessors for the `key_value_storage` map (tag `0x08`).
 ///

@@ -6,12 +6,15 @@
 //! carries structured spec errors from the child host calls.
 
 use crate::{
-	pvf::{executor::{ExecutorState, Heap}, PVF_ENTRY_POINT},
+	pvf::{
+		executor::{ExecutorState, Heap},
+		PVF_ENTRY_POINT,
+	},
 	work_digest::{HeadData, RefineLog},
 };
 use jam_pvm_common::{refine, InvokeOutcome};
 use jam_types::{Hash, PageMode, UnsignedGas, PAGE_SIZE};
-use parachain_service_interface::{types::ParaId, upward_message::UpwardMessages};
+use parachain_service_core::{types::ParaId, upward_message::UpwardMessages};
 use polkavm::Reg;
 
 /// A parachain validation function parsed into a form ready to run as an inner PVM.

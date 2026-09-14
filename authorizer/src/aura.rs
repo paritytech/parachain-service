@@ -6,12 +6,12 @@ use alloc::vec::Vec;
 
 use codec::{Decode, Encode};
 use jam_types::{Encode as JamEncode, ServiceId, Slot, WorkPackage};
-use parachain_service_interface::types::ParaId;
+use parachain_service_core::types::ParaId;
 use primitive_types::H256;
 
 // The service decodes the trace without linking this crate, so it lives in the shared interface
 // crate; it is re-exported here because this is where the authorizer's wire types read as one set.
-pub use parachain_service_interface::authorization::{AuthTrace, CollatorKey, CollatorSignature};
+pub use parachain_service_core::authorization::{AuthTrace, CollatorKey, CollatorSignature};
 
 #[derive(Debug, Encode, Decode)]
 pub struct AuthConfig {

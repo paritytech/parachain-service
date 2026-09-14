@@ -11,7 +11,7 @@ use parachain_service::state::log::{
 	AccumulateLog, LogEntry, ServiceCreationResult, ServiceEjectError, ServiceSolicitError,
 	ServiceStoreError, ServiceSupervisorError,
 };
-use parachain_service_interface::{
+use parachain_service_core::{
 	types::{ParaId, ServiceId, ASSET_HUB_PARA_ID},
 	upward_message::{CreateServiceArgs, Target, UpwardMessage},
 };

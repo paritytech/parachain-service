@@ -15,7 +15,11 @@ pub fn parse_header_hash(text: &str) -> Result<cumulus_jam_interface::HeaderHash
 	use crate::header::HASH_LEN;
 	let text = text.strip_prefix("0x").unwrap_or(text);
 	if text.len() != HASH_LEN * 2 {
-		return Err(format!("expected a {}-hex-digit block hash, got {}", HASH_LEN * 2, text.len()));
+		return Err(format!(
+			"expected a {}-hex-digit block hash, got {}",
+			HASH_LEN * 2,
+			text.len()
+		));
 	}
 	let mut hash = [0u8; HASH_LEN];
 	for (index, byte) in hash.iter_mut().enumerate() {

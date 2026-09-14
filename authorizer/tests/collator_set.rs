@@ -5,7 +5,7 @@
 //! is in `contract.rs`, where both schemes are exercised.
 
 use parachain_authorizer::aura::{build_collator_tree, AuthConfig, AuthToken, CollatorKey};
-use parachain_service_interface::types::ParaId;
+use parachain_service_core::{types::ParaId, PARACHAIN_SERVICE_ID};
 use primitive_types::H256;
 
 fn keys(count: u32) -> Vec<CollatorKey> {
@@ -16,7 +16,7 @@ fn config(keys: &[CollatorKey]) -> (AuthConfig, Vec<Vec<H256>>) {
 	let (collator_set_root, proofs) = build_collator_tree(keys);
 	let config = AuthConfig {
 		para_ids: vec![ParaId(0)],
-		parachain_service: 5,
+		parachain_service: PARACHAIN_SERVICE_ID,
 		collator_set_root,
 		collator_set_size: keys.len() as u32,
 		slot_duration: 1,

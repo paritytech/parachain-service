@@ -12,7 +12,7 @@ mod common;
 use codec::Encode;
 use common::*;
 use parachain_service::hashing::keccak_256;
-use parachain_service_interface::types::{Hash, ParaId};
+use parachain_service_core::types::{Hash, ParaId};
 use tiny_keccak::{Hasher as _, Keccak};
 
 const NOW: u32 = 100;

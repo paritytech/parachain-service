@@ -5,7 +5,7 @@ use crate::state::assigns::{DirtyCores, PendingAssign, PendingAssigns};
 use alloc::vec::Vec;
 use jam_pvm_common::accumulate::assign;
 use jam_types::{auth_queue_len, AuthQueue, AuthorizerHash as JamAuthorizerHash};
-use parachain_service_interface::types::{AuthorizerHash, CoreIndex, ServiceId, Timeslot};
+use parachain_service_core::types::{AuthorizerHash, CoreIndex, ServiceId, Timeslot};
 
 /// Replay an `AssignCore` message (Coretime only, §4.3). Refine rejects empty
 /// queues, so one is a defensive no-op here. An already-due `jam_slot` applies
