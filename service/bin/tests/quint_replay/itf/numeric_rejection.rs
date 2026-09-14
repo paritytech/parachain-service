@@ -97,3 +97,11 @@ fn unsigned_boundaries_works() {
 		);
 	}
 }
+
+#[test]
+fn kv_byte_range_errors() {
+	for value in [-1i128, 256, 1i128 << 64] {
+		let error = super::replay::bytes(&json!([{"#bigint": value.to_string()}])).unwrap_err();
+		assert!(error.contains("byte out of u8 range"), "{error}");
+	}
+}

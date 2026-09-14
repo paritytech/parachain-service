@@ -14,18 +14,47 @@ pub struct Codex {
 	lengths: BTreeMap<i128, u32>,
 	hashes: BTreeMap<i128, Hash>,
 	paras: BTreeSet<ParaId>,
+	kv_keys: BTreeMap<i128, Vec<u8>>,
 }
 
 impl Default for Codex {
 	fn default() -> Self {
-		let mut codex =
-			Self { lengths: BTreeMap::new(), hashes: BTreeMap::new(), paras: BTreeSet::new() };
+		let mut codex = Self {
+			lengths: BTreeMap::new(),
+			hashes: BTreeMap::new(),
+			paras: BTreeSet::new(),
+			kv_keys: BTreeMap::new(),
+		};
 		codex.hashes.insert(0, hash_raw(&service()));
 		codex
 	}
 }
 
 impl Codex {
+	/// Register the preimage of Quint's base-257 `listHash` in its own domain.
+	pub fn register_kv_key(&mut self, key: &[u8]) -> Result<(), String> {
+		let abstract_hash = key.iter().try_fold(0i128, |acc, byte| {
+			acc.checked_mul(257)
+				.and_then(|n| n.checked_add(i128::from(*byte)))
+				.ok_or("KV key hash exceeds i128")
+		})?;
+		if let Some(previous) = self.kv_keys.get(&abstract_hash) {
+			if previous != key {
+				return Err(format!("ambiguous abstract KV key hash {abstract_hash}"));
+			}
+		} else {
+			self.kv_keys.insert(abstract_hash, key.to_vec());
+		}
+		Ok(())
+	}
+
+	pub fn kv_key_hash(&self, value: i128) -> Result<Hash, String> {
+		self.kv_keys
+			.get(&value)
+			.map(|key| hash_raw(key))
+			.ok_or_else(|| format!("KV key hash {value} has no registered key"))
+	}
+
 	pub fn para_id(value: i128) -> Result<ParaId, String> {
 		Ok(ParaId(checked_u32(value, "ParaId")?))
 	}
@@ -156,6 +185,26 @@ fn checked_u32(value: i128, name: &str) -> Result<u32, String> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn kv_hash_domain_works() {
+		let mut codex = Codex::default();
+		for key in [vec![], vec![1], vec![2, 0, 255]] {
+			codex.register_kv_key(&key).unwrap();
+			let abstract_hash = key.iter().fold(0i128, |acc, byte| acc * 257 + i128::from(*byte));
+			assert_eq!(codex.kv_key_hash(abstract_hash).unwrap(), hash_raw(&key));
+		}
+		assert!(codex.preimages().is_empty());
+	}
+
+	#[test]
+	fn ambiguous_kv_hash_errors() {
+		let mut codex = Codex::default();
+		codex.register_kv_key(&[]).unwrap();
+		assert!(codex.register_kv_key(&[0]).unwrap_err().contains("ambiguous"));
+		assert!(codex.kv_key_hash(99).unwrap_err().contains("no registered key"));
+		assert!(codex.register_kv_key(&[255; 32]).unwrap_err().contains("exceeds i128"));
+	}
 
 	#[test]
 	fn head_round_trip_works() {

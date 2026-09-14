@@ -14,7 +14,7 @@ cargo test -p parachain-service-bin --test quint_replay
 ```
 
 The generator uses the pinned model, TypeScript backend, and seed 1. It regenerates
-`refine_errors`, `blocks`, `upgrades`, and `log_pruning` scenarios, including the
+`refine_errors`, `blocks`, `upgrades`, `log_pruning`, and `kv` scenarios, including the
 root minimal and stale-parent fixtures. Other historical fixtures are retained.
 JSON is compact and timestamp-free; use `just quint-fmt` to expand it for review
 and `just quint-compact` before committing.
@@ -25,6 +25,7 @@ and `just quint-compact` before committing.
 | --- | --- |
 | Refine errors, WorkErr, empty blocks | Error logs and unchanged state for skipped work |
 | Multiple work packages and parachains | Ordered processing, shared references, delegated forgets, and combined head commitments |
+| KV operations | Overwrite, empty values/keys, SCALE length boundary, refunds, delegated and unauthorized removal, failed reservations, and stale candidates |
 | Upgrades | Requests, provision, activation, expiry, failed reservations, and rejected expired-code candidates |
 | Log pruning | Rejected candidates retain logs; accepted candidates prune below the lookup anchor and retain the boundary |
 
@@ -38,9 +39,14 @@ Provided-code activation and expiry currently omit `ForgetAgainAt` to match Quin
   Blocks must expect empty assignments and no staging-set change. Unexpected Rust
   assignment, privilege, designation, transfer, provide, create, or eject effects fail.
 - Accumulate-log decoding supports `ForgetAgainAt`, `StateBalanceUpdateRejected`,
-  and `InsufficientStateBalance(FromSolicit)`; other events fail explicitly.
+  `InvalidCodeHashAcc`, and `InsufficientStateBalance` from `FromSolicit` or
+  `FromSetKV`; other events fail explicitly.
 - `Solicit` and `Forget` support explicit parachain targets, including delegated
   calls, and historical fixtures without `Target`. Service targets are rejected
   pending host support ([DIVERGENCE.md M-11](../../../../../DIVERGENCE.md#m-11-the-model-decides-the-65-supervised-service-outcomes-rust-can-only-refuse)).
 - Abstract hashes require a consistent preimage length within each domain.
   `solicitedSet` is model ghost state, not a returned JAM output.
+- KV keys and values are literal byte lists. Failure-log key hashes use a separate
+  codex for Quint's base-257 `listHash`; ambiguous hashes (such as empty and
+  leading-zero keys) and hashes exceeding i128 fail explicitly. The generator
+  uses a small collision-free key pool.

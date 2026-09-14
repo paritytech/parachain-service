@@ -104,7 +104,7 @@ Time gaps are at most `MaxLookupAge`, so sampled anchors lie between the valid
 lookback floor and the previous block slot.
 
 Each WP independently samples zero to four upward messages from `Solicit`,
-`Forget`, and `RequestCodeUpgrade`. Two shared hashes at length 1024 exercise duplicate requests,
+`Forget`, `RequestCodeUpgrade`, `SetKV`, and `RemoveKV`. Two shared hashes at length 1024 exercise duplicate requests,
 shared references, refunds, and provision/forget/re-solicit lifecycles. Active-code
 messages exercise pinning and unpinning. Forget targets include the caller and
 both registered paras, allowing Quint Refine to reject unauthorized foreign
@@ -118,6 +118,15 @@ so requests can encounter independently held references and pinned pending code.
 Requests can repeat, refresh a deadline, supersede a different upgrade, or fail a
 reservation. External provision and pending-code candidates allow activation;
 time gaps can cross upgrade deadlines. Expected outcomes always come from Quint.
+
+KV messages share three keys across both paras, including an empty key. Values
+include empty, same-length replacements, and 63/64-byte values spanning a SCALE
+compact-length boundary. Removal targets include self and both registered paras,
+exercising delegated removal and unauthorized work alongside writes. Ordering
+can refund storage before another reservation, overwrite the same key, or leave
+writes unapplied when work fails. Storage contents, absence, balances, and KV
+failure-log key hashes are compared strictly. Keys avoid the leading-zero
+collisions in the model's abstract `listHash`.
 
 Registration, cleanup, and incoming transfers are not fuzzed yet. Malformed
 authorizer configuration and invalid item counts are excluded because their

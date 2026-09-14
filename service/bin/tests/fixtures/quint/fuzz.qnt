@@ -39,7 +39,18 @@ module fuzz {
   // Keep one length per hash, as required by the replay codex.
   pure def replayMessages(s: ParachainServiceState, para: ParaId): Set[UpwardMessage] = {
     val code = vchAsHash(activeCodeHashOr(s.paraInfo(para), NoCodeHash))
-    Set(
+    // No leading-zero keys: Quint's base-257 listHash aliases those keys.
+    val kvKeys = Set(List(), List(1), List(2, 0, 255))
+    val values = Set(List(), List(0), List(255), List(0, 255),
+      range(0, 63).foldl(List(), (acc, _) => acc.append(255)),
+      range(0, 64).foldl(List(), (acc, _) => acc.append(255)))
+    val kv = kvKeys.fold(Set(), (msgs, key) => msgs
+      .union(values.map(value => SetKV({ key: key, value: value })))
+      .union(Set(
+        RemoveKV({ paraId: para, key: key }),
+        RemoveKV({ paraId: CoretimeParaId, key: key }),
+        RemoveKV({ paraId: AssetHubParaId, key: key }))))
+    kv.union(Set(
       RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen }),
       RequestCodeUpgrade({ hash: { vchBytes: 778 }, len: FixedCodeLen }),
       RequestCodeUpgrade({ hash: activeCodeHashOr(s.paraInfo(para), NoCodeHash), len: FixedCodeLen }),
@@ -55,7 +66,7 @@ module fuzz {
       Forget({ target: Parachain(para), hash: code, len: FixedCodeLen }),
       Forget({ target: Parachain(CoretimeParaId), hash: { hashBytes: 7 }, len: 1024 }),
       Forget({ target: Parachain(AssetHubParaId), hash: { hashBytes: 7 }, len: 1024 })
-    )
+    ))
   }
 
   action block = {

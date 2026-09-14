@@ -146,13 +146,6 @@ pub fn state(
 fn uint(v: &Value) -> Result<u32, String> {
 	u32::try_from(integer(v)?).map_err(|_| "integer out of u32 range".into())
 }
-fn bytes(v: &Value) -> Result<Vec<u8>, String> {
-	v.as_array()
-		.ok_or("expected byte list")?
-		.iter()
-		.map(|v| u8::try_from(integer(v)?).map_err(|_| "byte out of range".into()))
-		.collect()
-}
 
 #[cfg(test)]
 mod tests {

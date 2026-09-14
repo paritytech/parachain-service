@@ -1,8 +1,9 @@
 mod blocks;
-mod fuzz;
 #[path = "../common/mod.rs"]
 mod common;
+mod fuzz;
 mod itf;
+mod kv;
 mod log_pruning;
 mod refine_errors;
 mod upgrades;

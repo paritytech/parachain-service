@@ -162,6 +162,15 @@ fn upward_message(
 				Ok(UpwardMessage::Forget { target, hash, len: Compact(len) })
 			}
 		},
+		"SetKV" => {
+			let key = bytes(field(value, "key")?)?;
+			codex.register_kv_key(&key)?;
+			Ok(UpwardMessage::SetKV { key, value: bytes(field(value, "value")?)? })
+		},
+		"RemoveKV" => Ok(UpwardMessage::RemoveKV {
+			para_id: para_id(field(value, "paraId")?, codex)?,
+			key: bytes(field(value, "key")?)?,
+		}),
 		"RequestCodeUpgrade" => {
 			let len = integer(field(value, "len")?)?;
 			let reference =
@@ -295,4 +304,14 @@ pub(crate) fn para_id(value: &Value, codex: &mut Codex) -> Result<ParaId, String
 		return Err(format!("expected MkParaId, got {tag}"));
 	}
 	codex.register_para(integer(value)?)
+}
+
+/// Decode literal model bytes without truncating invalid integers.
+pub(crate) fn bytes(value: &Value) -> Result<Vec<u8>, String> {
+	value
+		.as_array()
+		.ok_or("expected byte list")?
+		.iter()
+		.map(|value| bounded_integer::<u8>(value, "byte"))
+		.collect()
 }
