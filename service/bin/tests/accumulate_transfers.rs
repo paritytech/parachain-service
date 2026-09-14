@@ -186,7 +186,12 @@ fn queue_storage(count: u32) -> jam_node::vm::Storage {
 		);
 		let mut bucket = IncomingTransfers::new();
 		bucket
-			.try_push(QueuedTransfer { from: 0, amount: 0, memo: [0; 128] })
+			.try_push(QueuedTransfer {
+				from: 0,
+				amount: 0,
+				to_supervisor_balance: false,
+				memo: [0; 128],
+			})
 			.expect("a fresh bucket has room");
 		set_state(s, &storage_key(Tag::IncomingTransfers, &0u64), &bucket);
 	})

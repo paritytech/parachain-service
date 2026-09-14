@@ -226,3 +226,15 @@ the model's outcome.
 
 **Spec feedback**: none for §6.5's semantics, which are self-consistent. The gap is
 JAM's.
+
+## M-12: incoming transfers cannot expose a supervisor-balance selector yet
+
+Quint `6c74e58525` adds `to_supervisor_balance` to each queued incoming transfer;
+`0cfb689cad` adds the corresponding model field. Rust stores and encodes that
+flag and reserves its extra byte (196 balance units per worst-case bucket).
+The vendored JAM `TransferRecord` has no destination-balance selector and its
+host only delivers transfers to the regular balance. Rust therefore records
+`false`. Forward the actual selector when the host exposes supervisor transfers;
+the storage format already supports both values. This is a host limitation,
+like the supervised-service operations in M-11, not a normalization of `true`
+model transfers to `false`.
