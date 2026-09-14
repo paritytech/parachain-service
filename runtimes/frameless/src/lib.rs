@@ -87,7 +87,7 @@ pub enum MockAction {
 		key: Vec<u8>,
 	},
 	Solicit {
-		target: parachain_service_interface::upward_message::Target,
+		target: parachain_service_core::upward_message::Target,
 		hash: [u8; 32],
 		len: u32,
 	},
@@ -98,9 +98,9 @@ pub enum MockAction {
 		service: u32,
 		new_supervisor: u32,
 	},
-	CreateService(parachain_service_interface::upward_message::CreateServiceArgs),
+	CreateService(parachain_service_core::upward_message::CreateServiceArgs),
 	Forget {
-		target: parachain_service_interface::upward_message::Target,
+		target: parachain_service_core::upward_message::Target,
 		hash: [u8; 32],
 		len: u32,
 	},
@@ -112,7 +112,7 @@ pub enum MockAction {
 		hash: [u8; 32],
 		len: u32,
 	},
-	TransferOut(parachain_service_interface::upward_message::TransferOutArgs),
+	TransferOut(parachain_service_core::upward_message::TransferOutArgs),
 	AssignCore {
 		core: u32,
 		queue: Vec<[u8; 32]>,
@@ -266,7 +266,7 @@ pub fn validate(input: &[u8]) -> Vec<u8> {
 #[cfg(target_arch = "riscv64")]
 #[polkavm_derive::polkavm_export]
 extern "C" fn jam_validate_block() {
-	use parachain_service_interface::candidate::ParachainCandidate;
+	use parachain_service_core::candidate::ParachainCandidate;
 	// index 0: service/src/refine.rs panics unless the package has exactly one item.
 	let raw = host::work_item_payload(0).expect("work item payload present; qed");
 	let candidate =
@@ -299,7 +299,7 @@ extern "C" fn jam_validate_block() {
 
 /// Child host calls of the Parachain Service's Refine, per the ABI in
 /// `parachain-service`'s `pvf/executor.rs` (indices from
-/// `parachain-service-interface`'s `HostCall`).
+/// `parachain-service-core`'s `host_call::HostCall`).
 #[cfg(target_arch = "riscv64")]
 mod host {
 	use super::MockAction;
@@ -404,7 +404,7 @@ mod host {
 	/// (`DuplicateSetHead`, `SkipHeadDeclarations`) are handled by
 	/// `jam_validate_block` itself and are no-ops here.
 	pub fn run_action(action: &MockAction) {
-		use parachain_service_interface::{
+		use parachain_service_core::{
 			types::{ParaId, ValidationCodeHash},
 			upward_message::UpwardMessage,
 		};

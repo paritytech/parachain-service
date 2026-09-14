@@ -14,7 +14,7 @@ use cumulus_jam_interface::{
 	AuthorizerHash, HeaderHash, JamChainSource, JamStateSource, VersionedParameters,
 };
 use cumulus_jam_rpc_interface::JamRpcInterface;
-use parachain_service_interface::types::ParaId;
+use parachain_service_core::types::ParaId;
 
 use crate::{aura::Aura, cores, format::hex};
 
@@ -160,9 +160,10 @@ fn names(credentials: &[Aura]) -> Vec<(AuthorizerHash, String)> {
 	for aura in credentials {
 		let credential = format!("{}, {}", aura.scheme, aura.collators);
 		names.push((aura.parked_hash(), format!("parked, {credential}")));
-		names.extend((0..LABELLED_PARAS).map(|para| {
-			(aura.hash(ParaId(para)), format!("para {para}, {credential}"))
-		}));
+		names.extend(
+			(0..LABELLED_PARAS)
+				.map(|para| (aura.hash(ParaId(para)), format!("para {para}, {credential}"))),
+		);
 	}
 	names
 }

@@ -16,7 +16,7 @@ workspace = true
 [dependencies]
 jam-types = { workspace = true }
 jam-codec = { workspace = true }
-parachain-service-interface = { workspace = true }
+parachain-service-core = { workspace = true }
 jam-pvm-common = { workspace = true, features = ["service", "logging"] }
 codec = { workspace = true }
 polkavm-derive = { workspace = true }
@@ -40,7 +40,7 @@ std = [
 	"jam-pvm-common/std",
 	"jam-types/std",
 	"parachain-authorizer/std",
-	"parachain-service-interface/std",
+	"parachain-service-core/std",
 	"polkavm/std",
 ]
 

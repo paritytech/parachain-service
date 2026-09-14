@@ -26,12 +26,12 @@ extern crate alloc;
 use alloc::vec::Vec;
 use codec::{Decode, DecodeAll, Encode};
 use jam_pvm_common::{declare_service, Service};
-use jam_state_helpers::StateProof;
 use jam_types::{
-	AuthQueue, AuthorizerHash, CoreIndex, Hash, ServiceId, Slot, WorkOutput,
-	WorkPackageHash, WorkPayload,
+	AuthQueue, AuthorizerHash, CoreIndex, Hash, ServiceId, Slot, WorkOutput, WorkPackageHash,
+	WorkPayload,
 };
-use parachain_service_interface::{
+use parachain_service_core::StateProof;
+use parachain_service_core::{
 	// Renamed: `jam_types::AuthTrace` is the opaque blob JAM carries an authorization output in;
 	// this is what our own authorizer puts inside it.
 	authorization::AuthTrace as ControlTrace,
@@ -153,9 +153,8 @@ fn refine_inner(
 	let para_id = work_package_para_id(item_index).ok_or(ParasimRefineError::NoParaId)?;
 
 	let mut input: &[u8] = &payload.0;
-	let candidate =
-		parachain_service_interface::candidate::ParachainCandidate::decode_all(&mut input)
-			.map_err(|_| ParasimRefineError::MalformedPayload)?;
+	let candidate = parachain_service_core::candidate::ParachainCandidate::decode_all(&mut input)
+		.map_err(|_| ParasimRefineError::MalformedPayload)?;
 	let pov = pov::decode_pov(&candidate.pov).map_err(|error| match error {
 		pov::PoVError::Compressed => ParasimRefineError::CompressedPoV,
 		pov::PoVError::Malformed => ParasimRefineError::MalformedPoV,
@@ -182,8 +181,7 @@ fn refine_inner(
 /// `decode_all` is what makes "control" mean exactly a message list: a parachain block misrouted
 /// onto this lane is refused rather than read as a truncated one.
 fn control_messages(payload: &[u8]) -> Result<UpwardMessages, ParasimRefineError> {
-	UpwardMessages::decode_all(&mut &payload[..])
-		.map_err(|_| ParasimRefineError::MalformedControl)
+	UpwardMessages::decode_all(&mut &payload[..]).map_err(|_| ParasimRefineError::MalformedControl)
 }
 
 /// Whether the authorizer admitted this package through its `sudo` lane.
@@ -301,7 +299,7 @@ fn log_parent_relationship(pov: &pov::PoV, proven: Option<&[u8]>) {
 			);
 		},
 		Some(head) => {
-			let proven_hash = jam_state_helpers::blake2_256(head);
+			let proven_hash = parachain_service_core::blake2_256(head);
 			jam_pvm_common::debug!(
 				"parasim: refine: number={} parent={:02x?} proven head={:02x?} on_proven_head={}",
 				pov.number,
@@ -335,8 +333,8 @@ fn proven_head(
 	}
 
 	let state_key =
-		jam_state_helpers::service_value_state_key(service_id, &para_head_key(para_id));
-	let stored = jam_state_helpers::verify(&proof, &anchor_state_root, &state_key)
+		parachain_service_core::service_value_state_key(service_id, &para_head_key(para_id));
+	let stored = parachain_service_core::verify(&proof, &anchor_state_root, &state_key)
 		.map_err(|_| ParasimRefineError::InvalidProof)?;
 
 	let Some(stored) = stored else {
@@ -575,7 +573,7 @@ mod tests {
 
 		assert_eq!(
 			StoredHead::read(Some(&stored)),
-			StoredHead::At { hash: jam_state_helpers::blake2_256(&head), number: 7 }
+			StoredHead::At { hash: parachain_service_core::blake2_256(&head), number: 7 }
 		);
 		// Nothing stored yet: the para's first block has no parent to be fresh against.
 		assert_eq!(StoredHead::read(None), StoredHead::Empty);
@@ -609,8 +607,8 @@ mod tests {
 
 	/// A parachain block's payload, which is what travels on the ordinary lane.
 	fn block_payload() -> Vec<u8> {
-		parachain_service_interface::candidate::ParachainCandidate {
-			validation_code_hash: parachain_service_interface::types::ValidationCodeHash(
+		parachain_service_core::candidate::ParachainCandidate {
+			validation_code_hash: parachain_service_core::types::ValidationCodeHash(
 				[3u8; HASH_LEN],
 			),
 			pov: vec![1, 2, 3],
@@ -626,10 +624,7 @@ mod tests {
 	#[test]
 	fn a_control_payload_is_exactly_the_messages_works() {
 		assert_eq!(control_messages(&control().encode()), Ok(control()));
-		assert_eq!(
-			control_messages(&block_payload()),
-			Err(ParasimRefineError::MalformedControl)
-		);
+		assert_eq!(control_messages(&block_payload()), Err(ParasimRefineError::MalformedControl));
 		let mut trailing = control().encode();
 		trailing.push(0);
 		assert_eq!(control_messages(&trailing), Err(ParasimRefineError::MalformedControl));

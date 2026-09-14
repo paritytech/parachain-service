@@ -9,7 +9,7 @@
 use crate::state::{self, StorageFull, Tag};
 use alloc::collections::BTreeSet;
 use codec::{Decode, Encode};
-use parachain_service_interface::types::{Hash, ParaId};
+use parachain_service_core::types::{Hash, ParaId};
 
 /// One registry entry: the parachains currently referencing this preimage.
 // TODO: the spec bounds this by "the protocol-level maximum number of

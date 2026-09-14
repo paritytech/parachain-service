@@ -7,7 +7,7 @@ use parachain_service::{
 	state::log::{AccumulateLog, LogEntry},
 	work_digest::RefineLog,
 };
-use parachain_service_interface::types::ParaId;
+use parachain_service_core::types::ParaId;
 
 const NOW: u32 = 100;
 const PARA: ParaId = ParaId(1000);
@@ -160,7 +160,7 @@ fn two_packages_sequence_works() {
 
 #[test]
 fn restricted_message_drops_candidate_works() {
-	use parachain_service_interface::upward_message::UpwardMessage;
+	use parachain_service_core::upward_message::UpwardMessage;
 
 	// §4.3 defense-in-depth: an Asset-Hub-only message from a normal para drops
 	// the whole candidate before replay — even messages preceding it are not
@@ -179,7 +179,7 @@ fn restricted_message_drops_candidate_works() {
 
 #[test]
 fn foreign_para_message_drops_candidate_works() {
-	use parachain_service_interface::upward_message::UpwardMessage;
+	use parachain_service_core::upward_message::UpwardMessage;
 
 	// §4.3: naming a foreign para in `remove_kv` without Coretime rights drops
 	// the candidate silently.
@@ -196,7 +196,7 @@ fn foreign_para_message_drops_candidate_works() {
 #[test]
 fn kv_set_works() {
 	use parachain_service::state_balance::kv_entry_footprint;
-	use parachain_service_interface::upward_message::UpwardMessage;
+	use parachain_service_core::upward_message::UpwardMessage;
 
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let used_before = para_info(&storage, PARA).unwrap().used_state_balance;
@@ -212,7 +212,7 @@ fn kv_set_works() {
 
 #[test]
 fn kv_remove_works() {
-	use parachain_service_interface::upward_message::UpwardMessage;
+	use parachain_service_core::upward_message::UpwardMessage;
 
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let used_before = para_info(&storage, PARA).unwrap().used_state_balance;
@@ -233,7 +233,7 @@ fn kv_remove_works() {
 #[test]
 fn kv_insufficient_balance_errors() {
 	use parachain_service::state::log::InsufficientBalanceReason;
-	use parachain_service_interface::upward_message::UpwardMessage;
+	use parachain_service_core::upward_message::UpwardMessage;
 
 	// Seed with zero headroom: total == used.
 	let storage = fresh_storage(|s| {
@@ -268,7 +268,7 @@ fn kv_insufficient_balance_errors() {
 #[test]
 fn rejected_candidate_preserves_expired_upgrade_works() {
 	use parachain_service::state::{para_info::ValidationCode, storage_key, Tag};
-	use parachain_service_interface::upward_message::UpwardMessage;
+	use parachain_service_core::upward_message::UpwardMessage;
 	let pending = b"expired-code";
 	for (candidate_code, messages) in [
 		(&b"wrong-code"[..], vec![]),

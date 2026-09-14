@@ -14,13 +14,13 @@ use parachain_service::{
 	work_digest::{validation_code_hash, ParachainWorkDigest, RefineLog},
 };
 use parachain_service_bin::{
+	authorizer_blob as authorizer, blob as service,
 	mock::{good_config, good_config_for, good_token, good_trace, refine_args, refine_work_item},
 };
-use parachain_service_interface::{
+use parachain_service_core::{
 	types::{Balance, ParaId, ServiceId, ASSET_HUB_PARA_ID, CORETIME_PARA_ID},
 	upward_message::{CreateServiceArgs, Target, TransferOutArgs, UpwardMessage, UpwardMessages},
 };
-use parachain_service_bin::{blob as service, authorizer_blob as authorizer};
 
 /// A deferred `TransferOut` from this service's regular balance — the only shape
 /// the vendored GP 0.7.2 host can execute (§5.1).

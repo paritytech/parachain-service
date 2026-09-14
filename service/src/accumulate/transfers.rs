@@ -14,7 +14,7 @@ use crate::{
 use alloc::vec::Vec;
 use jam_pvm_common::accumulate::{service_info, transfer};
 use jam_types::{Memo as JamMemo, TransferRecord};
-use parachain_service_interface::{types::BucketId, upward_message::TransferOutArgs};
+use parachain_service_core::{types::BucketId, upward_message::TransferOutArgs};
 
 /// §5.1 incoming-transfer processing. JAM credited the balances before this
 /// code runs, so handling is best effort: within the pre-provisioned portion a

@@ -16,7 +16,7 @@ use crate::{
 use alloc::vec::Vec;
 use jam_pvm_common::accumulate::{is_available, my_info, upgrade};
 use jam_types::{CodeHash, ServiceId, Slot};
-use parachain_service_interface::{
+use parachain_service_core::{
 	types::{ParaId, ASSET_HUB_PARA_ID},
 	upward_message::{Target, UpwardMessage},
 };

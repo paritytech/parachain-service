@@ -39,7 +39,7 @@ macro_rules! min_stack_size {
 min_stack_size!(32768); // 32 KiB guest stack.
 
 use jam_types::{AuthTrace, CoreIndex};
-pub use parachain_service_interface::types::ParaId;
+pub use parachain_service_core::types::ParaId;
 
 pub mod aura;
 pub mod is_authorized;

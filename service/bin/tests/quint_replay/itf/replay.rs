@@ -4,7 +4,7 @@ use jam_std_common::hash_raw;
 use jam_types::AccumulateItem;
 use parachain_service::work_digest::ParachainWorkDigest;
 use parachain_service_bin::mock::MOCK_SERVICE_ID;
-use parachain_service_interface::{
+use parachain_service_core::{
 	types::ParaId,
 	upward_message::{Target, UpwardMessage},
 };

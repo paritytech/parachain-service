@@ -20,11 +20,10 @@ futures = { workspace = true }
 jam-codec = { workspace = true, features = ["std"] }
 jam-bootstrap-service-common = { workspace = true }
 jam-null-authorizer-bin = { workspace = true }
-jam-state-helpers = { workspace = true, features = ["std"] }
+parachain-service-core = { workspace = true, features = ["std"] }
 jam-std-common = { workspace = true }
 jam-types = { workspace = true, features = ["std"] }
 parachain-authorizer = { workspace = true, features = ["std"] }
-parachain-service-interface = { workspace = true, features = ["std"] }
 parasim-service = { workspace = true }
 primitive-types = { workspace = true, features = ["std"] }
 sp-core = { workspace = true, features = ["std"] }

@@ -18,7 +18,7 @@ pub mod validator_keys;
 use crate::{head_commitment::HeadTracker, state::log::ParachainLogs};
 use jam_pvm_common::accumulate::{accumulate_items, checkpoint};
 use jam_types::{AccumulateItem, Hash, ServiceId, Slot};
-use parachain_service_interface::types::ASSET_HUB_PARA_ID;
+use parachain_service_core::types::ASSET_HUB_PARA_ID;
 
 #[derive(Debug)]
 pub enum AccumulateError {}

@@ -4,7 +4,7 @@ use codec::Compact;
 use parachain_service::state::log::{
 	AccumulateLog, InsufficientBalanceReason, StateBalanceRejection,
 };
-use parachain_service_interface::types::ValidationCodeHash;
+use parachain_service_core::types::ValidationCodeHash;
 use serde_json::Value;
 
 use super::{

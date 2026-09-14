@@ -20,7 +20,7 @@ jam-std-common = { workspace = true }
 jam-types = { workspace = true }
 parachain-authorizer = { workspace = true }
 parachain-service = { workspace = true, features = ["std"] }
-parachain-service-interface = { workspace = true, features = ["std"] }
+parachain-service-core = { workspace = true, features = ["std"] }
 thiserror = { workspace = true }
 
 [dev-dependencies]

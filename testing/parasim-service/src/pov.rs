@@ -20,9 +20,9 @@
 //!   alone, so the walker returns its original byte slice (byte-identical by construction, no
 //!   re-encode drift).
 //! - `Header<u32, BlakeTwo256>` = `parent_hash(32) + compact number + state_root(32) +
-//!   extrinsics_root(32) + Digest`, and `Digest = Vec<DigestItem>` (compact length) where each
-//!   item is tagged with a single wire byte holding the `DigestItemType` `#[repr(u32)]`
-//!   discriminant: Other=0 (`Vec<u8>`), Consensus=4/Seal=5/PreRuntime=6 (`[u8;4]` + `Vec<u8>`),
+//!   extrinsics_root(32) + Digest`, and `Digest = Vec<DigestItem>` (compact length) where each item
+//!   is tagged with a single wire byte holding the `DigestItemType` `#[repr(u32)]` discriminant:
+//!   Other=0 (`Vec<u8>`), Consensus=4/Seal=5/PreRuntime=6 (`[u8;4]` + `Vec<u8>`),
 //!   RuntimeEnvironmentUpdated=8 (unit).
 //! - `SchedulingProof`'s relay `Header` has the same layout (its `number` is `#[codec(compact)]`
 //!   too), so the same header walker handles it.
@@ -227,11 +227,12 @@ fn skip_block<'a>(input: &mut &'a [u8]) -> Result<Block<'a>, PoVError> {
 	}
 
 	let header = &start[..header_len];
-	if header.len() as u32 > parachain_service_interface::types::MAX_HEAD_DATA_SIZE {
+	if header.len() as u32 > parachain_service_core::types::MAX_HEAD_DATA_SIZE {
 		return Err(PoVError::Malformed);
 	}
-	let parent_hash =
-		header[..HASH_LEN].try_into().expect("skip_header consumed at least a hash; qed");
+	let parent_hash = header[..HASH_LEN]
+		.try_into()
+		.expect("skip_header consumed at least a hash; qed");
 	Ok(Block { header, parent_hash, number })
 }
 

@@ -11,7 +11,7 @@ codec = { workspace = true }
 tiny-keccak = { workspace = true }
 blake2b_simd = { workspace = true }
 sp-io = { workspace = true }
-parachain-service-interface = { workspace = true }
+parachain-service-core = { workspace = true }
 
 [target.'cfg(target_arch = "riscv64")'.dependencies]
 polkavm-derive = { workspace = true }
@@ -24,7 +24,7 @@ default = [
 std = [
 	"blake2b_simd/std",
 	"codec/std",
-	"parachain-service-interface/std",
+	"parachain-service-core/std",
 	"sp-io/std",
 ]
 

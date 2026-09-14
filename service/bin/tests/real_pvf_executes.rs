@@ -25,7 +25,7 @@ use parachain_service::{
 	refine::ParachainCandidate,
 	work_digest::validation_code_hash,
 };
-use parachain_service_interface::{types::ParaId, upward_message::UpwardMessages};
+use parachain_service_core::{types::ParaId, upward_message::UpwardMessages};
 use polkavm::{
 	ArcBytes, GasMeteringKind, InterruptKind, MemoryProtection, ModuleConfig, ProgramBlob,
 	ProgramCounter, ProgramParts, Reg,

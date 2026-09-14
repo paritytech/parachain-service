@@ -1,7 +1,7 @@
 //! Protocol constants of the Parachain Service (spec §3.1, §5, §6.1) and the
 //! Gray Paper values they derive from.
 
-use parachain_service_interface::types::Timeslot;
+use parachain_service_core::types::Timeslot;
 
 /// Gray Paper `C_corecount`.
 pub const CORE_COUNT: usize = 341;

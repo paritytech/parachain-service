@@ -8,7 +8,7 @@ use parachain_service::{
 	state::log::{AccumulateLog, InsufficientBalanceReason, LogEntry},
 	state_balance::preimage_footprint,
 };
-use parachain_service_interface::{
+use parachain_service_core::{
 	types::{Hash, ParaId},
 	upward_message::{Target, UpwardMessage},
 };
@@ -328,7 +328,7 @@ fn pinned_code_survives_upgrade_works() {
 #[test]
 fn forget_running_service_code_works() {
 	use parachain_service::state::{preimage_registry::PreimageEntry, storage_key, Tag};
-	use parachain_service_interface::types::{ASSET_HUB_PARA_ID, CORETIME_PARA_ID};
+	use parachain_service_core::types::{ASSET_HUB_PARA_ID, CORETIME_PARA_ID};
 
 	// Both Asset Hub itself and Coretime acting on its behalf must preserve the code.
 	for origin in [ASSET_HUB_PARA_ID, CORETIME_PARA_ID] {

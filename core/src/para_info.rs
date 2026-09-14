@@ -13,7 +13,7 @@
 
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
-use parachain_service_interface::types::{Balance, HeadData, ParaId, Timeslot, ValidationCodeRef};
+use crate::types::{Balance, HeadData, ParaId, Timeslot, ValidationCodeRef};
 
 /// Storage-item tags (spec §3.1, "Storage key encoding").
 ///
@@ -95,9 +95,7 @@ mod tests {
 	use super::*;
 	use alloc::vec;
 	use codec::{Decode, Encode};
-	use parachain_service_interface::types::{
-		HeadData, ParaId, ValidationCodeHash, ValidationCodeRef,
-	};
+	use crate::types::{HeadData, ParaId, ValidationCodeHash, ValidationCodeRef};
 
 	/// Key must be byte-identical to `cumulus::service_state::para_info_key`.
 	/// Pinned from `cumulus/src/lib.rs service_state::tests`.

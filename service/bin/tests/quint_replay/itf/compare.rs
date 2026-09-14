@@ -8,7 +8,7 @@ use parachain_service::state::{
 	storage_key, Tag,
 };
 use parachain_service_bin::mock::MOCK_SERVICE_ID;
-use parachain_service_interface::types::Hash;
+use parachain_service_core::types::Hash;
 use serde_json::Value;
 
 use super::{codex::Codex, refine_log::refine_log, replay::*, seed::validation_code};

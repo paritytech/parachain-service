@@ -30,11 +30,11 @@ use crate::{
 };
 use cumulus_jam_interface::{JamChainSource, JamStateSource, StorageKey};
 use cumulus_jam_rpc_interface::JamRpcInterface;
-use jam_state_helpers::StateProof;
 use jam_types::{ServiceId, WorkPackage};
-use parachain_service_interface::{
+use parachain_service_core::{
 	candidate::ParachainCandidate,
 	types::{ParaId, ValidationCodeHash},
+	StateProof,
 };
 
 /// Proof sizes are bounded by the trie depth, so this only has to be comfortably large.
@@ -88,7 +88,7 @@ impl Tamper {
 
 /// A parent that no package in this run ever built, so naming it can only be a mistake or a lie.
 fn forged_parent_hash() -> [u8; HASH_LEN] {
-	jam_state_helpers::blake2_256(b"parasim-tool: a parent nobody built")
+	parachain_service_core::blake2_256(b"parasim-tool: a parent nobody built")
 }
 
 /// The package built for one position in the chain, as far as the next one needs to know it.
@@ -157,7 +157,7 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 
 	let service_local_key = parasim_service::para_head_key(args.para);
 	let state_key =
-		jam_state_helpers::service_value_state_key(args.service, &service_local_key);
+		parachain_service_core::service_value_state_key(args.service, &service_local_key);
 	let proof = jam
 		.state_proof(
 			anchor.context.anchor,
@@ -171,7 +171,7 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 
 	// Verify locally with the very code parasim runs, so a rejection on-chain means the chain
 	// disagreed about the state — not that this tool built something malformed.
-	let stored = jam_state_helpers::verify(&proof, &anchor_state_root, &state_key)
+	let stored = parachain_service_core::verify(&proof, &anchor_state_root, &state_key)
 		.map_err(|e| format!("the node's own proof does not verify: {e:?}"))?;
 	let accumulated = stored.as_deref().map(decode_para_info).transpose()?;
 
@@ -182,7 +182,10 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 			head.len(),
 			block_number(head)?
 		),
-		None => tracing::info!("para {} has no head yet; the chain starts at its first block", args.para.0),
+		None => tracing::info!(
+			"para {} has no head yet; the chain starts at its first block",
+			args.para.0
+		),
 	}
 
 	let mut link: Option<Link> = None;
@@ -200,11 +203,11 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 		// head again, so it is a sibling of its predecessor rather than its child.
 		let parent_link = link.as_ref().filter(|_| tamper != Some(Tamper::Stale));
 		let (parent_hash, number) = match parent_link {
-			Some(link) => (jam_state_helpers::blake2_256(&link.header), link.number + 1),
+			Some(link) => (parachain_service_core::blake2_256(&link.header), link.number + 1),
 			None => match &accumulated {
 				// A substrate header's hash is the blake2b-256 of its encoding, which is what
 				// the next block must name as its parent.
-				Some(head) => (jam_state_helpers::blake2_256(head), block_number(head)? + 1),
+				Some(head) => (parachain_service_core::blake2_256(head), block_number(head)? + 1),
 				None => ([0u8; HASH_LEN], 0),
 			},
 		};
@@ -261,8 +264,9 @@ fn report(
 		));
 	}
 	match expected {
-		Some(head) if Some(head) != before.as_deref() =>
-			println!("para head advanced to {} bytes: {}", head.len(), hex(head)),
+		Some(head) if Some(head) != before.as_deref() => {
+			println!("para head advanced to {} bytes: {}", head.len(), hex(head))
+		},
 		_ => println!("para head unchanged, as expected: the package never applied"),
 	}
 	Ok(())
@@ -309,11 +313,7 @@ fn decode_para_info(stored: &[u8]) -> Result<Vec<u8>, String> {
 
 /// Build the work-item payload: a `ParachainCandidate` whose PoV is a V3 `ParachainBlockData`
 /// carrying one fake block and the anchor state proof.
-fn build_payload(
-	anchor_state_root: &[u8; HASH_LEN],
-	proof: &StateProof,
-	header: &[u8],
-) -> Vec<u8> {
+fn build_payload(anchor_state_root: &[u8; HASH_LEN], proof: &StateProof, header: &[u8]) -> Vec<u8> {
 	let pov = v3_pov(header, &(*anchor_state_root, proof.clone()).encode());
 	ParachainCandidate { validation_code_hash: ValidationCodeHash([0u8; HASH_LEN]), pov }.encode()
 }
@@ -343,7 +343,10 @@ fn v3_pov(header: &[u8], anchor_state_proof: &[u8]) -> Vec<u8> {
 	compact(1, &mut pov);
 	pov.push(1); // Some
 	compact(1, &mut pov);
-	parasim_service::pov::ANCHOR_STATE_PROOF_KEY.as_bytes().to_vec().encode_to(&mut pov);
+	parasim_service::pov::ANCHOR_STATE_PROOF_KEY
+		.as_bytes()
+		.to_vec()
+		.encode_to(&mut pov);
 	anchor_state_proof.to_vec().encode_to(&mut pov);
 	pov
 }

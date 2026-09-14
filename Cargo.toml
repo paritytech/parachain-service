@@ -4,12 +4,10 @@ members = [
     "authorizer-ed25519",
     "authorizer-sr25519",
     "chain-spec",
-    "cumulus",
-    "cumulus/jam-state-helpers",
+    "core",
     "runtimes/frameless",
     "service",
     "service/bin",
-    "service-interface",
     "testing/mock-dest-service",
     "testing/parasim-service",
     "tools/executor",
@@ -76,7 +74,7 @@ parachain-service-bin = { path = "service/bin" }
 parachain-authorizer = { path = "authorizer" }
 parachain-authorizer-ed25519 = { path = "authorizer-ed25519" }
 parachain-authorizer-sr25519 = { path = "authorizer-sr25519" }
-parachain-service-interface = { path = "service-interface", default-features = false }
+parachain-service-core = { path = "core", default-features = false }
 parasim-service = { path = "testing/parasim-service" }
 # These two used to live here as `cumulus/jam-{,rpc-}interface`; polkadot-sdk upstreamed them
 # verbatim (`cumulus/jam/{interface,rpc-interface}`, commit ca25145db9), so we consume theirs and
@@ -87,7 +85,6 @@ cumulus-jam-interface = { git = "https://github.com/paritytech/polkadot-sdk.git"
 cumulus-jam-rpc-interface = { git = "https://github.com/paritytech/polkadot-sdk.git", branch = "mku-jam-collator-poc-2" }
 # cumulus-jam-interface = { path = "../polkadot-sdk-master/cumulus/jam/interface" }
 # cumulus-jam-rpc-interface = { path = "../polkadot-sdk-master/cumulus/jam/rpc-interface" }
-jam-state-helpers = { path = "cumulus/jam-state-helpers", default-features = false }
 
 codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }
 thiserror = "2.0"

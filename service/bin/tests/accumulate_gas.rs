@@ -13,7 +13,7 @@ use parachain_service::{
 	},
 };
 use parachain_service_bin::mock_dest_blob;
-use parachain_service_interface::{
+use parachain_service_core::{
 	types::{CoreIndex, Hash, ParaId, ASSET_HUB_PARA_ID},
 	upward_message::{Target, UpwardMessage, MAX_UPWARD_MESSAGES_PER_DIGEST},
 };
@@ -241,8 +241,10 @@ fn due_assign_bench_works() {
 #[test]
 fn is_authorized_ed25519_gas_works() {
 	use executor::pj;
-	use parachain_service_bin::authorizer_blob as authorizer;
-	use parachain_service_bin::mock::{is_authorized_args, make_auth, work_items};
+	use parachain_service_bin::{
+		authorizer_blob as authorizer,
+		mock::{is_authorized_args, make_auth, work_items},
+	};
 
 	let items = work_items(1);
 	let (config, token, _) = make_auth(&authorizer(), vec![ParaId(0)], &items);

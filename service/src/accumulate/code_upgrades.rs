@@ -17,7 +17,7 @@ use crate::{
 };
 use alloc::vec::Vec;
 use jam_types::Slot;
-use parachain_service_interface::types::{ParaId, ValidationCodeHash, ValidationCodeRef};
+use parachain_service_core::types::{ParaId, ValidationCodeHash, ValidationCodeRef};
 
 /// Release a code's referencer slot for `para_id`, UNLESS the parachain is
 /// independently soliciting it (`pinned`). See §5.2.

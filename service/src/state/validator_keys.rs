@@ -7,7 +7,7 @@ use crate::{
 	state::{StorageFull, Tag},
 };
 use bounded_collections::{BoundedVec, ConstU32};
-use parachain_service_interface::types::ValidatorKey;
+use parachain_service_core::types::ValidatorKey;
 
 /// The staging buffer value: at most `CORE_COUNT * 3 = 1023` keys.
 pub type StagedKeys = BoundedVec<ValidatorKey, ConstU32<{ MAX_STAGED_VALIDATOR_KEYS as u32 }>>;

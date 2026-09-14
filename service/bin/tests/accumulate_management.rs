@@ -8,7 +8,7 @@ use parachain_service::{
 	state::log::{AccumulateLog, LogEntry, StateBalanceRejection},
 	state_balance::{baseline_for, preimage_footprint},
 };
-use parachain_service_interface::{
+use parachain_service_core::{
 	types::{ParaId, CORETIME_PARA_ID},
 	upward_message::UpwardMessage,
 };
@@ -291,12 +291,12 @@ fn deregistering_updates_works() {
 				new_validation_code_len: new_code.len.into(),
 			},
 			UpwardMessage::Solicit {
-				target: parachain_service_interface::upward_message::Target::Parachain(NEW_PARA),
+				target: parachain_service_core::upward_message::Target::Parachain(NEW_PARA),
 				hash: extra.hash.0,
 				len: extra.len.into(),
 			},
 			UpwardMessage::Solicit {
-				target: parachain_service_interface::upward_message::Target::Parachain(NEW_PARA),
+				target: parachain_service_core::upward_message::Target::Parachain(NEW_PARA),
 				hash: code_ref(NEW_CODE).hash.0,
 				len: code_ref(NEW_CODE).len.into(),
 			},

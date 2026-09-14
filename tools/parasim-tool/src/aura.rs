@@ -17,7 +17,7 @@ use parachain_authorizer::aura::{
 	build_collator_tree, expected_collator_index, signable_work_package_hash, AuthConfig,
 	AuthToken, CollatorKey, CollatorSignature, SUDO_KEY,
 };
-use parachain_service_interface::types::ParaId;
+use parachain_service_core::types::ParaId;
 use primitive_types::H256;
 use sp_core::{ed25519, sr25519, Pair as _};
 
@@ -196,9 +196,10 @@ impl Aura {
 /// `AuraApi::authorities()` hands a collator set back in — and so the round-robin order the
 /// authorizer hash commits to.
 ///
-/// A set written `alice,bob` in genesis comes back as `bob,alice`, because pallet-collator-selection
-/// keeps its invulnerables sorted by account id and a collator's account id here is its own public
-/// key. The two orders are two different authorizers, so naming a hash has to try both.
+/// A set written `alice,bob` in genesis comes back as `bob,alice`, because
+/// pallet-collator-selection keeps its invulnerables sorted by account id and a collator's account
+/// id here is its own public key. The two orders are two different authorizers, so naming a hash
+/// has to try both.
 pub fn in_authority_order(names: &[&str], scheme: Scheme) -> Result<String, String> {
 	let mut keyed = names
 		.iter()

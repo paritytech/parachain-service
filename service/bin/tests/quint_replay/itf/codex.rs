@@ -6,7 +6,7 @@ use parachain_service::work_digest::{
 	ValidationCodeHash, ValidationCodeRef, MAX_REFINE_OUTPUT_SIZE,
 };
 use parachain_service_bin::blob as service;
-use parachain_service_interface::types::{HeadData, ParaId};
+use parachain_service_core::types::{HeadData, ParaId};
 
 /// Deterministic mapping between Quint's abstract integers and Rust values.
 #[derive(Debug)]

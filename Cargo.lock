@@ -1024,21 +1024,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cumulus"
-version = "0.1.0"
-dependencies = [
- "blake2b_simd",
- "jam-null-authorizer-bin",
- "jam-types",
- "parachain-authorizer",
- "parachain-authorizer-ed25519",
- "parachain-authorizer-sr25519",
- "parachain-service",
- "parachain-service-interface",
- "primitive-types",
-]
-
-[[package]]
 name = "cumulus-jam-interface"
 version = "0.1.0"
 source = "git+https://github.com/paritytech/polkadot-sdk.git?branch=mku-jam-collator-poc-2#387f6e0bef31a05e5e3fdb5c0f84173ada3dfa79"
@@ -1612,7 +1597,7 @@ name = "frameless"
 version = "0.1.0"
 dependencies = [
  "blake2b_simd",
- "parachain-service-interface",
+ "parachain-service-core",
  "parity-scale-codec",
  "polkavm-derive",
  "sp-io",
@@ -2394,17 +2379,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "jam-state-helpers"
-version = "0.1.0"
-dependencies = [
- "blake2b_simd",
- "jam-std-common",
- "parachain-service-interface",
- "parity-scale-codec",
- "trie",
-]
-
-[[package]]
 name = "jam-std-common"
 version = "0.1.28"
 dependencies = [
@@ -3062,7 +3036,7 @@ dependencies = [
  "parachain-authorizer-ed25519",
  "parachain-authorizer-sr25519",
  "parachain-service",
- "parachain-service-interface",
+ "parachain-service-core",
  "parity-scale-codec",
  "primitive-types",
  "sp-core",
@@ -3101,7 +3075,7 @@ dependencies = [
  "jam-types",
  "parachain-authorizer",
  "parachain-service",
- "parachain-service-interface",
+ "parachain-service-core",
  "parity-scale-codec",
  "primitive-types",
  "thiserror 2.0.19",
@@ -3118,7 +3092,7 @@ dependencies = [
  "jam-std-common",
  "jam-types",
  "parachain-authorizer",
- "parachain-service-interface",
+ "parachain-service-core",
  "parity-scale-codec",
  "polkavm",
  "polkavm-derive",
@@ -3141,7 +3115,7 @@ dependencies = [
  "parachain-authorizer",
  "parachain-service",
  "parachain-service-bin",
- "parachain-service-interface",
+ "parachain-service-core",
  "parity-scale-codec",
  "polkavm",
  "primitive-types",
@@ -3150,13 +3124,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "parachain-service-interface"
+name = "parachain-service-core"
 version = "0.1.0"
 dependencies = [
+ "blake2b_simd",
  "bounded-collections",
+ "jam-null-authorizer-bin",
+ "jam-std-common",
  "jam-types",
  "num_enum",
  "parity-scale-codec",
+ "polkavm-derive",
+ "trie",
 ]
 
 [[package]]
@@ -3165,11 +3144,10 @@ version = "0.1.0"
 dependencies = [
  "executor",
  "jam-pvm-common",
- "jam-state-helpers",
  "jam-types",
  "parachain-service",
  "parachain-service-bin",
- "parachain-service-interface",
+ "parachain-service-core",
  "parity-scale-codec",
  "polkavm-derive",
 ]
@@ -3185,11 +3163,10 @@ dependencies = [
  "jam-bootstrap-service-common",
  "jam-codec",
  "jam-null-authorizer-bin",
- "jam-state-helpers",
  "jam-std-common",
  "jam-types",
  "parachain-authorizer",
- "parachain-service-interface",
+ "parachain-service-core",
  "parasim-service",
  "parity-scale-codec",
  "primitive-types",

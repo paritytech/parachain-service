@@ -14,7 +14,7 @@ use parachain_service::{
 	state_balance::{baseline_for, preimage_footprint},
 	work_digest::validation_code_hash,
 };
-use parachain_service_interface::types::{HeadData, ParaId, ValidationCodeRef};
+use parachain_service_core::types::{HeadData, ParaId, ValidationCodeRef};
 
 use crate::{parachain::ParachainSpec, Error};
 
