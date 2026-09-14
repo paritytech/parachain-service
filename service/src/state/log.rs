@@ -13,7 +13,9 @@ use crate::{
 use alloc::vec::Vec;
 use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Compact, Decode, Encode};
-use parachain_service_interface::types::{Balance, Hash, ParaId, ServiceId, Timeslot};
+use parachain_service_interface::types::{
+	Balance, Hash, ParaId, ServiceId, Timeslot, ValidationCodeHash,
+};
 
 /// Why a state-balance reservation failed (spec §3.1, §6.1).
 ///
@@ -164,6 +166,9 @@ pub enum AccumulateLog {
 	ServiceCreation { id: Compact<u64>, result: ServiceCreationResult },
 	/// `parachain_clean_up` rejected: state held beyond baseline + codes. Spec §6.4.
 	TooMuchStateHeld,
+	/// The candidate's code matches neither active nor unexpired pending code. §5.1.
+	/// Appended to preserve the SCALE indices of existing events.
+	InvalidCodeHash { hash: ValidationCodeHash },
 }
 
 /// The auth trace stored with a Refine failure, truncated to 256 bytes (§3.3).

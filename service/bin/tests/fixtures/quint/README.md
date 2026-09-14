@@ -44,8 +44,9 @@ Activation over provided old code has a known log mismatch: Rust emits
 `upgrades/insufficient_balance_preserves_pending_works.itf.json` checks that a
 second upgrade request rejected for insufficient balance preserves the first
 pending code and logs the failed reservation. The provided-code expiry and
-expired-code candidate fixtures reproduce known model/Rust differences; their
-Rust tests expect replay errors rather than agreement. The fuzz generator keeps
+expired-code candidate fixtures reproduce the model dropping cleanup logs; their
+Rust tests expect log comparison errors. Expired-code rejection now agrees on
+upgrade and preimage state. The fuzz generator keeps
 these cases enabled; see [details](../../../../../upstream-feedback/upgrade-expiry-replay.md).
 
 `log_pruning/stale_parent_seed_1_works.itf.json` preserves frames 0–11 from the

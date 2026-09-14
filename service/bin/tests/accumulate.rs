@@ -82,7 +82,17 @@ fn wrong_code_errors() {
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"genesis");
-	assert!(para_log(&storage, PARA).is_empty());
+	assert_eq!(
+		para_log(&storage, PARA),
+		vec![(
+			NOW,
+			LogEntry::Accumulate {
+				entries: vec![AccumulateLog::InvalidCodeHash {
+					hash: code_ref(b"some-other-code").hash
+				}],
+			}
+		)]
+	);
 }
 
 #[test]

@@ -127,9 +127,10 @@ values fail explicitly; the runner does not discard failing traces.
 
 The upgrade profile currently exposes known model/Rust disagreements and does
 **not** pass a full differential campaign. With 50 steps, seed 1 fails at frame 32
-on a missing model `ForgetAgainAt` event; seed 2 fails at frame 21 because the
-model reaps an expired upgrade before rejecting its candidate while Rust retains
-it. See [the reproductions](../../../../../upstream-feedback/upgrade-expiry-replay.md).
+on a missing model `ForgetAgainAt` event. Rust now reaps expired upgrades before
+rejecting their candidates and logs `InvalidCodeHash`; expired-code rejection
+still exposes the model dropping the reap's `ForgetAgainAt` event (seed 2, frame
+21, and saved seed 2709851819, frame 11). See [the reproductions](../../../../../upstream-feedback/upgrade-expiry-replay.md).
 These inputs remain enabled. Ordinary regression tests assert the exact known
 mismatch categories; the fuzz runner still fails and saves the offending trace.
 

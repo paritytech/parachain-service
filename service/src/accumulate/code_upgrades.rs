@@ -110,12 +110,7 @@ pub fn request_code_upgrade(
 	}
 }
 
-/// Whether `pi`'s pending upgrade has passed its deadline and so must be treated
-/// as already gone when this candidate's validation code is checked (§5.1 step 4).
-///
-/// Kept separate from [`reap_timed_out_upgrade`] so step 5 can consult the
-/// post-reap view without writing anything: a candidate rejected at step 5 must
-/// leave `pending_upgrade` untouched.
+/// Whether `pi`'s pending upgrade has reached its deadline (§5.1 step 4).
 pub fn pending_upgrade_expired(pi: &ParaInfo, now: Slot) -> bool {
 	pi.pending_upgrade.as_ref().is_some_and(|(_, deadline)| *deadline <= now)
 }

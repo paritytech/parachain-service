@@ -112,6 +112,67 @@ fn timeout_reap_works() {
 	assert!(registry_entry(&storage, code_ref(NEW_CODE)).is_none());
 }
 
+// Rejection must preserve cleanup, but must not enact the head or upward messages.
+fn expired_candidate(provided: bool) {
+	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
+	let used_original = para_info(&storage, PARA).unwrap().used_state_balance;
+	let (mut storage, new_ref) = request_upgrade_block(storage);
+	if provided {
+		storage.provide(NOW + 1, SVC, NEW_CODE).expect("upgrade solicited");
+		storage.commit();
+	}
+	let before = para_info(&storage, PARA).unwrap();
+	let deadline = NOW + UPGRADE_TIMEOUT_TIMESLOTS;
+	let replacement = code_ref(b"replacement-code");
+	let message =
+		UpwardMessage::RequestCodeUpgrade { hash: replacement.hash, len: replacement.len.into() };
+
+	// A stale parent is rejected before expiry cleanup, even at the deadline.
+	let stale = ok_digest(PARA, NEW_CODE, b"stale", b"head-2", vec![], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&stale)], deadline);
+	assert_eq!(para_info(&storage, PARA).unwrap(), before);
+	assert!(accumulate_logs(&storage, PARA).is_empty());
+
+	let digest = ok_digest(PARA, NEW_CODE, b"head-1", b"head-2", vec![message], 0);
+	let now = deadline + 1;
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], now);
+	let info = para_info(&storage, PARA).unwrap();
+	assert!(info.pending_upgrade.is_none());
+	assert_eq!(info.head_data, before.head_data);
+	assert_eq!(info.validation_code, before.validation_code);
+	assert!(registry_entry(&storage, replacement).is_none());
+	let invalid = AccumulateLog::InvalidCodeHash { hash: new_ref.hash };
+	if provided {
+		assert_eq!(info.used_state_balance, before.used_state_balance);
+		assert!(registry_entry(&storage, new_ref).is_some());
+		assert_eq!(
+			accumulate_logs(&storage, PARA),
+			vec![
+				AccumulateLog::ForgetAgainAt {
+					hash: new_ref.hash.0,
+					len: new_ref.len.into(),
+					due: now + parachain_service::constants::EXPUNGE_PERIOD,
+				},
+				invalid,
+			]
+		);
+	} else {
+		assert_eq!(info.used_state_balance, used_original);
+		assert!(registry_entry(&storage, new_ref).is_none());
+		assert_eq!(accumulate_logs(&storage, PARA), vec![invalid]);
+	}
+}
+
+#[test]
+fn expired_unprovided_candidate_errors() {
+	expired_candidate(false);
+}
+
+#[test]
+fn expired_provided_candidate_errors() {
+	expired_candidate(true);
+}
+
 #[test]
 fn supersede_works() {
 	// §5.2 phase 2: a different in-flight upgrade is superseded.

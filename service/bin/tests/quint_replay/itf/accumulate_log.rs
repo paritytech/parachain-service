@@ -2,6 +2,7 @@
 
 use codec::Compact;
 use parachain_service::state::log::{AccumulateLog, InsufficientBalanceReason};
+use parachain_service_interface::types::ValidationCodeHash;
 use serde_json::Value;
 
 use super::{
@@ -12,6 +13,14 @@ use super::{
 pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<AccumulateLog, String> {
 	let (tag, value) = variant(value)?;
 	match tag {
+		"InvalidCodeHashAcc" => {
+			let value = integer(field(value, "vchBytes")?)?;
+			let (_, hash, _) =
+				codex.preimages().into_iter().find(|(known, _, _)| *known == value).ok_or_else(
+					|| format!("invalid code hash {value} has no established length"),
+				)?;
+			Ok(AccumulateLog::InvalidCodeHash { hash: ValidationCodeHash(hash) })
+		},
 		"InsufficientStateBalance" => {
 			let (reason, payload) = variant(value)?;
 			match reason {

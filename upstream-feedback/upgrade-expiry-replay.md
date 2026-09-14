@@ -2,7 +2,8 @@
 
 At Quint pin `4a22816d19a943688a3eef82b3fe4446667de812`, the expanded generator
 samples `RequestCodeUpgrade`, independent solicit/forget of upgrade code, and
-pending-code candidates. No Rust service behavior or vendored model was changed.
+pending-code candidates. The vendored model remains unchanged; Rust now reaps
+expired upgrades before rejecting candidates, as required by §5.1 steps 4–5.
 
 ## Provided-code expiry loses a log
 
@@ -19,20 +20,26 @@ The ordinary `upgrades::provided_upgrade_expiry_log_errors` test asserts the
 specific log disagreement. The generated campaign first reached this at seed 1,
 frame 32, with 50 steps.
 
-## An expired-code candidate mutates only the model's state
+## Expired-code rejection now reaps in Rust; the model still loses a log
 
 Request code 777, provide it, cross its deadline, then submit a candidate validated
-with 777. Quint reaps the upgrade before checking the candidate's code, rejects
-the candidate, and persists the reaped state. Rust checks code eligibility using
-the post-expiry view before making those writes, so rejection preserves the
-pending upgrade. Quint also records `InvalidCodeHashAcc`, which has no Rust
-Accumulate-log counterpart; replay first reports the pending-state disagreement.
+with 777. Both implementations now reap the upgrade before checking the code,
+reject the candidate, and persist the reaped state. Rust records the cleanup's
+`ForgetAgainAt` followed by `InvalidCodeHash`; Quint records only
+`InvalidCodeHashAcc`, dropping the cleanup log in `accumulateOkPrefix`.
+
+Previously Rust returned before applying the reap and omitted the invalid-code
+log. Seed 2709851819 exposed that state mismatch at frame 11: the upgrade to 778
+was requested at slot 14402 with deadline 28802, then used by a candidate at slot
+43207. With the Rust fix, the saved trace reaches log comparison at that frame;
+`pendingUpgrade` and the preimage cleanup agree.
 
 The minimal fixture is
 `service/bin/tests/fixtures/quint/upgrades/expired_code_candidate_reaps_works.itf.json`.
-The ordinary `upgrades::expired_code_candidate_reaps_errors` test asserts the
-pending-upgrade disagreement. The generated campaign first reached this at seed 2,
-frame 21, with 50 steps.
+The ordinary `upgrades::expired_code_candidate_reap_log_errors` test asserts the
+remaining log disagreement. Direct Rust tests in `accumulate_upgrades.rs` check
+provided and unprovided expiry, cleanup logs/refunds, stale-parent rejection, and
+that rejected candidates do not enact their heads or upward messages.
 
 ## Reproduction
 
@@ -47,7 +54,7 @@ Those ordinary tests pass by detecting the known disagreements. To observe a
 raw differential failure, replay either fixture through the strict input runner:
 
 ```sh
-QUINT_REPLAY_TRACE=service/bin/tests/fixtures/quint/upgrades/expired_code_candidate_reaps_works.itf.json cargo test -p parachain-service-bin --test quint_replay fuzz::replay_input_works -- --ignored --nocapture
+QUINT_REPLAY_TRACE="$PWD/service/bin/tests/fixtures/quint/upgrades/expired_code_candidate_reaps_works.itf.json" cargo test -p parachain-service-bin --test quint_replay fuzz::replay_input_works -- --ignored --nocapture
 ```
 
 The full campaign also remains strict and saves failing traces:
@@ -56,5 +63,6 @@ The full campaign also remains strict and saves failing traces:
 QUINT_FUZZ_TRACES=100 QUINT_FUZZ_STEPS=50 QUINT_FUZZ_WORKERS=2 cargo test -p parachain-service-bin --test quint_replay fuzz::generated_traces_works -- --ignored --nocapture
 ```
 
-Resolve the intended service/model behavior separately. Do not filter these
-inputs or normalize away the differences to make the campaign pass.
+The remaining model fix is to retain expiry cleanup logs on acceptance and
+rejection. Do not filter these inputs or normalize away the differences to make
+the campaign pass.
