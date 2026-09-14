@@ -14,7 +14,7 @@ cargo test -p parachain-service-bin --test quint_replay
 ```
 
 The generator uses the pinned model, TypeScript backend, and seed 1. It regenerates
-`refine_errors`, `blocks`, `upgrades`, `log_pruning`, `kv`, and `balances` scenarios, including the
+`refine_errors`, `blocks`, `upgrades`, `log_pruning`, `kv`, `balances`, and `lifecycle` scenarios, including the
 root minimal and stale-parent fixtures. Other historical fixtures are retained.
 JSON is compact and timestamp-free; use `just quint-fmt` to expand it for review
 and `just quint-compact` before committing.
@@ -27,6 +27,7 @@ and `just quint-compact` before committing.
 | Multiple work packages and parachains | Ordered processing, shared references, delegated forgets, and combined head commitments |
 | KV operations | Overwrite, empty values/keys, SCALE length boundary, refunds, delegated and unauthorized removal, failed reservations, and stale candidates |
 | Balances and incoming transfers | Allowance boundaries, authorization, reservations/refunds, queue packing and rollover, admission/drop at the reservation limit, and Asset Hub charges |
+| Lifecycle | Registration thresholds and repeated funding, unauthorized calls, forced head/code changes, cleanup refusal with extra storage, pending-code release, delayed cleanup, and re-registration |
 | Upgrades | Requests, provision, activation, expiry, failed reservations, and rejected expired-code candidates |
 | Log pruning | Rejected candidates retain logs; accepted candidates prune below the lookup anchor and retain the boundary |
 
@@ -45,7 +46,7 @@ Provided-code activation and expiry currently omit `ForgetAgainAt` to match Quin
   memos use a u64 little-endian prefix padded to 128 bytes. The model does not
   represent the JAM service's actual monetary balance.
 - Accumulate-log decoding supports `ForgetAgainAt`, `StateBalanceUpdateRejected`,
-  `InvalidCodeHashAcc`, and `InsufficientStateBalance` from `FromSolicit` or
+  `TooMuchStateHeld`, `InvalidCodeHashAcc`, and `InsufficientStateBalance` from `FromSolicit` or
   `FromSetKV`; other events fail explicitly.
 - `Solicit` and `Forget` support explicit parachain targets, including delegated
   calls, and historical fixtures without `Target`. Service targets are rejected

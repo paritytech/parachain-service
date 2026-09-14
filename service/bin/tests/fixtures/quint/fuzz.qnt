@@ -9,6 +9,7 @@ module fuzz {
   import refine.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/refine"
   import accumulate.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/accumulate"
 
+  import lifecycle_inputs.* from "./lifecycle_inputs"
   import transfer_inputs.* from "./transfer_inputs"
 
   action replayInit = all { init, noTransfers }
@@ -61,7 +62,7 @@ module fuzz {
       msgs.union(totals.map(total =>
         ParachainSetStateBalance({ paraId: target, newTotal: total })))
     })
-    kv.union(balances).union(Set(
+    kv.union(balances).union(lifecycleMessages).union(Set(
       RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen }),
       RequestCodeUpgrade({ hash: { vchBytes: 778 }, len: FixedCodeLen }),
       RequestCodeUpgrade({ hash: activeCodeHashOr(s.paraInfo(para), NoCodeHash), len: FixedCodeLen }),
@@ -165,6 +166,7 @@ module fuzz {
   }
 
   action replayStep = any {
-    all { block, noTransfers }, all { provisionPreimage, noTransfers }, incoming
+    all { block, noTransfers }, all { provisionPreimage, noTransfers }, incoming,
+    all { lifecycleBlock, noTransfers }
   }
 }

@@ -188,6 +188,11 @@ fn upward_message(
 			para_id: para_id(field(value, "paraId")?, codex)?,
 			new_total: Compact(bounded_integer::<u64>(field(value, "newTotal")?, "newTotal")?),
 		}),
+		"ParachainSetHead" => Ok(UpwardMessage::ParachainSetHead {
+			para_id: para_id(field(value, "paraId")?, codex)?,
+			new_head: Codex::head(integer(field(value, "newHead")?)?)?,
+		}),
+		"ParachainCleanUp" => Ok(UpwardMessage::ParachainCleanUp(para_id(value, codex)?)),
 		"ParachainSetValidationCode" => {
 			let len = integer(field(value, "newValidationCodeLen")?)?;
 			let reference = codex.validation_code(

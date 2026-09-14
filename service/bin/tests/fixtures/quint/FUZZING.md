@@ -154,7 +154,19 @@ The streaming initializer is `replayInit` (model `init` plus an empty operand
 list); `replayStep` clears operands on block/provision actions. CLI parity tests
 use the same initializer.
 
-Registration and cleanup are not fuzzed yet. Malformed
+Lifecycle messages target ordinary para IDs 3 and 4, preserving both privileged
+chains so campaigns can continue registering and funding paras. The dedicated
+`lifecycleBlock` action samples registration bundles, cleanup, individual
+management messages, and work for present or absent targets. Gaps include the
+expunge period and one slot beyond it to exercise delayed cleanup. Ordinary
+blocks also mix lifecycle messages with KV, balances, and upgrades; both
+privileged and ordinary callers can attempt them. Repeated funding updates an
+existing allowance rather than rejecting duplicate registration. Deterministic
+`lifecycle` fixtures cover cleanup refusal with extra storage, active/pending
+code release, deregistration restrictions, and re-registration. All semantics
+come from the pinned model; replay does not suppress mismatches.
+
+Malformed
 authorizer configuration and invalid item counts are excluded because their
 model Refine-log representations cannot be replayed as Rust Refine errors.
 Other comparator limitations remain those in [README.md](README.md). Unsupported

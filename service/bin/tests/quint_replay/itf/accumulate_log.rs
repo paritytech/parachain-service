@@ -71,6 +71,7 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 				reason,
 			})
 		},
+		"TooMuchStateHeld" => Ok(AccumulateLog::TooMuchStateHeld),
 		"ForgetAgainAt" => {
 			let len = u32::try_from(integer(field(value, "len")?)?)
 				.map_err(|_| "ForgetAgainAt length out of range")?;
