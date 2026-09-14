@@ -23,7 +23,6 @@ workspace = true
 blake2b_simd = { workspace = true }
 bounded-collections = { workspace = true }
 codec = { workspace = true }
-jam-null-authorizer-bin = { workspace = true }
 jam-types = { workspace = true }
 num_enum = { workspace = true }
 
@@ -31,6 +30,7 @@ num_enum = { workspace = true }
 polkavm-derive = { workspace = true }
 
 [dev-dependencies]
+jam-null-authorizer-bin = { workspace = true }
 # Byte-pin the derivation and the trie roots against polkajam's own (std-only)
 # implementations, so this crate cannot drift from the node that serves the proofs.
 codec = { workspace = true, features = ["std"] }

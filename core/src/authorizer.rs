@@ -25,7 +25,12 @@ fn blake2b_256(data: &[u8]) -> jam_types::Hash {
 
 /// Code hash of polkajam's null authorizer (accepts anything). Dev/testnet genesis fills
 /// every core's queue with this authorizer.
-pub const NULL_AUTHORIZER_CODE_HASH: [u8; 32] = jam_null_authorizer_bin::HASH;
+// Keep the std-only blob crate out of the guest dependency graph. The test below
+// pins this value to the vendored blob when its revision changes.
+pub const NULL_AUTHORIZER_CODE_HASH: [u8; 32] = [
+	248, 216, 107, 151, 214, 83, 25, 160, 120, 229, 132, 15, 22, 20, 194, 150, 165, 37, 66, 23,
+	121, 77, 204, 145, 14, 114, 202, 23, 78, 60, 46, 134,
+];
 
 /// The hardcoded phase-1 authorizer: the null authorizer with an empty config.
 pub fn fixed_authorizer() -> Authorizer {
@@ -45,6 +50,15 @@ pub const FIXED_AUTHORIZER_HASH: AuthorizerHash = AuthorizerHash([
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn null_authorizer_code_hash_works() {
+		assert_eq!(NULL_AUTHORIZER_CODE_HASH, jam_null_authorizer_bin::HASH);
+		assert_eq!(
+			NULL_AUTHORIZER_CODE_HASH,
+			jam_std_common::hash_raw(jam_null_authorizer_bin::BLOB)
+		);
+	}
 
 	#[test]
 	fn fixed_authorizer_hash_matches_helper() {

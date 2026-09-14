@@ -147,6 +147,9 @@ fn generated_traces_works() {
 	assert!(workers > 0 && steps > 0 && steps <= 10000, "invalid worker/step limit");
 	// Keep numeric CLI limits exactly representable in JavaScript.
 	assert!(count <= (1u64 << 53) - 1 && workers <= (1u64 << 53) - 1);
+	// Build once before launching workers: a build failure is a setup error, not
+	// a trace mismatch, and must not poison the shared blob cache mid-replay.
+	let _ = parachain_service_bin::hash();
 	let stop = AtomicBool::new(false);
 	let progress = Progress::new(count, steps);
 	let results = thread::scope(|scope| {
