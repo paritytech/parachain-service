@@ -41,12 +41,6 @@ pub fn process(now: Slot, service_id: ServiceId, record: &WorkItemRecord, heads:
 			upward_messages,
 			lookup_anchor,
 		} => {
-			// §5.1 / Quint `accumulateOnePackage`: every Refine-success candidate
-			// prunes below its lookup-anchor, including candidates rejected below.
-			// FIXME: Revisit rejected-candidate pruning when the spec resolves
-			// https://github.com/paritytech/parachain-service/issues/35.
-			ParachainLogs::prune_below(para_id, lookup_anchor);
-
 			// Step 1: registration check. A not-registered OR deregistering para
 			// is treated as if it no longer exists — no new log entry (§6.4).
 			let Some(pi) = Parachains::get(para_id) else { return };
@@ -60,32 +54,34 @@ pub fn process(now: Slot, service_id: ServiceId, record: &WorkItemRecord, heads:
 				return;
 			}
 
-			// Step 4: expiry cleanup persists even if the candidate is rejected
-			// by the subsequent code or service-restriction checks.
-			let mut logs: Vec<AccumulateLog> = Vec::new();
-			code_upgrades::reap_timed_out_upgrade(para_id, now, &mut logs);
-			let pi = Parachains::get(para_id).expect("checked live above; qed");
+			// Decide against the post-expiry view without writing state or forwarding
+			// forgets: a rejected candidate must discard the tentative reap (§5.1).
+			let expired = code_upgrades::pending_upgrade_expired(&pi, now);
 
 			// Step 5: authoritative validation-code check, on the post-reap view.
 			// Compares the whole `(hash, len)` pair: the preimage registry is
 			// keyed by both, so the same hash at another length is another code.
 			let matches_active =
 				pi.validation_code.as_ref().is_some_and(|vc| vc.code_ref == validation_code);
-			let matches_pending = pi
-				.pending_upgrade
-				.as_ref()
-				.is_some_and(|(vc, _)| vc.code_ref == validation_code);
+			let matches_pending = !expired &&
+				pi.pending_upgrade
+					.as_ref()
+					.is_some_and(|(vc, _)| vc.code_ref == validation_code);
 			if !matches_active && !matches_pending {
-				logs.push(AccumulateLog::InvalidCodeHash { hash: validation_code.hash });
-				ParachainLogs::append_accumulate(para_id, now, logs);
 				return;
 			}
 
 			// §4.3 defense-in-depth: Refine already aborts restricted host
 			// functions from the wrong para, but re-verify before applying.
 			if upward_messages.iter().any(|m| !m.allowed_for(para_id)) {
-				ParachainLogs::append_accumulate(para_id, now, logs);
 				return;
+			}
+
+			// Only an accepted candidate may prune logs or release expired code.
+			ParachainLogs::prune_below(para_id, lookup_anchor);
+			let mut logs: Vec<AccumulateLog> = Vec::new();
+			if expired {
+				code_upgrades::reap_timed_out_upgrade(para_id, now, &mut logs);
 			}
 
 			// Step 6: head-data update + code-upgrade activation. Activation must

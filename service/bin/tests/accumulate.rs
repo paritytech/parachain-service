@@ -82,25 +82,14 @@ fn wrong_code_errors() {
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"genesis");
-	assert_eq!(
-		para_log(&storage, PARA),
-		vec![(
-			NOW,
-			LogEntry::Accumulate {
-				entries: vec![AccumulateLog::InvalidCodeHash {
-					hash: code_ref(b"some-other-code").hash
-				}],
-			}
-		)]
-	);
+	assert!(para_log(&storage, PARA).is_empty());
 }
 
 #[test]
 fn stale_parent_candidate_pruning_works() {
 	use parachain_service::state::{storage_key, Tag};
 
-	// The pinned §5.1 / Quint behavior prunes even when the parent is stale.
-	// Track the proposed accepted-only rule in parachain-service#35.
+	// §5.1: a rejected candidate preserves every log entry.
 	let entry = LogEntry::Refine {
 		error: RefineLog::Opaque(vec![0xCD; 64].try_into().expect("within 1024")),
 		auth_trace: vec![].try_into().expect("empty is within the cap"),
@@ -114,7 +103,7 @@ fn stale_parent_candidate_pruning_works() {
 	let digest = ok_digest(PARA, CODE, b"not-the-parent", b"head-1", vec![], 50);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
-	assert_eq!(para_log(&storage, PARA), log[1..], "preserve entries at or above the anchor");
+	assert_eq!(para_log(&storage, PARA), log, "rejected candidates cannot prune");
 	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"genesis");
 }
 
@@ -274,4 +263,29 @@ fn kv_insufficient_balance_errors() {
 	));
 	// The candidate itself still enacted — only the write was rejected.
 	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"head-1");
+}
+
+#[test]
+fn rejected_candidate_preserves_expired_upgrade_works() {
+	use parachain_service::state::{para_info::ValidationCode, storage_key, Tag};
+	use parachain_service_interface::upward_message::UpwardMessage;
+	let pending = b"expired-code";
+	for (candidate_code, messages) in [
+		(&b"wrong-code"[..], vec![]),
+		(&pending[..], vec![]),
+		(CODE, vec![UpwardMessage::ParachainCleanUp(PARA)]),
+	] {
+		let storage = fresh_storage(|s| {
+			seed_para(s, PARA, b"genesis", CODE, RICH);
+			let mut pi = para_info(s, PARA).unwrap();
+			pi.pending_upgrade =
+				Some((ValidationCode { code_ref: code_ref(pending), pinned: false }, NOW - 1));
+			set_state(s, &storage_key(Tag::Parachains, &PARA), &pi);
+		});
+		let before = para_info(&storage, PARA).unwrap();
+		let digest = ok_digest(PARA, candidate_code, b"genesis", b"new-head", messages, NOW);
+		let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+		assert_eq!(para_info(&storage, PARA).unwrap(), before);
+		assert!(para_log(&storage, PARA).is_empty());
+	}
 }

@@ -115,7 +115,6 @@ fn timeout_reap_works() {
 // Rejection must preserve cleanup, but must not enact the head or upward messages.
 fn expired_candidate(provided: bool) {
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
-	let used_original = para_info(&storage, PARA).unwrap().used_state_balance;
 	let (mut storage, new_ref) = request_upgrade_block(storage);
 	if provided {
 		storage.provide(NOW + 1, SVC, NEW_CODE).expect("upgrade solicited");
@@ -137,30 +136,10 @@ fn expired_candidate(provided: bool) {
 	let now = deadline + 1;
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], now);
 	let info = para_info(&storage, PARA).unwrap();
-	assert!(info.pending_upgrade.is_none());
-	assert_eq!(info.head_data, before.head_data);
-	assert_eq!(info.validation_code, before.validation_code);
+	assert_eq!(info, before, "a rejected candidate discards the tentative reap");
 	assert!(registry_entry(&storage, replacement).is_none());
-	let invalid = AccumulateLog::InvalidCodeHash { hash: new_ref.hash };
-	if provided {
-		assert_eq!(info.used_state_balance, before.used_state_balance);
-		assert!(registry_entry(&storage, new_ref).is_some());
-		assert_eq!(
-			accumulate_logs(&storage, PARA),
-			vec![
-				AccumulateLog::ForgetAgainAt {
-					hash: new_ref.hash.0,
-					len: new_ref.len.into(),
-					due: now + parachain_service::constants::EXPUNGE_PERIOD,
-				},
-				invalid,
-			]
-		);
-	} else {
-		assert_eq!(info.used_state_balance, used_original);
-		assert!(registry_entry(&storage, new_ref).is_none());
-		assert_eq!(accumulate_logs(&storage, PARA), vec![invalid]);
-	}
+	assert!(registry_entry(&storage, new_ref).is_some());
+	assert!(accumulate_logs(&storage, PARA).is_empty());
 }
 
 #[test]
