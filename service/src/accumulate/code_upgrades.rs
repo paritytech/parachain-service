@@ -90,7 +90,9 @@ pub fn request_code_upgrade(
 
 	// Supersede a different in-flight upgrade: release it unless pinned.
 	if let Some((old_pending, _)) = &pi.pending_upgrade {
-		release_code_if_not_pinned(para_id, old_pending, now, logs);
+		// FIXME: Quint's requestCodeUpgrade discards superseded-code cleanup logs.
+		// Match it pending https://github.com/paritytech/parachain-service/issues/36.
+		release_code_if_not_pinned(para_id, old_pending, now, &mut Vec::new());
 	}
 
 	let mut pi = Parachains::get(para_id).expect("still live; qed");

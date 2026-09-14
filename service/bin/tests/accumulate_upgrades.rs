@@ -170,6 +170,28 @@ fn supersede_works() {
 }
 
 #[test]
+fn supersede_provided_code_works() {
+	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
+	let (mut storage, new_ref) = request_upgrade_block(storage);
+	storage.provide(NOW + 1, SVC, NEW_CODE).expect("upgrade solicited");
+	storage.commit();
+	let used_before = para_info(&storage, PARA).unwrap().used_state_balance;
+
+	let third_ref = code_ref(b"para-1000-code-v3");
+	let msg = UpwardMessage::RequestCodeUpgrade { hash: third_ref.hash, len: third_ref.len.into() };
+	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![msg], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 2);
+
+	let info = para_info(&storage, PARA).unwrap();
+	assert_eq!(info.pending_upgrade.as_ref().unwrap().0.code_ref, third_ref);
+	// Provided code stays charged until a second forget; Quint omits the
+	// follow-up notification pending issue #36.
+	assert!(registry_entry(&storage, new_ref).is_some_and(|e| e.referencers.contains(&PARA)));
+	assert_eq!(info.used_state_balance, used_before + preimage_footprint(third_ref.len));
+	assert!(accumulate_logs(&storage, PARA).is_empty());
+}
+
+#[test]
 fn service_upgrade_missing_preimage_errors() {
 	// §5.4 phase 3: rejected while the new service code is not provided.
 	let storage =
