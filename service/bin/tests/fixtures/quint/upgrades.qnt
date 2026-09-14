@@ -9,7 +9,7 @@ module upgrades {
 
   import state_balance.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state_balance"
 
-  import tests.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/tests"
+  import support.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/tests/support"
 
   run insufficient_balance_preserves_pending_works = {
     val first = { vchBytes: 777 }
@@ -50,14 +50,14 @@ module upgrades {
       .then(applyHappyPath(CoretimeParaId, { vchBytes: 1 }, List()))
       .then(expectThat(svc.paraInfo(CoretimeParaId).pendingUpgrade == None))
 
-  run expired_code_candidate_reaps_works =
+  run expired_code_candidate_preserves_upgrade_works =
     init.then(providedUpgrade)
       .then(applyHappyPaths(List()))
       .then(provide({ hashBytes: 777 }, FixedCodeLen))
       .then(workErrorAt(UpgradeTimeoutTimeslots + 2))
       .then(applyHappyPath(CoretimeParaId, { vchBytes: 777 }, List()))
       .then(expectThat(all {
-        svc.paraInfo(CoretimeParaId).pendingUpgrade == None,
+        svc == prevSvc,
         svc.paraInfo(CoretimeParaId).headData == 1
       }))
 
@@ -118,10 +118,11 @@ module upgrades {
   action workErrorAt(slot: Timeslot): bool = {
     val out = accumulateBlock(
       svc, slot, jamStagingSet, solicitedSet, FixedCodeLen,
-      List({ result: WorkErr, authTrace: 7 }))
+      List({ result: WorkErr, authTrace: 7 }), foreignServices)
     all {
       slot > now,
       svc' = out.state,
+      foreignServices' = out.foreign,
       now' = slot,
       jamStagingSet' = out.staging,
       solicitedSet' = out.solicited,

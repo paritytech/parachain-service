@@ -6,7 +6,7 @@ use serde_json::Value;
 #[test]
 fn stale_parent_seed_1_works() {
 	replay::trace(include_str!("../fixtures/quint/log_pruning/stale_parent_seed_1_works.itf.json"))
-		.expect("rejected candidates prune logs under the pinned spec");
+		.expect("rejected candidates preserve logs under the pinned spec");
 }
 
 const REFINE_TRACE: &str =

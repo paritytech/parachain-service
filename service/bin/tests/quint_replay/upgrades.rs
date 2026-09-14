@@ -29,13 +29,11 @@ fn provided_upgrade_expiry_log_errors() {
 }
 
 #[test]
-fn expired_code_candidate_reap_log_errors() {
-	let error = replay::trace(include_str!(
-		"../fixtures/quint/upgrades/expired_code_candidate_reaps_works.itf.json"
+fn expired_code_candidate_preserves_upgrade_works() {
+	replay::trace(include_str!(
+		"../fixtures/quint/upgrades/expired_code_candidate_preserves_upgrade_works.itf.json"
 	))
-	.unwrap_err();
-	assert!(error.contains("svc.parachainLog[1] differs"), "{error}");
-	assert!(error.contains("InvalidCodeHash") && error.contains("ForgetAgainAt"), "{error}");
+	.expect("a rejected expired-code candidate preserves the pending upgrade and logs");
 }
 
 #[test]

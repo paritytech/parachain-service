@@ -1,13 +1,15 @@
 //! Decode supported Accumulate events without silently accepting unknown variants.
 
 use codec::Compact;
-use parachain_service::state::log::{AccumulateLog, InsufficientBalanceReason};
+use parachain_service::state::log::{
+	AccumulateLog, InsufficientBalanceReason, StateBalanceRejection,
+};
 use parachain_service_interface::types::ValidationCodeHash;
 use serde_json::Value;
 
 use super::{
 	codex::Codex,
-	replay::{field, integer, variant},
+	replay::{bounded_integer, field, integer, para_id, variant},
 };
 
 pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<AccumulateLog, String> {
@@ -35,6 +37,31 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 				},
 				other => Err(format!("unsupported insufficient balance reason {other}")),
 			}
+		},
+		"StateBalanceUpdateRejected" => {
+			let (reason, payload) = variant(field(value, "reason")?)?;
+			let reason = match reason {
+				"BelowUsed" => StateBalanceRejection::BelowUsed {
+					current_total: Compact(bounded_integer::<u64>(
+						field(payload, "currentTotal")?,
+						"currentTotal",
+					)?),
+					current_used: Compact(bounded_integer::<u64>(
+						field(payload, "currentUsed")?,
+						"currentUsed",
+					)?),
+				},
+				"ParachainIsDeregistering" => StateBalanceRejection::ParachainIsDeregistering,
+				other => return Err(format!("unsupported state balance rejection {other}")),
+			};
+			Ok(AccumulateLog::StateBalanceUpdateRejected {
+				para_id: para_id(field(value, "paraId")?, codex)?,
+				attempted: Compact(bounded_integer::<u64>(
+					field(value, "attempted")?,
+					"attempted",
+				)?),
+				reason,
+			})
 		},
 		"ForgetAgainAt" => {
 			let len = u32::try_from(integer(field(value, "len")?)?)

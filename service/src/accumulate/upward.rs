@@ -17,7 +17,7 @@ use alloc::vec::Vec;
 use jam_pvm_common::accumulate::{is_available, my_info, upgrade};
 use jam_types::{CodeHash, ServiceId, Slot};
 use parachain_service_interface::{
-	types::ParaId,
+	types::{ParaId, ASSET_HUB_PARA_ID},
 	upward_message::{Target, UpwardMessage},
 };
 
@@ -95,7 +95,7 @@ pub fn apply(
 
 		UpwardMessage::Forget { target: Target::Parachain(para_id), hash, len } => {
 			// §5.4: expunging the running service code would prevent future accumulation.
-			if hash == my_info().code_hash.0 {
+			if para_id == ASSET_HUB_PARA_ID && hash == my_info().code_hash.0 {
 				return;
 			}
 			// `para_id` names whose reference is released (Coretime may name any
@@ -130,7 +130,7 @@ pub fn apply(
 		},
 
 		UpwardMessage::RemoveKV { para_id, key } => {
-			if Parachains::is_live(para_id) {
+			if Parachains::get(para_id).is_some_and(|pi| !pi.is_deregistering) {
 				state_balance::apply_remove_kv(para_id, &key);
 			}
 		},

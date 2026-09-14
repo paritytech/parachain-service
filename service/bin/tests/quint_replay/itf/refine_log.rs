@@ -20,7 +20,13 @@ pub fn refine_log(value: &Value) -> Result<RefineLog, String> {
 				.try_into()
 				.map_err(|_| "Opaque payload exceeds 1024 bytes".to_string())?,
 		)),
-		"SetValidatorKeysTooManyKeys" => Ok(RefineLog::TooManyValidatorKeys),
+		"SetValidatorKeysTooManyKeys" | "TooManyValidatorKeys" => {
+			Ok(RefineLog::TooManyValidatorKeys)
+		},
+		"UpwardMessagesTooLarge" => Ok(RefineLog::UpwardMessagesTooLarge),
+		"HeadDataTooLarge" => Ok(RefineLog::HeadDataTooLarge),
+		"SetValidatorKeysRepeated" => Ok(RefineLog::SetValidatorKeysRepeated),
+		"InvalidAuthorizerQueue" => Ok(RefineLog::InvalidAuthorizerQueue),
 		"TooManyUpwardMessages" => Ok(RefineLog::TooManyUpwardMessages),
 		"RestrictedHostFunction" => Ok(RefineLog::RestrictedHostFunction),
 		"RefineOutputTooLarge" => Ok(RefineLog::RefineOutputTooLarge),

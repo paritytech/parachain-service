@@ -7,16 +7,21 @@ module blocks {
   import state_vars.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state_vars"
   import main.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/main"
 
-  import tests.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/tests"
+  import support.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/tests/support"
+
+  import accumulate_test.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/tests/accumulate_test"
+
+  import head_commitment_test.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/tests/head_commitment_test"
 
   action emptyBlock = applyHappyPaths(List())
   action candidate = applyHappyPath(CoretimeParaId, { vchBytes: 1 }, List())
   action applyWork(result: WorkExecResult, authTrace: int): bool = {
     val out = accumulateBlock(
       svc, now + 1, jamStagingSet, solicitedSet, FixedCodeLen,
-      List({ result: result, authTrace: authTrace }))
+      List({ result: result, authTrace: authTrace }), foreignServices)
     all {
       svc' = out.state,
+      foreignServices' = out.foreign,
       now' = now + 1,
       jamStagingSet' = out.staging,
       solicitedSet' = out.solicited,
@@ -44,20 +49,25 @@ module blocks {
   // reference, which must see the first WP's solicitation in the same block.
   run ump_ordering_works = {
     val h = { hashBytes: 7 }
-    val solicit = Solicit({ hash: h, len: 1024 })
-    val forgetHub = Forget({ paraId: AssetHubParaId, hash: h, len: 1024 })
-    val forgetCore = Forget({ paraId: CoretimeParaId, hash: h, len: 1024 })
+    pure def solicit(para: ParaId): UpwardMessage = Solicit({ target: Parachain(para), hash: h, len: 1024 })
+    val forgetHub = Forget({ target: Parachain(AssetHubParaId), hash: h, len: 1024 })
+    val forgetCore = Forget({ target: Parachain(CoretimeParaId), hash: h, len: 1024 })
     init
       .then(applyHappyPaths(List(
-        (AssetHubParaId, { vchBytes: 2 }, List(solicit, solicit)),
-        (CoretimeParaId, { vchBytes: 1 }, List(solicit, forgetHub))
+        (AssetHubParaId, { vchBytes: 2 }, List(solicit(AssetHubParaId), solicit(AssetHubParaId))),
+        (CoretimeParaId, { vchBytes: 1 }, List(solicit(CoretimeParaId), forgetHub))
       )))
       .then(expectThat(svc.preimageRegistry.get((h, 1024)).referencers == Set(CoretimeParaId)))
       .then(applyHappyPath(CoretimeParaId, { vchBytes: 1 }, List(forgetCore)))
       .then(expectThat(not(svc.preimageRegistry.keys().contains((h, 1024)))))
-      .then(applyHappyPath(AssetHubParaId, { vchBytes: 2 }, List(forgetHub, solicit)))
+      .then(applyHappyPath(AssetHubParaId, { vchBytes: 2 }, List(forgetHub, solicit(AssetHubParaId))))
       .then(expectThat(svc.preimageRegistry.get((h, 1024)).referencers == Set(AssetHubParaId)))
   }
+
+  run rejected_state_balance_works =
+    init.then(applyHappyPath(CoretimeParaId, { vchBytes: 1 }, List(
+      ParachainSetStateBalance({ paraId: MkParaId(3000), newTotal: 1 }))))
+      .then(expectThat(not(svc.isLive(MkParaId(3000)))))
 
   run work_error_between_candidates_works =
     init.then(candidate).then(expectThat(svc.paraInfo(CoretimeParaId).headData == 1))

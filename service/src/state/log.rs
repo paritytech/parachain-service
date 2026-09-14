@@ -127,16 +127,23 @@ pub enum ServiceCreationResult {
 	IdTaken,
 }
 
+/// Why a Coretime state-balance update was rejected (§6.1).
+#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
+pub enum StateBalanceRejection {
+	BelowUsed { current_total: Compact<Balance>, current_used: Compact<Balance> },
+	ParachainIsDeregistering,
+}
+
 /// Events recorded while Accumulating for a parachain (spec §3.1).
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub enum AccumulateLog {
 	/// Available state balance insufficient for the operation. Spec §6.1.
 	InsufficientStateBalance { reason: InsufficientBalanceReason },
-	/// `parachain_set_state_balance` rejected because `attempted < current_used`.
+	/// `ParachainSetStateBalance` rejected for the named target and reason.
 	StateBalanceUpdateRejected {
+		para_id: ParaId,
 		attempted: Compact<Balance>,
-		current_total: Compact<Balance>,
-		current_used: Compact<Balance>,
+		reason: StateBalanceRejection,
 	},
 	/// JAM `designate` was not called: the assembled key set's length is not in
 	/// `valcount`. The staging buffer is cleared regardless. Spec §5.3.

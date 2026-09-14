@@ -9,6 +9,9 @@ module fuzz {
   import refine.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/refine"
   import accumulate.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/accumulate"
 
+  pure def activeCodeCandidate(s: ParachainServiceState, para: ParaId): ParachainCandidate =
+    { validationCode: { hash: activeCodeHashOr(s.paraInfo(para), NoCodeHash), len: FixedCodeLen }, pov: 0 }
+
   pure def replayWork(
     s: ParachainServiceState, para: ParaId, curHead: HeadData,
     candidate: ParachainCandidate, mode: int, anchor: Timeslot, auth: int,
@@ -28,7 +31,7 @@ module fuzz {
       if (mode == 2) PvfReportError(42) else if (mode == 4) PvfPanic else PvfOk,
       if (mode == 3) None else Some(headHash(
         if (mode == 7) StaleParentHead else curHead)),
-      if (mode == 5) None else Some(curHead + 1), msgs, anchor)[0]
+      if (mode == 5) HeadUndeclared else HeadDeclared(curHead + 1), msgs, anchor)[0]
     { result: result, authTrace: auth }
   }
 
@@ -40,18 +43,18 @@ module fuzz {
       RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen }),
       RequestCodeUpgrade({ hash: { vchBytes: 778 }, len: FixedCodeLen }),
       RequestCodeUpgrade({ hash: activeCodeHashOr(s.paraInfo(para), NoCodeHash), len: FixedCodeLen }),
-      Solicit({ hash: { hashBytes: 777 }, len: FixedCodeLen }),
-      Solicit({ hash: { hashBytes: 778 }, len: FixedCodeLen }),
-      Forget({ paraId: para, hash: { hashBytes: 777 }, len: FixedCodeLen }),
-      Forget({ paraId: para, hash: { hashBytes: 778 }, len: FixedCodeLen }),
-      Solicit({ hash: { hashBytes: 7 }, len: 1024 }),
-      Solicit({ hash: { hashBytes: 8 }, len: 1024 }),
-      Forget({ paraId: para, hash: { hashBytes: 7 }, len: 1024 }),
-      Forget({ paraId: para, hash: { hashBytes: 8 }, len: 1024 }),
-      Solicit({ hash: code, len: FixedCodeLen }),
-      Forget({ paraId: para, hash: code, len: FixedCodeLen }),
-      Forget({ paraId: CoretimeParaId, hash: { hashBytes: 7 }, len: 1024 }),
-      Forget({ paraId: AssetHubParaId, hash: { hashBytes: 7 }, len: 1024 })
+      Solicit({ target: Parachain(para), hash: { hashBytes: 777 }, len: FixedCodeLen }),
+      Solicit({ target: Parachain(para), hash: { hashBytes: 778 }, len: FixedCodeLen }),
+      Forget({ target: Parachain(para), hash: { hashBytes: 777 }, len: FixedCodeLen }),
+      Forget({ target: Parachain(para), hash: { hashBytes: 778 }, len: FixedCodeLen }),
+      Solicit({ target: Parachain(para), hash: { hashBytes: 7 }, len: 1024 }),
+      Solicit({ target: Parachain(para), hash: { hashBytes: 8 }, len: 1024 }),
+      Forget({ target: Parachain(para), hash: { hashBytes: 7 }, len: 1024 }),
+      Forget({ target: Parachain(para), hash: { hashBytes: 8 }, len: 1024 }),
+      Solicit({ target: Parachain(para), hash: code, len: FixedCodeLen }),
+      Forget({ target: Parachain(para), hash: code, len: FixedCodeLen }),
+      Forget({ target: Parachain(CoretimeParaId), hash: { hashBytes: 7 }, len: 1024 }),
+      Forget({ target: Parachain(AssetHubParaId), hash: { hashBytes: 7 }, len: 1024 })
     )
   }
 
@@ -94,9 +97,10 @@ module fuzz {
     val packages = if (numPkgs == 0) List()
       else if (numPkgs == 1) List(wp1) else List(wp1, wp2)
     val out = accumulateBlock(svc, slot, jamStagingSet, solicitedSet,
-      FixedCodeLen, packages)
+      FixedCodeLen, packages, foreignServices)
     all {
       svc' = out.state,
+      foreignServices' = out.foreign,
       now' = slot,
       jamStagingSet' = out.staging,
       solicitedSet' = out.solicited,

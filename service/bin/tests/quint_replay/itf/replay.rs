@@ -109,7 +109,13 @@ fn digest_ok(value: &Value, codex: &mut Codex) -> Result<ParachainWorkDigest, St
 		integer(field(field(validation, "hash")?, "vchBytes")?)?,
 		integer(field(validation, "len")?)?,
 	)?;
-	let parent = Codex::head(integer(field(field(value, "parentHeadHash")?, "hashBytes")?)?)?;
+	let parent_hash = field(value, "parentHeadHash")?;
+	let parent = Codex::head(integer(
+		parent_hash
+			.get("headBytes")
+			.or_else(|| parent_hash.get("hashBytes"))
+			.ok_or("missing parent head hash")?,
+	)?)?;
 	let messages = field(value, "upwardMessages")?
 		.as_array()
 		.ok_or("upwardMessages must be a list")?
@@ -137,18 +143,23 @@ fn upward_message(
 			let len = u32::try_from(integer(field(value, "len")?)?)
 				.map_err(|_| "preimage length out of range")?;
 			let hash = codex.hash(integer(field(field(value, "hash")?, "hashBytes")?)?, len)?;
-			if tag == "Solicit" {
-				Ok(UpwardMessage::Solicit {
-					target: Target::Parachain(caller),
-					hash,
-					len: Compact(len),
-				})
+			let target = if let Some(target) = value.get("target") {
+				let (kind, target) = variant(target)?;
+				match kind {
+					"Parachain" => Target::Parachain(para_id(target, codex)?),
+					// Foreign service outcomes cannot be replayed until the host supports them.
+					other => return Err(format!("unsupported preimage target {other}")),
+				}
+			} else if tag == "Solicit" {
+				// Historical fixtures before the explicit Target vocabulary.
+				Target::Parachain(caller)
 			} else {
-				Ok(UpwardMessage::Forget {
-					target: Target::Parachain(para_id(field(value, "paraId")?, codex)?),
-					hash,
-					len: Compact(len),
-				})
+				Target::Parachain(para_id(field(value, "paraId")?, codex)?)
+			};
+			if tag == "Solicit" {
+				Ok(UpwardMessage::Solicit { target, hash, len: Compact(len) })
+			} else {
+				Ok(UpwardMessage::Forget { target, hash, len: Compact(len) })
 			}
 		},
 		"RequestCodeUpgrade" => {

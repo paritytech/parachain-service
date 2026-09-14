@@ -103,10 +103,15 @@ pub fn state(
 		allow(key);
 	}
 
-	// The pinned model still uses a timeslot-linked queue. Rust uses fixed-size
-	// numbered buckets. Do not silently accept nonempty expectations without a codex.
+	// Nonempty incoming queues still require an input and service-id codex.
+	// Historical fixtures use the pre-bucket endpoint name.
 	if !map_entries(field(svc, "incomingTransfers")?)?.is_empty() ||
-		variant(field(svc, "incomingTransferChain")?)?.0 != "None"
+		variant(
+			svc.get("incomingTransferBuckets")
+				.or_else(|| svc.get("incomingTransferChain"))
+				.ok_or("missing incoming transfer endpoints")?,
+		)?
+		.0 != "None"
 	{
 		return Err(format!(
 			"frame {frame}: nonempty incoming transfers require a bucket-layout codex"
@@ -116,7 +121,7 @@ pub fn state(
 		.service_key(MOCK_SERVICE_ID, &storage_key(Tag::IncomingTransferBuckets, &()))
 		.is_some()
 	{
-		return Err(format!("frame {frame}: svc.incomingTransferChain differs"));
+		return Err(format!("frame {frame}: svc.incomingTransferBuckets differs"));
 	}
 
 	// JAM hashes service keys, so their original tags cannot be recovered. Check
@@ -186,7 +191,7 @@ mod tests {
 		for (tag, expected) in [
 			(Tag::PendingAssignCores, "pendingAssignCores"),
 			(Tag::StagedValidatorKeys, "stagedValidatorKeys"),
-			(Tag::IncomingTransferBuckets, "incomingTransferChain"),
+			(Tag::IncomingTransferBuckets, "incomingTransferBuckets"),
 		] {
 			let storage = fresh_storage(|s| match tag {
 				Tag::PendingAssignCores => {

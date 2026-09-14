@@ -65,3 +65,9 @@ fn empty_block_removes_log_errors() {
 	let error = replay::trace(&trace.to_string()).unwrap_err();
 	assert!(error.contains(&format!("frame {frame}: svc.parachainLog[1] differs")), "{error}");
 }
+
+#[test]
+fn rejected_state_balance_works() {
+	replay::trace(include_str!("../fixtures/quint/blocks/rejected_state_balance_works.itf.json"))
+		.expect("the rejection identifies the target and the below-used reason in Coretime's log");
+}

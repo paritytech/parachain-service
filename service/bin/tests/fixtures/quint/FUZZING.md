@@ -125,22 +125,16 @@ model Refine-log representations cannot be replayed as Rust Refine errors.
 Other comparator limitations remain those in [README.md](README.md). Unsupported
 values fail explicitly; the runner does not discard failing traces.
 
-The upgrade profile currently exposes known model/Rust disagreements and does
-**not** pass a full differential campaign. With 50 steps, seed 1 fails at frame 32
-on a missing model `ForgetAgainAt` event. Rust now reaps expired upgrades before
-rejecting their candidates and logs `InvalidCodeHash`; expired-code rejection
-still exposes the model dropping the reap's `ForgetAgainAt` event (seed 2, frame
-21, and saved seed 2709851819, frame 11). See [the reproductions](../../../../../upstream-feedback/upgrade-expiry-replay.md).
-These inputs remain enabled. Ordinary regression tests assert the exact known
-mismatch categories; the fuzz runner still fails and saves the offending trace.
+The upgrade profile still exposes the missing model `ForgetAgainAt` event when
+an accepted candidate releases provided code. Those inputs remain enabled;
+ordinary regression tests assert the known mismatch while the fuzz runner fails
+and saves offending traces. See [the reproduction](../../../../../upstream-feedback/upgrade-expiry-replay.md).
 
-The initial campaign found that the pinned model prunes logs for stale-parent
-candidates while Rust preserved them (seed 1, frame 11; seed 2, frame 14).
-Rust now follows the pinned model. Whether rejected candidates should prune is
-tracked in [issue #35](https://github.com/paritytech/parachain-service/issues/35);
-see also [the reproduction](../../../../../upstream-feedback/stale-parent-log-pruning.md).
-The seed-1 prefix is retained in the ordinary replay suite as
-`log_pruning/stale_parent_seed_1_works.itf.json`.
+Quint `06c2a49202` changed rejection to preserve state. Rust now matches it:
+rejected candidates neither prune logs nor commit tentative expiry cleanup.
+The regenerated `log_pruning/stale_parent_seed_1_works.itf.json` covers the
+rejection/pruning shape found by the old campaign; it no longer contains the
+old model's expected states.
 
 A small machinery check that precedes those failures, plus CLI parity:
 

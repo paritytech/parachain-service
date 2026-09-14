@@ -21,8 +21,9 @@ fn rejects_change(pointer: &str, value: i128, field: &str, width: &str) {
 
 #[test]
 fn balance_range_errors() {
-	// Frame zero exercises seeding; frame eleven exercises post-replay comparison.
-	for frame in [0, 11] {
+	// Check seeding and the final post-replay comparison.
+	let last = fixture()["states"].as_array().unwrap().len() - 1;
+	for frame in [0, last] {
 		for field in ["totalStateBalance", "usedStateBalance"] {
 			let pointer = format!("/states/{frame}/svc/parachains/#map/0/1/{field}");
 			let original = fixture().pointer(&pointer).unwrap()["#bigint"]
@@ -46,9 +47,20 @@ fn block_slot_range_errors() {
 
 #[test]
 fn lookup_anchor_range_errors() {
+	let trace = fixture();
+	let frame = trace["states"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.position(|state| {
+			state
+				.pointer("/lastStepWorkResults/0/result/value/value/lookupAnchor")
+				.is_some()
+		})
+		.expect("candidate frame");
 	for value in [-1, 1i128 << 32] {
 		rejects_change(
-			"/states/1/lastStepWorkResults/0/result/value/value/lookupAnchor",
+			&format!("/states/{frame}/lastStepWorkResults/0/result/value/value/lookupAnchor"),
 			value,
 			"lookupAnchor",
 			"u32",

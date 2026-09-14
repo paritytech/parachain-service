@@ -82,7 +82,11 @@ pub fn state(
 	let root = commitment(previous, current, codex)?;
 	let expected = match variant(field(current, "lastHeadRoot")?)? {
 		("None", _) => None,
-		("Some", hash) => Some(integer(field(hash, "hashBytes")?)?),
+		("Some", hash) => Some(integer(
+			hash.get("merkleBytes")
+				.or_else(|| hash.get("hashBytes"))
+				.ok_or("missing Merkle hash")?,
+		)?),
 		(tag, _) => return Err(format!("frame {frame}: invalid lastHeadRoot variant {tag}")),
 	};
 	if expected != root.map(|v| v.0) {
@@ -164,7 +168,7 @@ mod tests {
 		let mut trace = fixture();
 		document_trace(&trace).unwrap();
 		trace["states"][1]["lastHeadRoot"] =
-			json!({"tag":"Some", "value":{"hashBytes":{"#bigint":"999"}}});
+			json!({"tag":"Some", "value":{"merkleBytes":{"#bigint":"999"}}});
 		assert!(document_trace(&trace).unwrap_err().contains("frame 1: lastHeadRoot differs"));
 		trace["states"][1]["lastHeadRoot"] = json!({"tag":"None", "value":{"#tup":[]}});
 		assert!(document_trace(&trace).unwrap_err().contains("frame 1: lastHeadRoot differs"));
