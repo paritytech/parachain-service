@@ -1,3 +1,4 @@
+mod balances;
 mod blocks;
 #[path = "../common/mod.rs"]
 mod common;

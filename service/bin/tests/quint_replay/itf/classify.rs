@@ -26,6 +26,21 @@ pub fn classify(previous: &Value, current: &Value) -> Result<FrameKind, String> 
 		};
 	}
 
+	// Explicit operands also identify invocations whose transfers are all dropped.
+	if let Some(incoming) = current.get("replayIncoming") {
+		let incoming = incoming.as_array().ok_or("replayIncoming must be a list")?;
+		if !incoming.is_empty() {
+			if previous.get("now") != current.get("now") ||
+				current
+					.get("lastStepWorkResults")
+					.and_then(Value::as_array)
+					.is_none_or(|results| !results.is_empty())
+			{
+				return Err("incoming frame also contains a block".into());
+			}
+			return Ok(FrameKind::IncomingTransfer);
+		}
+	}
 	if previous == current {
 		return Ok(FrameKind::Noop);
 	}
@@ -111,6 +126,23 @@ mod tests {
 		let mut current = previous.clone();
 		current["mbt::actionTaken"] = json!("stepRefineAccumulate");
 		assert_eq!(classify(&previous, &current).unwrap(), FrameKind::Block);
+	}
+
+	#[test]
+	fn dropped_incoming_works() {
+		let mut frame = frame(0, svc(), json!([]));
+		frame["replayIncoming"] = json!([{"amount": 0}]);
+		// Repeated identical dropped inputs still need to execute in Rust.
+		assert_eq!(classify(&frame, &frame).unwrap(), FrameKind::IncomingTransfer);
+	}
+
+	#[test]
+	fn mixed_incoming_errors() {
+		let previous = frame(0, svc(), json!([]));
+		for mut current in [frame(1, svc(), json!([])), frame(0, svc(), json!([{}]))] {
+			current["replayIncoming"] = json!([{}]);
+			assert!(classify(&previous, &current).unwrap_err().contains("also contains a block"));
+		}
 	}
 
 	#[test]

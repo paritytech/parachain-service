@@ -103,25 +103,8 @@ pub fn state(
 		allow(key);
 	}
 
-	// Nonempty incoming queues still require an input and service-id codex.
-	// Historical fixtures use the pre-bucket endpoint name.
-	if !map_entries(field(svc, "incomingTransfers")?)?.is_empty() ||
-		variant(
-			svc.get("incomingTransferBuckets")
-				.or_else(|| svc.get("incomingTransferChain"))
-				.ok_or("missing incoming transfer endpoints")?,
-		)?
-		.0 != "None"
-	{
-		return Err(format!(
-			"frame {frame}: nonempty incoming transfers require a bucket-layout codex"
-		));
-	}
-	if storage
-		.service_key(MOCK_SERVICE_ID, &storage_key(Tag::IncomingTransferBuckets, &()))
-		.is_some()
-	{
-		return Err(format!("frame {frame}: svc.incomingTransferBuckets differs"));
+	for key in super::transfers::compare(storage, svc, frame)? {
+		allow(key);
 	}
 
 	// JAM hashes service keys, so their original tags cannot be recovered. Check
@@ -316,6 +299,6 @@ mod tests {
 		let mut expected = svc();
 		expected["incomingTransfers"] = json!({"#map": [[n(1), {}]]});
 		let error = state(&fresh_storage(|_| {}), &expected, &mut Codex::default(), 0).unwrap_err();
-		assert!(error.contains("bucket-layout codex"), "{error}");
+		assert!(error.contains("incoming bucket must be a list"), "{error}");
 	}
 }

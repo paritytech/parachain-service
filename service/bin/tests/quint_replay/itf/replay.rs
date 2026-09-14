@@ -61,7 +61,11 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 				provision(&mut storage, &pair[0], &pair[1], &mut codex)?
 			},
 			FrameKind::IncomingTransfer => {
-				return Err(format!("frame {frame}: incoming-transfer replay is not implemented"))
+				let items = super::transfers::operands(&pair[1])?;
+				let slot = bounded_integer::<u32>(field(&pair[1], "now")?, "now")?;
+				let (outcome, next, mutations) = accumulate_block(storage, items, slot);
+				output = Some((outcome.yielded, mutations));
+				storage = next;
 			},
 		}
 		compare::state(&storage, &pair[1], &mut codex, frame)?;

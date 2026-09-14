@@ -232,6 +232,8 @@ fn stream_matches_cli_works() {
 			.args([
 				"run",
 				"service/bin/tests/fixtures/quint/fuzz.qnt",
+				"--init",
+				"replayInit",
 				"--step",
 				"replayStep",
 				"--backend",

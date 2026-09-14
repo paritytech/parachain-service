@@ -3,6 +3,8 @@
 The opt-in Rust test starts a persistent Node/Quint process per worker. Quint
 chooses inputs and computes expected states; Rust replays the resulting work
 results through Accumulate in the PVM and compares storage after every transition.
+Incoming-transfer actions retain their actual operands and replay them through
+the same PVM entry point, including operands the model drops.
 After each block it also checks the returned head commitment and rejects JAM
 host effects outside the supported input domain (see [README.md](README.md)).
 Rust Refine is not executed. `fuzz.qnt` defines the input domain, not a sequence
@@ -104,7 +106,8 @@ Time gaps are at most `MaxLookupAge`, so sampled anchors lie between the valid
 lookback floor and the previous block slot.
 
 Each WP independently samples zero to four upward messages from `Solicit`,
-`Forget`, `RequestCodeUpgrade`, `SetKV`, and `RemoveKV`. Two shared hashes at length 1024 exercise duplicate requests,
+`Forget`, `RequestCodeUpgrade`, `SetKV`, `RemoveKV`, and
+`ParachainSetStateBalance`. Two shared hashes at length 1024 exercise duplicate requests,
 shared references, refunds, and provision/forget/re-solicit lifecycles. Active-code
 messages exercise pinning and unpinning. Forget targets include the caller and
 both registered paras, allowing Quint Refine to reject unauthorized foreign
@@ -128,7 +131,30 @@ writes unapplied when work fails. Storage contents, absence, balances, and KV
 failure-log key hashes are compared strictly. Keys avoid the leading-zero
 collisions in the model's abstract `listHash`.
 
-Registration, cleanup, and incoming transfers are not fuzzed yet. Malformed
+Balance updates target both registered paras and sample zero, one below current
+usage, exact usage, one above usage, the current total, and enough headroom for
+code reservations. Both paras can emit these messages, letting Quint reject
+unauthorized callers. Their position within a WP and block varies alongside
+writes, refunds, solicitations, and upgrade requests.
+
+Incoming actions sample batches of one to three transfers, three source service
+IDs, distinct integer memos, and amounts below/at/above the per-entry footprint
+as well as zero and 10000. Each action records `replayIncoming` independently of
+expected state, so replay checks rejected arrivals too. Source IDs are literal
+u32 values; memo integers map to a u64 little-endian prefix padded to 128 bytes.
+Only regular-balance transfers are generated: the vendored JAM host has no
+supervisor-balance selector, and the adapter rejects that unsupported input.
+These arrivals queue records and can charge Asset Hub's used state balance;
+they do not directly top up a parachain's state allowance. Queue contents,
+ordering, endpoints, count, and orphan storage keys are compared. Deterministic
+`balances` fixtures additionally cross the bucket capacity and reservation limit.
+The host service balance itself is not modeled by this replay profile.
+
+The streaming initializer is `replayInit` (model `init` plus an empty operand
+list); `replayStep` clears operands on block/provision actions. CLI parity tests
+use the same initializer.
+
+Registration and cleanup are not fuzzed yet. Malformed
 authorizer configuration and invalid item counts are excluded because their
 model Refine-log representations cannot be replayed as Rust Refine errors.
 Other comparator limitations remain those in [README.md](README.md). Unsupported

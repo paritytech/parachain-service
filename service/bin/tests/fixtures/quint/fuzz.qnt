@@ -9,6 +9,10 @@ module fuzz {
   import refine.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/refine"
   import accumulate.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/accumulate"
 
+  import transfer_inputs.* from "./transfer_inputs"
+
+  action replayInit = all { init, noTransfers }
+
   pure def activeCodeCandidate(s: ParachainServiceState, para: ParaId): ParachainCandidate =
     { validationCode: { hash: activeCodeHashOr(s.paraInfo(para), NoCodeHash), len: FixedCodeLen }, pov: 0 }
 
@@ -50,7 +54,14 @@ module fuzz {
         RemoveKV({ paraId: para, key: key }),
         RemoveKV({ paraId: CoretimeParaId, key: key }),
         RemoveKV({ paraId: AssetHubParaId, key: key }))))
-    kv.union(Set(
+    val balances = s.parachains.keys().fold(Set(), (msgs, target) => {
+      val used = s.paraInfo(target).usedStateBalance
+      val totals = Set(0, used - 1, used, used + 1,
+        s.paraInfo(target).totalStateBalance, used + FixedCodeLen * 2)
+      msgs.union(totals.map(total =>
+        ParachainSetStateBalance({ paraId: target, newTotal: total })))
+    })
+    kv.union(balances).union(Set(
       RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen }),
       RequestCodeUpgrade({ hash: { vchBytes: 778 }, len: FixedCodeLen }),
       RequestCodeUpgrade({ hash: activeCodeHashOr(s.paraInfo(para), NoCodeHash), len: FixedCodeLen }),
@@ -141,5 +152,19 @@ module fuzz {
     }
   }
 
-  action replayStep = any { block, provisionPreimage }
+  action incoming = {
+    nondet sender = oneOf(Set(MkServiceId(0), MkServiceId(3), MkServiceId(7)))
+    nondet amount = oneOf(Set(0, IncomingTransferEntryFootprint - 1,
+      IncomingTransferEntryFootprint, IncomingTransferEntryFootprint + 1, 10000))
+    nondet memo = oneOf(Set(0, 1, 255))
+    nondet count = oneOf(Set(1, 2, 3))
+    val transfers = range(0, count).foldl(List(), (acc, i) => acc.append({
+      from: sender, amount: amount, toSupervisorBalance: false, memo: memo + i
+    }))
+    recordIncoming(transfers)
+  }
+
+  action replayStep = any {
+    all { block, noTransfers }, all { provisionPreimage, noTransfers }, incoming
+  }
 }
