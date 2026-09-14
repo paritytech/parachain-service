@@ -1,7 +1,7 @@
 //! Decode supported Accumulate events without silently accepting unknown variants.
 
 use codec::Compact;
-use parachain_service::state::log::AccumulateLog;
+use parachain_service::state::log::{AccumulateLog, InsufficientBalanceReason};
 use serde_json::Value;
 
 use super::{
@@ -12,6 +12,21 @@ use super::{
 pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<AccumulateLog, String> {
 	let (tag, value) = variant(value)?;
 	match tag {
+		"InsufficientStateBalance" => {
+			let (reason, payload) = variant(value)?;
+			match reason {
+				"FromSolicit" => {
+					let len = u32::try_from(integer(field(payload, "len")?)?)
+						.map_err(|_| "FromSolicit length out of range")?;
+					let hash =
+						codex.hash(integer(field(field(payload, "hash")?, "hashBytes")?)?, len)?;
+					Ok(AccumulateLog::InsufficientStateBalance {
+						reason: InsufficientBalanceReason::Solicit { hash, len: Compact(len) },
+					})
+				},
+				other => Err(format!("unsupported insufficient balance reason {other}")),
+			}
+		},
 		"ForgetAgainAt" => {
 			let len = u32::try_from(integer(field(value, "len")?)?)
 				.map_err(|_| "ForgetAgainAt length out of range")?;

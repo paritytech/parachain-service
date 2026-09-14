@@ -9,6 +9,35 @@ const TRACE: &str =
 const ACTIVATION: &str = include_str!("../fixtures/quint/upgrades/activation_works.itf.json");
 
 #[test]
+fn insufficient_balance_preserves_pending_works() {
+	replay::trace(include_str!(
+		"../fixtures/quint/upgrades/insufficient_balance_preserves_pending_works.itf.json"
+	))
+	.expect("a rejected upgrade logs the failed reservation and preserves the pending code");
+}
+
+// Known differences: keep these explicit while the fuzz runner continues to
+// fail on them. See upstream-feedback/upgrade-expiry-replay.md.
+#[test]
+fn provided_upgrade_expiry_log_errors() {
+	let error = replay::trace(include_str!(
+		"../fixtures/quint/upgrades/provided_upgrade_expiry_log_works.itf.json"
+	))
+	.unwrap_err();
+	assert!(error.contains("svc.parachainLog[1] differs"), "{error}");
+	assert!(error.contains("Quint=[]") && error.contains("ForgetAgainAt"), "{error}");
+}
+
+#[test]
+fn expired_code_candidate_reaps_errors() {
+	let error = replay::trace(include_str!(
+		"../fixtures/quint/upgrades/expired_code_candidate_reaps_works.itf.json"
+	))
+	.unwrap_err();
+	assert!(error.contains("svc.parachains[1].pendingUpgrade differs"), "{error}");
+}
+
+#[test]
 fn activation_works() {
 	replay::trace(ACTIVATION).expect("the new-code candidate activates the provided upgrade");
 }

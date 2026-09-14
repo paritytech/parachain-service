@@ -41,6 +41,13 @@ Activation over provided old code has a known log mismatch: Rust emits
 `ForgetAgainAt`, while the pinned model discards the event. See
 [the reproduction](../../../../../upstream-feedback/upgrade-activation-log.md).
 
+`upgrades/insufficient_balance_preserves_pending_works.itf.json` checks that a
+second upgrade request rejected for insufficient balance preserves the first
+pending code and logs the failed reservation. The provided-code expiry and
+expired-code candidate fixtures reproduce known model/Rust differences; their
+Rust tests expect replay errors rather than agreement. The fuzz generator keeps
+these cases enabled; see [details](../../../../../upstream-feedback/upgrade-expiry-replay.md).
+
 `log_pruning/stale_parent_seed_1_works.itf.json` preserves frames 0–11 from the
 original streaming seed-1 failure. A stale-parent candidate prunes an earlier
 Refine error despite being rejected, matching the pinned specification. It is a
@@ -70,12 +77,14 @@ their storage and the combined returned head commitment.
 
 Replay processes all work results in order in one Accumulate invocation per block.
 The streaming fuzz generator samples zero, one, or two WPs per block, each with
-zero, one, or two `Solicit`/`Forget` messages.
+zero, one, or two `Solicit`/`Forget`/`RequestCodeUpgrade` messages, and can
+select pending-code candidates.
 `blocks/ump_ordering_works.itf.json` checks duplicate solicitations, shared
 references, a delegated forget in the second WP, and later release/re-solicitation.
 Nonempty incoming transfers
 are unsupported because the model and Rust use different bucket layouts.
-Accumulate-log decoding currently supports `ForgetAgainAt`; other event variants
+Accumulate-log decoding currently supports `ForgetAgainAt` and
+`InsufficientStateBalance(FromSolicit)`; other event variants
 are rejected explicitly. `Solicit` targets the sending parachain, and `Forget`
 supports parachain targets; service targets are not represented by these model
 messages. Returned head commitments are checked after every block. The output codex

@@ -14,9 +14,14 @@ module fuzz {
     candidate: ParachainCandidate, mode: int, anchor: Timeslot, auth: int,
     msgs: List[UpwardMessage]
   ): WorkResult = {
+    val pending = match s.paraInfo(para).pendingUpgrade {
+      | None => activeCodeCandidate(s, para)
+      | Some(pair) => { validationCode: pair._1.ref, pov: 0 }
+    }
     val pkg: WorkPackage = {
       authorizedParas: List(para),
-      items: List(if (mode == 6) candidate else activeCodeCandidate(s, para))
+      items: List(if (mode == 6) candidate else if (mode == 8) pending
+        else activeCodeCandidate(s, para))
     }
     val result = if (mode == 1) WorkErr else refine(
       s, pkg, false,
@@ -32,6 +37,13 @@ module fuzz {
   pure def replayMessages(s: ParachainServiceState, para: ParaId): Set[UpwardMessage] = {
     val code = vchAsHash(activeCodeHashOr(s.paraInfo(para), NoCodeHash))
     Set(
+      RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen }),
+      RequestCodeUpgrade({ hash: { vchBytes: 778 }, len: FixedCodeLen }),
+      RequestCodeUpgrade({ hash: activeCodeHashOr(s.paraInfo(para), NoCodeHash), len: FixedCodeLen }),
+      Solicit({ hash: { hashBytes: 777 }, len: FixedCodeLen }),
+      Solicit({ hash: { hashBytes: 778 }, len: FixedCodeLen }),
+      Forget({ paraId: para, hash: { hashBytes: 777 }, len: FixedCodeLen }),
+      Forget({ paraId: para, hash: { hashBytes: 778 }, len: FixedCodeLen }),
       Solicit({ hash: { hashBytes: 7 }, len: 1024 }),
       Solicit({ hash: { hashBytes: 8 }, len: 1024 }),
       Forget({ paraId: para, hash: { hashBytes: 7 }, len: 1024 }),

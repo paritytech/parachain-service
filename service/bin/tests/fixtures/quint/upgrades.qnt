@@ -7,7 +7,59 @@ module upgrades {
   import state_vars.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state_vars"
   import main.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/main"
 
+  import state_balance.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state_balance"
+
   import tests.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/tests"
+
+  run insufficient_balance_preserves_pending_works = {
+    val first = { vchBytes: 777 }
+    val second = { vchBytes: 778 }
+    init
+      .then(applyHappyPath(CoretimeParaId, { vchBytes: 1 }, List(
+        ParachainSetStateBalance({ paraId: CoretimeParaId,
+          newTotal: svc.paraInfo(CoretimeParaId).usedStateBalance + preimageFootprint(FixedCodeLen) }))))
+      .then(applyHappyPath(CoretimeParaId, { vchBytes: 1 }, List(
+        RequestCodeUpgrade({ hash: first, len: FixedCodeLen }),
+        RequestCodeUpgrade({ hash: second, len: FixedCodeLen }))))
+      .then(expectThat(all {
+        match svc.paraInfo(CoretimeParaId).pendingUpgrade {
+          | None => false
+          | Some(pair) => pair._1.ref.hash == first
+        },
+        not(svc.preimageRegistry.keys().contains((vchAsHash(second), FixedCodeLen))),
+        svc.paraLog(CoretimeParaId).foldl(false, (found, entry) => found or match entry._2 {
+          | AccumulateLogEntry(events) => events.foldl(false, (foundEvent, event) =>
+              foundEvent or event == InsufficientStateBalance(
+                FromSolicit({ hash: vchAsHash(second), len: FixedCodeLen })))
+          | _ => false
+        })
+      }))
+  }
+
+  // Known model/Rust differences exposed by upgrade fuzzing. These runs pin
+  // the model's behavior; Rust tests below assert the specific replay mismatch.
+  action providedUpgrade =
+    applyHappyPath(CoretimeParaId, { vchBytes: 1 }, List(
+      RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen })))
+
+  run provided_upgrade_expiry_log_works =
+    init.then(providedUpgrade)
+      .then(applyHappyPaths(List()))
+      .then(provide({ hashBytes: 777 }, FixedCodeLen))
+      .then(workErrorAt(UpgradeTimeoutTimeslots + 2))
+      .then(applyHappyPath(CoretimeParaId, { vchBytes: 1 }, List()))
+      .then(expectThat(svc.paraInfo(CoretimeParaId).pendingUpgrade == None))
+
+  run expired_code_candidate_reaps_works =
+    init.then(providedUpgrade)
+      .then(applyHappyPaths(List()))
+      .then(provide({ hashBytes: 777 }, FixedCodeLen))
+      .then(workErrorAt(UpgradeTimeoutTimeslots + 2))
+      .then(applyHappyPath(CoretimeParaId, { vchBytes: 777 }, List()))
+      .then(expectThat(all {
+        svc.paraInfo(CoretimeParaId).pendingUpgrade == None,
+        svc.paraInfo(CoretimeParaId).headData == 1
+      }))
 
   run activation_works = {
     val oldCode: ValidationCodeHash = { vchBytes: 1 }

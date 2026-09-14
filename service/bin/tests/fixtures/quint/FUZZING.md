@@ -97,13 +97,14 @@ Each WP independently samples its para, outcome, auth-trace length, and lookup
 anchor. Same-para pairs either compete for the pre-block head or chain the second
 candidate off the first candidate's proposed head. Both refine against pre-block
 state; Quint decides which results accumulate successfully. Empty blocks are
-sampled independently of work outcomes. Modes 0 and 8 both select valid work.
+sampled independently of work outcomes. Mode 0 selects active-code work; mode 8 selects pending-code work when an
+upgrade exists, otherwise active code. Mode 6 still samples arbitrary candidates.
 Selecting whole outcome classes keeps successful candidates reachable frequently.
 Time gaps are at most `MaxLookupAge`, so sampled anchors lie between the valid
 lookback floor and the previous block slot.
 
-Each WP independently samples zero, one, or two upward messages from `Solicit`
-and `Forget`. Two shared hashes at length 1024 exercise duplicate requests,
+Each WP independently samples zero, one, or two upward messages from `Solicit`,
+`Forget`, and `RequestCodeUpgrade`. Two shared hashes at length 1024 exercise duplicate requests,
 shared references, refunds, and provision/forget/re-solicit lifecycles. Active-code
 messages exercise pinning and unpinning. Forget targets include the caller and
 both registered paras, allowing Quint Refine to reject unauthorized foreign
@@ -111,11 +112,26 @@ calls. Messages are also sampled for failed work and stale-parent candidates;
 Quint determines whether they reach Accumulate and take effect. The codex requires
 one length per abstract hash, so conflicting lengths are excluded.
 
-Registration, cleanup, upgrade lifecycle, and incoming transfers are not fuzzed yet. Malformed
+Upgrade requests sample two shared code hashes (777 and 778, each `FixedCodeLen`)
+and the caller's active code. The same new hashes can be solicited and forgotten,
+so requests can encounter independently held references and pinned pending code.
+Requests can repeat, refresh a deadline, supersede a different upgrade, or fail a
+reservation. External provision and pending-code candidates allow activation;
+time gaps can cross upgrade deadlines. Expected outcomes always come from Quint.
+
+Registration, cleanup, and incoming transfers are not fuzzed yet. Malformed
 authorizer configuration and invalid item counts are excluded because their
 model Refine-log representations cannot be replayed as Rust Refine errors.
 Other comparator limitations remain those in [README.md](README.md). Unsupported
 values fail explicitly; the runner does not discard failing traces.
+
+The upgrade profile currently exposes known model/Rust disagreements and does
+**not** pass a full differential campaign. With 50 steps, seed 1 fails at frame 32
+on a missing model `ForgetAgainAt` event; seed 2 fails at frame 21 because the
+model reaps an expired upgrade before rejecting its candidate while Rust retains
+it. See [the reproductions](../../../../../upstream-feedback/upgrade-expiry-replay.md).
+These inputs remain enabled. Ordinary regression tests assert the exact known
+mismatch categories; the fuzz runner still fails and saves the offending trace.
 
 The initial campaign found that the pinned model prunes logs for stale-parent
 candidates while Rust preserved them (seed 1, frame 11; seed 2, frame 14).
