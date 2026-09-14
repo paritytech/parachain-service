@@ -14,7 +14,7 @@ cargo test -p parachain-service-bin --test quint_replay
 ```
 
 The generator uses the pinned model, TypeScript backend, and seed 1. It regenerates
-`refine_errors`, `blocks`, `upgrades`, `log_pruning`, `kv`, `balances`, and `lifecycle` scenarios, including the
+`refine_errors`, `blocks`, `upgrades`, `log_pruning`, `kv`, `balances`, `lifecycle`, and `assignments` scenarios, including the
 root minimal and stale-parent fixtures. Other historical fixtures are retained.
 JSON is compact and timestamp-free; use `just quint-fmt` to expand it for review
 and `just quint-compact` before committing.
@@ -28,6 +28,7 @@ and `just quint-compact` before committing.
 | KV operations | Overwrite, empty values/keys, SCALE length boundary, refunds, delegated and unauthorized removal, failed reservations, and stale candidates |
 | Balances and incoming transfers | Allowance boundaries, authorization, reservations/refunds, queue packing and rollover, admission/drop at the reservation limit, and Asset Hub charges |
 | Lifecycle | Registration thresholds and repeated funding, unauthorized calls, forced head/code changes, cleanup refusal with extra storage, pending-code release, delayed cleanup, and re-registration |
+| Assignments | Immediate/delayed execution, due-slot boundaries, queue expansion/rotation, repeated replacements, authorization, invalid queues, handoffs, pending storage, and final JAM queues/privileges |
 | Upgrades | Requests, provision, activation, expiry, failed reservations, and rejected expired-code candidates |
 | Log pruning | Rejected candidates retain logs; accepted candidates prune below the lookup anchor and retain the boundary |
 
@@ -37,9 +38,18 @@ Provided-code activation and expiry currently omit `ForgetAgainAt` to match Quin
 
 ## Adapter limits
 
-- Assignment inputs and validator-key inputs are unsupported.
-  Blocks must expect empty assignments and no staging-set change. Unexpected Rust
-  assignment, privilege, designation, transfer, provide, create, or eject effects fail.
+- Validator-key inputs are unsupported; blocks must expect no staging-set change.
+  Unexpected designation, transfer, provide, create, or eject effects fail.
+- Assignment messages and initial pending queues are supported. Authorizer integers
+  map to a u32 little-endian prefix padded to 32 bytes. Assignment service IDs swap
+  Quint 1 with mock 0; all other IDs remain literal (incoming-transfer IDs retain
+  their existing literal mapping). Replay starts with this service owning every
+  core and carries actual JAM privileges between blocks, including handoffs.
+  Quint's ordered `lastStepAssigns` is folded into expected final queues and
+  privileges, checking all privilege fields and rejecting extra assigned cores.
+  The vendored host exposes only final mutations, so overwritten intermediate
+  calls and ordering between independent cores cannot be compared. JAM ownership
+  failures are not filtered from model expectations and surface as mismatches.
 - Incoming-transfer replay requires explicit `replayIncoming` operands and an
   initially empty queue. Regular-balance arrivals are supported; supervisor
   arrivals fail explicitly because the vendored host has no selector. Integer

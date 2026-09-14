@@ -166,6 +166,16 @@ existing allowance rather than rejecting duplicate registration. Deterministic
 code release, deregistration restrictions, and re-registration. All semantics
 come from the pinned model; replay does not suppress mismatches.
 
+Assignment inputs cover cores 0, 1, and 340, queues of lengths 0, 1, 2, 3, 5,
+79, 80, and 81, and slots before/at/after the block or one queue period ahead.
+`None` retains this service as assigner; `Some(7)` exercises handoffs and Refine's
+full-queue requirement. A dedicated `assignmentBlock` samples up to two messages,
+both privileged and unauthorized callers, and gaps around the 80-slot rotation
+period. Ordinary blocks mix assignments with the other UMPs. Expected state and
+assignment outputs come from the pinned model. Host assigner ownership persists
+between frames; attempts after a handoff are not suppressed. See README.md for
+the final-mutation comparison limit.
+
 Malformed
 authorizer configuration and invalid item counts are excluded because their
 model Refine-log representations cannot be replayed as Rust Refine errors.

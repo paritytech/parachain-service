@@ -17,9 +17,7 @@ use super::{
 	refine_log::refine_log,
 	seed,
 };
-use crate::common::{
-	accumulate_block, fresh_storage, work_item_skipped, work_item_with_auth_trace,
-};
+use crate::common::{fresh_storage, work_item_skipped, work_item_with_auth_trace};
 
 /// Replay a normalized Quint trace, preserving work-result order within each block.
 pub fn trace(json: &str) -> Result<(), String> {
@@ -38,6 +36,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 	let mut storage = fresh_storage(|storage| seeded = seed::seed(storage, first, &mut codex));
 	seeded?;
 	compare::state(&storage, first, &mut codex, 0)?;
+	let mut privileges = super::assignments::initial_privileges(storage.clone());
 
 	for (index, pair) in states.windows(2).enumerate() {
 		let frame = index + 1;
@@ -53,7 +52,8 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 					.map(|result| work_item(result, &mut codex))
 					.collect::<Result<Vec<_>, _>>()?;
 				let slot = bounded_integer::<u32>(field(&pair[1], "now")?, "now")?;
-				let (outcome, next, mutations) = accumulate_block(storage, items, slot);
+				let (outcome, next, mutations) =
+					accumulate_block(storage, items, slot, privileges.clone());
 				output = Some((outcome.yielded, mutations));
 				storage = next;
 			},
@@ -63,13 +63,18 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 			FrameKind::IncomingTransfer => {
 				let items = super::transfers::operands(&pair[1])?;
 				let slot = bounded_integer::<u32>(field(&pair[1], "now")?, "now")?;
-				let (outcome, next, mutations) = accumulate_block(storage, items, slot);
+				let (outcome, next, mutations) =
+					accumulate_block(storage, items, slot, privileges.clone());
 				output = Some((outcome.yielded, mutations));
 				storage = next;
 			},
 		}
 		compare::state(&storage, &pair[1], &mut codex, frame)?;
 		if let Some((yielded, mutations)) = output {
+			super::assignments::compare(&pair[1], &mutations, &privileges, frame)?;
+			if let Some(next) = &mutations.privileges {
+				privileges = next.clone();
+			}
 			super::compare_output::state(
 				&pair[0], &pair[1], yielded, &mutations, &mut codex, frame,
 			)?;
@@ -166,6 +171,7 @@ fn upward_message(
 				Ok(UpwardMessage::Forget { target, hash, len: Compact(len) })
 			}
 		},
+		"AssignCore" => super::assignments::message(value),
 		"SetKV" => {
 			let key = bytes(field(value, "key")?)?;
 			codex.register_kv_key(&key)?;
@@ -323,4 +329,22 @@ pub(crate) fn bytes(value: &Value) -> Result<Vec<u8>, String> {
 		.iter()
 		.map(|value| bounded_integer::<u8>(value, "byte"))
 		.collect()
+}
+
+// Preserve host assigner ownership between frames, including after a handoff.
+fn accumulate_block(
+	storage: Storage,
+	items: Vec<AccumulateItem>,
+	slot: u32,
+	privileges: jam_std_common::Privileges,
+) -> (executor::pj::AccumulateOutcome, Storage, jam_node::vm::StateMutations) {
+	let engine = jam_node::vm::Engine::new(Some(jam_node::PvmBackend::Interpreter))
+		.expect("interpreter engine should initialize");
+	let mut context = parachain_service_bin::mock::accumulate_context_with_privileges(
+		storage, items, slot, privileges,
+	);
+	let code_hash = jam_types::CodeHash(hash_raw(&parachain_service_bin::blob()));
+	let outcome = executor::pj::accumulate(&engine, code_hash, &mut context)
+		.expect("accumulate should run to completion");
+	(outcome, context.storage, context.mutations)
 }

@@ -48,25 +48,9 @@ pub fn state(
 	allow(storage_key(Tag::PendingAssignCores, &()));
 	for (core, entry) in map_entries(field(svc, "pendingAssigns")?)? {
 		let core = u16::try_from(integer(core)?).map_err(|_| "core out of range")?;
-		let queue = field(entry, "queue")?
-			.as_array()
-			.ok_or("queue must be a list")?
-			.iter()
-			.map(|v| Codex::authorizer_hash(integer(field(v, "authBytes")?)?).map(|hash| hash.0))
-			.collect::<Result<Vec<_>, _>>()?;
-		let assigner = match variant(field(entry, "assigner")?)? {
-			("None", _) => None,
-			("Some", value) => {
-				let (tag, value) = variant(value)?;
-				if tag != "MkServiceId" {
-					return Err("expected MkServiceId".into());
-				}
-				Some(uint(value)?)
-			},
-			_ => return Err("invalid assigner option".into()),
-		};
+		let expected = super::assignments::pending(entry)?;
 		let key = storage_key(Tag::PendingAssigns, &core);
-		if get_state::<PendingAssign>(storage, &key) != Some(PendingAssign { queue, assigner }) {
+		if get_state::<PendingAssign>(storage, &key) != Some(expected) {
 			return Err(format!("frame {frame}: svc.pendingAssigns[{core}] differs"));
 		}
 		allow(key);

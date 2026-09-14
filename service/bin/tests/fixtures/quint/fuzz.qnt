@@ -9,6 +9,7 @@ module fuzz {
   import refine.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/refine"
   import accumulate.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/accumulate"
 
+  import assignment_inputs.* from "./assignment_inputs"
   import lifecycle_inputs.* from "./lifecycle_inputs"
   import transfer_inputs.* from "./transfer_inputs"
 
@@ -42,7 +43,7 @@ module fuzz {
 
   // A small shared preimage pool makes repeats and cross-para references common.
   // Keep one length per hash, as required by the replay codex.
-  pure def replayMessages(s: ParachainServiceState, para: ParaId): Set[UpwardMessage] = {
+  pure def replayMessages(s: ParachainServiceState, para: ParaId, slot: Timeslot): Set[UpwardMessage] = {
     val code = vchAsHash(activeCodeHashOr(s.paraInfo(para), NoCodeHash))
     // No leading-zero keys: Quint's base-257 listHash aliases those keys.
     val kvKeys = Set(List(), List(1), List(2, 0, 255))
@@ -62,7 +63,7 @@ module fuzz {
       msgs.union(totals.map(total =>
         ParachainSetStateBalance({ paraId: target, newTotal: total })))
     })
-    kv.union(balances).union(lifecycleMessages).union(Set(
+    kv.union(balances).union(lifecycleMessages).union(assignmentMessages(slot)).union(Set(
       RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen }),
       RequestCodeUpgrade({ hash: { vchBytes: 778 }, len: FixedCodeLen }),
       RequestCodeUpgrade({ hash: activeCodeHashOr(s.paraInfo(para), NoCodeHash), len: FixedCodeLen }),
@@ -106,18 +107,18 @@ module fuzz {
     nondet numMsgs1 = oneOf(Set(0, 1, 2, 3, 4))
     nondet numMsgs2 = oneOf(Set(0, 1, 2, 3, 4))
     nondet numMsgs3 = oneOf(Set(0, 1, 2, 3, 4))
-    nondet msg11 = oneOf(replayMessages(svc, para1))
-    nondet msg12 = oneOf(replayMessages(svc, para1))
-    nondet msg13 = oneOf(replayMessages(svc, para1))
-    nondet msg14 = oneOf(replayMessages(svc, para1))
-    nondet msg21 = oneOf(replayMessages(svc, para2))
-    nondet msg22 = oneOf(replayMessages(svc, para2))
-    nondet msg23 = oneOf(replayMessages(svc, para2))
-    nondet msg24 = oneOf(replayMessages(svc, para2))
-    nondet msg31 = oneOf(replayMessages(svc, para3))
-    nondet msg32 = oneOf(replayMessages(svc, para3))
-    nondet msg33 = oneOf(replayMessages(svc, para3))
-    nondet msg34 = oneOf(replayMessages(svc, para3))
+    nondet msg11 = oneOf(replayMessages(svc, para1, slot))
+    nondet msg12 = oneOf(replayMessages(svc, para1, slot))
+    nondet msg13 = oneOf(replayMessages(svc, para1, slot))
+    nondet msg14 = oneOf(replayMessages(svc, para1, slot))
+    nondet msg21 = oneOf(replayMessages(svc, para2, slot))
+    nondet msg22 = oneOf(replayMessages(svc, para2, slot))
+    nondet msg23 = oneOf(replayMessages(svc, para2, slot))
+    nondet msg24 = oneOf(replayMessages(svc, para2, slot))
+    nondet msg31 = oneOf(replayMessages(svc, para3, slot))
+    nondet msg32 = oneOf(replayMessages(svc, para3, slot))
+    nondet msg33 = oneOf(replayMessages(svc, para3, slot))
+    nondet msg34 = oneOf(replayMessages(svc, para3, slot))
     val msgs1 = List(msg11, msg12, msg13, msg14).slice(0, numMsgs1)
     val msgs2 = List(msg21, msg22, msg23, msg24).slice(0, numMsgs2)
     val msgs3 = List(msg31, msg32, msg33, msg34).slice(0, numMsgs3)
@@ -167,6 +168,6 @@ module fuzz {
 
   action replayStep = any {
     all { block, noTransfers }, all { provisionPreimage, noTransfers }, incoming,
-    all { lifecycleBlock, noTransfers }
+    all { lifecycleBlock, noTransfers }, all { assignmentBlock, noTransfers }
   }
 }

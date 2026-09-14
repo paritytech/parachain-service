@@ -18,3 +18,5 @@ mod numeric_rejection;
 mod compare_output;
 
 mod transfers;
+
+mod assignments;

@@ -1,3 +1,4 @@
+mod assignments;
 mod balances;
 mod blocks;
 #[path = "../common/mod.rs"]
