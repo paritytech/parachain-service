@@ -74,8 +74,8 @@ Coretime and one for Asset Hub. Both heads advance from 0 to 1; replay checks
 their storage and the combined returned head commitment.
 
 Replay processes all work results in order in one Accumulate invocation per block.
-The streaming fuzz generator samples zero, one, or two WPs per block, each with
-zero, one, or two `Solicit`/`Forget`/`RequestCodeUpgrade` messages, and can
+The streaming fuzz generator samples zero to three WPs per block, each with
+zero to four `Solicit`/`Forget`/`RequestCodeUpgrade` messages, and can
 select pending-code candidates.
 `blocks/ump_ordering_works.itf.json` checks duplicate solicitations, shared
 references, a delegated forget in the second WP, and later release/re-solicitation.

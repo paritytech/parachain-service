@@ -62,40 +62,57 @@ module fuzz {
     nondet gap = oneOf(Set(1, 2, MaxLookupAge))
     val slot = now + gap
     val floor = if (slot > MaxLookupAge) slot - MaxLookupAge else 0
-    nondet numPkgs = oneOf(Set(0, 1, 2))
+    nondet numPkgs = oneOf(Set(0, 1, 2, 3))
     nondet para1 = oneOf(svc.parachains.keys())
     nondet para2 = oneOf(svc.parachains.keys())
+    nondet para3 = oneOf(svc.parachains.keys())
     // Choose whole outcome classes independently for each WP, keeping valid
     // work frequent enough to advance heads and prune logs.
     nondet mode1 = oneOf(0.to(8))
     nondet mode2 = oneOf(0.to(8))
+    nondet mode3 = oneOf(0.to(8))
     nondet candidate1 = oneOf(arbitraryCandidates(svc, para1))
     nondet candidate2 = oneOf(arbitraryCandidates(svc, para2))
+    nondet candidate3 = oneOf(arbitraryCandidates(svc, para3))
     nondet auth1 = oneOf(Set(0, 7, 255, 256))
     nondet auth2 = oneOf(Set(0, 7, 255, 256))
+    nondet auth3 = oneOf(Set(0, 7, 255, 256))
     nondet anchor1 = oneOf(Set(floor, (floor + now) / 2, now))
     nondet anchor2 = oneOf(Set(floor, (floor + now) / 2, now))
-    nondet numMsgs1 = oneOf(Set(0, 1, 2))
-    nondet numMsgs2 = oneOf(Set(0, 1, 2))
+    nondet anchor3 = oneOf(Set(floor, (floor + now) / 2, now))
+    nondet numMsgs1 = oneOf(Set(0, 1, 2, 3, 4))
+    nondet numMsgs2 = oneOf(Set(0, 1, 2, 3, 4))
+    nondet numMsgs3 = oneOf(Set(0, 1, 2, 3, 4))
     nondet msg11 = oneOf(replayMessages(svc, para1))
     nondet msg12 = oneOf(replayMessages(svc, para1))
+    nondet msg13 = oneOf(replayMessages(svc, para1))
+    nondet msg14 = oneOf(replayMessages(svc, para1))
     nondet msg21 = oneOf(replayMessages(svc, para2))
     nondet msg22 = oneOf(replayMessages(svc, para2))
-    val msgs1 = if (numMsgs1 == 0) List() else if (numMsgs1 == 1) List(msg11)
-      else List(msg11, msg12)
-    val msgs2 = if (numMsgs2 == 0) List() else if (numMsgs2 == 1) List(msg21)
-      else List(msg21, msg22)
+    nondet msg23 = oneOf(replayMessages(svc, para2))
+    nondet msg24 = oneOf(replayMessages(svc, para2))
+    nondet msg31 = oneOf(replayMessages(svc, para3))
+    nondet msg32 = oneOf(replayMessages(svc, para3))
+    nondet msg33 = oneOf(replayMessages(svc, para3))
+    nondet msg34 = oneOf(replayMessages(svc, para3))
+    val msgs1 = List(msg11, msg12, msg13, msg14).slice(0, numMsgs1)
+    val msgs2 = List(msg21, msg22, msg23, msg24).slice(0, numMsgs2)
+    val msgs3 = List(msg31, msg32, msg33, msg34).slice(0, numMsgs3)
     nondet chain = oneOf(Set(false, true))
+    nondet chain3 = oneOf(Set(false, true))
     val head1 = svc.paraInfo(para1).headData
     // Same-para WPs either compete for the pre-block head or chain off the
-    // first candidate's proposed head. Both refine against pre-block state,
-    // including when the first WP fails and the chained parent never lands.
+    // latest preceding candidate's proposed head. All refine against pre-block
+    // state, including when earlier work fails and the chained parent never lands.
     val head2 = if (para2 == para1 and chain) head1 + 1
       else svc.paraInfo(para2).headData
+    val head3 = if (chain3 and para3 == para2) head2 + 1
+      else if (chain3 and para3 == para1) head1 + 1
+      else svc.paraInfo(para3).headData
     val wp1 = replayWork(svc, para1, head1, candidate1, mode1, anchor1, auth1, msgs1)
     val wp2 = replayWork(svc, para2, head2, candidate2, mode2, anchor2, auth2, msgs2)
-    val packages = if (numPkgs == 0) List()
-      else if (numPkgs == 1) List(wp1) else List(wp1, wp2)
+    val wp3 = replayWork(svc, para3, head3, candidate3, mode3, anchor3, auth3, msgs3)
+    val packages = List(wp1, wp2, wp3).slice(0, numPkgs)
     val out = accumulateBlock(svc, slot, jamStagingSet, solicitedSet,
       FixedCodeLen, packages, foreignServices)
     all {

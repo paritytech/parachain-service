@@ -89,13 +89,13 @@ benchmarks.
 
 ## Initial input domain and known findings
 
-The generator samples zero, one, or two WPs per block, both registered parachains,
+The generator samples zero to three WPs per block, both registered parachains,
 valid candidates, stale parents, invalid code, missing head declarations,
 reported PVF errors, PVF panic, JAM WorkErr, auth-trace lengths, time gaps, and
 lookup anchors. It also samples external provision of solicited preimages.
 Each WP independently samples its para, outcome, auth-trace length, and lookup
-anchor. Same-para pairs either compete for the pre-block head or chain the second
-candidate off the first candidate's proposed head. Both refine against pre-block
+anchor. Same-para WPs either compete for the pre-block head or chain a candidate
+off the latest preceding same-para candidate's proposed head. All refine against pre-block
 state; Quint decides which results accumulate successfully. Empty blocks are
 sampled independently of work outcomes. Mode 0 selects active-code work; mode 8 selects pending-code work when an
 upgrade exists, otherwise active code. Mode 6 still samples arbitrary candidates.
@@ -103,7 +103,7 @@ Selecting whole outcome classes keeps successful candidates reachable frequently
 Time gaps are at most `MaxLookupAge`, so sampled anchors lie between the valid
 lookback floor and the previous block slot.
 
-Each WP independently samples zero, one, or two upward messages from `Solicit`,
+Each WP independently samples zero to four upward messages from `Solicit`,
 `Forget`, and `RequestCodeUpgrade`. Two shared hashes at length 1024 exercise duplicate requests,
 shared references, refunds, and provision/forget/re-solicit lifecycles. Active-code
 messages exercise pinning and unpinning. Forget targets include the caller and
