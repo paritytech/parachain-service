@@ -33,6 +33,14 @@ fn expired_code_candidate_preserves_upgrade_works() {
 }
 
 #[test]
+fn provided_old_code_activation_works() {
+	replay::trace(include_str!(
+		"../fixtures/quint/upgrades/provided_old_code_activation_works.itf.json"
+	))
+	.expect("activation cleanup omits its log to match Quint pending issue #36");
+}
+
+#[test]
 fn activation_works() {
 	replay::trace(ACTIVATION).expect("the new-code candidate activates the provided upgrade");
 }

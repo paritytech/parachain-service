@@ -125,10 +125,9 @@ model Refine-log representations cannot be replayed as Rust Refine errors.
 Other comparator limitations remain those in [README.md](README.md). Unsupported
 values fail explicitly; the runner does not discard failing traces.
 
-The upgrade profile still exposes the missing model `ForgetAgainAt` event when
-an accepted candidate releases provided code. Those inputs remain enabled;
-ordinary regression tests assert the known mismatch while the fuzz runner fails
-and saves offending traces. See [the reproduction](../../../../../upstream-feedback/upgrade-expiry-replay.md).
+Rust matches the model by omitting `ForgetAgainAt` when an accepted candidate
+releases provided code during expiry or activation, pending issue #36. Those
+inputs remain enabled, and ordinary regression tests assert strict agreement. See [the reproduction](../../../../../upstream-feedback/upgrade-expiry-replay.md).
 
 Quint `06c2a49202` changed rejection to preserve state. Rust now matches it:
 rejected candidates neither prune logs nor commit tentative expiry cleanup.

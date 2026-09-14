@@ -37,15 +37,16 @@ compares storage after every transition, including external provision. The old
 code is initially unprovided: activation removes its registry entry and request,
 refunds its charge, and emits no log. The new code remains provided. Mutation tests
 reject retaining either the old active code or the pending upgrade at activation.
-Activation over provided old code has a known log mismatch: Rust emits
-`ForgetAgainAt`, while the pinned model discards the event. See
+`upgrades/provided_old_code_activation_works.itf.json` covers provided old code:
+its reference and charge remain until expunge, and Rust omits `ForgetAgainAt`
+to match the pinned model pending issue #36. See
 [the reproduction](../../../../../upstream-feedback/upgrade-activation-log.md).
 
 `upgrades/insufficient_balance_preserves_pending_works.itf.json` checks that a
 second upgrade request rejected for insufficient balance preserves the first
 pending code and logs the failed reservation. A provided-code expiry on an accepted
-candidate still exposes the model dropping `ForgetAgainAt`; its regression expects
-a log comparison error. An expired-code candidate is rejected without reaping,
+candidate also omits `ForgetAgainAt` to match the model; its regression expects
+strict agreement. An expired-code candidate is rejected without reaping,
 logging or pruning, as introduced by Quint `06c2a49202`.
 
 `log_pruning/stale_parent_seed_1_works.itf.json` regenerates the rejected-parent

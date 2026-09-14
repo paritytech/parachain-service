@@ -36,8 +36,7 @@ module upgrades {
       }))
   }
 
-  // Known model/Rust differences exposed by upgrade fuzzing. These runs pin
-  // the model's behavior; Rust tests below assert the specific replay mismatch.
+  // Upgrade cleanup and rejection behavior from the pinned model.
   action providedUpgrade =
     applyHappyPath(CoretimeParaId, { vchBytes: 1 }, List(
       RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen })))
@@ -60,6 +59,29 @@ module upgrades {
         svc == prevSvc,
         svc.paraInfo(CoretimeParaId).headData == 1
       }))
+
+  run provided_old_code_activation_works = {
+    val oldCode: ValidationCodeHash = { vchBytes: 1 }
+    val newCode: ValidationCodeHash = { vchBytes: 778 }
+    val oldKey = (vchAsHash(oldCode), FixedCodeLen)
+    init
+      .then(provide(vchAsHash(oldCode), FixedCodeLen))
+      .then(applyHappyPath(CoretimeParaId, oldCode, List(
+        RequestCodeUpgrade({ hash: newCode, len: FixedCodeLen }))))
+      .then(applyHappyPaths(List()))
+      .then(provide(vchAsHash(newCode), FixedCodeLen))
+      .then(applyHappyPath(CoretimeParaId, newCode, List()))
+      .then(expectThat(all {
+        svc.paraInfo(CoretimeParaId).validationCode == Some(
+          { ref: { hash: newCode, len: FixedCodeLen }, pinned: false }),
+        svc.paraInfo(CoretimeParaId).pendingUpgrade == None,
+        svc.preimageStatus.get(oldKey) == Unrequested(now),
+        svc.preimageRegistry == prevSvc.preimageRegistry,
+        svc.paraInfo(CoretimeParaId).usedStateBalance ==
+          prevSvc.paraInfo(CoretimeParaId).usedStateBalance,
+        svc.paraLog(CoretimeParaId) == List()
+      }))
+  }
 
   run activation_works = {
     val oldCode: ValidationCodeHash = { vchBytes: 1 }

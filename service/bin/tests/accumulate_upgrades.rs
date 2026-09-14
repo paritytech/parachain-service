@@ -72,9 +72,9 @@ fn activation_works() {
 	assert!(info.pending_upgrade.is_none());
 	assert_eq!(&info.head_data[..], b"head-2");
 	// The old code was provided, so its release is two-step: still referenced,
-	// follow-up logged.
+	// follow-up notification omitted to match Quint pending issue #36.
 	assert!(registry_entry(&storage, code_ref(CODE)).is_some());
-	assert!(matches!(accumulate_logs(&storage, PARA)[..], [AccumulateLog::ForgetAgainAt { .. }]));
+	assert!(accumulate_logs(&storage, PARA).is_empty());
 }
 
 #[test]

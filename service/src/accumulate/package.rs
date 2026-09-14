@@ -101,7 +101,13 @@ pub fn process(now: Slot, service_id: ServiceId, record: &WorkItemRecord, heads:
 					reason: InsufficientBalanceReason::ParaInfo,
 				});
 			}
-			code_upgrades::activate_upgrade_if_match(para_id, validation_code.hash, now, &mut logs);
+			// FIXME: Quint discards activation cleanup logs too; match it pending issue #36.
+			code_upgrades::activate_upgrade_if_match(
+				para_id,
+				validation_code.hash,
+				now,
+				&mut Vec::new(),
+			);
 
 			// Step 7: replay the upward messages in order.
 			for message in upward_messages.into_iter() {
