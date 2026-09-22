@@ -111,6 +111,7 @@ pub enum MockAction {
 	RequestCodeUpgrade {
 		hash: [u8; 32],
 		len: u32,
+		phase: parachain_service_core::upward_message::CodeUpgradePhase,
 	},
 	TransferOut(parachain_service_core::upward_message::TransferOutArgs),
 	AssignCore {
@@ -313,14 +314,6 @@ mod host {
 		fn gas_raw() -> u64;
 		#[polkavm_import(index = 2)]
 		fn fetch_raw(buffer: u32, offset: u64, buffer_len: u64, kind: u64, a: u64, b: u64) -> u64;
-		#[polkavm_import(index = 7)]
-		fn historical_lookup_raw(
-			service: u64,
-			hash_ptr: u32,
-			out: u32,
-			offset: u64,
-			out_len: u64,
-		) -> u64;
 		#[polkavm_import(index = 8)]
 		fn export_raw(ptr: u32, len: u32) -> u64;
 		// --- Parachain Service host functions (§4.3) ---
@@ -340,27 +333,6 @@ mod host {
 
 	pub fn set_head(head: &[u8]) {
 		unsafe { set_head_raw(head.as_ptr() as u32, head.len() as u32) }
-	}
-
-	/// Fetch a preimage into a fresh buffer; `None` if unavailable.
-	/// `service = u64::MAX` is JAM's self sentinel, i.e. our own store.
-	#[allow(dead_code)]
-	pub fn lookup(hash: &[u8; 32], max_len: usize) -> Option<Vec<u8>> {
-		let mut out = alloc::vec![0u8; max_len];
-		let len = unsafe {
-			historical_lookup_raw(
-				u64::MAX,
-				hash.as_ptr() as u32,
-				out.as_ptr() as u32,
-				0,
-				max_len as u64,
-			)
-		};
-		if len == u64::MAX {
-			return None;
-		}
-		out.truncate((len as usize).min(max_len));
-		Some(out)
 	}
 
 	#[allow(dead_code)]
@@ -437,9 +409,12 @@ mod host {
 			MockAction::RemoveServiceStorage { service, key } => {
 				UpwardMessage::RemoveServiceStorage { service: *service, key: key.clone() }
 			},
-			MockAction::RequestCodeUpgrade { hash, len } => UpwardMessage::RequestCodeUpgrade {
-				hash: ValidationCodeHash(*hash),
-				len: (*len).into(),
+			MockAction::RequestCodeUpgrade { hash, len, phase } => {
+				UpwardMessage::RequestCodeUpgrade {
+					hash: ValidationCodeHash(*hash),
+					len: (*len).into(),
+					phase: *phase,
+				}
 			},
 			MockAction::TransferOut(args) => UpwardMessage::TransferOut(args.clone()),
 			MockAction::AssignCore { core, queue, assigner, jam_slot } => {

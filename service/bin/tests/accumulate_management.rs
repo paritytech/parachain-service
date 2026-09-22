@@ -66,8 +66,8 @@ fn registration_works() {
 
 	let info = para_info(&storage, NEW_PARA).expect("registration created the ParaInfo");
 	assert_eq!(&info.head_data[..], b"para-genesis");
-	assert_eq!(info.validation_code.as_ref().unwrap().code_ref, new_ref);
-	assert!(!info.validation_code.as_ref().unwrap().pinned);
+	assert_eq!(info.validation_code, Some(new_ref));
+	assert_eq!(info.announced_upgrade, None);
 	assert_eq!(info.total_state_balance, RICH);
 	assert_eq!(info.used_state_balance, baseline_for(NEW_PARA) + preimage_footprint(new_ref.len));
 	// The service solicited the code on the para's behalf.
@@ -175,8 +175,8 @@ fn forced_set_validation_code_works() {
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	let info = para_info(&storage, NEW_PARA).unwrap();
-	assert_eq!(info.validation_code.as_ref().unwrap().code_ref, forced_ref);
-	assert!(info.pending_upgrade.is_none());
+	assert_eq!(info.validation_code, Some(forced_ref));
+	assert!(info.announced_upgrade.is_none());
 	// The old code was provided, so its first forget only unrequests: the
 	// referencer is retained and a follow-up is logged (§6.1).
 	assert!(registry_entry(&storage, old_ref).is_some());
@@ -184,6 +184,72 @@ fn forced_set_validation_code_works() {
 		coretime_accumulate_logs(&storage)[..],
 		[AccumulateLog::ForgetAgainAt { .. }]
 	));
+}
+
+#[test]
+fn forced_set_validation_code_releases_announced_works() {
+	// §6.3: a forced replacement releases the displaced active code AND the
+	// standing announced code, and clears the announcement.
+	const ANN_CODE: &[u8] = b"announced-code";
+	const FORCED_CODE: &[u8] = b"forced-code";
+	let storage = fresh_storage(|s| {
+		seed_para(s, CORETIME_PARA_ID, b"ct-genesis", CT_CODE, RICH);
+		seed_para(s, NEW_PARA, b"para-genesis", NEW_CODE, RICH);
+	});
+	let old_ref = code_ref(NEW_CODE);
+	let ann_ref = code_ref(ANN_CODE);
+	let forced_ref = code_ref(FORCED_CODE);
+
+	// The para solicits and provides an upgrade candidate, then announces it.
+	let msg = UpwardMessage::Solicit {
+		target: parachain_service_core::upward_message::Target::Parachain(NEW_PARA),
+		hash: ann_ref.hash.0,
+		len: ann_ref.len.into(),
+	};
+	let digest = ok_digest(NEW_PARA, NEW_CODE, b"para-genesis", b"head-1", vec![msg], 0);
+	let (_, mut storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+	storage.provide(NOW, SVC, ANN_CODE).expect("solicited in the same block");
+	storage.commit();
+
+	let announce = UpwardMessage::RequestCodeUpgrade {
+		hash: ann_ref.hash,
+		len: ann_ref.len.into(),
+		phase: parachain_service_core::upward_message::CodeUpgradePhase::Announcement,
+	};
+	let digest = ok_digest(NEW_PARA, NEW_CODE, b"head-1", b"head-2", vec![announce], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
+	assert_eq!(para_info(&storage, NEW_PARA).unwrap().announced_upgrade, Some(ann_ref));
+
+	let digest = coretime_digest(
+		b"ct-genesis",
+		b"ct-1",
+		vec![UpwardMessage::ParachainSetValidationCode {
+			para_id: NEW_PARA,
+			new_validation_code_hash: forced_ref.hash,
+			new_validation_code_len: forced_ref.len.into(),
+		}],
+	);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 2);
+
+	let info = para_info(&storage, NEW_PARA).unwrap();
+	assert_eq!(info.validation_code, Some(forced_ref));
+	assert_eq!(info.announced_upgrade, None, "the announcement is cleared");
+	// Both displaced provided codes only unrequest on their first forget.
+	let logs = coretime_accumulate_logs(&storage);
+	assert!(
+		matches!(
+			logs[..],
+			[AccumulateLog::ForgetAgainAt { .. }, AccumulateLog::ForgetAgainAt { .. }]
+		),
+		"both displaced codes are released, got {logs:?}"
+	);
+	for displaced in [old_ref, ann_ref] {
+		assert!(
+			registry_entry(&storage, displaced).is_some_and(|e| e.referencers.contains(&NEW_PARA)),
+			"displaced {displaced:?} is retained pending its second forget"
+		);
+	}
+	assert!(registry_entry(&storage, forced_ref).is_some_and(|e| e.referencers.contains(&NEW_PARA)));
 }
 
 #[test]

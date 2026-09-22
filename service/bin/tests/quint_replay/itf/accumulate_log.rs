@@ -63,6 +63,17 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 				reason,
 			})
 		},
+		"CodeUpgradeNotAvailable" | "CodeUpgradeNotAnnounced" | "CanNotForgetValidationCode" => {
+			let len = u32::try_from(integer(field(value, "len")?)?)
+				.map_err(|_| format!("{tag} length out of range"))?;
+			let hash = codex.hash(integer(field(field(value, "hash")?, "hashBytes")?)?, len)?;
+			let len = Compact(len);
+			Ok(match tag {
+				"CodeUpgradeNotAvailable" => AccumulateLog::CodeUpgradeNotAvailable { hash, len },
+				"CodeUpgradeNotAnnounced" => AccumulateLog::CodeUpgradeNotAnnounced { hash, len },
+				_ => AccumulateLog::CanNotForgetValidationCode { hash, len },
+			})
+		},
 		"ForgetAgainAt" => {
 			let len = u32::try_from(integer(field(value, "len")?)?)
 				.map_err(|_| "ForgetAgainAt length out of range")?;

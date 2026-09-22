@@ -22,9 +22,28 @@ pub fn service_value_state_key(service_id: u32, key: &[u8]) -> StateKey {
 	let mut state_key = [0u8; 31];
 	// The first eight octets interleave the service id with the hash, so that the entries of one
 	// service are spread across the trie rather than sharing a common prefix.
-	state_key[..8].copy_from_slice(&[
-		id[0], hash[0], id[1], hash[1], id[2], hash[2], id[3], hash[3],
-	]);
+	state_key[..8]
+		.copy_from_slice(&[id[0], hash[0], id[1], hash[1], id[2], hash[2], id[3], hash[3]]);
+	state_key[8..].copy_from_slice(&hash[4..27]);
+	state_key
+}
+
+/// The state key of `service_id`'s preimage request for a value of length `len` and hash `hash`.
+///
+/// Unlike a service's own storage, the service does not choose this key: JAM derives it from the
+/// length and hash of the preimage, so any party can compute where a request lands from the
+/// preimage alone. Mirrors the `ServiceKey::Request` arm of `jam-std-common` — note the preimage
+/// is `len.to_le_bytes() ‖ hash` with no prefix (the `0xfe 0xff 0xff 0xff` prefix belongs to the
+/// `Preimage` arm).
+pub fn service_request_state_key(service_id: u32, hash: &[u8; 32], len: u32) -> StateKey {
+	let hash = blake2_256(&[&len.to_le_bytes()[..], &hash[..]].concat());
+
+	let id = service_id.to_le_bytes();
+	let mut state_key = [0u8; 31];
+	// Same interleave as the `Value` arm: the service id is woven through the hash so that the
+	// entries of one service are spread across the trie rather than sharing a common prefix.
+	state_key[..8]
+		.copy_from_slice(&[id[0], hash[0], id[1], hash[1], id[2], hash[2], id[3], hash[3]]);
 	state_key[8..].copy_from_slice(&hash[4..27]);
 	state_key
 }
@@ -51,6 +70,22 @@ mod tests {
 			let theirs: jam_std_common::StorageKey =
 				jam_std_common::ServiceKey::Value { id: *service_id, key }.into();
 			assert_eq!(ours, *theirs, "service {service_id}, key {key:02x?}");
+		}
+
+		let request_cases: &[(u32, u32, [u8; 32])] = &[
+			(0, 0, [0x00; 32]),
+			(1, u32::MAX, [0xff; 32]),
+			(5, 4 * 1024 * 1024, [0xab; 32]),
+			(0xffff_ffff, 4 * 1024 * 1024, [0x00; 32]),
+			(0x0100_0001, 0, [0xff; 32]),
+		];
+
+		for (service_id, len, hash) in request_cases {
+			let ours = service_request_state_key(*service_id, hash, *len);
+			let theirs: jam_std_common::StorageKey =
+				jam_std_common::ServiceKey::Request { id: *service_id, len: *len, hash: *hash }
+					.into();
+			assert_eq!(ours, *theirs, "service {service_id}, len {len}, hash {hash:02x?}");
 		}
 	}
 

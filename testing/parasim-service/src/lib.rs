@@ -495,10 +495,10 @@ fn storage_key(tag: u8, para_id: ParaId) -> Vec<u8> {
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ParaInfoLite {
 	pub head_data: HeadData,
-	/// Always `None` (real field: `Option<ValidationCode>`).
+	/// Always `None` (real field: `Option<ValidationCodeRef>`).
 	pub validation_code: Option<()>,
-	/// Always `None` (real field: `Option<(ValidationCode, Timeslot)>`).
-	pub pending_upgrade: Option<()>,
+	/// Always `None` (real field: `Option<ValidationCodeRef>`).
+	pub announced_upgrade: Option<()>,
 	#[codec(compact)]
 	pub total_state_balance: u64,
 	#[codec(compact)]
@@ -511,7 +511,7 @@ impl ParaInfoLite {
 		Self {
 			head_data,
 			validation_code: None,
-			pending_upgrade: None,
+			announced_upgrade: None,
 			total_state_balance: 0,
 			used_state_balance: 0,
 			is_deregistering: false,

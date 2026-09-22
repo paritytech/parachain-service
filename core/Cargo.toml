@@ -24,6 +24,7 @@ blake2b_simd = { workspace = true }
 bounded-collections = { workspace = true }
 codec = { workspace = true }
 jam-null-authorizer-bin = { workspace = true }
+jam-pvm-common = { workspace = true, features = ["service"] }
 jam-types = { workspace = true }
 num_enum = { workspace = true }
 
@@ -39,10 +40,12 @@ polkajam-trie = { workspace = true }
 
 [features]
 default = []
+no-lang-items = ["jam-pvm-common/no-lang-items"]
 std = [
 	"blake2b_simd/std",
 	"bounded-collections/std",
 	"codec/std",
+	"jam-pvm-common/std",
 	"jam-types/std",
 	"num_enum/std",
 ]

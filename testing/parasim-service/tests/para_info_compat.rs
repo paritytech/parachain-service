@@ -21,7 +21,7 @@ fn parasim_para_info_is_byte_compatible() {
 		// The defaults parasim's `ParaInfoLite` implies: no code, no upgrade,
 		// zero balances, not deregistering.
 		validation_code: None,
-		pending_upgrade: None,
+		announced_upgrade: None,
 		total_state_balance: 0u32.into(),
 		used_state_balance: 0u32.into(),
 		is_deregistering: false,

@@ -8,8 +8,7 @@ use crate::{
 	head_commitment::HeadTracker,
 	state::{
 		log::{AccumulateLog, InsufficientBalanceReason, ParachainLogs, StateBalanceRejection},
-		para_info::{ParaInfo, Parachains, ValidationCode},
-		preimage_registry::PreimageRegistry,
+		para_info::{ParaInfo, Parachains},
 		validator_keys::StagedValidatorKeys,
 	},
 	state_balance::{add_referencer, baseline_for, clean_up_allowed_balance, remove_referencer},
@@ -53,7 +52,7 @@ pub fn set_state_balance(
 				&ParaInfo {
 					head_data: HeadData::default(),
 					validation_code: None,
-					pending_upgrade: None,
+					announced_upgrade: None,
 					total_state_balance: new_total,
 					used_state_balance: baseline,
 					is_deregistering: false,
@@ -122,8 +121,8 @@ pub fn set_head(
 
 /// §6.2/§6.3 — upsert validation code, bypassing the normal upgrade lifecycle
 /// (forced replacement). Solicits the new code, releases the displaced active
-/// and pending codes (each unless pinned or equal to the new code), and clears
-/// the pending upgrade.
+/// and announced codes (each unless equal to the new code), and clears the
+/// announcement.
 pub fn set_validation_code(
 	para_id: ParaId,
 	new_hash: ValidationCodeHash,
@@ -136,18 +135,6 @@ pub fn set_validation_code(
 		return;
 	}
 
-	// TODO: hash-only comparisons per the Quint model, although the registry is
-	// keyed by (hash, len). Needs upstreaming.
-	let active_equals_new =
-		pi.validation_code.as_ref().is_some_and(|vc| vc.code_ref.hash == new_hash);
-	let pending_equals_new =
-		pi.pending_upgrade.as_ref().is_some_and(|(vc, _)| vc.code_ref.hash == new_hash);
-	// The para independently solicited the new code iff it references it for a
-	// reason other than being the current active or pending code.
-	let parachain_had_it = PreimageRegistry::has_referencer(&new_hash.0, code_len, para_id) &&
-		!active_equals_new &&
-		!pending_equals_new;
-
 	// Acquire the new referencer (no charge if already solicited); reject the
 	// whole call if there is no headroom.
 	if let Err(log) = add_referencer(para_id, &new_hash.0, code_len) {
@@ -155,34 +142,26 @@ pub fn set_validation_code(
 		return;
 	}
 
-	// Release the displaced active code, unless it equals the new one or the
-	// para pinned it.
+	// TODO: hash-only comparisons per the Quint model, although the registry is
+	// keyed by (hash, len). Needs upstreaming.
+	// §6.3: release the displaced active code, unless it IS the new code.
 	if let Some(vc) = &pi.validation_code {
-		if vc.code_ref.hash != new_hash && !vc.pinned {
-			let out = remove_referencer(para_id, &vc.code_ref.hash.0, vc.code_ref.len, now);
+		if vc.hash != new_hash {
+			let out = remove_referencer(para_id, &vc.hash.0, vc.len, now);
 			logs.extend(out.log);
 		}
 	}
-	// Clear any pending upgrade, releasing its code under the same rule.
-	if let Some((vc, _)) = &pi.pending_upgrade {
-		if vc.code_ref.hash != new_hash && !vc.pinned {
-			let out = remove_referencer(para_id, &vc.code_ref.hash.0, vc.code_ref.len, now);
+	// Release the displaced announced code under the same rule.
+	if let Some(vc) = &pi.announced_upgrade {
+		if vc.hash != new_hash {
+			let out = remove_referencer(para_id, &vc.hash.0, vc.len, now);
 			logs.extend(out.log);
 		}
 	}
 
 	let mut updated = Parachains::get(para_id).expect("still live; qed");
-	// If the new hash equals the existing active code, preserve its pinned bit;
-	// otherwise the new code's bit records the para's own prior solicit.
-	let pinned = match &pi.validation_code {
-		Some(vc) if vc.code_ref.hash == new_hash => vc.pinned,
-		_ => parachain_had_it,
-	};
-	updated.validation_code = Some(ValidationCode {
-		code_ref: ValidationCodeRef { hash: new_hash, len: code_len },
-		pinned,
-	});
-	updated.pending_upgrade = None;
+	updated.validation_code = Some(ValidationCodeRef { hash: new_hash, len: code_len });
+	updated.announced_upgrade = None;
 	// A forced-code write can grow the record; a backstop write failure (§6.1
 	// invariant) logs the rejection.
 	if Parachains::set(para_id, &updated).is_err() {
@@ -209,13 +188,7 @@ pub fn clean_up(para_id: ParaId, now: Slot, logs: &mut Vec<AccumulateLog>) {
 	}
 
 	let mut retained = false;
-	for code_ref in [
-		pi.validation_code.as_ref().map(|vc| vc.code_ref),
-		pi.pending_upgrade.as_ref().map(|(vc, _)| vc.code_ref),
-	]
-	.into_iter()
-	.flatten()
-	{
+	for code_ref in [pi.validation_code, pi.announced_upgrade].into_iter().flatten() {
 		let out = remove_referencer(para_id, &code_ref.hash.0, code_ref.len, now);
 		retained |= out.retained;
 		logs.extend(out.log);

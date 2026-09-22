@@ -208,10 +208,9 @@ impl ExecutorState {
 					let old_top = self.heap.top;
 					self.heap.top = new_top;
 					regs[A0] = old_top;
-					jam_pvm_common::info!(
-						"PVF grow_heap probe: delta={delta} break={old_top:#x}->{new_top:#x} mapped={:#x}",
-						self.heap.mapped_until
-					);
+					// Logging is forbidden on this path: `jam_pvm_common::info!` always evaluates
+					// `alloc::format!`, so a log here allocates, which re-enters `grow_heap`. The
+					// resulting feedback loop exhausts the refine gas budget and the guest traps.
 				}
 			},
 			HostCall::Fetch => {

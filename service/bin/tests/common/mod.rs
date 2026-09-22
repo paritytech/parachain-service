@@ -14,7 +14,7 @@ use jam_types::{
 use parachain_service::{
 	state::{
 		log::ParachainLog,
-		para_info::{ParaInfo, ValidationCode},
+		para_info::ParaInfo,
 		preimage_registry::PreimageEntry,
 		storage_key,
 		transfers::{IncomingTransferBuckets, IncomingTransfers},
@@ -185,8 +185,8 @@ fn seed_para_inner(
 	let cref = code_ref(code);
 	let info = ParaInfo {
 		head_data: head.to_vec().try_into().expect("test heads fit 4 KiB"),
-		validation_code: Some(ValidationCode { code_ref: cref, pinned: false }),
-		pending_upgrade: None,
+		validation_code: Some(cref),
+		announced_upgrade: None,
 		total_state_balance: total,
 		used_state_balance: baseline_for(para) + preimage_footprint(cref.len),
 		is_deregistering: false,

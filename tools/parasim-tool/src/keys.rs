@@ -135,7 +135,7 @@ fn print_para_info(stored: &[u8]) -> Result<(), String> {
 
 	println!("  head_data           {} bytes", head.len());
 	println!("  validation_code     {:?}", info.validation_code);
-	println!("  pending_upgrade     {:?}", info.pending_upgrade);
+	println!("  announced_upgrade   {:?}", info.announced_upgrade);
 	println!("  total_state_balance {}", info.total_state_balance);
 	println!("  used_state_balance  {}", info.used_state_balance);
 	println!("  is_deregistering    {}", info.is_deregistering);

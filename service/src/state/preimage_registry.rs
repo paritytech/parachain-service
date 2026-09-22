@@ -9,7 +9,8 @@
 use crate::state::{self, StorageFull, Tag};
 use alloc::collections::BTreeSet;
 use codec::{Decode, Encode};
-use parachain_service_core::types::{Hash, ParaId};
+use jam_pvm_common::accumulate::{query, LookupRequestStatus};
+use parachain_service_core::types::{Hash, ParaId, Timeslot};
 
 /// One registry entry: the parachains currently referencing this preimage.
 // TODO: the spec bounds this by "the protocol-level maximum number of
@@ -44,5 +45,21 @@ impl PreimageRegistry {
 	/// Is `para_id` currently referencing `(hash, len)`?
 	pub fn has_referencer(hash: &Hash, len: u32, para_id: ParaId) -> bool {
 		Self::get(hash, len).is_some_and(|e| e.referencers.contains(&para_id))
+	}
+
+	/// §5.2 availability: whether JAM's `query(hash, len)` reports the preimage
+	/// as usable for lookup AT timeslot `anchor`. Mirrors the Quint model's
+	/// `preimageAvailableAt` (state.qnt): absent or `Unprovided` -> `false`,
+	/// `Provided` / `Rerequested` -> `true`, `Unrequested(y)` -> `anchor < y`
+	/// (it was available until it was unrequested at `y`).
+	pub fn is_available_at(hash: &Hash, len: u32, anchor: Timeslot) -> bool {
+		match query(hash, len as usize) {
+			Some(LookupRequestStatus::Provided { .. }) |
+			Some(LookupRequestStatus::Rerequested { .. }) => true,
+			Some(LookupRequestStatus::Unrequested { unrequested_since, .. }) => {
+				anchor < unrequested_since
+			},
+			Some(LookupRequestStatus::Unprovided) | None => false,
+		}
 	}
 }

@@ -17,9 +17,7 @@ pub fn authorizer_hash(authorizer: &Authorizer) -> AuthorizerHash {
 
 fn blake2b_256(data: &[u8]) -> jam_types::Hash {
 	let mut hash = [0u8; 32];
-	hash.copy_from_slice(
-		blake2b_simd::Params::new().hash_length(32).hash(data).as_bytes(),
-	);
+	hash.copy_from_slice(blake2b_simd::Params::new().hash_length(32).hash(data).as_bytes());
 	hash
 }
 
@@ -38,8 +36,8 @@ pub fn fixed_authorizer() -> Authorizer {
 /// `authorizer_hash(fixed_authorizer())`, precomputed. This is the hash the phase-1 core
 /// scan looks for in the authorizer queues.
 pub const FIXED_AUTHORIZER_HASH: AuthorizerHash = AuthorizerHash([
-	35, 87, 66, 111, 35, 19, 85, 154, 39, 29, 103, 130, 220, 0, 25, 123, 55, 159, 121, 203,
-	227, 198, 161, 231, 47, 97, 247, 181, 146, 197, 9, 248,
+	35, 87, 66, 111, 35, 19, 85, 154, 39, 29, 103, 130, 220, 0, 25, 123, 55, 159, 121, 203, 227,
+	198, 161, 231, 47, 97, 247, 181, 146, 197, 9, 248,
 ]);
 
 #[cfg(test)]

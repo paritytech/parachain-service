@@ -11,9 +11,11 @@ extern crate alloc;
 pub mod authorization;
 pub mod authorizer;
 pub mod candidate;
+pub mod constants;
 pub mod host_call;
 pub mod para_info;
 pub mod proof;
+pub mod refine;
 pub mod state_key;
 pub mod types;
 pub mod upward_message;
@@ -24,9 +26,11 @@ pub mod upward_message;
 pub mod host;
 
 // Flat re-exports callers used to get from jam-state-helpers.
-pub use para_info::{para_info_key, storage_key, ParaInfo, Tag, ValidationCode};
+pub use constants::MAX_VALIDATION_CODE_SIZE;
+pub use para_info::{para_info_key, storage_key, ParaInfo, Tag};
 pub use proof::{verify, ProofError, StateProof};
-pub use state_key::service_value_state_key;
+pub use state_key::{service_request_state_key, service_value_state_key};
+pub use upward_message::CodeUpgradePhase;
 
 /// The parachain service's JAM service ID. Network constant; must match genesis registration.
 pub const PARACHAIN_SERVICE_ID: u32 = 1337;

@@ -35,11 +35,7 @@ fn head_data_errors() {
 
 #[test]
 fn validation_code_hash_errors() {
-	rejects_para_change(
-		"validationCode/value/ref/hash/vchBytes/#bigint",
-		json!("2"),
-		"validationCode",
-	);
+	rejects_para_change("validationCode/value/hash/vchBytes/#bigint", json!("2"), "validationCode");
 }
 
 #[test]
@@ -52,8 +48,13 @@ fn validation_code_presence_errors() {
 }
 
 #[test]
-fn validation_code_pinned_errors() {
-	rejects_para_change("validationCode/value/pinned", json!(true), "validationCode");
+fn announced_upgrade_presence_errors() {
+	let code = frame()["svc"]["parachains"]["#map"][0][1]["validationCode"]["value"].clone();
+	rejects_para_change(
+		"announcedUpgrade",
+		json!({"tag": "Some", "value": code}),
+		"announcedUpgrade",
+	);
 }
 
 #[test]
@@ -69,16 +70,6 @@ fn used_state_balance_errors() {
 #[test]
 fn deregistering_errors() {
 	rejects_para_change("isDeregistering", json!(true), "isDeregistering");
-}
-
-#[test]
-fn pending_upgrade_presence_errors() {
-	let code = frame()["svc"]["parachains"]["#map"][0][1]["validationCode"]["value"].clone();
-	rejects_para_change(
-		"pendingUpgrade",
-		json!({"tag": "Some", "value": {"#tup": [code, {"#bigint": "7"}]}}),
-		"pendingUpgrade",
-	);
 }
 
 #[test]

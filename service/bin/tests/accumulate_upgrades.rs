@@ -1,22 +1,25 @@
 //! Code-upgrade lifecycle (§5.2) and service self-upgrade (§5.4).
+//!
+//! §5.2 has two phases and no deadline: an `Announcement` arms a code that a
+//! later `Apply` activates; the announcement stands until applied or superseded.
 
 mod common;
 
 use common::*;
 use parachain_service::{
-	constants::UPGRADE_TIMEOUT_TIMESLOTS,
-	state::log::{AccumulateLog, LogEntry},
+	state::log::{AccumulateLog, InsufficientBalanceReason, LogEntry},
 	state_balance::preimage_footprint,
 };
 use parachain_service_core::{
 	types::{ParaId, ASSET_HUB_PARA_ID},
-	upward_message::UpwardMessage,
+	upward_message::{CodeUpgradePhase, Target, UpwardMessage},
 };
 
 const NOW: u32 = 100;
 const PARA: ParaId = ParaId(1000);
 const CODE: &[u8] = b"para-1000-code";
 const NEW_CODE: &[u8] = b"para-1000-code-v2";
+const THIRD_CODE: &[u8] = b"para-1000-code-v3";
 
 fn accumulate_logs(storage: &jam_node::vm::Storage, para: ParaId) -> Vec<AccumulateLog> {
 	para_log(storage, para)
@@ -28,167 +31,388 @@ fn accumulate_logs(storage: &jam_node::vm::Storage, para: ParaId) -> Vec<Accumul
 		.collect()
 }
 
-fn request_upgrade_block(
+fn announce_msg(code: &[u8]) -> UpwardMessage {
+	let reference = code_ref(code);
+	UpwardMessage::RequestCodeUpgrade {
+		hash: reference.hash,
+		len: reference.len.into(),
+		phase: CodeUpgradePhase::Announcement,
+	}
+}
+
+fn apply_msg(code: &[u8]) -> UpwardMessage {
+	let reference = code_ref(code);
+	UpwardMessage::RequestCodeUpgrade {
+		hash: reference.hash,
+		len: reference.len.into(),
+		phase: CodeUpgradePhase::Apply,
+	}
+}
+
+fn forget_msg(code: &[u8]) -> UpwardMessage {
+	let reference = code_ref(code);
+	UpwardMessage::Forget {
+		target: Target::Parachain(PARA),
+		hash: reference.hash.0,
+		len: reference.len.into(),
+	}
+}
+
+/// Solicit `code` for `PARA` in its own candidate (validated with the active
+/// `CODE`), then provide the blob to JAM so a later `Announcement` sees it as
+/// available. `parent`/`next` are the candidate's heads; the digest's lookup
+/// anchor is 0, which a provided preimage is available at.
+fn solicit_and_provide(
 	storage: jam_node::vm::Storage,
-) -> (jam_node::vm::Storage, parachain_service::work_digest::ValidationCodeRef) {
-	let new_ref = code_ref(NEW_CODE);
-	let msg = UpwardMessage::RequestCodeUpgrade { hash: new_ref.hash, len: new_ref.len.into() };
-	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg], 0);
-	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
-	(storage, new_ref)
+	parent: &[u8],
+	next: &[u8],
+	code: &[u8],
+	slot: u32,
+) -> jam_node::vm::Storage {
+	let reference = code_ref(code);
+	let msg = UpwardMessage::Solicit {
+		target: Target::Parachain(PARA),
+		hash: reference.hash.0,
+		len: reference.len.into(),
+	};
+	let digest = ok_digest(PARA, CODE, parent, next, vec![msg], 0);
+	let (_, mut storage, _) = accumulate_block(storage, vec![work_item(&digest)], slot);
+	storage.provide(slot, SVC, code).expect("solicited in the same block");
+	storage.commit();
+	storage
 }
 
 #[test]
-fn request_works() {
-	// §5.2 phase 2: pending armed with a deadline, new code solicited + charged.
+fn announce_works() {
+	// §5.2: soliciting the new code references + charges it; announcing it only
+	// arms the upgrade, leaving the active code in place.
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
+	let new_ref = code_ref(NEW_CODE);
 	let used_before = para_info(&storage, PARA).unwrap().used_state_balance;
 
-	let (storage, new_ref) = request_upgrade_block(storage);
+	let storage = solicit_and_provide(storage, b"genesis", b"head-1", NEW_CODE, NOW);
+
+	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![announce_msg(NEW_CODE)], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
 
 	let info = para_info(&storage, PARA).unwrap();
-	let (pending, deadline) = info.pending_upgrade.as_ref().expect("pending armed");
-	assert_eq!(pending.code_ref, new_ref);
-	assert!(!pending.pinned);
-	assert_eq!(*deadline, NOW + UPGRADE_TIMEOUT_TIMESLOTS);
+	assert_eq!(info.announced_upgrade, Some(new_ref));
+	assert_eq!(info.validation_code, Some(code_ref(CODE)), "the active code is untouched");
 	assert_eq!(info.used_state_balance, used_before + preimage_footprint(new_ref.len));
 	assert!(registry_entry(&storage, new_ref).is_some_and(|e| e.referencers.contains(&PARA)));
-	// The old code stays active during the transition window.
-	assert_eq!(info.validation_code.as_ref().unwrap().code_ref, code_ref(CODE));
+	assert!(accumulate_logs(&storage, PARA).is_empty());
 }
 
 #[test]
 fn activation_works() {
-	// §5.2 phase 5(a): the first candidate validated with the new code activates
-	// it and releases the old code via the two-step forget.
+	// §5.2: the `Apply` swaps the two code slots. The candidate carrying it is
+	// still validated with the old active code; the displaced code merely unpins.
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
-	let (storage, new_ref) = request_upgrade_block(storage);
+	let new_ref = code_ref(NEW_CODE);
+	let storage = solicit_and_provide(storage, b"genesis", b"head-1", NEW_CODE, NOW);
+	let used_charged = para_info(&storage, PARA).unwrap().used_state_balance;
 
-	let digest = ok_digest(PARA, NEW_CODE, b"head-1", b"head-2", vec![], 0);
-	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 10);
-
-	let info = para_info(&storage, PARA).unwrap();
-	assert_eq!(info.validation_code.as_ref().unwrap().code_ref, new_ref);
-	assert!(info.pending_upgrade.is_none());
-	assert_eq!(&info.head_data[..], b"head-2");
-	// The old code was provided, so its release is two-step: still referenced,
-	// follow-up notification omitted to match Quint pending issue #36.
-	assert!(registry_entry(&storage, code_ref(CODE)).is_some());
-	assert!(accumulate_logs(&storage, PARA).is_empty());
-}
-
-#[test]
-fn old_code_during_transition_works() {
-	// §5.2 phase 4: candidates using the old code still enact while pending.
-	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
-	let (storage, new_ref) = request_upgrade_block(storage);
-
-	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![], 0);
-	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 10);
-
-	let info = para_info(&storage, PARA).unwrap();
-	assert_eq!(&info.head_data[..], b"head-2");
-	assert_eq!(info.validation_code.as_ref().unwrap().code_ref, code_ref(CODE));
-	assert!(info.pending_upgrade.is_some(), "pending stays armed");
-	let _ = new_ref;
-}
-
-#[test]
-fn timeout_reap_works() {
-	// §5.2 phase 5(b): past the deadline, the next candidate reaps the pending
-	// upgrade. The never-provided new code drops in one forget, refunding fully.
-	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
-	let used_original = para_info(&storage, PARA).unwrap().used_state_balance;
-	let (storage, _) = request_upgrade_block(storage);
-
-	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![], 0);
-	let (_, storage, _) =
-		accumulate_block(storage, vec![work_item(&digest)], NOW + UPGRADE_TIMEOUT_TIMESLOTS);
-
-	let info = para_info(&storage, PARA).unwrap();
-	assert!(info.pending_upgrade.is_none(), "timed-out upgrade reaped");
-	assert_eq!(&info.head_data[..], b"head-2", "the candidate itself enacted");
-	assert_eq!(info.used_state_balance, used_original, "unprovided code fully refunded");
-	assert!(registry_entry(&storage, code_ref(NEW_CODE)).is_none());
-}
-
-// Rejection must preserve cleanup, but must not enact the head or upward messages.
-fn expired_candidate(provided: bool) {
-	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
-	let (mut storage, new_ref) = request_upgrade_block(storage);
-	if provided {
-		storage.provide(NOW + 1, SVC, NEW_CODE).expect("upgrade solicited");
-		storage.commit();
-	}
-	let before = para_info(&storage, PARA).unwrap();
-	let deadline = NOW + UPGRADE_TIMEOUT_TIMESLOTS;
-	let replacement = code_ref(b"replacement-code");
-	let message =
-		UpwardMessage::RequestCodeUpgrade { hash: replacement.hash, len: replacement.len.into() };
-
-	// A stale parent is rejected before expiry cleanup, even at the deadline.
-	let stale = ok_digest(PARA, NEW_CODE, b"stale", b"head-2", vec![], 0);
-	let (_, storage, _) = accumulate_block(storage, vec![work_item(&stale)], deadline);
-	assert_eq!(para_info(&storage, PARA).unwrap(), before);
-	assert!(accumulate_logs(&storage, PARA).is_empty());
-
-	let digest = ok_digest(PARA, NEW_CODE, b"head-1", b"head-2", vec![message], 0);
-	let now = deadline + 1;
-	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], now);
-	let info = para_info(&storage, PARA).unwrap();
-	assert_eq!(info, before, "a rejected candidate discards the tentative reap");
-	assert!(registry_entry(&storage, replacement).is_none());
-	assert!(registry_entry(&storage, new_ref).is_some());
-	assert!(accumulate_logs(&storage, PARA).is_empty());
-}
-
-#[test]
-fn expired_unprovided_candidate_errors() {
-	expired_candidate(false);
-}
-
-#[test]
-fn expired_provided_candidate_errors() {
-	expired_candidate(true);
-}
-
-#[test]
-fn supersede_works() {
-	// §5.2 phase 2: a different in-flight upgrade is superseded.
-	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
-	let (storage, _) = request_upgrade_block(storage);
-
-	let third_ref = code_ref(b"para-1000-code-v3");
-	let msg = UpwardMessage::RequestCodeUpgrade { hash: third_ref.hash, len: third_ref.len.into() };
-	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![msg], 0);
+	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![announce_msg(NEW_CODE)], 0);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
-
-	let info = para_info(&storage, PARA).unwrap();
-	assert_eq!(info.pending_upgrade.as_ref().unwrap().0.code_ref, third_ref);
-	// The superseded (unprovided) v2 code was dropped outright.
-	assert!(registry_entry(&storage, code_ref(NEW_CODE)).is_none());
-}
-
-#[test]
-fn supersede_provided_code_works() {
-	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
-	let (mut storage, new_ref) = request_upgrade_block(storage);
-	storage.provide(NOW + 1, SVC, NEW_CODE).expect("upgrade solicited");
-	storage.commit();
-	let used_before = para_info(&storage, PARA).unwrap().used_state_balance;
-
-	let third_ref = code_ref(b"para-1000-code-v3");
-	let msg = UpwardMessage::RequestCodeUpgrade { hash: third_ref.hash, len: third_ref.len.into() };
-	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![msg], 0);
+	let digest = ok_digest(PARA, CODE, b"head-2", b"head-3", vec![apply_msg(NEW_CODE)], 0);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 2);
 
 	let info = para_info(&storage, PARA).unwrap();
-	assert_eq!(info.pending_upgrade.as_ref().unwrap().0.code_ref, third_ref);
-	// Provided code stays charged until a second forget; Quint omits the
-	// follow-up notification pending issue #36.
-	assert!(registry_entry(&storage, new_ref).is_some_and(|e| e.referencers.contains(&PARA)));
-	assert_eq!(info.used_state_balance, used_before + preimage_footprint(third_ref.len));
+	assert_eq!(info.validation_code, Some(new_ref));
+	assert_eq!(info.announced_upgrade, None);
+	assert_eq!(&info.head_data[..], b"head-3");
+	// The displaced old code is neither released nor forgotten: it stays
+	// referenced and charged until the para forgets it (§5.2).
+	assert!(registry_entry(&storage, code_ref(CODE)).is_some_and(|e| e.referencers.contains(&PARA)));
+	assert_eq!(info.used_state_balance, used_charged, "apply swaps slots, charges nothing");
 	assert!(accumulate_logs(&storage, PARA).is_empty());
+}
+
+#[test]
+fn old_code_candidate_keeps_announcement_works() {
+	// §5.2 phase 4 + no deadline: a candidate still validated with the old code
+	// enacts, and the announcement survives even far past any timeout.
+	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
+	let new_ref = code_ref(NEW_CODE);
+	let storage = solicit_and_provide(storage, b"genesis", b"head-1", NEW_CODE, NOW);
+
+	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![announce_msg(NEW_CODE)], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
+
+	let digest = ok_digest(PARA, CODE, b"head-2", b"head-3", vec![], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 100_000);
+
+	let info = para_info(&storage, PARA).unwrap();
+	assert_eq!(&info.head_data[..], b"head-3", "the old-code candidate enacted");
+	assert_eq!(info.validation_code, Some(code_ref(CODE)));
+	assert_eq!(info.announced_upgrade, Some(new_ref), "an announcement never times out");
+	assert!(accumulate_logs(&storage, PARA).is_empty());
+}
+
+#[test]
+fn announcement_unavailable_errors() {
+	// §5.2: a solicited-but-never-provided code is not available, so it cannot
+	// be announced. The failure is logged and nothing changes.
+	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
+	let new_ref = code_ref(NEW_CODE);
+	let msg = UpwardMessage::Solicit {
+		target: Target::Parachain(PARA),
+		hash: new_ref.hash.0,
+		len: new_ref.len.into(),
+	};
+	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+
+	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![announce_msg(NEW_CODE)], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
+
+	let info = para_info(&storage, PARA).unwrap();
+	assert_eq!(info.announced_upgrade, None);
+	assert_eq!(info.validation_code, Some(code_ref(CODE)));
+	assert!(registry_entry(&storage, new_ref).is_some_and(|e| e.referencers.contains(&PARA)));
+	assert_eq!(
+		accumulate_logs(&storage, PARA),
+		vec![AccumulateLog::CodeUpgradeNotAvailable {
+			hash: new_ref.hash.0,
+			len: new_ref.len.into()
+		}]
+	);
+}
+
+#[test]
+fn announcement_of_other_paras_code_errors() {
+	// §5.2: a code another para paid for cannot be announced, even when it is
+	// available — the caller must be a referencer itself.
+	const OTHER: ParaId = ParaId(2000);
+	let storage = fresh_storage(|s| {
+		seed_para(s, PARA, b"genesis", CODE, RICH);
+		seed_para(s, OTHER, b"genesis-2", b"para-2000-code", RICH);
+	});
+	let new_ref = code_ref(NEW_CODE);
+	let msg = UpwardMessage::Solicit {
+		target: Target::Parachain(OTHER),
+		hash: new_ref.hash.0,
+		len: new_ref.len.into(),
+	};
+	let digest = ok_digest(OTHER, b"para-2000-code", b"genesis-2", b"head-2-1", vec![msg], 0);
+	let (_, mut storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+	storage.provide(NOW, SVC, NEW_CODE).expect("solicited by OTHER");
+	storage.commit();
+
+	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![announce_msg(NEW_CODE)], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
+
+	let info = para_info(&storage, PARA).unwrap();
+	assert_eq!(info.announced_upgrade, None);
+	assert_eq!(info.validation_code, Some(code_ref(CODE)));
+	assert_eq!(
+		accumulate_logs(&storage, PARA),
+		vec![AccumulateLog::CodeUpgradeNotAvailable {
+			hash: new_ref.hash.0,
+			len: new_ref.len.into()
+		}]
+	);
+}
+
+#[test]
+fn apply_without_announcement_errors() {
+	// §5.2: an `Apply` with no standing announcement is refused.
+	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
+	let new_ref = code_ref(NEW_CODE);
+	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![apply_msg(NEW_CODE)], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+
+	let info = para_info(&storage, PARA).unwrap();
+	assert_eq!(info.validation_code, Some(code_ref(CODE)));
+	assert_eq!(info.announced_upgrade, None);
+	assert_eq!(
+		accumulate_logs(&storage, PARA),
+		vec![AccumulateLog::CodeUpgradeNotAnnounced {
+			hash: new_ref.hash.0,
+			len: new_ref.len.into()
+		}]
+	);
+}
+
+#[test]
+fn apply_mismatched_announcement_errors() {
+	// §5.2: an `Apply` naming a different code than the standing announcement is
+	// refused; the announcement is preserved.
+	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
+	let new_ref = code_ref(NEW_CODE);
+	let third_ref = code_ref(THIRD_CODE);
+	let storage = solicit_and_provide(storage, b"genesis", b"head-1", NEW_CODE, NOW);
+
+	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![announce_msg(NEW_CODE)], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
+	let digest = ok_digest(PARA, CODE, b"head-2", b"head-3", vec![apply_msg(THIRD_CODE)], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 2);
+
+	let info = para_info(&storage, PARA).unwrap();
+	assert_eq!(info.validation_code, Some(code_ref(CODE)));
+	assert_eq!(info.announced_upgrade, Some(new_ref));
+	assert_eq!(
+		accumulate_logs(&storage, PARA),
+		vec![AccumulateLog::CodeUpgradeNotAnnounced {
+			hash: third_ref.hash.0,
+			len: third_ref.len.into()
+		}]
+	);
+}
+
+#[test]
+fn announce_active_code_is_noop_works() {
+	// §5.2: announcing the running code cannot shadow it, so the act is a no-op.
+	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
+	let before = para_info(&storage, PARA).unwrap();
+	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![announce_msg(CODE)], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+
+	let info = para_info(&storage, PARA).unwrap();
+	assert_eq!(info.validation_code, before.validation_code);
+	assert_eq!(info.announced_upgrade, None, "the active code is never announced");
+	assert_eq!(info.used_state_balance, before.used_state_balance);
+	assert!(accumulate_logs(&storage, PARA).is_empty());
+}
+
+#[test]
+fn announcement_supersedes_previous_works() {
+	// §5.2: a second announcement replaces the first; the superseded code merely
+	// unpins — still referenced and charged until the para forgets it.
+	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
+	let new_ref = code_ref(NEW_CODE);
+	let third_ref = code_ref(THIRD_CODE);
+	let storage = solicit_and_provide(storage, b"genesis", b"head-1", NEW_CODE, NOW);
+	let storage = solicit_and_provide(storage, b"head-1", b"head-2", THIRD_CODE, NOW + 1);
+	let used_both = para_info(&storage, PARA).unwrap().used_state_balance;
+
+	let digest = ok_digest(PARA, CODE, b"head-2", b"head-3", vec![announce_msg(NEW_CODE)], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 2);
+	let digest = ok_digest(PARA, CODE, b"head-3", b"head-4", vec![announce_msg(THIRD_CODE)], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 3);
+
+	let info = para_info(&storage, PARA).unwrap();
+	assert_eq!(info.announced_upgrade, Some(third_ref));
+	assert_eq!(info.validation_code, Some(code_ref(CODE)));
+	assert!(registry_entry(&storage, new_ref).is_some_and(|e| e.referencers.contains(&PARA)));
+	assert_eq!(info.used_state_balance, used_both);
+	assert!(accumulate_logs(&storage, PARA).is_empty());
+}
+
+#[test]
+fn forget_announced_refused_then_supersede_works() {
+	// §5.2: a `Forget` of the announced code is refused while it is pinned; a
+	// superseding announcement unpins it, and only then does the forget take.
+	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
+	let new_ref = code_ref(NEW_CODE);
+	let third_ref = code_ref(THIRD_CODE);
+	let storage = solicit_and_provide(storage, b"genesis", b"head-1", NEW_CODE, NOW);
+	let storage = solicit_and_provide(storage, b"head-1", b"head-2", THIRD_CODE, NOW + 1);
+
+	let digest = ok_digest(PARA, CODE, b"head-2", b"head-3", vec![announce_msg(NEW_CODE)], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 2);
+	let used_announced = para_info(&storage, PARA).unwrap().used_state_balance;
+
+	// Refused while announced: reference, charge and status all stay.
+	let digest = ok_digest(PARA, CODE, b"head-3", b"head-4", vec![forget_msg(NEW_CODE)], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 3);
+	let info = para_info(&storage, PARA).unwrap();
+	assert_eq!(info.announced_upgrade, Some(new_ref));
+	assert!(registry_entry(&storage, new_ref).is_some_and(|e| e.referencers.contains(&PARA)));
+	assert_eq!(info.used_state_balance, used_announced);
+	assert_eq!(
+		accumulate_logs(&storage, PARA),
+		vec![AccumulateLog::CanNotForgetValidationCode {
+			hash: new_ref.hash.0,
+			len: new_ref.len.into()
+		}]
+	);
+
+	// Supersede with THIRD, unpinning NEW; the forget now releases it (two-step,
+	// because NEW was provided).
+	let digest = ok_digest(PARA, CODE, b"head-4", b"head-5", vec![announce_msg(THIRD_CODE)], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 4);
+	let digest = ok_digest(PARA, CODE, b"head-5", b"head-6", vec![forget_msg(NEW_CODE)], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 5);
+
+	let info = para_info(&storage, PARA).unwrap();
+	assert_eq!(info.announced_upgrade, Some(third_ref));
+	let logs = accumulate_logs(&storage, PARA);
+	assert!(
+		matches!(logs.last(), Some(AccumulateLog::ForgetAgainAt { .. })),
+		"the post-supersede forget releases NEW, got {logs:?}"
+	);
+	assert!(
+		registry_entry(&storage, new_ref).is_some_and(|e| e.referencers.contains(&PARA)),
+		"first forget of a provided code only unrequests"
+	);
+}
+
+#[test]
+fn insufficient_balance_preserves_announcement_works() {
+	// §5.2/§6.1: a failed solicit leaves the standing announcement intact, and
+	// the unaffordable code then fails to announce as unavailable.
+	let new_ref = code_ref(NEW_CODE);
+	let third_ref = code_ref(THIRD_CODE);
+	let storage = fresh_storage(|s| {
+		seed_para(s, PARA, b"genesis", CODE, RICH);
+		let mut info = para_info(s, PARA).unwrap();
+		// Headroom for exactly one more preimage.
+		info.total_state_balance = info.used_state_balance + preimage_footprint(new_ref.len);
+		set_state(
+			s,
+			&parachain_service::state::storage_key(
+				parachain_service::state::Tag::Parachains,
+				&PARA,
+			),
+			&info,
+		);
+	});
+	let storage = solicit_and_provide(storage, b"genesis", b"head-1", NEW_CODE, NOW);
+
+	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![announce_msg(NEW_CODE)], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
+
+	// The second solicit cannot be afforded: rejected and logged.
+	let msg = UpwardMessage::Solicit {
+		target: Target::Parachain(PARA),
+		hash: third_ref.hash.0,
+		len: third_ref.len.into(),
+	};
+	let digest = ok_digest(PARA, CODE, b"head-2", b"head-3", vec![msg], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 2);
+	assert!(registry_entry(&storage, third_ref).is_none());
+	assert_eq!(
+		accumulate_logs(&storage, PARA),
+		vec![AccumulateLog::InsufficientStateBalance {
+			reason: InsufficientBalanceReason::Solicit {
+				hash: third_ref.hash.0,
+				len: third_ref.len.into()
+			}
+		}]
+	);
+
+	// Announcing the unaffordable code is then rejected as unavailable.
+	let digest = ok_digest(PARA, CODE, b"head-3", b"head-4", vec![announce_msg(THIRD_CODE)], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 3);
+
+	let info = para_info(&storage, PARA).unwrap();
+	assert_eq!(info.announced_upgrade, Some(new_ref), "standing announcement preserved");
+	assert_eq!(
+		accumulate_logs(&storage, PARA),
+		vec![
+			AccumulateLog::InsufficientStateBalance {
+				reason: InsufficientBalanceReason::Solicit {
+					hash: third_ref.hash.0,
+					len: third_ref.len.into()
+				}
+			},
+			AccumulateLog::CodeUpgradeNotAvailable {
+				hash: third_ref.hash.0,
+				len: third_ref.len.into()
+			},
+		]
+	);
 }
 
 #[test]

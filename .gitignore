@@ -3,3 +3,4 @@ vendor/
 .env*
 .vscode/
 notes.md
+.omo/

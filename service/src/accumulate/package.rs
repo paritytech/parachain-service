@@ -1,7 +1,7 @@
 //! Per-work-package accumulation (spec §5.1 steps 1–7).
 
 use crate::{
-	accumulate::{code_upgrades, upward},
+	accumulate::upward,
 	hashing::blake2_256,
 	head_commitment::HeadTracker,
 	state::{
@@ -54,20 +54,12 @@ pub fn process(now: Slot, service_id: ServiceId, record: &WorkItemRecord, heads:
 				return;
 			}
 
-			// Decide against the post-expiry view without writing state or forwarding
-			// forgets: a rejected candidate must discard the tentative reap (§5.1).
-			let expired = code_upgrades::pending_upgrade_expired(&pi, now);
-
-			// Step 5: authoritative validation-code check, on the post-reap view.
-			// Compares the whole `(hash, len)` pair: the preimage registry is
-			// keyed by both, so the same hash at another length is another code.
-			let matches_active =
-				pi.validation_code.as_ref().is_some_and(|vc| vc.code_ref == validation_code);
-			let matches_pending = !expired &&
-				pi.pending_upgrade
-					.as_ref()
-					.is_some_and(|(vc, _)| vc.code_ref == validation_code);
-			if !matches_active && !matches_pending {
+			// Step 4: authoritative validation-code check. Only the ACTIVE code
+			// is accepted; an announced upgrade becomes a validation option only
+			// once an `Apply` has made it active (§5.2). Compares the whole
+			// `(hash, len)` pair: the preimage registry is keyed by both, so the
+			// same hash at another length is another code.
+			if pi.validation_code != Some(validation_code) {
 				return;
 			}
 
@@ -77,19 +69,11 @@ pub fn process(now: Slot, service_id: ServiceId, record: &WorkItemRecord, heads:
 				return;
 			}
 
-			// Only an accepted candidate may prune logs or release expired code.
+			// Only an accepted candidate may prune logs.
 			ParachainLogs::prune_below(para_id, lookup_anchor);
 			let mut logs: Vec<AccumulateLog> = Vec::new();
-			if expired {
-				// FIXME: Quint's accumulateOkPrefix discards expiry cleanup logs.
-				// Match it until https://github.com/paritytech/parachain-service/issues/36
-				// resolves whether the follow-up forget deadline must be emitted.
-				code_upgrades::reap_timed_out_upgrade(para_id, now, &mut Vec::new());
-			}
 
-			// Step 6: head-data update + code-upgrade activation. Activation must
-			// happen before the replay so a new upgrade request in the same digest
-			// arms against the just-activated code (§5.2).
+			// Step 5: head-data update.
 			let mut pi = Parachains::get(para_id).expect("checked live above; qed");
 			heads.touch(para_id);
 			pi.head_data = head_data;
@@ -101,17 +85,10 @@ pub fn process(now: Slot, service_id: ServiceId, record: &WorkItemRecord, heads:
 					reason: InsufficientBalanceReason::ParaInfo,
 				});
 			}
-			// FIXME: Quint discards activation cleanup logs too; match it pending issue #36.
-			code_upgrades::activate_upgrade_if_match(
-				para_id,
-				validation_code.hash,
-				now,
-				&mut Vec::new(),
-			);
 
-			// Step 7: replay the upward messages in order.
+			// Step 6: replay the upward messages in order.
 			for message in upward_messages.into_iter() {
-				upward::apply(now, service_id, para_id, message, &mut logs, heads);
+				upward::apply(now, service_id, para_id, lookup_anchor, message, &mut logs, heads);
 			}
 
 			ParachainLogs::append_accumulate(para_id, now, logs);

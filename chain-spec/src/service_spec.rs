@@ -6,11 +6,7 @@ use codec::Encode;
 use jam_chainspec::GenesisService;
 use jam_types::{AuthorizerHash, Balance, ServiceId};
 use parachain_service::{
-	state::{
-		para_info::{ParaInfo, ValidationCode},
-		preimage_registry::PreimageEntry,
-		storage_key, Tag,
-	},
+	state::{para_info::ParaInfo, preimage_registry::PreimageEntry, storage_key, Tag},
 	state_balance::{baseline_for, preimage_footprint},
 	work_digest::validation_code_hash,
 };
@@ -116,7 +112,7 @@ impl ParachainServiceSpec {
 					ValidationCodeRef { hash: validation_code_hash(code), len: code.len() as u32 };
 				host(&mut preimages, &mut hosted, code);
 				registry.entry((cref.hash.0, cref.len)).or_default().insert(para.id);
-				ValidationCode { code_ref: cref, pinned: false }
+				cref
 			});
 			// An authorizer's verifier blob is a preimage too — a work package can
 			// name the service as its `auth_code_host` — but it names no registry
@@ -135,11 +131,11 @@ impl ParachainServiceSpec {
 			// (§6.1). The registered base (`baseline_for`) covers Asset Hub's
 			// service-global reservation.
 			let used_state_balance = baseline_for(para.id) +
-				validation_code.as_ref().map_or(0, |vc| preimage_footprint(vc.code_ref.len));
+				validation_code.as_ref().map_or(0, |vc| preimage_footprint(vc.len));
 			let info = ParaInfo {
 				head_data,
 				validation_code,
-				pending_upgrade: None,
+				announced_upgrade: None,
 				total_state_balance: para.total.unwrap_or(Balance::MAX),
 				used_state_balance,
 				is_deregistering: false,

@@ -36,7 +36,7 @@ module log_pruning {
       authorizedParas: List(CoretimeParaId),
       items: List({ validationCode: { hash: { vchBytes: 1 }, len: FixedCodeLen }, pov: 0 })
     }
-    applyWork(refine(svc, pkg, false, PvfOk,
+    applyWork(refine(svc, pkg, false, CodeOk,
       Some(headHash(pi.headData)), HeadDeclared(pi.headData + 1), List(), anchor)[0])
   }
 
@@ -48,7 +48,7 @@ module log_pruning {
     }
     init
       .then(applyWork(WorkOk(Err({ paraId: CoretimeParaId, error: Opaque(42) }))))
-      .then(applyWork(refine(svc, pkg, false, PvfOk,
+      .then(applyWork(refine(svc, pkg, false, CodeOk,
         Some(headHash(StaleParentHead)), HeadDeclared(1), List(), 2)[0]))
       .then(expectThat(svc == prevSvc))
   }

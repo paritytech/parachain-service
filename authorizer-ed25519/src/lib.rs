@@ -34,7 +34,8 @@ impl SignatureScheme for Ed25519 {
 	/// implementations.
 	fn verify(key: &CollatorKey, signature: &CollatorSignature, payload: &[u8]) -> bool {
 		let Ok(key) = ed25519_dalek::VerifyingKey::from_bytes(key) else { return false };
-		key.verify_strict(payload, &ed25519_dalek::Signature::from_bytes(signature)).is_ok()
+		key.verify_strict(payload, &ed25519_dalek::Signature::from_bytes(signature))
+			.is_ok()
 	}
 }
 

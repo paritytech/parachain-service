@@ -87,13 +87,23 @@ pub struct CreateServiceArgs {
 	pub new_supervisor_balance: bool,
 }
 
+/// The two phases of a code upgrade (§5.2).
+///
+/// An `Announcement` declares the code the para intends to upgrade to; a later
+/// `Apply` activates a standing announcement. Neither carries a deadline.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]
+pub enum CodeUpgradePhase {
+	Announcement,
+	Apply,
+}
+
 /// Upward messages emitted via host functions during Refine (spec §3.3).
 ///
 /// Variant order (SCALE discriminants) follows the design doc's §3.3 listing.
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub enum UpwardMessage {
-	/// Start a PVF code upgrade (§5.2).
-	RequestCodeUpgrade { hash: ValidationCodeHash, len: Compact<u32> },
+	/// Drive a PVF code upgrade through its `phase` (§5.2).
+	RequestCodeUpgrade { hash: ValidationCodeHash, len: Compact<u32>, phase: CodeUpgradePhase },
 	/// Request a preimage be made available. A
 	/// [`Target::Parachain`] requests it in this service's own store, charged to
 	/// that parachain's `used_state_balance` (§6.1); a para may only name itself,

@@ -6,9 +6,6 @@ use parachain_service_core::types::Timeslot;
 /// Gray Paper `C_corecount`.
 pub const CORE_COUNT: usize = 341;
 
-/// §5.2 — pending-upgrade deadline relative to current timeslot (24 h at 6 s slots).
-pub const UPGRADE_TIMEOUT_TIMESLOTS: Timeslot = 24 * 3600 / 6;
-
 /// Max age (in timeslots) of a work-package's lookup-anchor — Gray Paper `L` (~24 h).
 pub const MAX_LOOKUP_AGE: Timeslot = 24 * 3600 / 6;
 

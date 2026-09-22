@@ -7,11 +7,7 @@ use jam_std_common::hash_raw;
 use jam_types::{AuthorizerHash, Balance};
 use parachain_authorizer::aura::AuthConfig;
 use parachain_service::{
-	state::{
-		para_info::{ParaInfo, ValidationCode},
-		preimage_registry::PreimageEntry,
-		storage_key, Tag,
-	},
+	state::{para_info::ParaInfo, preimage_registry::PreimageEntry, storage_key, Tag},
 	state_balance::{baseline_for, preimage_footprint},
 	work_digest::{validation_code_hash, ValidationCodeRef},
 };
@@ -85,11 +81,8 @@ fn registered_para_layout() {
 	assert_eq!(key, vec![0x00, 3, 0, 0, 0]);
 	let info = para_info_entry(&service, ParaId(3));
 	assert_eq!(info.head_data, HeadData::try_from(HEAD.to_vec()).expect("small head; qed"));
-	assert_eq!(
-		info.validation_code,
-		Some(ValidationCode { code_ref: code_ref(CODE), pinned: false })
-	);
-	assert_eq!(info.pending_upgrade, None);
+	assert_eq!(info.validation_code, Some(code_ref(CODE)));
+	assert_eq!(info.announced_upgrade, None);
 	assert_eq!(info.total_state_balance, RICH);
 	assert_eq!(
 		info.used_state_balance,
@@ -134,10 +127,7 @@ fn shared_validation_code_is_hosted_once_and_referenced_by_both() {
 	assert_eq!(entry.referencers, BTreeSet::from([ParaId(100), ParaId(200)]));
 	for para in [ParaId(100), ParaId(200)] {
 		let info = para_info_entry(&service, para);
-		assert_eq!(
-			info.validation_code,
-			Some(ValidationCode { code_ref: code_ref(CODE), pinned: false })
-		);
+		assert_eq!(info.validation_code, Some(code_ref(CODE)));
 	}
 }
 

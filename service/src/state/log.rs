@@ -36,7 +36,7 @@ pub enum InsufficientBalanceReason {
 	StagedValidatorKeys,
 	/// An `incoming_transfers` bucket or chain-pointer write.
 	IncomingTransfer,
-	/// A `ParaInfo` write: head, registration, forced code, pending upgrade.
+	/// A `ParaInfo` write: head, registration, forced code, announced upgrade.
 	ParaInfo,
 }
 
@@ -153,6 +153,12 @@ pub enum AccumulateLog {
 	StagedValidatorKeysOverflow,
 	/// `parachain_service_upgrade` rejected: new code's preimage missing. Spec §5.4.
 	ServiceUpgradePreimageMissing { code_hash: Hash },
+	/// An `Announcement` whose code is not usable (§5.2).
+	CodeUpgradeNotAvailable { hash: Hash, len: Compact<u32> },
+	/// An `Apply` that does not match the standing announcement (§5.2).
+	CodeUpgradeNotAnnounced { hash: Hash, len: Compact<u32> },
+	/// A `Forget` naming the para's active or announced validation code (§5.2).
+	CanNotForgetValidationCode { hash: Hash, len: Compact<u32> },
 	/// The JAM `transfer` replaying a `TransferOut` failed. `id` is the
 	/// caller-supplied identifier, echoed back so the parachain can match the
 	/// failure to its own record. Spec §5.1 step 7.

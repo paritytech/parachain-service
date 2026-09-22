@@ -1,35 +1,18 @@
-//! Upgrade provision, candidate-triggered activation, and lazy expiry.
+//! Code-upgrade announcements, activation, and the two-phase lifecycle.
 
 use serde_json::{json, Value};
 
 use crate::itf::replay;
 
-const TRACE: &str =
-	include_str!("../fixtures/quint/upgrades/work_error_across_upgrade_deadline_works.itf.json");
 const ACTIVATION: &str = include_str!("../fixtures/quint/upgrades/activation_works.itf.json");
+const WORK_ERROR: &str =
+	include_str!("../fixtures/quint/upgrades/work_error_preserves_announcement_works.itf.json");
+const SUPERSEDE: &str =
+	include_str!("../fixtures/quint/upgrades/announcement_supersedes_previous_works.itf.json");
 
 #[test]
-fn insufficient_balance_preserves_pending_works() {
-	replay::trace(include_str!(
-		"../fixtures/quint/upgrades/insufficient_balance_preserves_pending_works.itf.json"
-	))
-	.expect("a rejected upgrade logs the failed reservation and preserves the pending code");
-}
-
-#[test]
-fn provided_upgrade_expiry_log_works() {
-	replay::trace(include_str!(
-		"../fixtures/quint/upgrades/provided_upgrade_expiry_log_works.itf.json"
-	))
-	.expect("expiry cleanup omits its log to match Quint pending issue #36");
-}
-
-#[test]
-fn expired_code_candidate_preserves_upgrade_works() {
-	replay::trace(include_str!(
-		"../fixtures/quint/upgrades/expired_code_candidate_preserves_upgrade_works.itf.json"
-	))
-	.expect("a rejected expired-code candidate preserves the pending upgrade and logs");
+fn activation_works() {
+	replay::trace(ACTIVATION).expect("the applied candidate activates the announced code");
 }
 
 #[test]
@@ -37,22 +20,78 @@ fn provided_old_code_activation_works() {
 	replay::trace(include_str!(
 		"../fixtures/quint/upgrades/provided_old_code_activation_works.itf.json"
 	))
-	.expect("activation cleanup omits its log to match Quint pending issue #36");
+	.expect("activating provided code keeps its reference and charge until expunge");
 }
 
 #[test]
-fn activation_works() {
-	replay::trace(ACTIVATION).expect("the new-code candidate activates the provided upgrade");
+fn announcement_unavailable_rejected_works() {
+	replay::trace(include_str!(
+		"../fixtures/quint/upgrades/announcement_unavailable_rejected_works.itf.json"
+	))
+	.expect("an unavailable announcement logs CodeUpgradeNotAvailable and stands no code");
+}
+
+#[test]
+fn announcement_of_other_paras_code_rejected_works() {
+	replay::trace(include_str!(
+		"../fixtures/quint/upgrades/announcement_of_other_paras_code_rejected_works.itf.json"
+	))
+	.expect("announcing a code the para does not reference logs CodeUpgradeNotAvailable");
+}
+
+#[test]
+fn apply_without_announcement_rejected_works() {
+	replay::trace(include_str!(
+		"../fixtures/quint/upgrades/apply_without_announcement_rejected_works.itf.json"
+	))
+	.expect("an Apply with no standing announcement logs CodeUpgradeNotAnnounced");
+}
+
+#[test]
+fn apply_mismatched_announcement_rejected_works() {
+	replay::trace(include_str!(
+		"../fixtures/quint/upgrades/apply_mismatched_announcement_rejected_works.itf.json"
+	))
+	.expect("an Apply naming code other than the announcement logs CodeUpgradeNotAnnounced");
+}
+
+#[test]
+fn announcement_supersedes_previous_works() {
+	replay::trace(SUPERSEDE).expect("a second announcement replaces the first, with no log");
+}
+
+#[test]
+fn forget_announced_code_refused_works() {
+	replay::trace(include_str!(
+		"../fixtures/quint/upgrades/forget_announced_code_refused_works.itf.json"
+	))
+	.expect("forgetting announced validation code logs CanNotForgetValidationCode and keeps it");
+}
+
+#[test]
+fn insufficient_balance_preserves_announcement_works() {
+	replay::trace(include_str!(
+		"../fixtures/quint/upgrades/insufficient_balance_preserves_announcement_works.itf.json"
+	))
+	.expect("a rejected reservation preserves the standing announcement");
+}
+
+#[test]
+fn work_error_preserves_announcement_works() {
+	replay::trace(WORK_ERROR).expect("skipped work preserves the announcement until applied");
 }
 
 fn unchanged_activation_field_errors(field: &str) {
 	let mut trace: Value = serde_json::from_str(ACTIVATION).unwrap();
 	let states = trace["states"].as_array_mut().unwrap();
 	let frame = (1..states.len())
-		.rfind(|&i| states[i]["now"] != states[i - 1]["now"])
+		.rfind(|&i| {
+			states[i]["now"] != states[i - 1]["now"] &&
+				coretime_info_ref(&states[i])[field] != coretime_info_ref(&states[i - 1])[field]
+		})
 		.expect("activation candidate block");
-	let before = coretime_info(&mut states[frame - 1])[field].clone();
-	assert_ne!(coretime_info(&mut states[frame])[field], before);
+	let before = coretime_info_ref(&states[frame - 1])[field].clone();
+	assert_ne!(coretime_info_ref(&states[frame])[field], before);
 	coretime_info(&mut states[frame])[field] = before;
 	let error = replay::trace(&trace.to_string()).unwrap_err();
 	assert!(
@@ -67,13 +106,92 @@ fn activation_retains_old_code_errors() {
 }
 
 #[test]
-fn activation_retains_pending_upgrade_errors() {
-	unchanged_activation_field_errors("pendingUpgrade");
+fn activation_retains_announced_upgrade_errors() {
+	unchanged_activation_field_errors("announcedUpgrade");
+}
+
+fn none() -> Value {
+	json!({"tag": "None", "value": {"#tup": []}})
+}
+
+fn assert_announcement_differs(trace: &Value, frame: usize, context: &str) {
+	let error = replay::trace(&trace.to_string()).unwrap_err();
+	assert!(
+		error.starts_with(&format!("frame {frame}: svc.parachains[1].announcedUpgrade differs;")),
+		"{context}: {error}"
+	);
 }
 
 #[test]
-fn work_error_across_upgrade_deadline_works() {
-	replay::trace(TRACE).expect("WorkErr preserves the upgrade until a candidate reaps it");
+fn work_error_preserves_announcement_errors() {
+	let mut trace: Value = serde_json::from_str(WORK_ERROR).unwrap();
+	let states = trace["states"].as_array_mut().unwrap();
+	let frame = (1..states.len())
+		.find(|&i| {
+			states[i]["now"] != states[i - 1]["now"] &&
+				states[i]["lastStepWorkResults"][0]["result"]["tag"] == "WorkErr"
+		})
+		.expect("WorkErr block");
+	assert_eq!(coretime_info(&mut states[frame])["announcedUpgrade"]["tag"], "Some");
+	coretime_info(&mut states[frame])["announcedUpgrade"] = none();
+	assert_announcement_differs(&trace, frame, "skipped work must preserve the announcement");
+}
+
+#[test]
+fn announcement_supersedes_previous_errors() {
+	let mut trace: Value = serde_json::from_str(SUPERSEDE).unwrap();
+	let states = trace["states"].as_array_mut().unwrap();
+	let mut frame = None;
+	for i in 1..states.len() {
+		let before = coretime_info_ref(&states[i - 1])["announcedUpgrade"].clone();
+		let after = coretime_info_ref(&states[i])["announcedUpgrade"].clone();
+		if before != after && after["tag"] == "Some" {
+			frame = Some(i);
+		}
+	}
+	let frame = frame.expect("superseding announcement block");
+	let before = coretime_info_ref(&states[frame - 1])["announcedUpgrade"].clone();
+	coretime_info(&mut states[frame])["announcedUpgrade"] = before;
+	assert_announcement_differs(&trace, frame, "the superseded announcement must be replaced");
+}
+
+fn retained_announcement_errors(trace_json: &str, message: &str, context: &str) {
+	let mut trace: Value = serde_json::from_str(trace_json).unwrap();
+	let states = trace["states"].as_array_mut().unwrap();
+	let frame = (1..states.len())
+		.rfind(|&i| {
+			states[i]["now"] != states[i - 1]["now"] &&
+				states[i]["lastStepWorkResults"][0]["result"]["value"]["value"]["upwardMessages"]
+					[0]["tag"] == message
+		})
+		.expect("candidate carrying the message");
+	assert_eq!(
+		coretime_info(&mut states[frame])["announcedUpgrade"]["tag"],
+		"Some",
+		"{context}: the announcement must stand"
+	);
+	coretime_info(&mut states[frame])["announcedUpgrade"] = none();
+	assert_announcement_differs(&trace, frame, context);
+}
+
+#[test]
+fn forget_announced_code_refused_retains_announcement_errors() {
+	retained_announcement_errors(
+		include_str!("../fixtures/quint/upgrades/forget_announced_code_refused_works.itf.json"),
+		"Forget",
+		"a refused forget must keep the announcement",
+	);
+}
+
+#[test]
+fn insufficient_balance_preserves_announcement_errors() {
+	retained_announcement_errors(
+		include_str!(
+			"../fixtures/quint/upgrades/insufficient_balance_preserves_announcement_works.itf.json"
+		),
+		"Solicit",
+		"a rejected reservation must keep the announcement",
+	);
 }
 
 fn coretime_info(frame: &mut Value) -> &mut Value {
@@ -85,40 +203,11 @@ fn coretime_info(frame: &mut Value) -> &mut Value {
 		.expect("Coretime is registered")[1]
 }
 
-#[test]
-fn work_error_reaps_upgrade_errors() {
-	let mut trace: Value = serde_json::from_str(TRACE).unwrap();
-	let states = trace["states"].as_array_mut().unwrap();
-	let frame = (1..states.len())
-		.find(|&i| {
-			states[i]["now"] != states[i - 1]["now"] &&
-				states[i]["lastStepWorkResults"][0]["result"]["tag"] == "WorkErr"
-		})
-		.expect("WorkErr block past the deadline");
-	let pending = &mut coretime_info(&mut states[frame])["pendingUpgrade"];
-	assert_eq!(pending["tag"], "Some");
-	*pending = json!({"tag": "None", "value": {"#tup": []}});
-	let error = replay::trace(&trace.to_string()).unwrap_err();
-	assert!(
-		error.starts_with(&format!("frame {frame}: svc.parachains[1].pendingUpgrade differs;")),
-		"{error}"
-	);
-}
-
-#[test]
-fn candidate_retains_expired_upgrade_errors() {
-	let mut trace: Value = serde_json::from_str(TRACE).unwrap();
-	let states = trace["states"].as_array_mut().unwrap();
-	let frame = (1..states.len())
-		.rfind(|&i| states[i]["now"] != states[i - 1]["now"])
-		.expect("final candidate block");
-	let pending = coretime_info(&mut states[frame - 1])["pendingUpgrade"].clone();
-	assert_eq!(pending["tag"], "Some");
-	assert_eq!(coretime_info(&mut states[frame])["pendingUpgrade"]["tag"], "None");
-	coretime_info(&mut states[frame])["pendingUpgrade"] = pending;
-	let error = replay::trace(&trace.to_string()).unwrap_err();
-	assert!(
-		error.starts_with(&format!("frame {frame}: svc.parachains[1].pendingUpgrade differs;")),
-		"{error}"
-	);
+fn coretime_info_ref(frame: &Value) -> &Value {
+	&frame["svc"]["parachains"]["#map"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.find(|entry| entry[0]["value"]["#bigint"] == "1")
+		.expect("Coretime is registered")[1]
 }

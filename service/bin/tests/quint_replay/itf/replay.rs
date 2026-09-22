@@ -6,7 +6,7 @@ use parachain_service::work_digest::ParachainWorkDigest;
 use parachain_service_bin::mock::MOCK_SERVICE_ID;
 use parachain_service_core::{
 	types::ParaId,
-	upward_message::{Target, UpwardMessage},
+	upward_message::{CodeUpgradePhase, Target, UpwardMessage},
 };
 use serde_json::Value;
 
@@ -166,9 +166,15 @@ fn upward_message(
 			let len = integer(field(value, "len")?)?;
 			let reference =
 				codex.validation_code(integer(field(field(value, "hash")?, "vchBytes")?)?, len)?;
+			let phase = match variant(field(value, "phase")?)? {
+				("Announcement", _) => CodeUpgradePhase::Announcement,
+				("Apply", _) => CodeUpgradePhase::Apply,
+				(tag, _) => return Err(format!("unsupported code upgrade phase {tag}")),
+			};
 			Ok(UpwardMessage::RequestCodeUpgrade {
 				hash: reference.hash,
 				len: Compact(reference.len),
+				phase,
 			})
 		},
 		"ParachainSetStateBalance" => Ok(UpwardMessage::ParachainSetStateBalance {

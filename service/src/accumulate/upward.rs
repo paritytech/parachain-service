@@ -7,18 +7,15 @@
 use crate::{
 	accumulate::{assigns, code_upgrades, foreign_services, management, transfers, validator_keys},
 	head_commitment::HeadTracker,
-	state::{
-		log::{AccumulateLog, InsufficientBalanceReason},
-		para_info::Parachains,
-	},
+	state::{log::AccumulateLog, para_info::Parachains},
 	state_balance,
 };
 use alloc::vec::Vec;
 use jam_pvm_common::accumulate::{is_available, my_info, upgrade};
 use jam_types::{CodeHash, ServiceId, Slot};
 use parachain_service_core::{
-	types::{ParaId, ASSET_HUB_PARA_ID},
-	upward_message::{Target, UpwardMessage},
+	types::{ParaId, Timeslot, ASSET_HUB_PARA_ID},
+	upward_message::{CodeUpgradePhase, Target, UpwardMessage},
 };
 
 /// Apply one upward message emitted by `origin`'s PVF. Log entries are batched
@@ -27,49 +24,34 @@ pub fn apply(
 	now: Slot,
 	service_id: ServiceId,
 	origin: ParaId,
+	lookup_anchor: Timeslot,
 	message: UpwardMessage,
 	logs: &mut Vec<AccumulateLog>,
 	heads: &mut HeadTracker,
 ) {
 	match message {
-		UpwardMessage::RequestCodeUpgrade { hash, len } => {
-			code_upgrades::request_code_upgrade(origin, now, hash, len.0, logs)
+		UpwardMessage::RequestCodeUpgrade { hash, len, phase } => match phase {
+			CodeUpgradePhase::Announcement => {
+				code_upgrades::announce_code_upgrade(origin, hash, len.0, lookup_anchor, logs)
+			},
+			CodeUpgradePhase::Apply => code_upgrades::apply_code_upgrade(origin, hash, len.0, logs),
 		},
 
 		UpwardMessage::Solicit { target: Target::Parachain(target), hash, len } => {
 			// `target` names who is charged; only the Coretime chain may name a
 			// para other than itself (§6.1), and a dead target is a no-op.
-			let Some(mut pi) = Parachains::get(target) else { return };
+			let Some(pi) = Parachains::get(target) else { return };
 			if pi.is_deregistering {
 				return;
 			}
-			// For the target's own active/pending validation code this only sets
-			// `pinned`: the code is already referenced by the service, so no
-			// extra balance is charged (§5.2).
-			if let Some(vc) = &mut pi.validation_code {
-				if vc.code_ref.is(&hash, len.0) {
-					vc.pinned = true;
-					// The pinned flag is a `ParaInfo` write; a backstop failure
-					// (§6.1 invariant) logs the rejection and the
-					// solicit is dropped.
-					if Parachains::set(target, &pi).is_err() {
-						logs.push(AccumulateLog::InsufficientStateBalance {
-							reason: InsufficientBalanceReason::ParaInfo,
-						});
-					}
-					return;
-				}
-			}
-			if let Some((vc, _)) = &mut pi.pending_upgrade {
-				if vc.code_ref.is(&hash, len.0) {
-					vc.pinned = true;
-					if Parachains::set(target, &pi).is_err() {
-						logs.push(AccumulateLog::InsufficientStateBalance {
-							reason: InsufficientBalanceReason::ParaInfo,
-						});
-					}
-					return;
-				}
+			// The target's own active or announced validation code is already
+			// referenced and pinned, so soliciting it changes nothing and costs
+			// no extra state balance (§5.2).
+			let already_referenced =
+				pi.validation_code.as_ref().is_some_and(|vc| vc.is(&hash, len.0)) ||
+					pi.announced_upgrade.as_ref().is_some_and(|vc| vc.is(&hash, len.0));
+			if already_referenced {
+				return;
 			}
 			if let Err(log) = state_balance::add_referencer(target, &hash, len.0) {
 				logs.push(log);
@@ -100,24 +82,17 @@ pub fn apply(
 			}
 			// `para_id` names whose reference is released (Coretime may name any
 			// para, §6.4); a dead target is a no-op.
-			let Some(mut pi) = Parachains::get(para_id) else { return };
-			// Forgetting the target's own active/pending code only clears
-			// `pinned`; the service still needs the code available, so the
-			// referencer stays and no JAM `forget` is forwarded (§5.2).
-			if let Some(vc) = &mut pi.validation_code {
-				if vc.code_ref.is(&hash, len.0) {
-					vc.pinned = false;
-					// Clearing `pinned` shrinks the record; JAM never rejects it.
-					Parachains::set(para_id, &pi).expect("clearing pinned shrinks the record; qed");
-					return;
-				}
-			}
-			if let Some((vc, _)) = &mut pi.pending_upgrade {
-				if vc.code_ref.is(&hash, len.0) {
-					vc.pinned = false;
-					Parachains::set(para_id, &pi).expect("clearing pinned shrinks the record; qed");
-					return;
-				}
+			let Some(pi) = Parachains::get(para_id) else { return };
+			// The active or announced validation code is pinned as validation
+			// code: the forget is refused, so the referencer and the balance
+			// both stay (§5.2). This is what stops a forced call from stripping
+			// running validation code.
+			let is_validation_code =
+				pi.validation_code.as_ref().is_some_and(|vc| vc.is(&hash, len.0)) ||
+					pi.announced_upgrade.as_ref().is_some_and(|vc| vc.is(&hash, len.0));
+			if is_validation_code {
+				logs.push(AccumulateLog::CanNotForgetValidationCode { hash, len: len.0.into() });
+				return;
 			}
 			let out = state_balance::remove_referencer(para_id, &hash, len.0, now);
 			logs.extend(out.log);

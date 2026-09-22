@@ -7,13 +7,13 @@
 //! When the canonical changes, update this file and re-run the byte-pinning tests.
 //!
 //! Sources mirrored (read-only; do not edit those files):
-//!   - `service/src/state/para_info.rs`   — `ValidationCode`, `ParaInfo`
+//!   - `service/src/state/para_info.rs`   — `ParaInfo`
 //!   - `service/src/state/mod.rs`         — `Tag`, `storage_key`
 //!   - `cumulus/src/lib.rs service_state` — `para_info_key`
 
+use crate::types::{Balance, HeadData, ParaId, ValidationCodeRef};
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
-use crate::types::{Balance, HeadData, ParaId, Timeslot, ValidationCodeRef};
 
 /// Storage-item tags (spec §3.1, "Storage key encoding").
 ///
@@ -49,17 +49,6 @@ pub fn para_info_key(para_id: ParaId) -> Vec<u8> {
 	storage_key(Tag::Parachains, &para_id)
 }
 
-/// A validation code with its reference and `pinned` flag, recording whether the
-/// parachain has *also* solicited it itself, on top of the service's own
-/// code-upgrade solicit. Spec §5.2.
-///
-/// Mirrors `service::state::para_info::ValidationCode`.
-#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
-pub struct ValidationCode {
-	pub code_ref: ValidationCodeRef,
-	pub pinned: bool,
-}
-
 /// Per-parachain metadata (spec §3.1).
 ///
 /// Mirrors `service::state::para_info::ParaInfo`. Field order, types, and codec
@@ -74,10 +63,11 @@ pub struct ParaInfo {
 	pub head_data: HeadData,
 	/// Currently active validation code, or `None` for a freshly-registered
 	/// parachain. Spec §6.
-	pub validation_code: Option<ValidationCode>,
-	/// Pending code upgrade, if any: the new validation code and the deadline
-	/// timeslot after which the upgrade is rejected. Spec §5.2.
-	pub pending_upgrade: Option<(ValidationCode, Timeslot)>,
+	pub validation_code: Option<ValidationCodeRef>,
+	/// Code announced for upgrade, awaiting an `Apply`; `None` when no
+	/// announcement stands. An announcement carries no deadline and stays
+	/// standing until applied or superseded. Spec §5.2.
+	pub announced_upgrade: Option<ValidationCodeRef>,
 	/// Total state balance allocated to this parachain. Set exclusively by the
 	/// Coretime chain via `parachain_set_state_balance`. Spec §6.1.
 	#[codec(compact)]
@@ -93,9 +83,9 @@ pub struct ParaInfo {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::types::{HeadData, ParaId, ValidationCodeHash, ValidationCodeRef};
 	use alloc::vec;
 	use codec::{Decode, Encode};
-	use crate::types::{HeadData, ParaId, ValidationCodeHash, ValidationCodeRef};
 
 	/// Key must be byte-identical to `cumulus::service_state::para_info_key`.
 	/// Pinned from `cumulus/src/lib.rs service_state::tests`.
@@ -116,15 +106,16 @@ mod tests {
 	///   validation_code Some   `01`
 	///   code_ref.hash          `[0x11; 32]`       `ValidationCodeHash` inner `[u8; 32]`
 	///   code_ref.len           `01 00 00 00`      `1u32` LE
-	///   pinned                 `01`               true
-	///   pending_upgrade Some   `01`
+	///   announced_upgrade Some `01`
 	///   code_ref.hash          `[0x22; 32]`
 	///   code_ref.len           `02 00 00 00`      `2u32` LE
-	///   pinned                 `00`               false
-	///   timeslot               `07 00 00 00`      `7u32` LE
 	///   total_state_balance    `28`               compact(10) = 10 << 2
 	///   used_state_balance     `14`               compact(5)  =  5 << 2
 	///   is_deregistering       `01`               true
+	///
+	/// 80 bytes total: the `ValidationCode` wrapper and its `pinned` bit, and the
+	/// `(ValidationCode, Timeslot)` tuple, are gone — each optional is now a bare
+	/// `ValidationCodeRef` (32-byte hash + 4-byte LE length).
 	///
 	/// To regenerate: SCALE-encode an equivalent `service::state::para_info::ParaInfo`
 	/// (same field values) with `codec::Encode::encode()` and print the bytes as hex.
@@ -133,24 +124,20 @@ mod tests {
 		let bytes: &[u8] = &[
 			0x08, 0xca, 0xfe, 0x01, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
 			0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
-			0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x01, 0x00, 0x00, 0x00, 0x01, 0x01,
+			0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x01, 0x00, 0x00, 0x00, 0x01, 0x22,
 			0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22,
 			0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22,
-			0x22, 0x22, 0x22, 0x22, 0x02, 0x00, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00, 0x28,
-			0x14, 0x01,
+			0x22, 0x22, 0x22, 0x02, 0x00, 0x00, 0x00, 0x28, 0x14, 0x01,
 		];
 		let info = ParaInfo::decode(&mut &bytes[..]).expect("well-formed fixture; qed");
 		let expected_head = HeadData::try_from(vec![0xca, 0xfe]).expect("2 bytes < 4 KiB; qed");
 		assert_eq!(info.head_data, expected_head);
 		let vc = info.validation_code.expect("Some in fixture; qed");
-		assert_eq!(vc.code_ref.hash.0, [0x11u8; 32]);
-		assert_eq!(vc.code_ref.len, 1);
-		assert!(vc.pinned);
-		let (upgrade_code, timeslot) = info.pending_upgrade.expect("Some in fixture; qed");
-		assert_eq!(upgrade_code.code_ref.hash.0, [0x22u8; 32]);
-		assert_eq!(upgrade_code.code_ref.len, 2);
-		assert!(!upgrade_code.pinned);
-		assert_eq!(timeslot, 7);
+		assert_eq!(vc.hash.0, [0x11u8; 32]);
+		assert_eq!(vc.len, 1);
+		let announced = info.announced_upgrade.expect("Some in fixture; qed");
+		assert_eq!(announced.hash.0, [0x22u8; 32]);
+		assert_eq!(announced.len, 2);
 		assert_eq!(info.total_state_balance, 10);
 		assert_eq!(info.used_state_balance, 5);
 		assert!(info.is_deregistering);
@@ -165,8 +152,8 @@ mod tests {
 			HeadData::try_from(vec![0xde, 0xad, 0xbe, 0xef]).expect("4 bytes < 4 KiB; qed");
 		let original = ParaInfo {
 			head_data,
-			validation_code: Some(ValidationCode { code_ref: code_ref_a, pinned: true }),
-			pending_upgrade: Some((ValidationCode { code_ref: code_ref_b, pinned: false }, 999)),
+			validation_code: Some(code_ref_a),
+			announced_upgrade: Some(code_ref_b),
 			total_state_balance: 100_000,
 			used_state_balance: 42_000,
 			is_deregistering: false,

@@ -17,18 +17,18 @@ module fuzz {
     candidate: ParachainCandidate, mode: int, anchor: Timeslot, auth: int,
     msgs: List[UpwardMessage]
   ): WorkResult = {
-    val pending = match s.paraInfo(para).pendingUpgrade {
+    val announced = match s.paraInfo(para).announcedUpgrade {
       | None => activeCodeCandidate(s, para)
-      | Some(pair) => { validationCode: pair._1.ref, pov: 0 }
+      | Some(ref) => { validationCode: ref, pov: 0 }
     }
     val pkg: WorkPackage = {
       authorizedParas: List(para),
-      items: List(if (mode == 6) candidate else if (mode == 8) pending
+      items: List(if (mode == 6) candidate else if (mode == 8) announced
         else activeCodeCandidate(s, para))
     }
     val result = if (mode == 1) WorkErr else refine(
       s, pkg, false,
-      if (mode == 2) PvfReportError(42) else if (mode == 4) PvfPanic else PvfOk,
+      if (mode == 2) CodeReportError(42) else if (mode == 4) CodePanic else CodeOk,
       if (mode == 3) None else Some(headHash(
         if (mode == 7) StaleParentHead else curHead)),
       if (mode == 5) HeadUndeclared else HeadDeclared(curHead + 1), msgs, anchor)[0]
@@ -40,9 +40,12 @@ module fuzz {
   pure def replayMessages(s: ParachainServiceState, para: ParaId): Set[UpwardMessage] = {
     val code = vchAsHash(activeCodeHashOr(s.paraInfo(para), NoCodeHash))
     Set(
-      RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen }),
-      RequestCodeUpgrade({ hash: { vchBytes: 778 }, len: FixedCodeLen }),
-      RequestCodeUpgrade({ hash: activeCodeHashOr(s.paraInfo(para), NoCodeHash), len: FixedCodeLen }),
+      RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen, phase: Announcement }),
+      RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen, phase: Apply }),
+      RequestCodeUpgrade({ hash: { vchBytes: 778 }, len: FixedCodeLen, phase: Announcement }),
+      RequestCodeUpgrade({ hash: { vchBytes: 778 }, len: FixedCodeLen, phase: Apply }),
+      RequestCodeUpgrade({ hash: activeCodeHashOr(s.paraInfo(para), NoCodeHash), len: FixedCodeLen, phase: Announcement }),
+      RequestCodeUpgrade({ hash: activeCodeHashOr(s.paraInfo(para), NoCodeHash), len: FixedCodeLen, phase: Apply }),
       Solicit({ target: Parachain(para), hash: { hashBytes: 777 }, len: FixedCodeLen }),
       Solicit({ target: Parachain(para), hash: { hashBytes: 778 }, len: FixedCodeLen }),
       Forget({ target: Parachain(para), hash: { hashBytes: 777 }, len: FixedCodeLen }),

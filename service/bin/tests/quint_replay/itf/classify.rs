@@ -37,12 +37,14 @@ pub fn classify(previous: &Value, current: &Value) -> Result<FrameKind, String> 
 	let now_unchanged = previous.get("now") == current.get("now");
 	let changed_svc_fields = changed_svc_fields(previous, current)?;
 
+	// `lastStepWorkResults` persists across an external provision step in
+	// normalized traces, so provision is decided by the unchanged slot and the
+	// sole `preimageStatus` change rather than by an empty work-result list.
+	let provision = now_unchanged && changed_svc_fields == BTreeSet::from(["preimageStatus"]);
 	// Only stepRefineAccumulate advances `now`, so it catches zero-package blocks too.
-	let block = !work_results.is_empty() || !now_unchanged;
-	let provision = work_results.is_empty() &&
-		now_unchanged &&
-		changed_svc_fields == BTreeSet::from(["preimageStatus"]);
-	let incoming = work_results.is_empty() &&
+	let block = !provision && (!work_results.is_empty() || !now_unchanged);
+	let incoming = !provision &&
+		!block && work_results.is_empty() &&
 		now_unchanged &&
 		!changed_svc_fields.is_empty() &&
 		changed_svc_fields.iter().all(|field| {
@@ -139,6 +141,15 @@ mod tests {
 		let mut changed = svc();
 		changed["preimageStatus"]["hash"] = json!("Provided");
 		let current = frame(0, changed, json!([]));
+		assert_eq!(classify(&previous, &current).unwrap(), FrameKind::ProvisionPreimage);
+	}
+
+	#[test]
+	fn provision_with_stale_work_results_works() {
+		let previous = frame(0, svc(), json!([{"result": "anything"}]));
+		let mut changed = svc();
+		changed["preimageStatus"]["hash"] = json!("Provided");
+		let current = frame(0, changed, json!([{"result": "anything"}]));
 		assert_eq!(classify(&previous, &current).unwrap(), FrameKind::ProvisionPreimage);
 	}
 

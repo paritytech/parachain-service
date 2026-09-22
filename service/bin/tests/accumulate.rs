@@ -266,20 +266,21 @@ fn kv_insufficient_balance_errors() {
 }
 
 #[test]
-fn rejected_candidate_preserves_expired_upgrade_works() {
-	use parachain_service::state::{para_info::ValidationCode, storage_key, Tag};
+fn rejected_candidate_preserves_announcement_works() {
+	// §5.1/§5.2: a candidate rejected at steps 1–5 never reaches the replay step,
+	// so a standing announcement is preserved.
+	use parachain_service::state::{storage_key, Tag};
 	use parachain_service_core::upward_message::UpwardMessage;
-	let pending = b"expired-code";
+	let announced = b"announced-code";
 	for (candidate_code, messages) in [
 		(&b"wrong-code"[..], vec![]),
-		(&pending[..], vec![]),
+		(&announced[..], vec![]),
 		(CODE, vec![UpwardMessage::ParachainCleanUp(PARA)]),
 	] {
 		let storage = fresh_storage(|s| {
 			seed_para(s, PARA, b"genesis", CODE, RICH);
 			let mut pi = para_info(s, PARA).unwrap();
-			pi.pending_upgrade =
-				Some((ValidationCode { code_ref: code_ref(pending), pinned: false }, NOW - 1));
+			pi.announced_upgrade = Some(code_ref(announced));
 			set_state(s, &storage_key(Tag::Parachains, &PARA), &pi);
 		});
 		let before = para_info(&storage, PARA).unwrap();

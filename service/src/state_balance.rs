@@ -60,10 +60,11 @@ fn vec_bytes(len: usize) -> u64 {
 
 /// Worst-case octets of the `(ParaId, ParaInfo)` entry (§6.1 table, with 9 B
 /// worst-case `Compact<u64>` balances per D-3): overhead 34 + tag 1 + key 4 +
-/// head 4 098 + validation_code 38 + pending_upgrade 42 + balances 9 + 9 +
-/// is_deregistering 1, plus 1 item.
+/// head 4 098 + validation_code 37 + announced_upgrade 37 + balances 9 + 9 +
+/// is_deregistering 1, plus 1 item. Each code field is an
+/// `Option<ValidationCodeRef>`: 1 B tag + 32 B hash + 4 B len.
 pub const PARA_INFO_FOOTPRINT: Balance =
-	ENTRY_OVERHEAD + 1 + 4 + (2 + 4096) + 38 + 42 + 9 + 9 + 1 + ITEM_DEPOSIT;
+	ENTRY_OVERHEAD + 1 + 4 + (2 + 4096) + 37 + 37 + 9 + 9 + 1 + ITEM_DEPOSIT;
 
 /// The flat `parachain_log` reserve (§6.1 table): overhead 34 + key 5 +
 /// 64 KiB value cap, plus 1 item.
@@ -400,15 +401,12 @@ pub fn apply_remove_kv(para_id: ParaId, key: &[u8]) {
 }
 
 /// The exact `used_state_balance` a para may hold at clean-up (§6.4): its
-/// baseline plus the footprints of its active and (if any) pending validation
+/// baseline plus the footprints of its active and (if any) announced validation
 /// code — nothing else.
 pub fn clean_up_allowed_balance(pi: &ParaInfo, para_id: ParaId) -> Balance {
-	let active = pi.validation_code.as_ref().map_or(0, |vc| preimage_footprint(vc.code_ref.len));
-	let pending = pi
-		.pending_upgrade
-		.as_ref()
-		.map_or(0, |(vc, _)| preimage_footprint(vc.code_ref.len));
-	baseline_for(para_id) + active + pending
+	let active = pi.validation_code.as_ref().map_or(0, |vc| preimage_footprint(vc.len));
+	let announced = pi.announced_upgrade.as_ref().map_or(0, |vc| preimage_footprint(vc.len));
+	baseline_for(para_id) + active + announced
 }
 
 // Re-exported for the transfer-admission rule (§5.1).
@@ -443,11 +441,11 @@ mod tests {
 
 	#[test]
 	fn baseline_footprint_works() {
-		// The design's table says 69 847 with 17 B `Compact<u128>` balances;
-		// with 9 B `Compact<u64>` (D-3) both balance fields shrink by 8 B.
-		assert_eq!(PARA_INFO_FOOTPRINT, 4_262 - 16);
+		// Both code fields are `Option<ValidationCodeRef>` (1 B tag + 36 B body).
+		// With 9 B `Compact<u64>` balances per D-3 the baseline is 69 825.
+		assert_eq!(PARA_INFO_FOOTPRINT, 4_240);
 		assert_eq!(PARA_LOG_FOOTPRINT, 65_585);
-		assert_eq!(BASELINE_FOOTPRINT, 69_847 - 16);
+		assert_eq!(BASELINE_FOOTPRINT, 69_825);
 	}
 
 	#[test]

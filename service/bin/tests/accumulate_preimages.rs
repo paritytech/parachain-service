@@ -1,5 +1,5 @@
-//! Preimage solicit/forget lifecycle via upward messages (§6.1) and the
-//! `pinned` bit on a para's own validation code (§5.2).
+//! Preimage solicit/forget lifecycle via upward messages (§6.1), including the
+//! §5.2 refusal to forget a para's active or announced validation code.
 
 mod common;
 
@@ -10,7 +10,7 @@ use parachain_service::{
 };
 use parachain_service_core::{
 	types::{Hash, ParaId},
-	upward_message::{Target, UpwardMessage},
+	upward_message::{CodeUpgradePhase, Target, UpwardMessage},
 };
 
 const NOW: u32 = 100;
@@ -246,9 +246,9 @@ fn shared_referencer_leaves_works() {
 }
 
 #[test]
-fn solicit_active_code_pins_works() {
-	// §5.2: soliciting the para's own active code only sets `pinned` — the code
-	// is already referenced, so no extra balance is charged.
+fn solicit_active_code_is_noop_works() {
+	// §5.2: soliciting the para's own active code is already referenced, so it
+	// changes nothing and costs no extra state balance.
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let used_before = para_info(&storage, PARA).unwrap().used_state_balance;
 	let cref = code_ref(CODE);
@@ -262,67 +262,115 @@ fn solicit_active_code_pins_works() {
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	let info = para_info(&storage, PARA).unwrap();
-	assert!(info.validation_code.as_ref().unwrap().pinned);
-	assert_eq!(info.used_state_balance, used_before, "no double charge");
+	assert_eq!(info.validation_code, Some(cref));
+	assert_eq!(info.used_state_balance, used_before, "no extra charge");
+	assert!(accumulate_logs(&storage, PARA).is_empty());
 }
 
 #[test]
-fn forget_active_code_unpins_works() {
-	// §5.2: forgetting the own active code only clears `pinned` — the service
-	// still needs the code, so the referencer stays and nothing is refunded.
+fn solicit_announced_code_is_noop_works() {
+	// §5.2: an announced code is already pinned as validation code, so soliciting
+	// it again neither re-charges nor creates a second reference.
+	const NEW_CODE: &[u8] = b"para-1000-code-v2";
+	let new_ref = code_ref(NEW_CODE);
+	let storage = fresh_storage(|s| {
+		seed_para(s, PARA, b"genesis", CODE, RICH);
+		let mut info = para_info(s, PARA).unwrap();
+		info.announced_upgrade = Some(new_ref);
+		set_state(
+			s,
+			&parachain_service::state::storage_key(
+				parachain_service::state::Tag::Parachains,
+				&PARA,
+			),
+			&info,
+		);
+	});
+	let used_before = para_info(&storage, PARA).unwrap().used_state_balance;
+
+	let msg = UpwardMessage::Solicit {
+		target: Target::Parachain(PARA),
+		hash: new_ref.hash.0,
+		len: new_ref.len.into(),
+	};
+	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+
+	assert!(registry_entry(&storage, new_ref).is_none(), "no reference created");
+	assert_eq!(para_info(&storage, PARA).unwrap().used_state_balance, used_before);
+	assert!(accumulate_logs(&storage, PARA).is_empty());
+}
+
+#[test]
+fn forget_active_code_refused_works() {
+	// §5.2: the running code cannot be forgotten — the referencer and the charge
+	// stay, and the refusal is logged.
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let cref = code_ref(CODE);
+	let used_before = para_info(&storage, PARA).unwrap().used_state_balance;
 
-	let pin = UpwardMessage::Solicit {
+	let forget = UpwardMessage::Forget {
 		target: Target::Parachain(PARA),
 		hash: cref.hash.0,
 		len: cref.len.into(),
 	};
-	let unpin = UpwardMessage::Forget {
-		target: Target::Parachain(PARA),
-		hash: cref.hash.0,
-		len: cref.len.into(),
-	};
-	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![pin, unpin], 0);
+	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![forget], 0);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	let info = para_info(&storage, PARA).unwrap();
-	assert!(!info.validation_code.as_ref().unwrap().pinned);
+	assert_eq!(info.used_state_balance, used_before);
 	assert!(registry_entry(&storage, cref).is_some_and(|e| e.referencers.contains(&PARA)));
-	assert!(accumulate_logs(&storage, PARA).is_empty());
+	assert_eq!(
+		accumulate_logs(&storage, PARA),
+		vec![AccumulateLog::CanNotForgetValidationCode { hash: cref.hash.0, len: cref.len.into() }]
+	);
 }
 
 #[test]
-fn pinned_code_survives_upgrade_works() {
-	// §5.2: a pinned old code is NOT released when an upgrade activates — the
-	// para keeps (and keeps paying for) its reference.
+fn forget_announced_code_refused_works() {
+	// §5.2: an announced code is pinned until superseded or applied, so a forget
+	// is refused and the reference, charge and announcement all stay.
 	const NEW_CODE: &[u8] = b"para-1000-code-v2";
-	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
-	let old_ref = code_ref(CODE);
 	let new_ref = code_ref(NEW_CODE);
-
-	// Pin the active code and request the upgrade in one candidate.
-	let pin = UpwardMessage::Solicit {
+	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
+	let msg = UpwardMessage::Solicit {
 		target: Target::Parachain(PARA),
-		hash: old_ref.hash.0,
-		len: old_ref.len.into(),
+		hash: new_ref.hash.0,
+		len: new_ref.len.into(),
 	};
-	let request = UpwardMessage::RequestCodeUpgrade { hash: new_ref.hash, len: new_ref.len.into() };
-	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![pin, request], 0);
-	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
-	let used_both = para_info(&storage, PARA).unwrap().used_state_balance;
+	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg], 0);
+	let (_, mut storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+	storage.provide(NOW, SVC, NEW_CODE).expect("solicited in the same block");
+	storage.commit();
 
-	// First candidate validated with the new code activates it.
-	let digest = ok_digest(PARA, NEW_CODE, b"head-1", b"head-2", vec![], 0);
+	let announce = UpwardMessage::RequestCodeUpgrade {
+		hash: new_ref.hash,
+		len: new_ref.len.into(),
+		phase: CodeUpgradePhase::Announcement,
+	};
+	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![announce], 0);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
+	let used_announced = para_info(&storage, PARA).unwrap().used_state_balance;
+
+	let forget = UpwardMessage::Forget {
+		target: Target::Parachain(PARA),
+		hash: new_ref.hash.0,
+		len: new_ref.len.into(),
+	};
+	let digest = ok_digest(PARA, CODE, b"head-2", b"head-3", vec![forget], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 2);
 
 	let info = para_info(&storage, PARA).unwrap();
-	assert_eq!(info.validation_code.as_ref().unwrap().code_ref, new_ref);
-	// Unlike the unpinned case (see accumulate_upgrades::activation_works), the
-	// old code is neither released nor two-step-forgotten.
-	assert!(registry_entry(&storage, old_ref).is_some_and(|e| e.referencers.contains(&PARA)));
-	assert_eq!(info.used_state_balance, used_both, "old code still paid for");
-	assert!(accumulate_logs(&storage, PARA).is_empty());
+	assert_eq!(info.announced_upgrade, Some(new_ref));
+	assert_eq!(info.used_state_balance, used_announced);
+	assert!(registry_entry(&storage, new_ref).is_some_and(|e| e.referencers.contains(&PARA)));
+	assert_eq!(
+		accumulate_logs(&storage, PARA),
+		vec![AccumulateLog::CanNotForgetValidationCode {
+			hash: new_ref.hash.0,
+			len: new_ref.len.into()
+		}]
+	);
 }
 
 #[test]

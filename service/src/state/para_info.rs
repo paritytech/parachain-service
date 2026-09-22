@@ -2,16 +2,7 @@
 
 use crate::state::{self, StorageFull, Tag};
 use codec::{Compact, Decode, Encode};
-use parachain_service_core::types::{Balance, HeadData, ParaId, Timeslot, ValidationCodeRef};
-
-/// A validation code with its reference and `pinned` flag, recording whether the
-/// parachain has *also* solicited it itself, on top of the service's own
-/// code-upgrade solicit. Spec §5.2.
-#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
-pub struct ValidationCode {
-	pub code_ref: ValidationCodeRef,
-	pub pinned: bool,
-}
+use parachain_service_core::types::{Balance, HeadData, ParaId, ValidationCodeRef};
 
 /// Per-parachain metadata (spec §3.1).
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
@@ -20,10 +11,11 @@ pub struct ParaInfo {
 	pub head_data: HeadData,
 	/// Currently active validation code, or `None` for a freshly-registered
 	/// parachain. Spec §6.
-	pub validation_code: Option<ValidationCode>,
-	/// Pending code upgrade, if any: the new validation code and the deadline
-	/// timeslot after which the upgrade is rejected. Spec §5.2.
-	pub pending_upgrade: Option<(ValidationCode, Timeslot)>,
+	pub validation_code: Option<ValidationCodeRef>,
+	/// Code announced for upgrade, awaiting an `Apply`; `None` when no
+	/// announcement stands. An announcement carries no deadline and stays
+	/// standing until applied or superseded. Spec §5.2.
+	pub announced_upgrade: Option<ValidationCodeRef>,
 	/// Total state balance allocated to this parachain. Set exclusively by the
 	/// Coretime chain via `parachain_set_state_balance`. Spec §6.1.
 	#[codec(compact)]

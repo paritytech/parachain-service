@@ -9,11 +9,14 @@
 use alloc::vec::Vec;
 use codec::{Compact, Encode};
 
+use crate::upward_message::{CodeUpgradePhase, Target};
+
 /// The subset of the service's `UpwardMessage` ABI this runtime emits. The SCALE variant
 /// index is positional, so the ordering has to match the spec's `enum UpwardMessage`.
 #[derive(Encode)]
 enum UpwardMessage {
-	RequestCodeUpgrade { hash: [u8; 32], len: Compact<u32> },
+	RequestCodeUpgrade { hash: [u8; 32], len: Compact<u32>, phase: CodeUpgradePhase },
+	Solicit { target: Target, hash: [u8; 32], len: Compact<u32> },
 }
 
 #[polkavm_derive::polkavm_import]
@@ -38,9 +41,20 @@ pub fn set_head(head: &[u8]) {
 	unsafe { set_head_raw(head.as_ptr() as u32, head.len() as u32) }
 }
 
-/// Signal a PVF code upgrade request (`hash` + encoded-code length).
-pub fn request_code_upgrade(hash: [u8; 32], len: u32) {
-	send_upward_message(&UpwardMessage::RequestCodeUpgrade { hash, len: Compact(len) }.encode())
+/// Signal a PVF code upgrade request (`hash` + encoded-code length + phase).
+pub fn request_code_upgrade(hash: [u8; 32], len: u32, phase: CodeUpgradePhase) {
+	send_upward_message(
+		&UpwardMessage::RequestCodeUpgrade { hash, len: Compact(len), phase }.encode(),
+	)
+}
+
+/// Solicit a preimage for `target` (§5.2 step 1).
+///
+/// A parachain must reference a code before it can announce it, so this precedes every
+/// `Announcement`. The service treats a repeat solicit of an already-referenced code as a
+/// no-op, so emitting it alongside each announcement is safe.
+pub fn solicit(target: Target, hash: [u8; 32], len: u32) {
+	send_upward_message(&UpwardMessage::Solicit { target, hash, len: Compact(len) }.encode())
 }
 
 /// Append one upward message to the work digest.

@@ -11,7 +11,7 @@ use parachain_service_bin::mock::MOCK_SERVICE_ID;
 use parachain_service_core::types::Hash;
 use serde_json::Value;
 
-use super::{codex::Codex, refine_log::refine_log, replay::*, seed::validation_code};
+use super::{codex::Codex, refine_log::refine_log, replay::*, seed::option_code_ref};
 use crate::common::get_state;
 
 /// Compare every field of every Quint parachain record with Rust storage.
@@ -28,26 +28,12 @@ pub fn state(
 		expected_paras.insert(para);
 		let actual: ParaInfo = get_state(storage, &storage_key(Tag::Parachains, &para))
 			.ok_or_else(|| format!("frame {frame}: para {} missing", para.0))?;
-		let expected_validation = match variant(field(value, "validationCode")?)? {
-			("None", _) => None,
-			("Some", code) => Some(validation_code(code, codex)?),
-			(tag, _) => return Err(format!("unexpected validationCode variant {tag}")),
-		};
-		let expected_pending = match variant(field(value, "pendingUpgrade")?)? {
-			("None", _) => None,
-			("Some", pair) => {
-				let pair = tuple(pair)?;
-				Some((
-					validation_code(&pair[0], codex)?,
-					bounded_integer::<u32>(&pair[1], "pendingUpgrade deadline")?,
-				))
-			},
-			(tag, _) => return Err(format!("unexpected pendingUpgrade variant {tag}")),
-		};
+		let expected_validation = option_code_ref(value, "validationCode", codex)?;
+		let expected_announcement = option_code_ref(value, "announcedUpgrade", codex)?;
 		let checks = [
 			("headData", actual.head_data == Codex::head(integer(field(value, "headData")?)?)?),
 			("validationCode", actual.validation_code == expected_validation),
-			("pendingUpgrade", actual.pending_upgrade == expected_pending),
+			("announcedUpgrade", actual.announced_upgrade == expected_announcement),
 			(
 				"totalStateBalance",
 				actual.total_state_balance ==
