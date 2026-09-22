@@ -60,6 +60,7 @@ pub fn seed(storage: &mut Storage, frame: &Value, codex: &mut Codex) -> Result<(
 			other => return Err(format!("initial preimage status {other} is not supported")),
 		}
 	}
+	super::assignments::seed(storage, field(frame, "svc")?)?;
 	storage.commit();
 	Ok(())
 }

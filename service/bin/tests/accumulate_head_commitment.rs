@@ -12,7 +12,10 @@ mod common;
 use codec::Encode;
 use common::*;
 use parachain_service::hashing::keccak_256;
-use parachain_service_core::types::{Hash, ParaId};
+use parachain_service_core::{
+	types::{Hash, ParaId, CORETIME_PARA_ID},
+	upward_message::UpwardMessage,
+};
 use tiny_keccak::{Hasher as _, Keccak};
 
 const NOW: u32 = 100;
@@ -135,4 +138,39 @@ fn three_changed_heads_promote_odd_leaf_works() {
 	let expected =
 		root(vec![leaf(PARA_A, b"head-a1"), leaf(PARA_B, b"head-b1"), leaf(PARA_C, b"head-c1")]);
 	assert_eq!(outcome.yielded, expected);
+}
+
+#[test]
+fn cleanup_and_reregistration_compares_original_head_works() {
+	for (before, after) in [
+		(&b""[..], &b""[..]),
+		(&b"original"[..], &b"original"[..]),
+		(&b"original"[..], &b""[..]),
+		(&b"original"[..], &b"replacement"[..]),
+	] {
+		let storage = fresh_storage(|s| {
+			seed_para(s, CORETIME_PARA_ID, b"ct", CODE_A, RICH);
+			seed_para_unprovided(s, PARA_B, before, CODE_B, RICH);
+		});
+		let digest = ok_digest(
+			CORETIME_PARA_ID,
+			CODE_A,
+			b"ct",
+			b"ct",
+			vec![
+				UpwardMessage::ParachainCleanUp(PARA_B),
+				UpwardMessage::ParachainSetStateBalance { para_id: PARA_B, new_total: RICH.into() },
+				UpwardMessage::ParachainSetHead {
+					para_id: PARA_B,
+					new_head: after.to_vec().try_into().unwrap(),
+				},
+			],
+			0,
+		);
+		let (outcome, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+		let info = para_info(&storage, PARA_B).unwrap();
+		assert_eq!(&info.head_data[..], after);
+		assert!(info.validation_code.is_none(), "cleanup must remove the old registration");
+		assert_eq!(outcome.yielded, (before != after).then(|| leaf(PARA_B, after)));
+	}
 }

@@ -1,52 +1,33 @@
 # Parachain Service PoC
 
-The parachain service lets you run Polkadot parachains on JAM. It:
+Run Polkadot parachains on JAM: `refine` validates candidates, `accumulate`
+handles inclusion and service state, and Cumulus lets collators author Work Packages.
+JAM provides backing, availability, and approval checking without a relay-chain runtime.
 
-- Replaces the *candidate inclusion* with an implementation of JAM `accumulate`.
-- Replaces the off-chain validation of *candidate backing* with an implementation of JAM `refine`.
-- Offloads *approval checking*, *availability* and *backing* to JAM.
-- Exposes a new Cumulus interface for collators to author parachain blocks as Work Packages.
-
-There is no longer a relay chain runtime; the former relay chain logic is implemented without FRAME
-directly as an `accumulate` hook.
-
-## Project Structure
-
-```
-.
-├── authorizer          # JAM authorizer for the service
-│   └── bin             # Blob builder for the authorizer
-├── cumulus             # Re-exports for candidate authorship
-├── runtimes            # Parachain runtimes
-│   └── frameless       # One mock runtime for both Coretime and Asset Hub
-├── scripts             # Justfile modules
-├── service             # The parachain service (refine + accumulate)
-│   └── bin             # Blob builder for the service
-├── support             # Code shared across the crates above
-└── tools
-    └── executor        # PolkaJAM test adapter
-```
-
-## Notable Code Locations
-
-- [is_authorized.rs](./authorizer/src/is_authorized.rs) and its [tests](./service/bin/tests/is_authorized.rs)
-- [refine.rs](./service/src/refine.rs) and its [tests](./service/bin/tests/refine.rs)
-- [accumulate.rs](./service/src/accumulate.rs) and its [tests](./service/bin/tests/accumulate.rs)
-- [frameless](./runtimes/frameless/src/lib.rs), the mock runtime whose `Config` picks Coretime or Asset Hub
-- [PolkaJAM](./tools/executor/src/polkajam.rs) in-memory execution wrapper
-
-## Executor
-
-The blob integration tests use [PolkaJAM's in-memory executor](./tools/executor/src/polkajam.rs)
-with real PVM blobs and host calls.
-
-## Building
-
-Fetch the vendored submodules once, then build and test with `cargo`:
+## Build and test
 
 ```sh
-git submodule update --init # only needed once
+git submodule update --init
 cargo test
 ```
 
-There are [just](https://github.com/casey/just) recipes for the other operations (`just --list`).
+Run `just --list` for build and maintenance recipes. For Quint equivalence testing:
+
+```sh
+just quint-fuzz            # 100 traces, eight workers
+just quint-fuzz --infinite # run until failure or interruption
+```
+
+See [Quint replay](QUINT_REPLAY.md) for prerequisites, fixtures, and failure replay.
+
+## Code and references
+
+- [Service](service/src/lib.rs): [Refine](service/src/refine.rs) and
+  [Accumulate](service/src/accumulate/mod.rs), with [integration tests](service/bin/tests).
+- [Authorizer core](authorizer), with [ed25519](authorizer-ed25519) and
+  [sr25519](authorizer-sr25519) verifiers.
+- [Cumulus interface](cumulus) and [mock parachain runtime](runtimes/frameless).
+- [PolkaJAM executor](tools/executor/src/polkajam.rs) for PVM blob tests.
+- [Pinned design and Quint model](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam).
+- [Implementation decisions](DECISIONS.md), [divergences](DIVERGENCE.md), and
+  [genesis setup](GENESIS.md).

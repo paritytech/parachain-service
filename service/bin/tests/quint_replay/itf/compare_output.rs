@@ -100,7 +100,6 @@ pub fn state(
 			root.map(|v| v.1)
 		));
 	}
-	assignments(current, mutations, frame)?;
 	staging(previous, current, mutations, frame)?;
 	// These effects have no representation in the supported replay input domain.
 	if !mutations.transfers.is_empty() ||
@@ -109,25 +108,6 @@ pub fn state(
 		!mutations.ejected.is_empty()
 	{
 		return Err(format!("frame {frame}: unexpected JAM transfer/provide/create/eject output"));
-	}
-	Ok(())
-}
-
-fn assignments(current: &Value, mutations: &StateMutations, frame: usize) -> Result<(), String> {
-	let calls = field(current, "lastStepAssigns")?
-		.as_array()
-		.ok_or("lastStepAssigns must be a list")?;
-	// The current input adapter cannot replay assignment messages or seed their
-	// pending state. Reject nonempty expectations until that domain has a codex.
-	if !calls.is_empty() {
-		return Err(format!(
-			"frame {frame}: nonempty lastStepAssigns requires an assignment input/service-id codex"
-		));
-	}
-	if !mutations.auths.is_empty() || mutations.privileges.is_some() {
-		return Err(format!(
-			"frame {frame}: lastStepAssigns differs; unexpected JAM assignment/privilege output"
-		));
 	}
 	Ok(())
 }
@@ -216,15 +196,11 @@ mod tests {
 	fn unexpected_host_effects_errors() {
 		let trace = fixture();
 		let before = &trace["states"][0];
-		for kind in 0..5 {
+		for kind in 0..3 {
 			let mut mutations = StateMutations::new(0);
 			match kind {
-				0 => {
-					mutations.auths.insert(0, Default::default());
-				},
-				1 => mutations.privileges = Some(Default::default()),
-				2 => mutations.keys = Some(Default::default()),
-				3 => {
+				0 => mutations.keys = Some(Default::default()),
+				1 => {
 					mutations.created.insert(99);
 				},
 				_ => {

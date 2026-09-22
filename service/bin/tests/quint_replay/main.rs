@@ -1,8 +1,12 @@
+mod assignments;
+mod balances;
 mod blocks;
 #[path = "../common/mod.rs"]
 mod common;
 mod fuzz;
 mod itf;
+mod kv;
+mod lifecycle;
 mod log_pruning;
 mod refine_errors;
 mod upgrades;

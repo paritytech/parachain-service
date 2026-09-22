@@ -62,7 +62,8 @@ impl TryFrom<&Value> for ItfValue {
 						.collect::<Result<_, _>>()
 						.map(Self::Map);
 				}
-				if object.contains_key("tag") || object.contains_key("value") {
+				// Records such as SetKV payloads have a `value` field too.
+				if object.contains_key("tag") {
 					if object.len() != 2 ||
 						!object.contains_key("tag") ||
 						!object.contains_key("value")
@@ -148,6 +149,23 @@ mod tests {
 		let value = ItfValue::try_from(&json).unwrap();
 		assert_eq!(value.field("int").unwrap().int().unwrap(), 42);
 		assert_eq!(value.field("option").unwrap().variant("Some").unwrap().int().unwrap(), 4);
+	}
+
+	#[test]
+	fn value_record_works() {
+		let json = serde_json::json!({"key": [], "value": []});
+		assert!(matches!(ItfValue::try_from(&json).unwrap(), ItfValue::Record(_)));
+	}
+
+	#[test]
+	fn malformed_variant_errors() {
+		for json in [
+			serde_json::json!({"tag": "Some"}),
+			serde_json::json!({"tag": "Some", "value": [], "extra": []}),
+			serde_json::json!({"tag": [], "value": []}),
+		] {
+			assert!(ItfValue::try_from(&json).is_err());
+		}
 	}
 
 	#[test]

@@ -35,6 +35,14 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 						reason: InsufficientBalanceReason::Solicit { hash, len: Compact(len) },
 					})
 				},
+				"FromSetKV" => Ok(AccumulateLog::InsufficientStateBalance {
+					reason: InsufficientBalanceReason::SetKV {
+						key_hash: codex.kv_key_hash(integer(field(
+							field(payload, "keyHash")?,
+							"kvKeyBytes",
+						)?)?)?,
+					},
+				}),
 				other => Err(format!("unsupported insufficient balance reason {other}")),
 			}
 		},
@@ -63,6 +71,7 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 				reason,
 			})
 		},
+		"TooMuchStateHeld" => Ok(AccumulateLog::TooMuchStateHeld),
 		"CodeUpgradeNotAvailable" | "CodeUpgradeNotAnnounced" | "CanNotForgetValidationCode" => {
 			let len = u32::try_from(integer(field(value, "len")?)?)
 				.map_err(|_| format!("{tag} length out of range"))?;

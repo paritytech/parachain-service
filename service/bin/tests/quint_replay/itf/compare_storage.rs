@@ -48,25 +48,9 @@ pub fn state(
 	allow(storage_key(Tag::PendingAssignCores, &()));
 	for (core, entry) in map_entries(field(svc, "pendingAssigns")?)? {
 		let core = u16::try_from(integer(core)?).map_err(|_| "core out of range")?;
-		let queue = field(entry, "queue")?
-			.as_array()
-			.ok_or("queue must be a list")?
-			.iter()
-			.map(|v| Codex::authorizer_hash(integer(field(v, "authBytes")?)?).map(|hash| hash.0))
-			.collect::<Result<Vec<_>, _>>()?;
-		let assigner = match variant(field(entry, "assigner")?)? {
-			("None", _) => None,
-			("Some", value) => {
-				let (tag, value) = variant(value)?;
-				if tag != "MkServiceId" {
-					return Err("expected MkServiceId".into());
-				}
-				Some(uint(value)?)
-			},
-			_ => return Err("invalid assigner option".into()),
-		};
+		let expected = super::assignments::pending(entry)?;
 		let key = storage_key(Tag::PendingAssigns, &core);
-		if get_state::<PendingAssign>(storage, &key) != Some(PendingAssign { queue, assigner }) {
+		if get_state::<PendingAssign>(storage, &key) != Some(expected) {
 			return Err(format!("frame {frame}: svc.pendingAssigns[{core}] differs"));
 		}
 		allow(key);
@@ -103,25 +87,8 @@ pub fn state(
 		allow(key);
 	}
 
-	// Nonempty incoming queues still require an input and service-id codex.
-	// Historical fixtures use the pre-bucket endpoint name.
-	if !map_entries(field(svc, "incomingTransfers")?)?.is_empty() ||
-		variant(
-			svc.get("incomingTransferBuckets")
-				.or_else(|| svc.get("incomingTransferChain"))
-				.ok_or("missing incoming transfer endpoints")?,
-		)?
-		.0 != "None"
-	{
-		return Err(format!(
-			"frame {frame}: nonempty incoming transfers require a bucket-layout codex"
-		));
-	}
-	if storage
-		.service_key(MOCK_SERVICE_ID, &storage_key(Tag::IncomingTransferBuckets, &()))
-		.is_some()
-	{
-		return Err(format!("frame {frame}: svc.incomingTransferBuckets differs"));
+	for key in super::transfers::compare(storage, svc, frame)? {
+		allow(key);
 	}
 
 	// JAM hashes service keys, so their original tags cannot be recovered. Check
@@ -145,13 +112,6 @@ pub fn state(
 
 fn uint(v: &Value) -> Result<u32, String> {
 	u32::try_from(integer(v)?).map_err(|_| "integer out of u32 range".into())
-}
-fn bytes(v: &Value) -> Result<Vec<u8>, String> {
-	v.as_array()
-		.ok_or("expected byte list")?
-		.iter()
-		.map(|v| u8::try_from(integer(v)?).map_err(|_| "byte out of range".into()))
-		.collect()
 }
 
 #[cfg(test)]
@@ -323,6 +283,6 @@ mod tests {
 		let mut expected = svc();
 		expected["incomingTransfers"] = json!({"#map": [[n(1), {}]]});
 		let error = state(&fresh_storage(|_| {}), &expected, &mut Codex::default(), 0).unwrap_err();
-		assert!(error.contains("bucket-layout codex"), "{error}");
+		assert!(error.contains("incoming bucket must be a list"), "{error}");
 	}
 }

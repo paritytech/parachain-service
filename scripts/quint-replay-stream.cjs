@@ -40,7 +40,7 @@ async function main() {
   const loaded = unwrap(await cli.load(args));
   const parsed = unwrap(await cli.parse(loaded));
   const typed = unwrap(await cli.typecheck(parsed));
-  const [init, step, invariant] = ['init', 'replayStep', 'true'].map(e => unwrap(toExpr(typed, e)));
+  const [init, step, invariant] = ['replayInit', 'replayStep', 'true'].map(e => unwrap(toExpr(typed, e)));
   for (let index = 0, seed = BigInt(firstSeed); count === 0 || index < count; index++, seed += stride) {
     const rng = newRng(seed);
     const recorder = newTraceRecorder(0, rng, 1);

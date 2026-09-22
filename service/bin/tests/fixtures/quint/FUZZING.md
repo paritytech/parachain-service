@@ -3,6 +3,8 @@
 The opt-in Rust test starts a persistent Node/Quint process per worker. Quint
 chooses inputs and computes expected states; Rust replays the resulting work
 results through Accumulate in the PVM and compares storage after every transition.
+Incoming-transfer actions retain their actual operands and replay them through
+the same PVM entry point, including operands the model drops.
 After each block it also checks the returned head commitment and rejects JAM
 host effects outside the supported input domain (see [README.md](README.md)).
 Rust Refine is not executed. `fuzz.qnt` defines the input domain, not a sequence
@@ -104,7 +106,8 @@ Time gaps are at most `MaxLookupAge`, so sampled anchors lie between the valid
 lookback floor and the previous block slot.
 
 Each WP independently samples zero to four upward messages from `Solicit`,
-`Forget`, and `RequestCodeUpgrade`. Two shared hashes at length 1024 exercise duplicate requests,
+`Forget`, `RequestCodeUpgrade`, `SetKV`, `RemoveKV`, and
+`ParachainSetStateBalance`. Two shared hashes at length 1024 exercise duplicate requests,
 shared references, refunds, and provision/forget/re-solicit lifecycles. Active-code
 messages exercise pinning and unpinning. Forget targets include the caller and
 both registered paras, allowing Quint Refine to reject unauthorized foreign
@@ -119,7 +122,61 @@ Requests can repeat, refresh a deadline, supersede a different upgrade, or fail 
 reservation. External provision and pending-code candidates allow activation;
 time gaps can cross upgrade deadlines. Expected outcomes always come from Quint.
 
-Registration, cleanup, and incoming transfers are not fuzzed yet. Malformed
+KV messages share three keys across both paras, including an empty key. Values
+include empty, same-length replacements, and 63/64-byte values spanning a SCALE
+compact-length boundary. Removal targets include self and both registered paras,
+exercising delegated removal and unauthorized work alongside writes. Ordering
+can refund storage before another reservation, overwrite the same key, or leave
+writes unapplied when work fails. Storage contents, absence, balances, and KV
+failure-log key hashes are compared strictly. Keys avoid the leading-zero
+collisions in the model's abstract `listHash`.
+
+Balance updates target both registered paras and sample zero, one below current
+usage, exact usage, one above usage, the current total, and enough headroom for
+code reservations. Both paras can emit these messages, letting Quint reject
+unauthorized callers. Their position within a WP and block varies alongside
+writes, refunds, solicitations, and upgrade requests.
+
+Incoming actions sample batches of one to three transfers, three source service
+IDs, distinct integer memos, and amounts below/at/above the per-entry footprint
+as well as zero and 10000. Each action records `replayIncoming` independently of
+expected state, so replay checks rejected arrivals too. Source IDs are literal
+u32 values; memo integers map to a u64 little-endian prefix padded to 128 bytes.
+Only regular-balance transfers are generated: the vendored JAM host has no
+supervisor-balance selector, and the adapter rejects that unsupported input.
+These arrivals queue records and can charge Asset Hub's used state balance;
+they do not directly top up a parachain's state allowance. Queue contents,
+ordering, endpoints, count, and orphan storage keys are compared. Deterministic
+`balances` fixtures additionally cross the bucket capacity and reservation limit.
+The host service balance itself is not modeled by this replay profile.
+
+The streaming initializer is `replayInit` (model `init` plus an empty operand
+list); `replayStep` clears operands on block/provision actions. CLI parity tests
+use the same initializer.
+
+Lifecycle messages target ordinary para IDs 3 and 4, preserving both privileged
+chains so campaigns can continue registering and funding paras. The dedicated
+`lifecycleBlock` action samples registration bundles, cleanup, individual
+management messages, and work for present or absent targets. Gaps include the
+expunge period and one slot beyond it to exercise delayed cleanup. Ordinary
+blocks also mix lifecycle messages with KV, balances, and upgrades; both
+privileged and ordinary callers can attempt them. Repeated funding updates an
+existing allowance rather than rejecting duplicate registration. Deterministic
+`lifecycle` fixtures cover cleanup refusal with extra storage, active/pending
+code release, deregistration restrictions, and re-registration. All semantics
+come from the pinned model; replay does not suppress mismatches.
+
+Assignment inputs cover cores 0, 1, and 340, queues of lengths 0, 1, 2, 3, 5,
+79, 80, and 81, and slots before/at/after the block or one queue period ahead.
+`None` retains this service as assigner; `Some(7)` exercises handoffs and Refine's
+full-queue requirement. A dedicated `assignmentBlock` samples up to two messages,
+both privileged and unauthorized callers, and gaps around the 80-slot rotation
+period. Ordinary blocks mix assignments with the other UMPs. Expected state and
+assignment outputs come from the pinned model. Host assigner ownership persists
+between frames; attempts after a handoff are not suppressed. See README.md for
+the final-mutation comparison limit.
+
+Malformed
 authorizer configuration and invalid item counts are excluded because their
 model Refine-log representations cannot be replayed as Rust Refine errors.
 Other comparator limitations remain those in [README.md](README.md). Unsupported
@@ -127,7 +184,7 @@ values fail explicitly; the runner does not discard failing traces.
 
 Rust matches the model by omitting `ForgetAgainAt` when an accepted candidate
 releases provided code during expiry or activation, pending issue #36. Those
-inputs remain enabled, and ordinary regression tests assert strict agreement. See [the reproduction](../../../../../upstream-feedback/upgrade-expiry-replay.md).
+inputs remain enabled, and ordinary regression tests assert strict agreement. See [issue #36](https://github.com/paritytech/parachain-service/issues/36).
 
 Quint `06c2a49202` changed rejection to preserve state. Rust now matches it:
 rejected candidates neither prune logs nor commit tentative expiry cleanup.
