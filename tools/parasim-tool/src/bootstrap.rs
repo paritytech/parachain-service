@@ -56,7 +56,7 @@ pub async fn instruct(
 		},
 		vec![anchor.item(BOOTSTRAP_SERVICE, payload)],
 	);
-	submit_and_follow(jam, core, &package).await
+	submit_and_follow(jam, core, &package, Vec::new()).await
 }
 
 /// The lowest core still holding the unassigned authorizer.

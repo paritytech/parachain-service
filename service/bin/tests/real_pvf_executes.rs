@@ -9,8 +9,8 @@
 //! them, backed by a real polkavm 0.36 `RawInstance` in thread-local state, mirroring
 //! what polkajam's own `machine`/`invoke`/`pages` host calls do.
 //!
-//! The frameless guest reads its work item's payload via `work_item_payload(0)` (fetch
-//! kind 13) and declares its results through the mandatory `set_parent_head_hash` (200)
+//! The frameless guest reads its PoV as work-item extrinsic 0 (fetch kind 4,
+//! `OurExtrinsic`) and declares its results through the mandatory `set_parent_head_hash` (200)
 //! and `set_head` (201) host calls. Unlike the SDK runtime this used to drive, frameless
 //! needs no relay-chain state, so `jam_validate_block` completes — `run` returns the new
 //! head and the parent-head hash, exactly as `refine.rs` asserts end-to-end.
@@ -20,11 +20,7 @@ use std::{cell::RefCell, collections::HashMap};
 use codec::{Decode, Encode};
 use frameless::{blake2_256, hash_state, BlockData, Config, HeadData, State, ValidationParams};
 use jam_types::InvokeOutcomeCode;
-use parachain_service::{
-	pvf::pvm::{parse_pvf, run},
-	refine::ParachainCandidate,
-	work_digest::validation_code_hash,
-};
+use parachain_service::pvf::pvm::{parse_pvf, run};
 use parachain_service_core::{types::ParaId, upward_message::UpwardMessages};
 use polkavm::{
 	ArcBytes, GasMeteringKind, InterruptKind, MemoryProtection, ModuleConfig, ProgramBlob,
@@ -42,8 +38,8 @@ struct VmState {
 	instances: HashMap<u64, polkavm::RawInstance>,
 	next_handle: u64,
 	gas_remaining: i64,
-	/// The work-item payload, served for `fetch` kind 13 (`work_item_payload(0)`).
-	payload: Vec<u8>,
+	/// The PoV, served for `fetch` kind 4 (`OurExtrinsic(0)`).
+	pov: Vec<u8>,
 	preimages: HashMap<[u8; 32], Vec<u8>>,
 	logs: Vec<String>,
 	/// `(trap PC, exit kind)` captured by `invoke` for the report when the guest panics.
@@ -71,7 +67,7 @@ fn with_vm<R>(f: impl FnOnce(&mut VmState) -> R) -> R {
 				instances: HashMap::new(),
 				next_handle: 0,
 				gas_remaining: 0,
-				payload: Vec::new(),
+				pov: Vec::new(),
 				preimages: HashMap::new(),
 				logs: Vec::new(),
 				trap: None,
@@ -255,22 +251,22 @@ pub extern "C" fn fetch(
 	offset: u64,
 	buffer_len: u64,
 	kind: u64,
-	_index: u64,
+	index: u64,
 	_b: u64,
 ) -> u64 {
-	// Only the work-item payload selector (kind 13, Gray Paper `workitems[a].payload`)
-	// is served; anything else is absent (`u64::MAX`).
-	if kind != 13 {
+	// Only the PoV (kind 4 `OurExtrinsic`, extrinsic 0) is served; anything else is
+	// absent (`u64::MAX`).
+	if kind != 4 || index != 0 {
 		return u64::MAX;
 	}
 	with_vm(|vm| {
-		let payload = &vm.payload;
-		let full = payload.len() as u64;
+		let pov = &vm.pov;
+		let full = pov.len() as u64;
 		if offset >= full {
 			return full;
 		}
 		let n = (full - offset).min(buffer_len) as usize;
-		unsafe { std::ptr::copy_nonoverlapping(payload.as_ptr().add(offset as usize), buffer, n) };
+		unsafe { std::ptr::copy_nonoverlapping(pov.as_ptr().add(offset as usize), buffer, n) };
 		full
 	})
 }
@@ -313,7 +309,7 @@ fn real_runtime_executes_as_child_pvf() {
 	};
 
 	// One Coretime block (`counter += 512`) on top of genesis — the same shape
-	// `refine.rs::run_block` drives end-to-end, only with the payload hand-served.
+	// `refine.rs::run_block` drives end-to-end, only with the PoV hand-served.
 	let config = Config::Coretime;
 	let parent = HeadData {
 		number: 0,
@@ -322,15 +318,10 @@ fn real_runtime_executes_as_child_pvf() {
 	};
 	let block = BlockData { state: State { config, counter: 0 }, add: 512 };
 	let params = ValidationParams { parent_head: parent.encode(), block_data: block.encode() };
-	// The work-item payload `jam_validate_block` decodes via `work_item_payload(0)`.
-	let payload = ParachainCandidate {
-		validation_code_hash: validation_code_hash(&pvf),
-		pov: params.encode(),
-	}
-	.encode();
 
 	with_vm(|vm| {
-		vm.payload = payload;
+		// The PoV `jam_validate_block` reads as work-item extrinsic 0 (§3.2).
+		vm.pov = params.encode();
 		vm.gas_remaining = 1_000_000_000;
 	});
 
@@ -338,18 +329,18 @@ fn real_runtime_executes_as_child_pvf() {
 		std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(&parsed, ParaId(0))));
 
 	with_vm(|vm| {
-		// The guest reads its payload via fetch kind 13 (`work_item_payload(0)`) and declares
-		// its results through the mandatory `set_parent_head_hash` (200) + `set_head` (201) —
+		// The guest reads its PoV via fetch kind 4 (`OurExtrinsic(0)`) and declares its
+		// results through the mandatory `set_parent_head_hash` (200) + `set_head` (201) —
 		// observed through the executor's own probe log lines.
-		let fetched = vm.logs.iter().any(|line| line.contains("fetch probe: kind=13"));
+		let fetched = vm.logs.iter().any(|line| line.contains("fetch probe: kind=4 "));
 		let declared = vm.logs.iter().any(|line| line.contains("dispatch probe: call=200"));
 		let set_head = vm.logs.iter().any(|line| line.contains("dispatch probe: call=201"));
 		println!("host-call log:\n{}", vm.logs.join("\n"));
-		println!("work-item payload fetched (kind 13): {fetched}");
+		println!("PoV extrinsic fetched (kind 4): {fetched}");
 		println!("set_parent_head_hash reached: {declared}");
 		println!("set_head reached: {set_head}");
 		println!("abnormal exit: {:?}", vm.trap);
-		assert!(fetched, "the runtime must fetch its work-item payload via kind 13");
+		assert!(fetched, "the runtime must fetch its PoV as work-item extrinsic 0 via kind 4");
 		assert!(declared, "the runtime must decode the candidate and declare the parent head");
 		assert!(set_head, "the runtime must set the new head after the parent declaration");
 	});

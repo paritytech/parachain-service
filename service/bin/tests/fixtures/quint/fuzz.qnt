@@ -16,7 +16,7 @@ module fuzz {
   action replayInit = all { init, noTransfers }
 
   pure def activeCodeCandidate(s: ParachainServiceState, para: ParaId): ParachainCandidate =
-    { validationCode: { hash: activeCodeHashOr(s.paraInfo(para), NoCodeHash), len: FixedCodeLen }, pov: 0 }
+    { validationCode: { hash: activeCodeHashOr(s.paraInfo(para), NoCodeHash), len: FixedCodeLen } }
 
   pure def replayWork(
     s: ParachainServiceState, para: ParaId, curHead: HeadData,
@@ -25,7 +25,7 @@ module fuzz {
   ): WorkResult = {
     val announced = match s.paraInfo(para).announcedUpgrade {
       | None => activeCodeCandidate(s, para)
-      | Some(ref) => { validationCode: ref, pov: 0 }
+      | Some(ref) => { validationCode: ref }
     }
     val pkg: WorkPackage = {
       authorizedParas: List(para),

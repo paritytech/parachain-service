@@ -209,7 +209,7 @@ async fn control_package(
 	let payload = assign_core(target_core, target, anchor.context.lookup_anchor_slot).encode();
 	let mut package = anchor.package(authorizer, vec![anchor.item(args.service, payload)]);
 	package.authorization = sudo_token();
-	submit_and_follow(jam, core, &package).await
+	submit_and_follow(jam, core, &package, Vec::new()).await
 }
 
 /// The one message a control package carries: fill `core`'s whole queue with `target`.

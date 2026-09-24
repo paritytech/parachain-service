@@ -1,22 +1,20 @@
-//! Parachain candidate payload: shared between the PVF guest and the service host.
+//! Parachain candidate payload: shared between the collator and the service host.
 
-extern crate alloc;
-
-use alloc::vec::Vec;
 use codec::{Decode, Encode};
 
 use crate::types::ValidationCodeHash;
 
-/// Work-item payload for a parachain candidate.
+/// Work-item payload for a parachain candidate (spec §3.2).
 ///
-/// Decoded from the raw work-item payload bytes by both:
-/// - the host-side `service::refine` (to look up the PVF by `validation_code_hash`), and
-/// - the guest PVF (to obtain the PoV via the `work_item_payload(0)` host call).
+/// The host-side `service::refine` decodes it to look up the PVF by `validation_code_hash`.
+///
+/// The PoV travels as **work-item extrinsic 0**, not in this payload: JAM caps the first CE 133
+/// message (the core index plus the work package, payload included) far below the size of a
+/// multi-MiB PoV. The collator therefore declares the PoV with an `ExtrinsicSpec`, and the PVF
+/// reads it back from work-item extrinsic 0 through `fetch`.
 #[derive(Encode, Decode)]
 pub struct ParachainCandidate {
 	/// Hash of the currently active validation code. Refine uses this to look up
 	/// the PVF bytecode from the preimage store.
 	pub validation_code_hash: ValidationCodeHash,
-	/// Proof-of-Validity — the block data and witness the PVF validates.
-	pub pov: Vec<u8>,
 }

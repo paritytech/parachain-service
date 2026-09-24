@@ -269,24 +269,79 @@ fn handed_away_core_inline_errors() {
 }
 
 #[test]
-fn handed_away_core_flush_keeps_entry_works() {
-	// §7.1: a rotation left armed on a core that has since been handed away does
-	// not fire; the entry is left exactly as it was, not consumed or re-armed.
-	let msg = assign_msg(vec![HASH_A, HASH_B], NOW + 10);
+fn handed_away_core_flush_errors() {
+	// §5.1: a rotation left armed on a core that has since been handed away is
+	// rejected by JAM when due: the entry is dropped from both maps and the
+	// rejection lands in the Coretime chain's log.
+	let msg = assign_msg(vec![HASH_A, HASH_B, HASH_A], NOW + 10);
 	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
 	let (_, armed, _) = accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
-	let log = para_log(&armed, CORETIME_PARA_ID);
 
 	let (_, storage, mutations) =
 		run_block_with_privileges(armed, vec![], NOW + 10, privileges_with_assign(99));
 
+	assert!(pending(&storage).is_none(), "the dead entry is dropped");
+	assert!(dirty_cores(&storage).is_empty(), "and not re-armed");
 	assert!(mutations.auths.is_empty());
-	assert_eq!(
-		pending(&storage),
-		Some(PendingAssign { queue: vec![HASH_A, HASH_B], assigner: None })
+	let entry =
+		LogEntry::Accumulate { entries: vec![AccumulateLog::CoreNotAssignable { core: CORE }] };
+	assert_eq!(para_log(&storage, CORETIME_PARA_ID).last(), Some(&(NOW + 10, entry)));
+}
+
+#[test]
+fn handed_away_core_inline_clears_cache_errors() {
+	// §7.1: an inline assign JAM rejects also drops the entry still cached for
+	// the core, so it cannot fire later.
+	let cached = assign_msg(vec![HASH_A, HASH_B, HASH_A], NOW + 100);
+	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![cached], 0);
+	let (_, armed, _) = accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
+	assert!(pending(&armed).is_some());
+	let inline = assign_msg(vec![HASH_B], NOW + 1);
+	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-1", b"ct-2", vec![inline], 0);
+
+	let (_, storage, mutations) = run_block_with_privileges(
+		armed,
+		vec![work_item(&digest)],
+		NOW + 1,
+		privileges_with_assign(99),
 	);
-	assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, NOW + 10)]);
-	assert_eq!(para_log(&storage, CORETIME_PARA_ID), log);
+
+	assert!(pending(&storage).is_none(), "the cached entry is dropped");
+	assert!(dirty_cores(&storage).is_empty());
+	assert!(mutations.auths.is_empty());
+	assert_eq!(ct_accumulate_logs(&storage), vec![AccumulateLog::CoreNotAssignable { core: CORE }]);
+}
+
+#[test]
+fn handed_away_core_flush_log_order_works() {
+	// §5.1: the always-accumulate flush runs before the block's work packages, so
+	// its entry precedes a same-block Coretime package's own entry.
+	let msg = assign_msg(vec![HASH_A, HASH_B, HASH_A], NOW + 10);
+	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
+	let (_, armed, _) = accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
+	let other = UpwardMessage::AssignCore {
+		core: CORE + 1,
+		queue: vec![HASH_B],
+		new_assigner: None,
+		jam_slot: NOW + 10,
+	};
+	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-1", b"ct-2", vec![other], 0);
+
+	let (_, storage, _) = run_block_with_privileges(
+		armed,
+		vec![work_item(&digest)],
+		NOW + 10,
+		privileges_with_assign(99),
+	);
+
+	let rejected = |core| {
+		(
+			NOW + 10,
+			LogEntry::Accumulate { entries: vec![AccumulateLog::CoreNotAssignable { core }] },
+		)
+	};
+	let log = para_log(&storage, CORETIME_PARA_ID);
+	assert_eq!(log[log.len().saturating_sub(2)..], [rejected(CORE), rejected(CORE + 1)]);
 }
 
 #[test]

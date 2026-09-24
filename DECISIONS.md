@@ -26,18 +26,18 @@ Coretime to never mark a non-privileged para as privileged.
 options should be listed; constants require a service self-upgrade to migrate Asset Hub or
 Coretime to a new ParaId.
 
-## D-4: AURA authorizer implements full logic with stubbed crypto
+## D-4: the AURA authorizer keeps a dev-network sudo bypass
 
 Gap: the AURA authorizer is an example in the design, not an executable protocol.
 
-The authorizer implements the complete §7.1 pipeline — config/token decoding, anchor-slot
-round-robin collator-index computation, Merkle-proof structure, and domain-separated
-signing-payload assembly — but the ed25519 signature check and Merkle-proof verification
-accept any well-formed value, behind `FIXME` markers. Rejection rules for zero
-`slot_duration` / `collator_set_size` are enforced.
+The authorizer implements the complete §7.1 pipeline — config/token decoding, round-robin
+collator-index computation, Merkle-proof verification of the collator key, and a real signature
+check (ed25519 `verify_strict` or sr25519, one blob each). One deliberate hole remains: a token
+carrying the all-ones `SUDO_KEY` is authorized on any core without a signature, so control
+packages can reach a parked core (user decision, 2026-09-02). It must not ship.
 
-**Spec feedback**: unaffected; real crypto is an implementation milestone, not a spec
-question. The §7.1 canonical proof/encoding rules still need specifying.
+**Spec feedback**: none for the bypass, which is PoC-only. The §7.1 canonical proof/encoding
+rules still need specifying.
 
 ## D-5: the parent-head check's `hash(head_data)` is blake2b-256
 
@@ -62,11 +62,11 @@ Gap: transfer gas, admission, and financial reconciliation are incomplete in the
 The Quint model records each incoming transfer individually. Since one accumulate
 invocation fills one bucket (§5.1: a bucket is closed when the invocation that opened it
 ends), a literal port re-reads and re-writes the growing bucket per transfer — measured at
-551M gas for 1024 same-slot transfers, 55x the Gray Paper's whole per-report budget
-`Ga = 10M` (`accumulate_gas.rs::incoming_transfer_bench_works`). The PoC batches: admission
-is checked per transfer in operand order (identical semantics, including the count-based
-cap), the invocation's buckets are filled in memory, and each is written exactly once.
-Measured cost drops to 1.63M gas.
+551M gas for 1024 same-slot transfers under the polkavm 0.30 gas model, 55x the Gray Paper's
+whole per-report budget `Ga = 10M` (`accumulate_gas.rs::incoming_transfer_bench_works`). The
+PoC batches: admission is checked per transfer in operand order (identical semantics,
+including the count-based cap), the invocation's buckets are filled in memory, and each is
+written exactly once. The batched cost measures 8.65M gas under polkavm 0.36 (1.63M under 0.30).
 
 Since spec `17a10dcb3f`, `MAX_TRANSFERS_PER_BUCKET` (512) can also split one invocation
 across several buckets; the batching writes one entry per bucket actually used, so the
@@ -211,11 +211,11 @@ whose items target any other service. §7.1's config struct needs the field.
 ## F-10: the 1024-message digest cap has no gas headroom against `Ga`
 
 A reachable worst-case digest (1024 `solicit`s, 36 KiB — fits the report bound) replays at
-7.87M gas in the unoptimized PoC, 0.79x the Gray Paper's per-report accumulate budget
-`Ga = 10M` (`accumulate_gas.rs`). Out-of-gas mid-replay reverts to the last checkpoint,
-un-enacting a candidate Refine already validated. §4.3's `MAX_UPWARD_MESSAGES_PER_DIGEST`
-needs deriving from `Ga` (with margin), not picked independently. Pinned by
-`solicit_bench_works` / `set_kv_bench_works`.
+61.7M gas under the polkavm 0.36 interpreter, 6.2x the Gray Paper's per-report accumulate
+budget `Ga = 10M` (`accumulate_gas.rs`). Since spec `ed73e50f0c` the gas gate skips such a
+report unless it declares that much gas (F-17), so a candidate Refine already validated is
+never enacted. §4.3's `MAX_UPWARD_MESSAGES_PER_DIGEST` needs deriving from `Ga` (with
+margin), not picked independently. Pinned by `solicit_bench_works` / `set_kv_bench_works`.
 
 ## F-11: several message types cannot reach the 1024-message cap anyway
 
@@ -227,16 +227,16 @@ size (i.e. derived from `Wr`), not as a flat message count.
 ## F-12: the non-candidate gas budgets need sizing
 
 The design expects the service to be always-accumulate (§2) but never sizes the
-`always_acc` privileges allotment that pays for operand-less maintenance work. Measured
-worst case: flushing a due `assign` for every core (341 entries, full 80-hash queues) in
-one block costs 9.94M gas — ~29k per assign, dominated by the `assign` host call itself
-(`accumulate_gas.rs::due_assign_bench_works`); steady state is one core per slot. An
-allotment of ~10M covers the avalanche, and it is reserved on top of the block's
-accumulation pool, so it does not compete with candidate gas.
+`always_acc` privileges allotment that pays for operand-less maintenance work, and since spec
+`ed73e50f0c` §5.1 requires the always-accumulate phases to stay within it: bounded and
+benchmarked. Nothing bounds them yet. Measured worst case: flushing a due `assign` for every
+core (341 entries, full 80-hash queues) in one block costs 58.6M gas, ~172k per assign
+(`accumulate_gas.rs::due_assign_bench_works`, polkavm 0.36 interpreter); steady state is one
+core per slot.
 
 Similarly, incoming-transfer recording is paid by the transfers' own `gas_limit` (the JAM
 scheduler adds it to the invocation unconditionally), so the service's `min_memo_gas` must
-cover the measured ~1.6k-per-transfer recording cost with margin — a token value like the
+cover the measured ~8.5k-per-transfer recording cost with margin — a token value like the
 mock's 100 would be under water.
 
 ## F-13: forwarded transfer gas multiplies past `Ga` despite both caps
@@ -244,13 +244,13 @@ mock's 100 would be under water.
 Sharpens F-10. `Ω_T` charges each replayed `TransferOut`'s forwarded gas to the sender's
 meter. Both bounds are individually enforced — per-transfer `MAX_TRANSFER_GAS = Ga/100`
 (#17), per-report ~345 transfers under `Wr` (F-11) — but their product exceeds `Ga`: an
-Asset Hub digest of 345 transfers to a destination demanding `min_memo_gas =
-MAX_TRANSFER_GAS` measures 36.4M gas — 3.64x `Ga`
-(`accumulate_gas.rs::transfer_out_max_gas_bench_works`) — so in production it
-out-of-gasses after ~90 replays and un-enacts the validated candidate. Destinations are
-user-chosen, so this is reachable. The replay loop needs a **cumulative**
-forwarded-gas budget per digest (a fraction of `Ga`), not only a per-transfer cap — or the
-§4.3 caps must be co-derived so `count x per-transfer ≤ margin x Ga`.
+Asset Hub digest of 331 transfers to a destination demanding `min_memo_gas =
+MAX_TRANSFER_GAS` measures 38.1M gas — 3.8x `Ga`, of which 33.1M is forwarded
+(`accumulate_gas.rs::transfer_out_max_gas_bench_works`). Destinations are user-chosen, so this
+is reachable. The replay loop needs a **cumulative** forwarded-gas budget per digest, not only
+a per-transfer cap — which spec `ed73e50f0c`'s gas gate now provides: it charges each deferred
+transfer's gas against the limit the report declared and skips a report that cannot cover it
+(F-17), instead of letting it run dry after ~90 replays.
 Only Asset Hub digests may carry `TransferOut`, and 345 is the most ~134-B transfers that
 fit the `Wr = 48 KiB` report bound.
 
@@ -270,7 +270,25 @@ available variant but describes balance rather than gas.
 
 Either `TransferError` needs a variant for a refused gas request, or §5.1 must state that the
 service may not impose such a cap and instead relies on a per-digest cumulative budget
-(F-13). The two findings should be resolved together.
+(F-13). The two findings should be resolved together. Spec `ed73e50f0c`'s gas gate already
+charges each deferred transfer's gas against the limit its report declared (F-17), which is
+that cumulative budget; the per-transfer cap is now redundant.
+
+## F-17: the §5.1 gas gate runs on provisional costs
+
+Spec `ed73e50f0c` skips a report whose base cost plus content-derived cost exceeds the gas the
+report declared, so no report is started that cannot be paid for in full. The PoC implements
+the gate with two unbenchmarked constants (`service/src/constants.rs`): `REPORT_BASE_GAS` = 5M,
+sized for a full 64 KiB log rewritten under a 4 KiB head, and a flat `UPWARD_MESSAGE_GAS` =
+250k per message, covering the fixed-size variants; each deferred `TransferOut`'s forwarded gas
+is added on top. Messages whose cost scales with their payload or with stored state are not
+covered: a final `SetValidatorKeys` chunk onto a nearly full staging buffer measured ~14.2M
+gas, more than the whole `Ga = 10M`. Such a report clears the gate and can still run out of
+gas mid-replay — the case the gate exists to prevent.
+
+**Spec feedback**: the costs must come from per-variant benchmarks, with formulas for the
+variants that scale with the state they touch (`SetValidatorKeys`, `SetKV`,
+`CleanUpBucketsUpTo`).
 
 ## F-16: the model's abstract hashes discard their domain, blocking trace replay
 
@@ -303,7 +321,7 @@ citation in the repo resolvable — to a live `## D-n:`/`## F-n:` heading above 
 
 | Identifier | Retired as (context) | Issue |
 |---|---|---|
-| D-1 | child-PVF ABI is host-call based for both results and input; PoV arrives via `work_item_payload(0)` (spec §4.2) | issue missing |
+| D-1 | child-PVF ABI is host-call based for both results and input; the PoV arrives as work-item extrinsic 0 via `fetch` (spec §3.2, §4.2) | issue missing |
 | D-3 | state-balance accounting uses the exact §6.1 formulas, with `Balance = u64` | issue missing |
 | D-6 | `TransferOut` replay looks up the destination's `min_memo_gas`, capped by `MAX_TRANSFER_GAS` (F-13) | issue missing |
 | D-7 | `assign_core` queues shorter than 80 are cycle-repeated | issue missing |

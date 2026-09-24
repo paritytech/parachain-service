@@ -2,8 +2,8 @@
 
 Places where the Rust implementation and the
 [Quint spec](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/) disagree on
-observable behaviour or on a derived constant. Found by reading both sides in full against
-spec pin `931846282d`.
+observable behaviour or on a derived constant. Found by reading both sides and by trace replay;
+checked against spec pin `735041490e0`.
 
 Scope: this file covers **Quint model vs Rust**. Two neighbouring documents cover the
 neighbouring questions, and entries here cross-reference them rather than restating them:
@@ -19,7 +19,7 @@ place. Quint paths below are relative to
 `vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/`.
 
 Direction, unless an entry says otherwise: **Quint is the oracle and Rust must match it.**
-Four of the entries below invert that — the model is wrong and the finding goes upstream.
+Entries that invert this — the model is wrong and the finding goes upstream — say so.
 
 ---
 
@@ -27,10 +27,10 @@ Four of the entries below invert that — the model is wrong and the finding goe
 
 **Rust is arguably right; the divergence is unpinned and undocumented either way.**
 
-`quint/accumulate.qnt:243-256` appends `TransferFailed` for exactly one shape — a plain move
+`quint/accumulate.qnt:242-255` appends `TransferFailed` for exactly one shape — a plain move
 (`deferred: None`) to a destination that is not this service's supervisor. Every other refusal
 falls through as a no-op with no log: a named `source`, either supervisor selector, and the
-self-move cases. `service/src/accumulate/transfers.rs:143-167` logs `TransferFailed` on every
+self-move cases. `service/src/accumulate/transfers.rs:147-189` logs `TransferFailed` on every
 refusal path.
 
 The model pins its own reading:
@@ -64,11 +64,11 @@ displaced code referenced until the parachain forgets it. No code-upgrade path c
 
 **Neither is wrong; the two orderings need reconciling.**
 
-`quint/refine.qnt:209-231` scans the *finished* upward-message list in a fixed priority:
-message count → `set_validator_keys` chunks → assign queues → parachain restrictions → output
-size → head declarations. Rust has no such scan — the checks live in the host-call dispatcher
-and abort at the first offending call in **emission order**
-(`service/src/pvf/executor.rs:198-234` and `:287-292`).
+`quint/refine.qnt:233-264` scans the *finished* upward-message list in a fixed priority:
+message count → `set_validator_keys` repetition and chunk size → assign queues → parachain
+restrictions → 40 KiB message budget → output size → head declarations. Rust has no such scan —
+the checks live in the host-call dispatcher and abort at the first offending call in **emission
+order** (`ExecutorState::push` in `service/src/pvf/executor.rs`).
 
 A non-Coretime para emitting `[TransferOut, AssignCore { queue: [] }]` logs
 `InvalidAuthorizerQueue` in the model (queues are checked before restrictions) and
@@ -94,9 +94,9 @@ combined-output check as a backstop.
 
 **Rust is weaker; low severity.**
 
-`quint/accumulate.qnt:315` gates the service self-upgrade on
+`quint/accumulate.qnt:326` gates the service self-upgrade on
 `preimageAvailable(payload.codeHash, payload.len)` — the `(hash, len)` pair, matching how the
-preimage registry is keyed. `service/src/accumulate/upward.rs:112` destructures `len: _` and
+preimage registry is keyed. `service/src/accumulate/upward.rs:114` destructures `len: _` and
 calls `is_available(&code_hash)`, which takes no length at all
 (`vendor/polkajam/crates/jam-pvm-common/src/host_calls.rs:532`).
 
@@ -118,24 +118,27 @@ service logs as `DesignateRejected` — the model's rule, so the two sides now a
 
 Fix: delete `is_valid_val_count`.
 
-## M-8: `UpgradeService` sits at a different SCALE discriminant
+## M-8: SCALE discriminants differ between Rust, the design doc and the model
 
-`UpwardMessage::UpgradeService` is variant 13 in Rust
-(`service-interface/src/upward_message.rs`, ordered per the design doc's §3.3 listing) and
-variant 17 in the model (`quint/messages.qnt:266`, ordered with the privileged calls last).
-The §6.5 additions narrowed this: both sides now agree on discriminants 0..12
-(`RequestCodeUpgrade` .. `ConsumeTransfersUpTo`) and differ only in the tail, where Rust
-places `UpgradeService` before the four Coretime-only calls and the model places it after.
-`RefineLog`'s ordering differs too — Rust interleaves four implementation-only variants
-(`InvalidCode`, `ValidationFailed`, `MalformedPayload`, `HeadDataTooLarge`) among the model's
-eight.
+Each enum's variant order is its wire ABI. Against the design doc's listing:
+
+- `RefineLog`: Rust has `InvalidAuthorizerQueue` at 7 and `MalformedPayload` at 8
+  (`service/src/work_digest.rs`); the design doc has them the other way round. The model has no
+  `MalformedPayload` at all.
+- `UpwardMessage`: Rust follows the design doc; the model (`quint/messages.qnt`) puts
+  `UpgradeService` last instead of before the four Coretime-only calls.
+- `AccumulateLog`: Rust follows the design doc for all 17 variants and appends an 18th,
+  `InvalidCodeHash`, that nothing emits any more (the model dropped `InvalidCodeHashAcc`).
+- `InsufficientBalanceReason`: Rust extends the design doc's two variants with
+  `StagedValidatorKeys`, `IncomingTransfer` and `ParaInfo`, produced only by the §6.1 write
+  backstop.
 
 No behavioural consequence today: the digest is produced by this service's Refine and consumed
-by its own Accumulate, and every variant is 1 B either way, so `refineLogSize` and
-`upwardMessageSize` are unaffected. It matters the moment anything outside this repo decodes a
-work digest.
+by its own Accumulate, and every discriminant is 1 B, so no size computation moves. It matters
+the moment anything outside this repo decodes a work digest or a log.
 
-Fix: pick one ordering — the design doc's — and align `quint/messages.qnt` to it.
+Fix: swap `MalformedPayload` and `InvalidAuthorizerQueue` in Rust, drop the dead
+`InvalidCodeHash`, and align `quint/messages.qnt` with the design doc.
 
 ## M-9: `AssignCore`'s empty-queue documentation — resolved
 
@@ -143,44 +146,17 @@ The doc no longer promises that an empty `queue` cancels a cached entry. Both si
 malformed queue (empty, over-long, or a short handoff) as a defensive no-op in Accumulate,
 since Refine rejects them first (Quint `6b8f7292e0`).
 
-## M-13: a future-slot `AssignCore` for a handed-away core is rejected only by the model
+## M-10: no model invariant is checked against Rust
 
-Quint `6b8f7292e0` tracks each core's assigner as ghost state (`jamCoreAssigners`) and logs
-`CoreNotAssignable` as soon as an `AssignCore` names a core this service handed away, whatever
-its `jam_slot`. The service cannot read JAM's assigner: it learns of a handoff only when
-`assign` fails. It therefore logs `CoreNotAssignable` for a due assign, but caches a
-future-slot one, which JAM then rejects at the flush, leaving the entry in place. Streaming
-fuzz campaigns that hand a core away and later schedule it for a future slot hit this. The
-spec is expected to change here.
+The replay harness ([QUINT_REPLAY.md](./QUINT_REPLAY.md)) replays 71 deterministic fixtures and
+streaming fuzz campaigns, comparing storage, logs, head commitments and JAM effects after every
+transition. It covers Accumulate only: Refine divergences (M-4) are still found by reading.
 
-## M-10: nothing checks equivalence, and the replay ledger has gone stale
-
-The harness described in [QUINT_REPLAY.md](./QUINT_REPLAY.md) is still a Phase-0 spike.
-`service/bin/tests/quint_replay.rs` loads one fixture holding **2 states**, replays one block,
-and compares four fields (`head_data`, `total_state_balance`, a recomputed `used_state_balance`,
-and log-emptiness) for one para. There is no frame classifier, no ITF codex, and no
-implementation of the divergence ledger. Every entry M-2..M-9 above was found by reading, not by
-a failing test — which is the reason to expect more.
-
-Separately, none of the 29 invariants in `quint/invariants.qnt` are asserted on the Rust side.
-Several are cheap to port against real storage and would catch derived-constant drift of the
-kind that made Asset Hub's baseline under-reserve its pending-assign queues:
+None of the 31 invariants in `quint/invariants.qnt` is asserted on the Rust side. Several are
+cheap to port against real storage and would catch derived-constant drift of the kind that
+made Asset Hub's baseline under-reserve its pending-assign queues:
 `used_balance_consistency`, `pending_authorizer_cores_consistent`,
 `pending_authorizer_apply_at_future`, `parachain_log_within_capacity`.
-
-The ledger itself now mis-describes the tree. Three of its five entries are stale:
-
-| Ledger entry | Status |
-|---|---|
-| D-1 — balance encoding width | resolved upstream (spec `459985739f`); the file says so, but its Asset Hub row still carries the pre-`AUTHORIZER_QUEUE_LEN` figure |
-| D-3 — chain counter absent from the model | stale: `quint/state_balance.qnt` charges `+ 4 (count)` |
-| D-4 — admission threshold 204 vs 196 | stale: both sides compute `IncomingTransferEntryFootprint = 196` |
-| D-2 — always-accumulate on non-block steps | still accurate |
-| D-5 — headroom slack at mid-trace registration | still accurate, and shrinks to 0 for non-Asset-Hub paras once D-1's shift is retired |
-
-Fix: retire D-1/D-3/D-4 from the ledger, regenerate `minimal_replay.itf.json` under the current
-pin so D-1's normalization has nothing left to compensate for, and grow the harness past one
-fixture.
 
 ## M-11: the model decides the §6.5 supervised-service outcomes; Rust can only refuse
 
@@ -224,3 +200,35 @@ host only delivers transfers to the regular balance. Rust therefore records
 the storage format already supports both values. This is a host limitation,
 like the supervised-service operations in M-11, not a normalization of `true`
 model transfers to `false`.
+
+## M-13: a future-slot `AssignCore` for a handed-away core is rejected later by Rust
+
+Quint `6b8f7292e0` tracks each core's assigner as ghost state (`jamCoreAssigners`) and rejects
+an `AssignCore` naming a core this service handed away as soon as it is replayed, whatever its
+`jam_slot`: `CoreNotAssignable` goes into that package's log entry and any entry cached for the
+core is dropped. The service cannot read JAM's assigner; it learns of a handoff only when
+`assign` fails. A due assign therefore matches the model, but a future-slot one is cached.
+
+Since Quint `735041490e0` a rejection at the flush drops the entry and logs `CoreNotAssignable`
+in the Coretime chain's log, so the end state converges. Until the entry falls due (or a later
+inline assign for the core is rejected), Rust holds a `pending_assigns` entry the model does
+not, and the rejection is logged later, in a different entry. In model-reachable states a cached
+entry never coexists with a handed-away core, so the model's own flush-drop branch fires only in
+Rust. Streaming fuzz campaigns that hand a core away and then schedule it for a future slot hit
+this at the scheduling frame.
+
+Fix: a spec decision — either the model caches and rejects at the flush like JAM does, or the
+service tracks the cores it handed away.
+
+## M-14: an `assign` JAM rejects for a bad core index is unspecified
+
+Refine checks only an `AssignCore` queue, never `core`, and the model treats every well-formed
+assign as succeeding. JAM rejects a core index ≥ 341 with `CORE`. Rust logs nothing for it: an
+inline assign is dropped (any entry cached for the core stays), and a cached one is retried at
+every block (`apply_due_assigns`, marked `TODO`). Worse, the dirty-core index holds at most 341
+entries, so once more than 341 distinct cores are waiting, the `expect` in
+`DirtyCores::upsert` panics and the invocation reverts to its last checkpoint. (JAM's `WHO`
+rejection is unreachable: every `u32` service id fits.)
+
+Fix: bound `core` below the core count in Refine (§4.3), and say what an `assign` rejected for
+another reason than a handoff does.

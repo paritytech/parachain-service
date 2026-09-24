@@ -112,7 +112,8 @@ pub fn work_package_hash(package: &WorkPackage) -> WorkPackageHash {
 	jam_std_common::hash_raw(&jam_codec::Encode::encode(package)).into()
 }
 
-/// Submit the package and print each status until JAM reports it.
+/// Submit the package with the blobs of its declared `extrinsics` and print each status until
+/// JAM reports it.
 ///
 /// Returning at `Reported` rather than at accumulation is deliberate: for a chain of packages it
 /// is what keeps them pipelined, and for a control package the caller has a better completion
@@ -121,9 +122,10 @@ pub async fn submit_and_follow(
 	jam: &JamRpcInterface,
 	core: u16,
 	package: &WorkPackage,
+	extrinsics: Vec<Vec<u8>>,
 ) -> Result<(), String> {
 	let package_hash = work_package_hash(package);
-	jam.submit_work_package(core, package, Vec::new())
+	jam.submit_work_package(core, package, extrinsics)
 		.await
 		.map_err(|e| format!("submitting the work package: {e}"))?;
 	tracing::info!("submitted {package_hash:?} to core {core}");

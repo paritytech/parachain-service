@@ -30,7 +30,7 @@ use crate::{
 };
 use cumulus_jam_interface::{JamChainSource, JamStateSource, StorageKey};
 use cumulus_jam_rpc_interface::JamRpcInterface;
-use jam_types::{ServiceId, WorkPackage};
+use jam_types::{ExtrinsicHash, ExtrinsicSpec, ServiceId, WorkPackage};
 use parachain_service_core::{
 	candidate::ParachainCandidate,
 	types::{ParaId, ValidationCodeHash},
@@ -229,10 +229,10 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 		// The nonce keeps two blocks built on the same parent — a stale sibling and the package it
 		// was meant to extend — from being the same block, and so the same work package.
 		let header = header_bytes(parent_hash, number, args.para, index as u32);
-		let payload = build_payload(&anchor_state_root, &proof, &header);
+		let pov = v3_pov(&header, &(anchor_state_root, proof).encode());
 		tracing::info!("block number {number} parent 0x{}", hex(&parent_hash));
-		let package = build_package(&anchor, args, parked, payload)?;
-		submit_and_follow(jam, args.core, &package).await?;
+		let package = build_package(&anchor, args, parked, &pov)?;
+		submit_and_follow(jam, args.core, &package, vec![pov]).await?;
 
 		if !doomed {
 			expected_head = Some(header.clone());
@@ -311,15 +311,8 @@ fn decode_para_info(stored: &[u8]) -> Result<Vec<u8>, String> {
 	Ok(info.head_data.into_inner())
 }
 
-/// Build the work-item payload: a `ParachainCandidate` whose PoV is a V3 `ParachainBlockData`
-/// carrying one fake block and the anchor state proof.
-fn build_payload(anchor_state_root: &[u8; HASH_LEN], proof: &StateProof, header: &[u8]) -> Vec<u8> {
-	let pov = v3_pov(header, &(*anchor_state_root, proof.clone()).encode());
-	ParachainCandidate { validation_code_hash: ValidationCodeHash([0u8; HASH_LEN]), pov }.encode()
-}
-
-/// A V3 `ParachainBlockData`: one block, an empty `CompactProof`, an empty `SchedulingProof`, and
-/// one `additional_data` slot holding the anchor state proof.
+/// The PoV: a V3 `ParachainBlockData` with one block, an empty `CompactProof`, an empty
+/// `SchedulingProof`, and one `additional_data` slot holding the anchor state proof.
 fn v3_pov(header: &[u8], anchor_state_proof: &[u8]) -> Vec<u8> {
 	let mut pov = b"VERSIONEDPBD".to_vec();
 	pov.push(3);
@@ -374,17 +367,27 @@ fn compact(value: u32, out: &mut Vec<u8>) {
 	codec::Compact(value).encode_to(out);
 }
 
-/// Wrap one payload in a single-item package under the para's AURA authorizer, signed as the
-/// collator the lookup anchor names.
+/// Wrap one candidate in a single-item package under the para's AURA authorizer, signed as the
+/// collator the lookup anchor names. The payload names the code (parasim runs none, so the hash
+/// is zero) and the PoV is declared as work-item extrinsic 0 (§3.2).
 fn build_package(
 	anchor: &Anchor,
 	args: &Args,
 	parked: bool,
-	payload: Vec<u8>,
+	pov: &[u8],
 ) -> Result<WorkPackage, String> {
 	let authorizer =
 		if parked { args.aura.parked_authorizer() } else { args.aura.authorizer(args.para) };
-	let mut package = anchor.package(authorizer, vec![anchor.item(args.service, payload)]);
+	let payload =
+		ParachainCandidate { validation_code_hash: ValidationCodeHash([0u8; HASH_LEN]) }.encode();
+	let mut item = anchor.item(args.service, payload);
+	item.extrinsics = vec![ExtrinsicSpec {
+		hash: ExtrinsicHash(jam_std_common::hash_raw(pov)),
+		len: pov.len() as u32,
+	}]
+	.try_into()
+	.expect("one extrinsic is within the JAM bound; qed");
+	let mut package = anchor.package(authorizer, vec![item]);
 	package.authorization = args.aura.token(&package)?;
 	Ok(package)
 }

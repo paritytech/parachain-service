@@ -1,10 +1,11 @@
 //! parasim — a real JAM service with fake logic (spec B.0 item 8).
 //!
 //! Accepts a parachain work package without running its PVF, extracts the new para head from the
-//! payload (`ParachainBlockData`), and upserts it into this service's own key–value store under
-//! the real `parachain-service` storage-key layout — tag `0x00` + SCALE(`ParaId`) → a byte-exact
-//! `ParaInfo` whose only meaningful field is `head_data`. The collator code that reads the para
-//! head via `serviceValue` carries over unchanged to the real service.
+//! PoV (`ParachainBlockData`, work-item extrinsic 0), and upserts it into this service's own
+//! key–value store under the real `parachain-service` storage-key layout — tag `0x00` +
+//! SCALE(`ParaId`) → a byte-exact `ParaInfo` whose only meaningful field is `head_data`. The
+//! collator code that reads the para head via `serviceValue` carries over unchanged to the real
+//! service.
 //!
 //! The PoV itself is not validated, but the *ancestry* it claims is — and accumulate is the only
 //! authority on it. Refine declares the parent the block was built on and verifies the anchor-state
@@ -153,9 +154,11 @@ fn refine_inner(
 	let para_id = work_package_para_id(item_index).ok_or(ParasimRefineError::NoParaId)?;
 
 	let mut input: &[u8] = &payload.0;
-	let candidate = parachain_service_core::candidate::ParachainCandidate::decode_all(&mut input)
+	parachain_service_core::candidate::ParachainCandidate::decode_all(&mut input)
 		.map_err(|_| ParasimRefineError::MalformedPayload)?;
-	let pov = pov::decode_pov(&candidate.pov).map_err(|error| match error {
+	// The PoV is work-item extrinsic 0; a missing one fails to parse like any bad PoV.
+	let raw_pov = jam_pvm_common::refine::extrinsic(0).unwrap_or_default();
+	let pov = pov::decode_pov(&raw_pov).map_err(|error| match error {
 		pov::PoVError::Compressed => ParasimRefineError::CompressedPoV,
 		pov::PoVError::Malformed => ParasimRefineError::MalformedPoV,
 		pov::PoVError::MissingProof => ParasimRefineError::MissingProof,
@@ -611,7 +614,6 @@ mod tests {
 			validation_code_hash: parachain_service_core::types::ValidationCodeHash(
 				[3u8; HASH_LEN],
 			),
-			pov: vec![1, 2, 3],
 		}
 		.encode()
 	}

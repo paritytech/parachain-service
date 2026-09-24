@@ -261,19 +261,14 @@ pub fn validate(input: &[u8]) -> Vec<u8> {
 
 /// PVM entry point: validate one block (DECISIONS.md D-1).
 ///
-/// Reads inputs via `work_item_payload(0)` (spec §4.2). Results are declared
+/// Reads the PoV as work-item extrinsic 0 (spec §3.2). Results are declared
 /// exclusively through the mandatory `set_parent_head_hash` + `set_head` host
 /// calls; nothing is returned through registers.
 #[cfg(target_arch = "riscv64")]
 #[polkavm_derive::polkavm_export]
 extern "C" fn jam_validate_block() {
-	use parachain_service_core::candidate::ParachainCandidate;
-	// index 0: service/src/refine.rs panics unless the package has exactly one item.
-	let raw = host::work_item_payload(0).expect("work item payload present; qed");
-	let candidate =
-		ParachainCandidate::decode(&mut &raw[..]).expect("ParachainCandidate decodes; qed");
-	let params =
-		ValidationParams::decode(&mut &candidate.pov[..]).expect("invalid validation params");
+	let pov = host::work_item_extrinsic(0).expect("missing PoV extrinsic");
+	let params = ValidationParams::decode(&mut &pov[..]).expect("invalid validation params");
 
 	let parent_head = HeadData::decode(&mut &params.parent_head[..]).expect("invalid parent head");
 	let block_data = BlockData::decode(&mut &params.block_data[..]).expect("invalid block data");
@@ -340,20 +335,20 @@ mod host {
 		unsafe { gas_raw() }
 	}
 
-	/// Fetch work-item payload at `index`; `None` if absent.
+	/// Fetch extrinsic `index` of the executing work item; `None` if absent.
 	///
 	/// Probes with zero capacity to learn the byte length, then retries with a
-	/// large enough buffer. `13` is the Gray Paper `FetchKind::AnyPayload`.
-	pub fn work_item_payload(index: u32) -> Option<Vec<u8>> {
-		const ANY_PAYLOAD: u64 = 13;
-		let len = unsafe { fetch_raw(0, 0, 0, ANY_PAYLOAD, index as u64, 0) };
+	/// large enough buffer. `4` is the Gray Paper `FetchKind::OurExtrinsic`.
+	pub fn work_item_extrinsic(index: u32) -> Option<Vec<u8>> {
+		const OUR_EXTRINSIC: u64 = 4;
+		let len = unsafe { fetch_raw(0, 0, 0, OUR_EXTRINSIC, index as u64, 0) };
 		if len == u64::MAX {
 			return None;
 		}
 		let mut buf = alloc::vec![0u8; len as usize];
 		loop {
 			let actual = unsafe {
-				fetch_raw(buf.as_ptr() as u32, 0, buf.len() as u64, ANY_PAYLOAD, index as u64, 0)
+				fetch_raw(buf.as_ptr() as u32, 0, buf.len() as u64, OUR_EXTRINSIC, index as u64, 0)
 			};
 			if actual == u64::MAX {
 				return None;

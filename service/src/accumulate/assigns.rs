@@ -32,9 +32,13 @@ pub fn schedule(
 	if jam_slot <= now {
 		match jam_assign(service_id, core, &queue, new_assigner) {
 			Ok(()) => settle_after_assign(core, queue, new_assigner, now),
-			// The core was handed away: no queue is written, so nothing is
-			// scheduled either (§7.1).
-			Err(ApiError::ActionInvalid) => logs.push(AccumulateLog::CoreNotAssignable { core }),
+			// The core was handed away: nothing is scheduled, and any entry still
+			// cached for it is dropped (§7.1).
+			Err(ApiError::ActionInvalid) => {
+				PendingAssigns::remove(core);
+				DirtyCores::remove(core);
+				logs.push(AccumulateLog::CoreNotAssignable { core });
+			},
 			Err(e) => jam_pvm_common::error!("assign for core {core} failed: {e:?}"),
 		}
 		return;
@@ -56,42 +60,51 @@ pub fn schedule(
 
 /// The always-accumulate phase (§5.1): flush every due pending assign. Gating
 /// reads only the dirty-core index; the payload is read just for due cores.
-pub fn apply_due_assigns(now: Timeslot, service_id: ServiceId) {
+///
+/// Returns the rejections to record in the Coretime chain's log.
+pub fn apply_due_assigns(now: Timeslot, service_id: ServiceId) -> Vec<AccumulateLog> {
+	let mut logs = Vec::new();
 	let cores = DirtyCores::get();
 	if cores.is_empty() {
-		return;
+		return logs;
 	}
 	let mut next = cores.clone();
 	next.retain(|(_, jam_slot)| now < *jam_slot);
 	if next.len() == cores.len() {
-		return;
+		return logs;
 	}
 	for (core, jam_slot) in cores {
 		if now < jam_slot {
 			continue;
 		}
 		let entry = PendingAssigns::get(core).expect("dirty index names cached entries; qed");
-		if let Err(e) = jam_assign(service_id, core, &entry.queue, entry.assigner) {
-			// A core handed away since the entry was armed: JAM rejects the
-			// assign and the entry is left exactly as it was (§7.1).
-			jam_pvm_common::error!("assign for core {core} failed: {e:?}");
-			next.try_push((core, jam_slot))
-				.expect("re-arming cannot exceed the original number of dirty cores; qed");
-			continue;
-		}
-		if fills_directly(entry.queue.len()) {
-			PendingAssigns::remove(core);
-		} else {
-			let _ = PendingAssigns::set(
-				core,
-				&PendingAssign { queue: advance_queue(entry.queue), assigner: entry.assigner },
-			);
-			next.try_push((core, now + auth_queue_len() as Timeslot))
-				.expect("re-arming cannot exceed the original number of dirty cores; qed");
+		match jam_assign(service_id, core, &entry.queue, entry.assigner) {
+			Ok(()) if fills_directly(entry.queue.len()) => PendingAssigns::remove(core),
+			Ok(()) => {
+				let _ = PendingAssigns::set(
+					core,
+					&PendingAssign { queue: advance_queue(entry.queue), assigner: entry.assigner },
+				);
+				next.try_push((core, now + auth_queue_len() as Timeslot))
+					.expect("re-arming cannot exceed the original number of dirty cores; qed");
+			},
+			// The core was handed away since the entry was cached: drop it (§5.1).
+			Err(ApiError::ActionInvalid) => {
+				PendingAssigns::remove(core);
+				logs.push(AccumulateLog::CoreNotAssignable { core });
+			},
+			// TODO: the design does not say what happens to an entry JAM rejects
+			// for any other reason; it is retried.
+			Err(e) => {
+				jam_pvm_common::error!("assign for core {core} failed: {e:?}");
+				next.try_push((core, jam_slot))
+					.expect("re-arming cannot exceed the original number of dirty cores; qed");
+			},
 		}
 	}
 	// Flushing the due cores shrinks the index; JAM never rejects it.
 	DirtyCores::set(&next).expect("flushing due cores shrinks the index; qed");
+	logs
 }
 
 /// §4.3: a queue holds 1 to `AUTHORIZER_QUEUE_LEN` hashes, and one handing the

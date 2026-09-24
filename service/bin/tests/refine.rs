@@ -43,14 +43,22 @@ fn run_block(
 	add: u64,
 	para_ids: Vec<ParaId>,
 ) -> anyhow::Result<RefineOutcome> {
-	let pvf = parachain_service_bin::frameless_pvf();
-	let pvf_hash = validation_code_hash(&pvf);
-
+	let pvf_hash = validation_code_hash(&parachain_service_bin::frameless_pvf());
 	let block = BlockData { state: State { config, counter: 0 }, add };
 	let params = ValidationParams { parent_head: parent.encode(), block_data: block.encode() };
-	let payload =
-		ParachainCandidate { validation_code_hash: pvf_hash, pov: params.encode() }.encode();
-	let work_items = vec![refine_work_item(&service(), payload, vec![Vec::new(), Vec::new()])];
+	// §3.2: the payload names the code, the PoV is work-item extrinsic 0.
+	let payload = ParachainCandidate { validation_code_hash: pvf_hash }.encode();
+	refine_item(payload, params.encode(), para_ids)
+}
+
+/// Refine one work item carrying `payload` and the PoV, with the frameless PVF available.
+fn refine_item(
+	payload: Vec<u8>,
+	pov: Vec<u8>,
+	para_ids: Vec<ParaId>,
+) -> anyhow::Result<RefineOutcome> {
+	let pvf = parachain_service_bin::frameless_pvf();
+	let work_items = vec![refine_work_item(&service(), payload, vec![pov])];
 	let (engine, code_hash, mut context) = refine_args(
 		&service(),
 		&authorizer(),
@@ -123,6 +131,21 @@ fn report_error_works() {
 
 	let log = expect_log(outcome);
 	assert_eq!(log, RefineLog::Opaque(b"complaint".to_vec().try_into().unwrap()));
+}
+
+#[test]
+fn legacy_pov_payload_errors() {
+	// §3.2: the payload is the code hash alone, so one still carrying the PoV is malformed.
+	let config = Config::Coretime;
+	let parent = genesis(config.clone());
+	let block = BlockData { state: State { config, counter: 0 }, add: 1 };
+	let pov =
+		ValidationParams { parent_head: parent.encode(), block_data: block.encode() }.encode();
+	let pvf_hash = validation_code_hash(&parachain_service_bin::frameless_pvf());
+
+	let outcome = refine_item((pvf_hash, pov.clone()).encode(), pov, vec![ParaId(0)]);
+
+	assert_eq!(expect_log(outcome), RefineLog::MalformedPayload);
 }
 
 #[test]

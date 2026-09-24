@@ -18,7 +18,7 @@ pub mod validator_keys;
 use crate::{head_commitment::HeadTracker, state::log::ParachainLogs};
 use jam_pvm_common::accumulate::{accumulate_items, checkpoint};
 use jam_types::{AccumulateItem, Hash, ServiceId, Slot};
-use parachain_service_core::types::ASSET_HUB_PARA_ID;
+use parachain_service_core::types::{ASSET_HUB_PARA_ID, CORETIME_PARA_ID};
 
 #[derive(Debug)]
 pub enum AccumulateError {}
@@ -34,7 +34,9 @@ pub fn accumulate(
 	let mut heads = HeadTracker::new();
 
 	// Phase 1: always-accumulate — flush due authorizer-queue assigns (§5.1).
-	assigns::apply_due_assigns(now, service_id);
+	// `AssignCore` is Coretime only, so the rejections are logged against it.
+	let assign_logs = assigns::apply_due_assigns(now, service_id);
+	ParachainLogs::append_accumulate(CORETIME_PARA_ID, now, assign_logs);
 
 	// Phase 2: incoming-transfer processing (§5.1). JAM already credited the
 	// balances unconditionally; recording is best effort. Transfers are

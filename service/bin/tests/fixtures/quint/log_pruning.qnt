@@ -34,7 +34,7 @@ module log_pruning {
     val pi = svc.paraInfo(CoretimeParaId)
     val pkg: WorkPackage = {
       authorizedParas: List(CoretimeParaId),
-      items: List({ validationCode: { hash: { vchBytes: 1 }, len: FixedCodeLen }, pov: 0 })
+      items: List({ validationCode: { hash: { vchBytes: 1 }, len: FixedCodeLen } })
     }
     applyWork(refine(svc, pkg, false, CodeOk,
       Some(headHash(pi.headData)), HeadDeclared(pi.headData + 1), List(), anchor)[0])
@@ -44,7 +44,7 @@ module log_pruning {
   run stale_parent_seed_1_works = {
     val pkg: WorkPackage = {
       authorizedParas: List(CoretimeParaId),
-      items: List({ validationCode: { hash: { vchBytes: 1 }, len: FixedCodeLen }, pov: 0 })
+      items: List({ validationCode: { hash: { vchBytes: 1 }, len: FixedCodeLen } })
     }
     init
       .then(applyWork(WorkOk(Err({ paraId: CoretimeParaId, error: Opaque(42) }))))

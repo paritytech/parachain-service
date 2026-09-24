@@ -80,10 +80,10 @@ pub fn parse_pvf(code: &[u8]) -> Result<ParsedPvf, PvfParseError> {
 const INVOKE_GAS_RESERVE: UnsignedGas = 2048;
 
 /// Instantiate the parsed PVF as an inner PVM and invoke `jam_validate_block()` (spec §4.2).
-/// The entry point takes no arguments; the PVF reads its inputs through the
-/// `work_item_payload` host call and declares its results through `set_parent_head_hash`
-/// and `set_head` (DECISIONS.md D-1). `machine` spawns the VM code-only, so we lay out
-/// its memory first.
+/// The entry point takes no arguments; the PVF reads its inputs through the forwarded
+/// `fetch` host call (its PoV is work-item extrinsic 0) and declares its results through
+/// `set_parent_head_hash` and `set_head` (DECISIONS.md D-1). `machine` spawns the VM code-only, so
+/// we lay out its memory first.
 ///
 /// Machine failures (spawn, invoke, page faults, panic, out of gas) panic the whole
 /// refine invocation (§4.2); the returned `Err` carries only structured spec errors.

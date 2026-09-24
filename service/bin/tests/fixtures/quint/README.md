@@ -48,8 +48,8 @@ Mutation tests check that storage, log, and commitment mismatches are rejected.
   The vendored host exposes only final mutations, so overwritten intermediate
   calls and ordering between independent cores cannot be compared. The model's
   `jamCoreAssigners` ghost state is checked only through those privileges. A
-  future-slot assign for a handed-away core is rejected by the model but cached
-  by Rust ([DIVERGENCE.md M-13](../../../../../DIVERGENCE.md#m-13-a-future-slot-assigncore-for-a-handed-away-core-is-rejected-only-by-the-model)).
+  future-slot assign for a handed-away core is rejected by the model when replayed,
+  but by Rust only when it falls due ([DIVERGENCE.md M-13](../../../../../DIVERGENCE.md#m-13-a-future-slot-assigncore-for-a-handed-away-core-is-rejected-later-by-rust)).
 - Incoming-transfer replay requires explicit `replayIncoming` operands and an
   initially empty queue. Regular-balance arrivals are supported; supervisor
   arrivals fail explicitly because the vendored host has no selector. Integer
