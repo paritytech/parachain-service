@@ -175,12 +175,6 @@ assignment outputs come from the pinned model. Host assigner ownership persists
 between frames; attempts after a handoff are not suppressed. See README.md for
 the final-mutation comparison limit.
 
-A future-slot `AssignCore` for a core handed away earlier in the trace is a known
-mismatch: the model rejects it when the message is replayed, while Rust caches it
-until JAM rejects it at the flush
-([DIVERGENCE.md M-13](../../../../../DIVERGENCE.md#m-13-a-future-slot-assigncore-for-a-handed-away-core-is-rejected-later-by-rust)).
-Campaigns that sample handoffs reach it.
-
 Malformed
 authorizer configuration and invalid item counts are excluded because their
 model Refine-log representations cannot be replayed as Rust Refine errors.

@@ -80,4 +80,12 @@ module assignments {
     // Unauthorized work still runs the always-accumulate flush.
     .then(lifecycleWork(AssetHubParaId, 2, List(msg(1, 2, now, None)), 1))
     .then(expectThat(lastStepAssigns.length() == 1))
+
+  run future_assign_after_handoff_works = init
+    .then(core(List(msg(0, 80, now, Some(MkServiceId(7)))), 1))
+    .then(expectThat(lastStepAssigns.length() == 1))
+    // The handoff shows only once the flush calls `assign` at the due slot.
+    .then(core(List(msg(0, 3, now + 3, None)), 1))
+    .then(empty(2))
+    .then(expectThat(lastStepAssigns == List() and svc.pendingAssigns.keys() == Set()))
 }

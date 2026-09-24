@@ -48,3 +48,11 @@ fn rejected_work_flush_works() {
 	replay::trace(include_str!("../fixtures/quint/assignments/rejected_work_flush_works.itf.json"))
 		.expect("assignments should match Quint");
 }
+
+#[test]
+fn future_assign_after_handoff_works() {
+	replay::trace(include_str!(
+		"../fixtures/quint/assignments/future_assign_after_handoff_works.itf.json"
+	))
+	.expect("assignments should match Quint");
+}

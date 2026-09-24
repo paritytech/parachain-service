@@ -3,7 +3,7 @@
 Places where the Rust implementation and the
 [Quint spec](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/) disagree on
 observable behaviour or on a derived constant. Found by reading both sides and by trace replay;
-checked against spec pin `735041490e0`.
+checked against spec pin `64713864ffa`.
 
 Scope: this file covers **Quint model vs Rust**. Two neighbouring documents cover the
 neighbouring questions, and entries here cross-reference them rather than restating them:
@@ -201,24 +201,12 @@ the storage format already supports both values. This is a host limitation,
 like the supervised-service operations in M-11, not a normalization of `true`
 model transfers to `false`.
 
-## M-13: a future-slot `AssignCore` for a handed-away core is rejected later by Rust
+## M-13: a future-slot `AssignCore` for a handed-away core — resolved
 
-Quint `6b8f7292e0` tracks each core's assigner as ghost state (`jamCoreAssigners`) and rejects
-an `AssignCore` naming a core this service handed away as soon as it is replayed, whatever its
-`jam_slot`: `CoreNotAssignable` goes into that package's log entry and any entry cached for the
-core is dropped. The service cannot read JAM's assigner; it learns of a handoff only when
-`assign` fails. A due assign therefore matches the model, but a future-slot one is cached.
-
-Since Quint `735041490e0` a rejection at the flush drops the entry and logs `CoreNotAssignable`
-in the Coretime chain's log, so the end state converges. Until the entry falls due (or a later
-inline assign for the core is rejected), Rust holds a `pending_assigns` entry the model does
-not, and the rejection is logged later, in a different entry. In model-reachable states a cached
-entry never coexists with a handed-away core, so the model's own flush-drop branch fires only in
-Rust. Streaming fuzz campaigns that hand a core away and then schedule it for a future slot hit
-this at the scheduling frame.
-
-Fix: a spec decision — either the model caches and rejects at the flush like JAM does, or the
-service tracks the cores it handed away.
+Since Quint `64713864ffa` the model, like the service, learns of a handoff only from `assign`: a
+future-slot `AssignCore` is cached whatever the core's assigner, and the flush that calls `assign`
+once it falls due drops the entry and logs `CoreNotAssignable` in the Coretime chain's log. Pinned
+by the `future_assign_after_handoff_works` replay fixture.
 
 ## M-14: an `assign` JAM rejects for a bad core index is unspecified
 

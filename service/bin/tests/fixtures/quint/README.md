@@ -28,7 +28,7 @@ and `just quint-compact` before committing.
 | KV operations | Overwrite, empty values/keys, SCALE length boundary, refunds, delegated and unauthorized removal, failed reservations, and stale candidates |
 | Balances and incoming transfers | Allowance boundaries, authorization, reservations/refunds, queue packing and rollover, admission/drop at the reservation limit, and Asset Hub charges |
 | Lifecycle | Registration thresholds and repeated funding, unauthorized calls, forced head/code changes, cleanup refusal with extra storage, delayed cleanup, and re-registration |
-| Assignments | Immediate/delayed execution, due-slot boundaries, queue expansion/rotation, repeated replacements, authorization, invalid queues, handoffs, pending storage, and final JAM queues/privileges |
+| Assignments | Immediate/delayed execution, due-slot boundaries, queue expansion/rotation, repeated replacements, authorization, invalid queues, handoffs, a cached assign rejected after a handoff, pending storage, and final JAM queues/privileges |
 | Upgrades | Announcements and applies, supersession, refused forgets of validation code, unavailable or foreign code, failed reservations, and skipped work |
 | Log pruning | Rejected candidates retain logs; accepted candidates prune below the lookup anchor and retain the boundary |
 
@@ -47,9 +47,7 @@ Mutation tests check that storage, log, and commitment mismatches are rejected.
   privileges, checking all privilege fields and rejecting extra assigned cores.
   The vendored host exposes only final mutations, so overwritten intermediate
   calls and ordering between independent cores cannot be compared. The model's
-  `jamCoreAssigners` ghost state is checked only through those privileges. A
-  future-slot assign for a handed-away core is rejected by the model when replayed,
-  but by Rust only when it falls due ([DIVERGENCE.md M-13](../../../../../DIVERGENCE.md#m-13-a-future-slot-assigncore-for-a-handed-away-core-is-rejected-later-by-rust)).
+  `jamCoreAssigners` ghost state is checked only through those privileges.
 - Incoming-transfer replay requires explicit `replayIncoming` operands and an
   initially empty queue. Regular-balance arrivals are supported; supervisor
   arrivals fail explicitly because the vendored host has no selector. Integer
