@@ -2,9 +2,9 @@
 //!
 //! The work runs in three phases, in order: all always-accumulate work first
 //! (due authorizer-queue flushes, then incoming-transfer processing) and then
-//! per-work-package work. Because selected work-reports are not replayed
-//! automatically, the service checkpoints after finishing each work-report so
-//! progress survives a later out-of-gas or panic in the same invocation.
+//! per-work-package work. Each work-report must clear a gas gate against the gas
+//! it declared itself, and the service checkpoints after applying it so a later
+//! report running the budget dry cannot undo it.
 
 pub mod assigns;
 pub mod code_upgrades;
@@ -58,13 +58,14 @@ pub fn accumulate(
 	// phase boundary here is an extra safety point.
 	checkpoint();
 
-	// Phase 3: per-work-package work, in operand order (§5.1 steps 1–7).
+	// Phase 3: per-work-package work, in operand order (§5.1 steps 1–6).
 	for item in items {
 		if let AccumulateItem::WorkItem(record) = item {
-			package::process(now, service_id, &record, &mut heads);
-			// §5.1: checkpoint after each work-report so its effects survive a
-			// later out-of-gas or panic.
-			checkpoint();
+			// §5.1: checkpoint after each applied work-report so its effects
+			// survive a later out-of-gas or panic.
+			if package::process(now, service_id, &record, &mut heads) {
+				checkpoint();
+			}
 		}
 	}
 

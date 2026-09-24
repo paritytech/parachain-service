@@ -23,26 +23,23 @@ pub fn apply(chunk: Vec<ValidatorKey>, is_last: bool, logs: &mut Vec<AccumulateL
 	let staged = StagedValidatorKeys::get();
 
 	if is_last {
-		// Final chunk: assemble in memory, hand to `designate`, clear the buffer
-		// either way. The final chunk never persists, so no headroom check.
+		// Final chunk: clear the buffer either way. An empty chunk is Asset Hub's
+		// abort path, which discards the staged keys without calling `designate`.
+		StagedValidatorKeys::clear();
+		if chunk.is_empty() {
+			return;
+		}
+
+		// Assemble in memory and hand to `designate`, which rejects a length
+		// outside `valcount` or a caller that is not the delegator. The final
+		// chunk never persists, so no headroom check.
 		let assembled: Vec<OpaqueValKeyset> =
 			staged.iter().chain(chunk.iter()).map(|raw| decode_key(raw)).collect();
 		let len = assembled.len();
-		StagedValidatorKeys::clear();
-
-		// JAM `designate` accepts only the protocol's exact validator count;
-		// `OpaqueValKeysets` (a FixedVec) enforces it. A wrong length rejects
-		// the set — this is also Asset Hub's abort path (empty set + is_last).
-		match OpaqueValKeysets::try_from(assembled) {
-			Ok(set) => {
-				if designate(&set).is_err() {
-					// TODO: no log is specified for a JAM-level designate
-					// failure (e.g. the service is not the delegator);
-					// reuse DesignateRejected. Needs upstreaming.
-					logs.push(AccumulateLog::DesignateRejected { len: (len as u32).into() });
-				}
-			},
-			Err(_) => logs.push(AccumulateLog::DesignateRejected { len: (len as u32).into() }),
+		let designated =
+			OpaqueValKeysets::try_from(assembled).is_ok_and(|set| designate(&set).is_ok());
+		if !designated {
+			logs.push(AccumulateLog::DesignateRejected { len: (len as u32).into() });
 		}
 		return;
 	}

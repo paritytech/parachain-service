@@ -120,14 +120,14 @@ pub fn set_head(
 }
 
 /// §6.2/§6.3 — upsert validation code, bypassing the normal upgrade lifecycle
-/// (forced replacement). Solicits the new code, releases the displaced active
-/// and announced codes (each unless equal to the new code), and clears the
-/// announcement.
+/// (forced replacement). Solicits the new code and clears the announcement. The
+/// displaced codes are left untouched, exactly as an `Apply` leaves them: they
+/// stay ordinary solicited preimages until the para (or Coretime, via a delegated
+/// `Forget`) releases them.
 pub fn set_validation_code(
 	para_id: ParaId,
 	new_hash: ValidationCodeHash,
 	code_len: u32,
-	now: Slot,
 	logs: &mut Vec<AccumulateLog>,
 ) {
 	let Some(pi) = Parachains::get(para_id) else { return };
@@ -140,23 +140,6 @@ pub fn set_validation_code(
 	if let Err(log) = add_referencer(para_id, &new_hash.0, code_len) {
 		logs.push(log);
 		return;
-	}
-
-	// TODO: hash-only comparisons per the Quint model, although the registry is
-	// keyed by (hash, len). Needs upstreaming.
-	// §6.3: release the displaced active code, unless it IS the new code.
-	if let Some(vc) = &pi.validation_code {
-		if vc.hash != new_hash {
-			let out = remove_referencer(para_id, &vc.hash.0, vc.len, now);
-			logs.extend(out.log);
-		}
-	}
-	// Release the displaced announced code under the same rule.
-	if let Some(vc) = &pi.announced_upgrade {
-		if vc.hash != new_hash {
-			let out = remove_referencer(para_id, &vc.hash.0, vc.len, now);
-			logs.extend(out.log);
-		}
 	}
 
 	let mut updated = Parachains::get(para_id).expect("still live; qed");

@@ -13,7 +13,10 @@
 //! contact, so a test that strays into a path needing real inner-PVM I/O fails loudly
 //! instead of silently passing. The paths under test never touch them.
 
-use parachain_service::pvf::executor::{fresh_pages, ExecutorState, Heap};
+use parachain_service::{
+	constants::MAX_PVF_HEAP_SIZE,
+	pvf::executor::{fresh_pages, ExecutorState, Heap},
+};
 use parachain_service_core::{host_call::HostCall, types::ParaId};
 
 #[no_mangle]
@@ -114,6 +117,19 @@ fn grow_heap_beyond_limit_is_refused() {
 fn grow_heap_overflow_is_refused() {
 	let mut exe = ExecutorState::new(ParaId(0), heap(u64::MAX - 1, u64::MAX, u64::MAX));
 	assert_eq!(grow(&mut exe, 2), 0, "refused: the break would overflow");
+}
+
+/// §4.3: the child's heap stops at 1 GiB, however much address space the memory map
+/// leaves for it.
+#[test]
+fn heap_limit_capped_at_one_gib_works() {
+	let memory = polkavm::MemoryMapBuilder::new(PAGE as u32)
+		.rw_data_size(PAGE as u32)
+		.stack_size(PAGE as u32)
+		.build()
+		.expect("minimal layout is valid");
+	assert!(u64::from(memory.max_heap_size()) > MAX_PVF_HEAP_SIZE);
+	assert_eq!(Heap::new(&memory).limit, u64::from(memory.heap_base()) + MAX_PVF_HEAP_SIZE);
 }
 
 /// The fresh-page computation maps whole pages including the one containing the new

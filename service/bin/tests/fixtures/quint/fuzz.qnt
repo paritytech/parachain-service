@@ -44,7 +44,7 @@ module fuzz {
   // A small shared preimage pool makes repeats and cross-para references common.
   // Keep one length per hash, as required by the replay codex.
   pure def replayMessages(s: ParachainServiceState, para: ParaId, slot: Timeslot): Set[UpwardMessage] = {
-    val code = vchAsHash(activeCodeHashOr(s.paraInfo(para), NoCodeHash))
+    val code = activeCodeHashOr(s.paraInfo(para), NoCodeHash).asPreimage()
     // No leading-zero keys: Quint's base-257 listHash aliases those keys.
     val kvKeys = Set(List(), List(1), List(2, 0, 255))
     val values = Set(List(), List(0), List(255), List(0, 255),

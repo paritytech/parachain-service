@@ -44,8 +44,8 @@ pub fn announce_code_upgrade(
 		return;
 	}
 
-	// A superseded announcement stops being validation code, so it simply
-	// unpins: its referencer is the parachain's own solicit, which stands until
+	// A superseded announcement stops being validation code and releases
+	// nothing: its referencer is the parachain's own solicit, which stands until
 	// the parachain forgets it. No jamForget is issued.
 	let mut pi = pi;
 	pi.announced_upgrade = Some(new_ref);
@@ -74,8 +74,8 @@ pub fn apply_code_upgrade(
 		return;
 	}
 
-	// The displaced active code stops being validation code, so it simply
-	// unpins: its referencer stands until the parachain forgets it. No
+	// The displaced active code stops being validation code and releases
+	// nothing: its referencer stands until the parachain forgets it. No
 	// jamForget is issued.
 	let mut pi = pi;
 	pi.validation_code = Some(new_ref);

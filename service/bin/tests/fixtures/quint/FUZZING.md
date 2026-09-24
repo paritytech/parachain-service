@@ -99,8 +99,8 @@ Each WP independently samples its para, outcome, auth-trace length, and lookup
 anchor. Same-para WPs either compete for the pre-block head or chain a candidate
 off the latest preceding same-para candidate's proposed head. All refine against pre-block
 state; Quint decides which results accumulate successfully. Empty blocks are
-sampled independently of work outcomes. Mode 0 selects active-code work; mode 8 selects pending-code work when an
-upgrade exists, otherwise active code. Mode 6 still samples arbitrary candidates.
+sampled independently of work outcomes. Mode 0 selects active-code work; mode 8 selects announced-code work when an
+announcement exists, otherwise active code. Mode 6 still samples arbitrary candidates.
 Selecting whole outcome classes keeps successful candidates reachable frequently.
 Time gaps are at most `MaxLookupAge`, so sampled anchors lie between the valid
 lookback floor and the previous block slot.
@@ -109,18 +109,17 @@ Each WP independently samples zero to four upward messages from `Solicit`,
 `Forget`, `RequestCodeUpgrade`, `SetKV`, `RemoveKV`, and
 `ParachainSetStateBalance`. Two shared hashes at length 1024 exercise duplicate requests,
 shared references, refunds, and provision/forget/re-solicit lifecycles. Active-code
-messages exercise pinning and unpinning. Forget targets include the caller and
+messages exercise the refused forget of validation code. Forget targets include the caller and
 both registered paras, allowing Quint Refine to reject unauthorized foreign
 calls. Messages are also sampled for failed work and stale-parent candidates;
 Quint determines whether they reach Accumulate and take effect. The codex requires
 one length per abstract hash, so conflicting lengths are excluded.
 
-Upgrade requests sample two shared code hashes (777 and 778, each `FixedCodeLen`)
-and the caller's active code. The same new hashes can be solicited and forgotten,
-so requests can encounter independently held references and pinned pending code.
-Requests can repeat, refresh a deadline, supersede a different upgrade, or fail a
-reservation. External provision and pending-code candidates allow activation;
-time gaps can cross upgrade deadlines. Expected outcomes always come from Quint.
+Upgrade requests announce or apply two shared code hashes (777 and 778, each
+`FixedCodeLen`) and the caller's active code. The same hashes can be solicited,
+provided and forgotten, so an announcement can find its code unreferenced or
+unavailable, supersede another, and be applied or refused. Expected outcomes
+always come from Quint.
 
 KV messages share three keys across both paras, including an empty key. Values
 include empty, same-length replacements, and 63/64-byte values spanning a SCALE
@@ -162,7 +161,7 @@ expunge period and one slot beyond it to exercise delayed cleanup. Ordinary
 blocks also mix lifecycle messages with KV, balances, and upgrades; both
 privileged and ordinary callers can attempt them. Repeated funding updates an
 existing allowance rather than rejecting duplicate registration. Deterministic
-`lifecycle` fixtures cover cleanup refusal with extra storage, active/pending
+`lifecycle` fixtures cover cleanup refusal with extra storage, active/announced
 code release, deregistration restrictions, and re-registration. All semantics
 come from the pinned model; replay does not suppress mismatches.
 
@@ -176,18 +175,19 @@ assignment outputs come from the pinned model. Host assigner ownership persists
 between frames; attempts after a handoff are not suppressed. See README.md for
 the final-mutation comparison limit.
 
+A future-slot `AssignCore` for a core handed away earlier in the trace is a known
+mismatch: the model rejects it at once, while Rust caches it
+([DIVERGENCE.md M-13](../../../../../DIVERGENCE.md#m-13-a-future-slot-assigncore-for-a-handed-away-core-is-rejected-only-by-the-model)).
+Campaigns that sample handoffs reach it.
+
 Malformed
 authorizer configuration and invalid item counts are excluded because their
 model Refine-log representations cannot be replayed as Rust Refine errors.
 Other comparator limitations remain those in [README.md](README.md). Unsupported
 values fail explicitly; the runner does not discard failing traces.
 
-Rust matches the model by omitting `ForgetAgainAt` when an accepted candidate
-releases provided code during expiry or activation, pending issue #36. Those
-inputs remain enabled, and ordinary regression tests assert strict agreement. See [issue #36](https://github.com/paritytech/parachain-service/issues/36).
-
 Quint `06c2a49202` changed rejection to preserve state. Rust now matches it:
-rejected candidates neither prune logs nor commit tentative expiry cleanup.
+rejected candidates neither prune logs nor change any other state.
 The regenerated `log_pruning/stale_parent_seed_1_works.itf.json` covers the
 rejection/pruning shape found by the old campaign; it no longer contains the
 old model's expected states.

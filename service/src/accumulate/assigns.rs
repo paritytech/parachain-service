@@ -1,16 +1,22 @@
 //! Scheduled JAM `assign`s: caching, inline application, and the
 //! always-accumulate flush (spec §5.1, §7.1).
 
-use crate::state::assigns::{DirtyCores, PendingAssign, PendingAssigns};
+use crate::{
+	constants::AUTHORIZER_QUEUE_LEN,
+	state::{
+		assigns::{DirtyCores, PendingAssign, PendingAssigns},
+		log::AccumulateLog,
+	},
+};
 use alloc::vec::Vec;
-use jam_pvm_common::accumulate::assign;
+use jam_pvm_common::{accumulate::assign, ApiError};
 use jam_types::{auth_queue_len, AuthQueue, AuthorizerHash as JamAuthorizerHash};
 use parachain_service_core::types::{AuthorizerHash, CoreIndex, ServiceId, Timeslot};
 
-/// Replay an `AssignCore` message (Coretime only, §4.3). Refine rejects empty
-/// queues, so one is a defensive no-op here. An already-due `jam_slot` applies
-/// inline (always-accumulate has already run this block); otherwise the entry
-/// is cached until its slot.
+/// Replay an `AssignCore` message (Coretime only, §4.3). Refine rejects a
+/// malformed queue, so one is a defensive no-op here. An already-due `jam_slot`
+/// applies inline (always-accumulate has already run this block); otherwise the
+/// entry is cached until its slot.
 pub fn schedule(
 	now: Timeslot,
 	service_id: ServiceId,
@@ -18,13 +24,19 @@ pub fn schedule(
 	queue: Vec<AuthorizerHash>,
 	new_assigner: Option<ServiceId>,
 	jam_slot: Timeslot,
+	logs: &mut Vec<AccumulateLog>,
 ) {
-	if queue.is_empty() {
+	if !well_formed(&queue, new_assigner) {
 		return;
 	}
 	if jam_slot <= now {
-		jam_assign(service_id, core, &queue, new_assigner);
-		settle_after_assign(core, queue, new_assigner, now);
+		match jam_assign(service_id, core, &queue, new_assigner) {
+			Ok(()) => settle_after_assign(core, queue, new_assigner, now),
+			// The core was handed away: no queue is written, so nothing is
+			// scheduled either (§7.1).
+			Err(ApiError::ActionInvalid) => logs.push(AccumulateLog::CoreNotAssignable { core }),
+			Err(e) => jam_pvm_common::error!("assign for core {core} failed: {e:?}"),
+		}
 		return;
 	}
 	PendingAssigns::set(core, &PendingAssign { queue, assigner: new_assigner }).unwrap_or_else(
@@ -59,7 +71,14 @@ pub fn apply_due_assigns(now: Timeslot, service_id: ServiceId) {
 			continue;
 		}
 		let entry = PendingAssigns::get(core).expect("dirty index names cached entries; qed");
-		jam_assign(service_id, core, &entry.queue, entry.assigner);
+		if let Err(e) = jam_assign(service_id, core, &entry.queue, entry.assigner) {
+			// A core handed away since the entry was armed: JAM rejects the
+			// assign and the entry is left exactly as it was (§7.1).
+			jam_pvm_common::error!("assign for core {core} failed: {e:?}");
+			next.try_push((core, jam_slot))
+				.expect("re-arming cannot exceed the original number of dirty cores; qed");
+			continue;
+		}
 		if fills_directly(entry.queue.len()) {
 			PendingAssigns::remove(core);
 		} else {
@@ -73,6 +92,15 @@ pub fn apply_due_assigns(now: Timeslot, service_id: ServiceId) {
 	}
 	// Flushing the due cores shrinks the index; JAM never rejects it.
 	DirtyCores::set(&next).expect("flushing due cores shrinks the index; qed");
+}
+
+/// §4.3: a queue holds 1 to `AUTHORIZER_QUEUE_LEN` hashes, and one handing the
+/// core to another service holds exactly `AUTHORIZER_QUEUE_LEN`.
+fn well_formed(queue: &[AuthorizerHash], new_assigner: Option<ServiceId>) -> bool {
+	match new_assigner {
+		None => (1..=AUTHORIZER_QUEUE_LEN).contains(&queue.len()),
+		Some(_) => queue.len() == AUTHORIZER_QUEUE_LEN,
+	}
 }
 
 /// Drop a self-sufficient queue after it fires, or retain and advance a short
@@ -105,20 +133,17 @@ fn advance_queue(mut queue: Vec<AuthorizerHash>) -> Vec<AuthorizerHash> {
 /// Call JAM `assign(core, queue, assigner)`. A queue shorter than the protocol's
 /// exact length is cycle-repeated (`queue[i mod len]`, DECISIONS.md D-7); a
 /// cached `assigner` of `None` resolves to this service — JAM always writes one.
+/// JAM answers `ActionInvalid` once this service is no longer the core's
+/// assigner.
 fn jam_assign(
 	service_id: ServiceId,
 	core: CoreIndex,
 	queue: &[AuthorizerHash],
 	assigner: Option<ServiceId>,
-) {
+) -> Result<(), ApiError> {
 	let target_len = auth_queue_len();
 	let expanded: Vec<JamAuthorizerHash> =
 		(0..target_len).map(|i| JamAuthorizerHash(queue[i % queue.len()])).collect();
 	let auth_queue = AuthQueue::try_from(expanded).expect("expanded to the exact length; qed");
-	if let Err(e) = assign(core, &auth_queue, assigner.unwrap_or(service_id)) {
-		// TODO: no AccumulateLog is specified for a failed assign (bad core, or
-		// the service is no longer the core's assigner after a hand-off);
-		// needs upstreaming.
-		jam_pvm_common::error!("assign for core {core} failed: {e:?}");
-	}
+	assign(core, &auth_queue, assigner.unwrap_or(service_id))
 }

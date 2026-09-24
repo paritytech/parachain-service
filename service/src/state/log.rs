@@ -14,7 +14,7 @@ use alloc::vec::Vec;
 use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Compact, Decode, Encode};
 use parachain_service_core::types::{
-	Balance, Hash, ParaId, ServiceId, Timeslot, ValidationCodeHash,
+	Balance, CoreIndex, Hash, ParaId, ServiceId, Timeslot, ValidationCodeHash,
 };
 
 /// Why a state-balance reservation failed (spec §3.1, §6.1).
@@ -27,7 +27,7 @@ use parachain_service_core::types::{
 /// and are kept self-describing by extending the enum beyond the spec's pair.
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub enum InsufficientBalanceReason {
-	/// A `solicit` (or code-upgrade solicit) of the preimage with `hash` and `len`.
+	/// A `solicit` of the preimage with `hash` and `len`.
 	Solicit { hash: Hash, len: Compact<u32> },
 	/// A `kv_set(key, value)` write. Only the hash of `key` is recorded so an
 	/// arbitrarily large user key cannot inflate `parachain_log`.
@@ -40,7 +40,7 @@ pub enum InsufficientBalanceReason {
 	ParaInfo,
 }
 
-/// Why a JAM `transfer` replaying a `TransferOut` failed (spec §5.1 step 7).
+/// Why a JAM `transfer` replaying a `TransferOut` failed (spec §5.1 step 6).
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub enum TransferError {
 	/// `source` is not a known service.
@@ -145,8 +145,9 @@ pub enum AccumulateLog {
 		attempted: Compact<Balance>,
 		reason: StateBalanceRejection,
 	},
-	/// JAM `designate` was not called: the assembled key set's length is not in
-	/// `valcount`. The staging buffer is cleared regardless. Spec §5.3.
+	/// JAM `designate` rejected the assembled key set, because its length is not
+	/// in `valcount` or this service is not the delegator. The staging buffer is
+	/// cleared regardless. Spec §5.3.
 	DesignateRejected { len: Compact<u32> },
 	/// A `set_validator_keys` chunk would overflow `staged_validator_keys`;
 	/// the append is rejected. Spec §5.3.
@@ -159,9 +160,12 @@ pub enum AccumulateLog {
 	CodeUpgradeNotAnnounced { hash: Hash, len: Compact<u32> },
 	/// A `Forget` naming the para's active or announced validation code (§5.2).
 	CanNotForgetValidationCode { hash: Hash, len: Compact<u32> },
+	/// JAM rejected an `assign` because this service is no longer the core's
+	/// assigner (§7.1).
+	CoreNotAssignable { core: CoreIndex },
 	/// The JAM `transfer` replaying a `TransferOut` failed. `id` is the
 	/// caller-supplied identifier, echoed back so the parachain can match the
-	/// failure to its own record. Spec §5.1 step 7.
+	/// failure to its own record. Spec §5.1 step 6.
 	TransferFailed { id: Compact<u64>, error: TransferError },
 	/// A `forget` removed the last referencer without expunging the preimage;
 	/// `forget` again once strictly past `due`. Spec §6.1.
@@ -179,7 +183,7 @@ pub enum AccumulateLog {
 	ServiceCreation { id: Compact<u64>, result: ServiceCreationResult },
 	/// `parachain_clean_up` rejected: state held beyond baseline + codes. Spec §6.4.
 	TooMuchStateHeld,
-	/// The candidate's code matches neither active nor unexpired pending code. §5.1.
+	/// The candidate's code does not match the active code. §5.1.
 	/// Appended to preserve the SCALE indices of existing events.
 	InvalidCodeHash { hash: ValidationCodeHash },
 }

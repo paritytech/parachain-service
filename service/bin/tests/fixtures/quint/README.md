@@ -27,14 +27,12 @@ and `just quint-compact` before committing.
 | Multiple work packages and parachains | Ordered processing, shared references, delegated forgets, and combined head commitments |
 | KV operations | Overwrite, empty values/keys, SCALE length boundary, refunds, delegated and unauthorized removal, failed reservations, and stale candidates |
 | Balances and incoming transfers | Allowance boundaries, authorization, reservations/refunds, queue packing and rollover, admission/drop at the reservation limit, and Asset Hub charges |
-| Lifecycle | Registration thresholds and repeated funding, unauthorized calls, forced head/code changes, cleanup refusal with extra storage, pending-code release, delayed cleanup, and re-registration |
+| Lifecycle | Registration thresholds and repeated funding, unauthorized calls, forced head/code changes, cleanup refusal with extra storage, delayed cleanup, and re-registration |
 | Assignments | Immediate/delayed execution, due-slot boundaries, queue expansion/rotation, repeated replacements, authorization, invalid queues, handoffs, pending storage, and final JAM queues/privileges |
-| Upgrades | Requests, provision, activation, expiry, failed reservations, and rejected expired-code candidates |
+| Upgrades | Announcements and applies, supersession, refused forgets of validation code, unavailable or foreign code, failed reservations, and skipped work |
 | Log pruning | Rejected candidates retain logs; accepted candidates prune below the lookup anchor and retain the boundary |
 
 Mutation tests check that storage, log, and commitment mismatches are rejected.
-Provided-code activation and expiry currently omit `ForgetAgainAt` to match Quint;
-[issue #36](https://github.com/paritytech/parachain-service/issues/36) tracks the model change.
 
 ## Adapter limits
 
@@ -48,16 +46,19 @@ Provided-code activation and expiry currently omit `ForgetAgainAt` to match Quin
   Quint's ordered `lastStepAssigns` is folded into expected final queues and
   privileges, checking all privilege fields and rejecting extra assigned cores.
   The vendored host exposes only final mutations, so overwritten intermediate
-  calls and ordering between independent cores cannot be compared. JAM ownership
-  failures are not filtered from model expectations and surface as mismatches.
+  calls and ordering between independent cores cannot be compared. The model's
+  `jamCoreAssigners` ghost state is checked only through those privileges. A
+  future-slot assign for a handed-away core is rejected by the model but cached
+  by Rust ([DIVERGENCE.md M-13](../../../../../DIVERGENCE.md#m-13-a-future-slot-assigncore-for-a-handed-away-core-is-rejected-only-by-the-model)).
 - Incoming-transfer replay requires explicit `replayIncoming` operands and an
   initially empty queue. Regular-balance arrivals are supported; supervisor
   arrivals fail explicitly because the vendored host has no selector. Integer
   memos use a u64 little-endian prefix padded to 128 bytes. The model does not
   represent the JAM service's actual monetary balance.
 - Accumulate-log decoding supports `ForgetAgainAt`, `StateBalanceUpdateRejected`,
-  `TooMuchStateHeld`, `InvalidCodeHashAcc`, and `InsufficientStateBalance` from `FromSolicit` or
-  `FromSetKV`; other events fail explicitly.
+  `TooMuchStateHeld`, `InvalidCodeHashAcc`, `CodeUpgradeNotAvailable`,
+  `CodeUpgradeNotAnnounced`, `CanNotForgetValidationCode`, `CoreNotAssignable`, and
+  `InsufficientStateBalance` from `FromSolicit` or `FromSetKV`; other events fail explicitly.
 - `Solicit` and `Forget` support explicit parachain targets, including delegated
   calls, and historical fixtures without `Target`. Service targets are rejected
   pending host support ([DIVERGENCE.md M-11](../../../../../DIVERGENCE.md#m-11-the-model-decides-the-65-supervised-service-outcomes-rust-can-only-refuse)).

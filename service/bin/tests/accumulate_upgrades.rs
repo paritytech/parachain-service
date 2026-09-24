@@ -106,7 +106,7 @@ fn announce_works() {
 #[test]
 fn activation_works() {
 	// §5.2: the `Apply` swaps the two code slots. The candidate carrying it is
-	// still validated with the old active code; the displaced code merely unpins.
+	// still validated with the old active code; the displaced code releases nothing.
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let new_ref = code_ref(NEW_CODE);
 	let storage = solicit_and_provide(storage, b"genesis", b"head-1", NEW_CODE, NOW);
@@ -277,8 +277,8 @@ fn announce_active_code_is_noop_works() {
 
 #[test]
 fn announcement_supersedes_previous_works() {
-	// §5.2: a second announcement replaces the first; the superseded code merely
-	// unpins — still referenced and charged until the para forgets it.
+	// §5.2: a second announcement replaces the first; the superseded code releases
+	// nothing — still referenced and charged until the para forgets it.
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let new_ref = code_ref(NEW_CODE);
 	let third_ref = code_ref(THIRD_CODE);
@@ -301,8 +301,8 @@ fn announcement_supersedes_previous_works() {
 
 #[test]
 fn forget_announced_refused_then_supersede_works() {
-	// §5.2: a `Forget` of the announced code is refused while it is pinned; a
-	// superseding announcement unpins it, and only then does the forget take.
+	// §5.2: a `Forget` of the announced code is refused while it is announced; a
+	// superseding announcement displaces it, and only then does the forget take.
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let new_ref = code_ref(NEW_CODE);
 	let third_ref = code_ref(THIRD_CODE);
@@ -328,7 +328,7 @@ fn forget_announced_refused_then_supersede_works() {
 		}]
 	);
 
-	// Supersede with THIRD, unpinning NEW; the forget now releases it (two-step,
+	// Supersede with THIRD, displacing NEW; the forget now releases it (two-step,
 	// because NEW was provided).
 	let digest = ok_digest(PARA, CODE, b"head-4", b"head-5", vec![announce_msg(THIRD_CODE)], 0);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 4);

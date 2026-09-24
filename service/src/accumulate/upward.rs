@@ -1,4 +1,4 @@
-//! Replay of the upward messages carried in a work digest (spec §5.1 step 7).
+//! Replay of the upward messages carried in a work digest (spec §5.1 step 6).
 //!
 //! The PVF emits these operations through `send_upward_message` (§4.3). Refine
 //! enforces their origin restrictions (D-2), which are re-checked package-wide
@@ -40,17 +40,7 @@ pub fn apply(
 		UpwardMessage::Solicit { target: Target::Parachain(target), hash, len } => {
 			// `target` names who is charged; only the Coretime chain may name a
 			// para other than itself (§6.1), and a dead target is a no-op.
-			let Some(pi) = Parachains::get(target) else { return };
-			if pi.is_deregistering {
-				return;
-			}
-			// The target's own active or announced validation code is already
-			// referenced and pinned, so soliciting it changes nothing and costs
-			// no extra state balance (§5.2).
-			let already_referenced =
-				pi.validation_code.as_ref().is_some_and(|vc| vc.is(&hash, len.0)) ||
-					pi.announced_upgrade.as_ref().is_some_and(|vc| vc.is(&hash, len.0));
-			if already_referenced {
+			if Parachains::get(target).is_none_or(|pi| pi.is_deregistering) {
 				return;
 			}
 			if let Err(log) = state_balance::add_referencer(target, &hash, len.0) {
@@ -83,10 +73,9 @@ pub fn apply(
 			// `para_id` names whose reference is released (Coretime may name any
 			// para, §6.4); a dead target is a no-op.
 			let Some(pi) = Parachains::get(para_id) else { return };
-			// The active or announced validation code is pinned as validation
-			// code: the forget is refused, so the referencer and the balance
-			// both stay (§5.2). This is what stops a forced call from stripping
-			// running validation code.
+			// The target's active or announced validation code: the forget is
+			// refused, so the referencer and the balance both stay (§5.2). This
+			// is what stops a forced call from stripping running validation code.
 			let is_validation_code =
 				pi.validation_code.as_ref().is_some_and(|vc| vc.is(&hash, len.0)) ||
 					pi.announced_upgrade.as_ref().is_some_and(|vc| vc.is(&hash, len.0));
@@ -113,7 +102,7 @@ pub fn apply(
 		UpwardMessage::TransferOut(args) => transfers::transfer_out(args, logs),
 
 		UpwardMessage::AssignCore { core, queue, new_assigner, jam_slot } => {
-			assigns::schedule(now, service_id, core, queue, new_assigner, jam_slot)
+			assigns::schedule(now, service_id, core, queue, new_assigner, jam_slot, logs)
 		},
 
 		UpwardMessage::SetValidatorKeys { keys, is_last } => {
@@ -147,7 +136,6 @@ pub fn apply(
 			para_id,
 			new_validation_code_hash,
 			new_validation_code_len.0,
-			now,
 			logs,
 		),
 

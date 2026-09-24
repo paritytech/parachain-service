@@ -171,21 +171,35 @@ fn inline_when_due_works() {
 }
 
 #[test]
-fn empty_queue_is_noop_works() {
-	// Refine rejects an empty queue. If a crafted digest reaches Accumulate,
-	// the defensive branch leaves an existing cached assignment untouched.
+fn malformed_queue_is_noop_works() {
+	// Refine rejects all three shapes. If a crafted digest reaches Accumulate,
+	// the defensive branch leaves an existing cached assignment untouched: an
+	// empty queue, an over-long one, and a handoff carrying fewer than 80 hashes.
 	let msg = assign_msg(vec![HASH_A], NOW + 10);
 	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
-	let (_, storage, _) = accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
-	assert!(pending(&storage).is_some());
+	let (_, cached, _) = accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
+	assert!(pending(&cached).is_some());
 
-	let empty = assign_msg(vec![], NOW + 20);
-	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-1", b"ct-2", vec![empty], 0);
-	let (_, storage, mutations) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
+	let short_handoff = UpwardMessage::AssignCore {
+		core: CORE,
+		queue: vec![HASH_B],
+		new_assigner: Some(7),
+		jam_slot: NOW,
+	};
+	for malformed in [
+		assign_msg(vec![], NOW),
+		assign_msg(vec![HASH_B; jam_types::auth_queue_len() + 1], NOW),
+		short_handoff,
+	] {
+		let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-1", b"ct-2", vec![malformed], 0);
+		let (_, storage, mutations) =
+			accumulate_block(cached.clone(), vec![work_item(&digest)], NOW + 1);
 
-	assert!(mutations.auths.is_empty());
-	assert_eq!(pending(&storage), Some(PendingAssign { queue: vec![HASH_A], assigner: None }));
-	assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, NOW + 10)]);
+		assert!(mutations.auths.is_empty());
+		assert_eq!(pending(&storage), Some(PendingAssign { queue: vec![HASH_A], assigner: None }));
+		assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, NOW + 10)]);
+		assert!(ct_accumulate_logs(&storage).is_empty());
+	}
 }
 
 #[test]
@@ -235,12 +249,10 @@ fn reschedule_overwrites_works() {
 }
 
 #[test]
-fn unprivileged_assign_leaves_no_trace_works() {
-	// A due assign whose privilege belongs to a foreign service is silently
-	// dropped by JAM (ActionInvalid): no AccumulateLog entry, no pending-assign
-	// state. Pins the CURRENT silent-failure behavior at assigns.rs:73-79
-	// The failed assign surfaces only as a jam_pvm_common::error!.
-	let msg = assign_msg(vec![HASH_A], NOW);
+fn handed_away_core_inline_errors() {
+	// §7.1: a due assign for a core another service now owns is rejected by JAM
+	// and logged; nothing is written, and the non-tiling queue is not re-armed.
+	let msg = assign_msg(vec![HASH_A, HASH_B, HASH_A], NOW);
 	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
 
 	let (_, storage, mutations) = run_block_with_privileges(
@@ -250,18 +262,39 @@ fn unprivileged_assign_leaves_no_trace_works() {
 		privileges_with_assign(99),
 	);
 
-	assert!(ct_accumulate_logs(&storage).is_empty(), "no AccumulateLog appended for the parachain");
+	assert_eq!(ct_accumulate_logs(&storage), vec![AccumulateLog::CoreNotAssignable { core: CORE }]);
 	assert!(pending(&storage).is_none(), "no pending assign cached");
 	assert!(dirty_cores(&storage).is_empty(), "no dirty-core entry");
 	assert!(mutations.auths.is_empty(), "JAM assign must not fire");
 }
 
 #[test]
+fn handed_away_core_flush_keeps_entry_works() {
+	// §7.1: a rotation left armed on a core that has since been handed away does
+	// not fire; the entry is left exactly as it was, not consumed or re-armed.
+	let msg = assign_msg(vec![HASH_A, HASH_B], NOW + 10);
+	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
+	let (_, armed, _) = accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
+	let log = para_log(&armed, CORETIME_PARA_ID);
+
+	let (_, storage, mutations) =
+		run_block_with_privileges(armed, vec![], NOW + 10, privileges_with_assign(99));
+
+	assert!(mutations.auths.is_empty());
+	assert_eq!(
+		pending(&storage),
+		Some(PendingAssign { queue: vec![HASH_A, HASH_B], assigner: None })
+	);
+	assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, NOW + 10)]);
+	assert_eq!(para_log(&storage, CORETIME_PARA_ID), log);
+}
+
+#[test]
 fn assign_with_correct_privilege_works() {
-	// Control for `unprivileged_assign_leaves_no_trace_works`: the identical
-	// inputs with the correct `assign` privilege reach JAM `assign` and fire —
-	// proving the negative test discriminates on privilege, not input shape.
-	let msg = assign_msg(vec![HASH_A], NOW);
+	// Control for `handed_away_core_inline_errors`: the identical inputs with
+	// the correct `assign` privilege reach JAM `assign` and fire — proving the
+	// negative test discriminates on privilege, not input shape.
+	let msg = assign_msg(vec![HASH_A, HASH_B, HASH_A], NOW);
 	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
 
 	let (_, storage, mutations) = run_block_with_privileges(
@@ -272,7 +305,11 @@ fn assign_with_correct_privilege_works() {
 	);
 
 	assert!(mutations.auths.contains_key(&CORE), "JAM assign fired");
-	assert!(pending(&storage).is_none());
-	assert!(dirty_cores(&storage).is_empty());
+	// 80 % 3 == 2, so the queue resumes rotated by two, 80 slots later.
+	assert_eq!(
+		pending(&storage),
+		Some(PendingAssign { queue: vec![HASH_A, HASH_A, HASH_B], assigner: None })
+	);
+	assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, NOW + 80)]);
 	assert!(ct_accumulate_logs(&storage).is_empty());
 }

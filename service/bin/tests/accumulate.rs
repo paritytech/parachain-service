@@ -1,4 +1,4 @@
-//! Core per-work-package pipeline tests (§5.1 steps 1–7).
+//! Core per-work-package pipeline tests (§5.1 steps 1–6).
 
 mod common;
 
@@ -263,6 +263,85 @@ fn kv_insufficient_balance_errors() {
 	));
 	// The candidate itself still enacted — only the write was rejected.
 	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"head-1");
+}
+
+#[test]
+fn underfunded_report_skipped_works() {
+	use parachain_service::constants::{REPORT_BASE_GAS, UPWARD_MESSAGE_GAS};
+	use parachain_service_core::upward_message::UpwardMessage;
+
+	// §5.1 gas gate: a report is checked against the gas it declared itself. One
+	// short of its cost is skipped outright; the next report is still checked,
+	// and one declaring exactly its cost is applied.
+	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
+	let set = |key: &[u8]| UpwardMessage::SetKV { key: key.to_vec(), value: b"v".to_vec() };
+	let underfunded = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![set(b"a"), set(b"b")], 0);
+	let funded = ok_digest(PARA, CODE, b"genesis", b"head-2", vec![set(b"c")], 0);
+
+	let (_, storage, _) = accumulate_block(
+		storage,
+		vec![
+			work_item_with_gas(&underfunded, REPORT_BASE_GAS + 2 * UPWARD_MESSAGE_GAS - 1),
+			work_item_with_gas(&funded, REPORT_BASE_GAS + UPWARD_MESSAGE_GAS),
+		],
+		NOW,
+	);
+
+	// Had the first report applied, the second would fail its parent check.
+	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"head-2");
+	assert_eq!(kv_value(&storage, PARA, b"a"), None);
+	assert_eq!(kv_value(&storage, PARA, b"b"), None);
+	assert_eq!(kv_value(&storage, PARA, b"c"), Some(b"v".to_vec()));
+	assert!(para_log(&storage, PARA).is_empty());
+}
+
+#[test]
+fn underfunded_refine_error_skipped_works() {
+	use parachain_service::constants::REPORT_BASE_GAS;
+
+	// §5.1 gas gate: a failed digest still costs the base, so an underfunded
+	// one is not logged.
+	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
+	let digest = err_digest(PARA, RefineLog::InvalidCodeHash);
+
+	let (_, storage, _) =
+		accumulate_block(storage, vec![work_item_with_gas(&digest, REPORT_BASE_GAS - 1)], NOW);
+	assert!(para_log(&storage, PARA).is_empty());
+
+	let (_, storage, _) =
+		accumulate_block(storage, vec![work_item_with_gas(&digest, REPORT_BASE_GAS)], NOW);
+	assert_eq!(para_log(&storage, PARA).len(), 1);
+}
+
+#[test]
+fn forwarded_transfer_gas_counts_works() {
+	use parachain_service::constants::{REPORT_BASE_GAS, UPWARD_MESSAGE_GAS};
+	use parachain_service_core::types::ASSET_HUB_PARA_ID;
+
+	// §5.1: a deferred `TransferOut` spends its forwarded gas out of the pool, so
+	// the report must declare it on top of the message itself.
+	const AH_CODE: &[u8] = b"ah-code";
+	const FORWARDED: u64 = 500;
+	let storage = || {
+		fresh_storage(|s| {
+			seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
+			seed_service(s, 42, FORWARDED);
+		})
+	};
+	let transfer = transfer_out_msg(42, 1, 7, Some(([7; 128], FORWARDED)));
+	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![transfer], 0);
+	let without_forwarded = REPORT_BASE_GAS + UPWARD_MESSAGE_GAS;
+
+	let (_, skipped, _) =
+		accumulate_block(storage(), vec![work_item_with_gas(&digest, without_forwarded)], NOW);
+	assert_eq!(&para_info(&skipped, ASSET_HUB_PARA_ID).unwrap().head_data[..], b"ah-genesis");
+
+	let (_, applied, _) = accumulate_block(
+		storage(),
+		vec![work_item_with_gas(&digest, without_forwarded + FORWARDED)],
+		NOW,
+	);
+	assert_eq!(&para_info(&applied, ASSET_HUB_PARA_ID).unwrap().head_data[..], b"ah-1");
 }
 
 #[test]

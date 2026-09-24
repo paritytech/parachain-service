@@ -134,7 +134,7 @@ pub fn clean_up_buckets_up_to(bucket_id: BucketId) {
 	reattribute_transfer_queue(old_count as u64, queue.count as u64);
 }
 
-/// Replay a `TransferOut` (Asset Hub only) via JAM `transfer` (§5.1 step 7).
+/// Replay a `TransferOut` (Asset Hub only) via JAM `transfer` (§5.1 step 6).
 ///
 /// The vendored JAM host is Gray Paper 0.7.2, whose `transfer` always runs the
 /// destination's accumulate (the deferred mode), always debits this service, and

@@ -53,25 +53,12 @@ missing Rust cases regardless.
 of a balance move is a poor default; the model's own `id` echo-back exists precisely so the
 parachain can reconcile.
 
-## M-3: the model drops `ForgetAgainAt` on the code-upgrade paths
+## M-3: the model drops `ForgetAgainAt` on the code-upgrade paths — resolved
 
-**The model is wrong.**
-
-`quint/accumulate.qnt:405-411` returns `logs: List()`, discarding both the timed-out reap's log
-and the activation's log, and `quint/code_upgrades.qnt:122-126` returns `log: None`, discarding
-the superseded pending code's. All three come from `removeReferencer`, which produces
-`ForgetAgainAt` when a first `forget` only unrequests a still-`Provided` preimage.
-
-Rust threads `&mut logs` through all three sites and keeps the entry
-(`service/src/accumulate/package.rs:96`, `:106`; `service/src/accumulate/code_upgrades.rs:87`).
-
-Rust is right, and the model is inconsistent with itself: `quint/management.qnt` keeps the same
-log for `parachainSetValidationCode` and `parachainCleanUp`. Without the entry the parachain
-never learns when the second, expunging `forget` becomes due, so its state balance stays
-charged for a preimage it asked to release — with no on-chain trace of why.
-
-**Spec feedback**: §5.2's reap and activation paths must surface `ForgetAgainAt` exactly as
-§6.1's release paths do.
+The two-phase §5.2 lifecycle has no reap and no activation release: `Apply`, a superseding
+`Announcement` and, since Quint `71e422dc6d`, `ParachainSetValidationCode` all leave the
+displaced code referenced until the parachain forgets it. No code-upgrade path calls
+`removeReferencer` any more, so there is no `ForgetAgainAt` left to drop.
 
 ## M-4: Refine reports a different `RefineLog` variant for the same PVF
 
@@ -122,16 +109,12 @@ Fix: either check `len` against the looked-up blob, or drop it from the message.
 
 **Spec feedback**: §5.4 should say whether `len` is authoritative or advisory.
 
-## M-7: `is_valid_val_count` is dead code, and the live check is stricter than the model
+## M-7: `is_valid_val_count` is dead code
 
-`service/src/constants.rs:39` defines `is_valid_val_count` (multiples of 3 in `[6, 3 * CORE_COUNT]`,
-the model's `ValCount` at `quint/types.qnt:91`). Nothing calls it. The actual §5.3 length check
-is `OpaqueValKeysets::try_from` at `service/src/accumulate/validator_keys.rs:36`, a `FixedVec`
-of exactly `val_count()` = 1 023 — equality, not set membership.
-
-The stricter check is correct (JAM's `designate` takes the protocol's exact validator count) and
-is already recorded as [DECISIONS.md](./DECISIONS.md) F-8. What is new here is the dead helper:
-it encodes the model's wrong rule in live code, one `use` away from being adopted as "the fix".
+`service/src/constants.rs` defines `is_valid_val_count` (multiples of 3 in `[6, 3 * CORE_COUNT]`,
+the model's `ValCount`). Nothing calls it: the §5.3 length check is JAM's own. The vendored
+host's `designate` takes a bounded set and rejects a length outside `valcount`, which the
+service logs as `DesignateRejected` — the model's rule, so the two sides now agree.
 
 Fix: delete `is_valid_val_count`.
 
@@ -154,18 +137,21 @@ work digest.
 
 Fix: pick one ordering — the design doc's — and align `quint/messages.qnt` to it.
 
-## M-9: `AssignCore`'s empty-queue documentation describes behaviour no side implements
+## M-9: `AssignCore`'s empty-queue documentation — resolved
 
-`service-interface/src/upward_message.rs:76` documents "An empty `queue` cancels any cached
-entry for the core (no JAM call)". Nothing cancels: `service/src/accumulate/assigns.rs:22-24`
-returns without touching `pending_assigns` or the dirty-core index, and
-`quint/accumulate.qnt:264` does the same, both calling it defensive because Refine already
-rejects an empty queue (`quint/refine.qnt:61`).
+The doc no longer promises that an empty `queue` cancels a cached entry. Both sides treat any
+malformed queue (empty, over-long, or a short handoff) as a defensive no-op in Accumulate,
+since Refine rejects them first (Quint `6b8f7292e0`).
 
-Unreachable, so this is a comment bug rather than a behaviour bug — but a cancel path is a
-plausible thing for someone to *want*, and the doc currently promises it exists.
+## M-13: a future-slot `AssignCore` for a handed-away core is rejected only by the model
 
-Fix: delete the sentence, or implement cancellation and give it a Refine-side rule.
+Quint `6b8f7292e0` tracks each core's assigner as ghost state (`jamCoreAssigners`) and logs
+`CoreNotAssignable` as soon as an `AssignCore` names a core this service handed away, whatever
+its `jam_slot`. The service cannot read JAM's assigner: it learns of a handoff only when
+`assign` fails. It therefore logs `CoreNotAssignable` for a due assign, but caches a
+future-slot one, which JAM then rejects at the flush, leaving the entry in place. Streaming
+fuzz campaigns that hand a core away and later schedule it for a future slot hit this. The
+spec is expected to change here.
 
 ## M-10: nothing checks equivalence, and the replay ledger has gone stale
 

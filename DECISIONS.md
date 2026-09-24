@@ -197,17 +197,8 @@ or a different slot source. Extends the AURA-authorizer gap.
 
 ## F-8: model fidelity nits found while porting
 
-- The accumulate-side defense-in-depth restriction re-check logs `InvalidCodeHashAcc` in
-  the model — misleading; the PoC rejects silently. Needs its own variant or a prose rule.
-- The model compares active/pending code identity by **hash only** in
-  `requestCodeUpgrade` / `parachainSetValidationCode` although the registry is keyed by
-  `(hash, len)` — a same-hash-different-length preimage slips through. The PoC matches the
-  model behind TODOs.
 - `validator_keys.qnt`'s module doc claims partial appends are balance-charged; the code
   (correctly, per §6.1's Asset Hub baseline pre-provisioning) never charges. Doc drift.
-- The model's `ValCount` as a *set* of valid lengths misstates JAM: `designate` takes a
-  `FixedVec` of exactly the protocol's validator count. The §5.3 length check is equality,
-  not set membership.
 - `state.qnt`'s `kvEntryFootprint` comment says map tag `0x07`; the §3.1 table says
   `key_value_storage = 0x08`.
 
@@ -281,34 +272,12 @@ Either `TransferError` needs a variant for a refused gas request, or §5.1 must 
 service may not impose such a cap and instead relies on a per-digest cumulative budget
 (F-13). The two findings should be resolved together.
 
-## F-15: `designate` and `assign` failures surface asymmetrically in logs
-
-Gap: privilege hand-off and bootstrap state are unspecified.
-
-When the Parachain Service calls `designate` with an unprivileged service ID, the JAM host call
-fails and the PoC logs `AccumulateLog::DesignateRejected` (service/src/accumulate/validator_keys.rs:38-45),
-making the failure observable on-chain.
-
-By contrast, when `assign` fails (e.g., due to an unprivileged assigner or a bad core), the PoC
-logs only a `jam_pvm_common::error!` diagnostic line (service/src/accumulate/assigns.rs:73-79)
-with no corresponding `AccumulateLog` entry. The failure is silent on-chain, leaving no trace
-in the parachain's own log.
-
-This asymmetry is a current regression: the two calls are semantically parallel (both are
-privilege-gated JAM operations), but only one surfaces its failure as an on-chain event. The
-PoC documents this gap with a regression test (`unprivileged_assign_leaves_no_trace_works`)
-that pins the silent-failure behavior.
-
-**Spec feedback**: the design should specify a matching `AccumulateLog` entry for a failed
-`assign`, parallel to `DesignateRejected`. Until then, the asymmetry remains a known gap
-in the PoC's observability.
-
 ## F-16: the model's abstract hashes discard their domain, blocking trace replay
 
 Found while designing the Quint trace-replay harness ([QUINT_REPLAY.md](./QUINT_REPLAY.md)).
 
 Three constructors map into `Hash = { hashBytes: int }` untagged, so their images overlap:
-`headHash(1)`, `vchAsHash({ vchBytes: 1 })` and `listHash(List(1))` all yield `{ hashBytes: 1 }`
+`headHash(1)`, `{ vchBytes: 1 }.asPreimage()` and `listHash(List(1))` all yield `{ hashBytes: 1 }`
 (`types.qnt:191/59/195`; disproof in `upstream-feedback/f-16-hash-injectivity.qnt`).
 
 This is not a model defect. Every `Hash`-consuming site is fed by exactly one constructor —
@@ -345,6 +314,7 @@ citation in the repo resolvable — to a live `## D-n:`/`## F-n:` heading above 
 | F-2 | §4.3's `import_segments() -> Vec<SegmentMeta>` has no host-call backing — **accepted upstream**: spec `931846282d` drops it from the §4.3 table | [#11883](https://github.com/paritytech/polkadot-sdk/pull/11883) |
 | F-3 | no error codes for oversized `set_head` / oversized `assign_core` queues (retired; cited nowhere today) | issue missing |
 | F-7 | no log events for failed JAM `assign` / `designate` host calls (retired; cited nowhere today) | issue missing |
+| F-15 | a failed `assign` left no log, unlike `designate` — **accepted upstream**: spec `6b8f7292e0` adds `CoreNotAssignable` | [#11883](https://github.com/paritytech/polkadot-sdk/pull/11883) |
 
 Notes: F-2, F-3, and F-7 were retired in the same pass and are cited nowhere in the tree (included as
 rows so every `[DF]-N` in the repo still resolves). The nearest upstream artifact is the design PR

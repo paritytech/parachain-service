@@ -106,8 +106,7 @@ fn designate_works() {
 
 #[test]
 fn designate_wrong_len_errors() {
-	// A 5-key set is not the protocol's validator count: rejected, buffer
-	// cleared — this doubles as Asset Hub's abort path.
+	// A 5-key set is not in `valcount`: rejected, buffer cleared.
 	let msg = UpwardMessage::SetValidatorKeys { keys: keys(5, 1), is_last: true };
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
 
@@ -116,6 +115,58 @@ fn designate_wrong_len_errors() {
 	assert!(mutations.keys.is_none());
 	assert!(staged(&storage).is_empty());
 	assert!(matches!(ah_accumulate_logs(&storage)[..], [AccumulateLog::DesignateRejected { .. }]));
+}
+
+#[test]
+fn designate_valcount_works() {
+	// Any length in `valcount` is designated, not just the full 1023: 30 + 30 =
+	// 60 is accepted, 30 + 1 = 31 (not a multiple of 3) is rejected.
+	let staged_30 = || {
+		fresh_storage(|s| {
+			seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
+			let chunk: StagedKeys = keys(30, 1).try_into().unwrap();
+			set_state(s, &storage_key(Tag::StagedValidatorKeys, &()), &chunk);
+		})
+	};
+	let finalize = |n| {
+		let msg = UpwardMessage::SetValidatorKeys { keys: keys(n, 2), is_last: true };
+		work_item(&ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0))
+	};
+
+	let (_, storage, mutations) = accumulate_block(staged_30(), vec![finalize(30)], NOW);
+	assert_eq!(mutations.keys.map(|set| set.len()), Some(60));
+	assert!(staged(&storage).is_empty());
+	assert!(ah_accumulate_logs(&storage).is_empty());
+
+	let (_, storage, mutations) = accumulate_block(staged_30(), vec![finalize(1)], NOW);
+	assert!(mutations.keys.is_none());
+	assert!(staged(&storage).is_empty());
+	assert_eq!(
+		ah_accumulate_logs(&storage),
+		vec![AccumulateLog::DesignateRejected { len: 31.into() }]
+	);
+}
+
+#[test]
+fn empty_final_chunk_aborts_works() {
+	// §5.3: an empty final chunk discards the staged keys without calling
+	// `designate`, even when they alone would be a valid set (30 is in `valcount`).
+	let msg = UpwardMessage::SetValidatorKeys { keys: vec![], is_last: true };
+	for staged_keys in [0, 30] {
+		let storage = fresh_storage(|s| {
+			seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
+			let chunk: StagedKeys = keys(staged_keys, 1).try_into().unwrap();
+			set_state(s, &storage_key(Tag::StagedValidatorKeys, &()), &chunk);
+		});
+		let digest =
+			ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg.clone()], 0);
+
+		let (_, storage, mutations) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+
+		assert!(mutations.keys.is_none(), "{staged_keys} staged keys must not be designated");
+		assert!(staged(&storage).is_empty());
+		assert!(ah_accumulate_logs(&storage).is_empty());
+	}
 }
 
 #[test]

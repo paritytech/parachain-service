@@ -17,7 +17,7 @@
 //! whole Refine invocation (§4.2).
 
 use crate::{
-	constants::AUTHORIZER_QUEUE_LEN,
+	constants::{AUTHORIZER_QUEUE_LEN, MAX_PVF_HEAP_SIZE},
 	work_digest::{HeadData, RefineLog, MAX_REPORT_ERROR_PAYLOAD},
 };
 use alloc::{string::String, vec::Vec};
@@ -54,7 +54,7 @@ const A5: usize = Reg::A5 as usize;
 /// the heap the guest grows, mirroring JAM's own `grow_heap` bounds in gp-v0.8.0
 /// (host `grow_heap` at `crates/node/src/chain/exec/vm/host.rs`): the break starts at
 /// the heap base `a` and may grow up to the address-space limit `b`
-/// (`heap_base + max_heap_size`).
+/// (`heap_base + max_heap_size`), which §4.3 caps at [`MAX_PVF_HEAP_SIZE`].
 pub struct Heap {
 	/// The page size of the inner PVM's memory map.
 	pub page_size: u64,
@@ -62,7 +62,7 @@ pub struct Heap {
 	pub top: u64,
 	/// The byte end of the pages mapped (zeroed) so far; always page-aligned.
 	pub mapped_until: u64,
-	/// The address-space limit `b` = `heap_base + max_heap_size`.
+	/// The address-space limit `b` = `heap_base + min(max_heap_size, MAX_PVF_HEAP_SIZE)`.
 	pub limit: u64,
 }
 
@@ -78,7 +78,8 @@ impl Heap {
 			// `pvm.rs` set up; the heap starts (possibly mid-page) at `heap_base` and
 			// grows upward into the "heap slack" the builder leaves before the stack.
 			mapped_until: u64::from(memory.rw_data_address()) + u64::from(memory.rw_data_size()),
-			limit: u64::from(memory.heap_base()) + u64::from(memory.max_heap_size()),
+			limit: u64::from(memory.heap_base()) +
+				u64::from(memory.max_heap_size()).min(MAX_PVF_HEAP_SIZE),
 		}
 	}
 

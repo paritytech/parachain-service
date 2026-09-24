@@ -17,8 +17,6 @@ recovers hash domains from field context and translates abstract heads, code, an
 preimages into concrete bytes. Head commitments are checked against both the
 abstract model tree and a separately reconstructed SCALE/Keccak tree.
 
-Rust currently matches Quint's omission of code-release notifications on upgrade
-expiry and activation; [issue #36](https://github.com/paritytech/parachain-service/issues/36)
-tracks preserving those logs. Rejected candidates preserve state, including logs
-and pending upgrades, following Quint `06c2a49202`
+Rejected candidates preserve state, including logs and announced upgrades,
+following Quint `06c2a49202`
 ([issue #35](https://github.com/paritytech/parachain-service/issues/35)).

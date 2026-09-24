@@ -1,7 +1,8 @@
-//! Per-work-package accumulation (spec §5.1 steps 1–7).
+//! Per-work-package accumulation (spec §5.1 steps 1–6).
 
 use crate::{
 	accumulate::upward,
+	constants::{REPORT_BASE_GAS, UPWARD_MESSAGE_GAS},
 	hashing::blake2_256,
 	head_commitment::HeadTracker,
 	state::{
@@ -12,15 +13,41 @@ use crate::{
 };
 use alloc::vec::Vec;
 use codec::DecodeAll;
-use jam_types::{ServiceId, Slot, WorkItemRecord};
+use jam_types::{ServiceId, Slot, UnsignedGas, WorkItemRecord};
+use parachain_service_core::upward_message::{TransferOutArgs, UpwardMessage};
 
 /// Process one work item's result (§5.1). A gray-paper `WorkExecResult::Error`
 /// is skipped entirely: no `parachain_log` entry, no state change (§3.3).
-pub fn process(now: Slot, service_id: ServiceId, record: &WorkItemRecord, heads: &mut HeadTracker) {
-	let Ok(output) = &record.result else { return };
+///
+/// Returns whether the report passed the gas gate and was applied.
+pub fn process(
+	now: Slot,
+	service_id: ServiceId,
+	record: &WorkItemRecord,
+	heads: &mut HeadTracker,
+) -> bool {
+	let Ok(output) = &record.result else { return false };
 	let digest = ParachainWorkDigest::decode_all(&mut &output[..])
 		.expect("refine of this service produced the output; qed");
 
+	// Gas gate: a report is budgeted against the gas it declared itself, never
+	// against what the shared pool has left, so one that cannot be paid for in
+	// full is skipped rather than started.
+	if report_cost(&digest) > record.gas_limit {
+		return false;
+	}
+	apply(now, service_id, record, digest, heads);
+	true
+}
+
+/// §5.1 steps 1–6 for a report that cleared the gas gate.
+fn apply(
+	now: Slot,
+	service_id: ServiceId,
+	record: &WorkItemRecord,
+	digest: ParachainWorkDigest,
+	heads: &mut HeadTracker,
+) {
 	match digest {
 		ParachainWorkDigest::Err { para_id, error } => {
 			// Step 2: a Refine failure is logged with the work-report's
@@ -94,4 +121,20 @@ pub fn process(now: Slot, service_id: ServiceId, record: &WorkItemRecord, heads:
 			ParachainLogs::append_accumulate(para_id, now, logs);
 		},
 	}
+}
+
+/// §5.1 gas gate: the base cost plus the report cost, derived from the digest
+/// before any of it is applied. A deferred `TransferOut` also forwards its own
+/// gas out of the service's pool.
+fn report_cost(digest: &ParachainWorkDigest) -> UnsignedGas {
+	let ParachainWorkDigest::Ok { upward_messages, .. } = digest else {
+		return REPORT_BASE_GAS;
+	};
+	upward_messages.iter().fold(REPORT_BASE_GAS, |cost, message| {
+		let forwarded = match message {
+			UpwardMessage::TransferOut(TransferOutArgs { deferred: Some((_, gas)), .. }) => *gas,
+			_ => 0,
+		};
+		cost.saturating_add(UPWARD_MESSAGE_GAS).saturating_add(forwarded)
+	})
 }

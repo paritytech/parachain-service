@@ -269,35 +269,36 @@ fn solicit_active_code_is_noop_works() {
 
 #[test]
 fn solicit_announced_code_is_noop_works() {
-	// §5.2: an announced code is already pinned as validation code, so soliciting
+	// §5.2: an announced code is one the para already references, so soliciting
 	// it again neither re-charges nor creates a second reference.
 	const NEW_CODE: &[u8] = b"para-1000-code-v2";
 	let new_ref = code_ref(NEW_CODE);
-	let storage = fresh_storage(|s| {
-		seed_para(s, PARA, b"genesis", CODE, RICH);
-		let mut info = para_info(s, PARA).unwrap();
-		info.announced_upgrade = Some(new_ref);
-		set_state(
-			s,
-			&parachain_service::state::storage_key(
-				parachain_service::state::Tag::Parachains,
-				&PARA,
-			),
-			&info,
-		);
-	});
-	let used_before = para_info(&storage, PARA).unwrap().used_state_balance;
-
-	let msg = UpwardMessage::Solicit {
+	let solicit = UpwardMessage::Solicit {
 		target: Target::Parachain(PARA),
 		hash: new_ref.hash.0,
 		len: new_ref.len.into(),
 	};
-	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg], 0);
-	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
+	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![solicit.clone()], 0);
+	let (_, mut storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+	storage.provide(NOW, SVC, NEW_CODE).expect("solicited in the same block");
+	storage.commit();
+	let announce = UpwardMessage::RequestCodeUpgrade {
+		hash: new_ref.hash,
+		len: new_ref.len.into(),
+		phase: CodeUpgradePhase::Announcement,
+	};
+	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![announce], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
+	let announced = para_info(&storage, PARA).unwrap();
+	assert_eq!(announced.announced_upgrade, Some(new_ref));
 
-	assert!(registry_entry(&storage, new_ref).is_none(), "no reference created");
-	assert_eq!(para_info(&storage, PARA).unwrap().used_state_balance, used_before);
+	let digest = ok_digest(PARA, CODE, b"head-2", b"head-3", vec![solicit], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 2);
+
+	let entry = registry_entry(&storage, new_ref).expect("the announced code stays registered");
+	assert_eq!(entry.referencers.into_iter().collect::<Vec<_>>(), vec![PARA]);
+	assert_eq!(para_info(&storage, PARA).unwrap().used_state_balance, announced.used_state_balance);
 	assert!(accumulate_logs(&storage, PARA).is_empty());
 }
 
@@ -328,8 +329,8 @@ fn forget_active_code_refused_works() {
 
 #[test]
 fn forget_announced_code_refused_works() {
-	// §5.2: an announced code is pinned until superseded or applied, so a forget
-	// is refused and the reference, charge and announcement all stay.
+	// §5.2: an announced code is validation code until superseded or applied, so
+	// a forget is refused and the reference, charge and announcement all stay.
 	const NEW_CODE: &[u8] = b"para-1000-code-v2";
 	let new_ref = code_ref(NEW_CODE);
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));

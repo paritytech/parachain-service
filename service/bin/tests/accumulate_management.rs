@@ -155,13 +155,14 @@ fn forced_set_head_works() {
 
 #[test]
 fn forced_set_validation_code_works() {
-	// §6.3: displaces the old code (two-step release) and installs the new one.
+	// §6.3: installs the new code and leaves the displaced one untouched.
 	let storage = fresh_storage(|s| {
 		seed_para(s, CORETIME_PARA_ID, b"ct-genesis", CT_CODE, RICH);
 		seed_para(s, NEW_PARA, b"para-genesis", NEW_CODE, RICH);
 	});
 	let old_ref = code_ref(NEW_CODE);
 	let forced_ref = code_ref(b"forced-code");
+	let used_before = para_info(&storage, NEW_PARA).unwrap().used_state_balance;
 	let digest = coretime_digest(
 		b"ct-genesis",
 		b"ct-1",
@@ -177,19 +178,16 @@ fn forced_set_validation_code_works() {
 	let info = para_info(&storage, NEW_PARA).unwrap();
 	assert_eq!(info.validation_code, Some(forced_ref));
 	assert!(info.announced_upgrade.is_none());
-	// The old code was provided, so its first forget only unrequests: the
-	// referencer is retained and a follow-up is logged (§6.1).
-	assert!(registry_entry(&storage, old_ref).is_some());
-	assert!(matches!(
-		coretime_accumulate_logs(&storage)[..],
-		[AccumulateLog::ForgetAgainAt { .. }]
-	));
+	// The old code stays referenced and charged until the para forgets it.
+	assert!(registry_entry(&storage, old_ref).is_some_and(|e| e.referencers.contains(&NEW_PARA)));
+	assert_eq!(info.used_state_balance, used_before + preimage_footprint(forced_ref.len));
+	assert!(coretime_accumulate_logs(&storage).is_empty());
 }
 
 #[test]
-fn forced_set_validation_code_releases_announced_works() {
-	// §6.3: a forced replacement releases the displaced active code AND the
-	// standing announced code, and clears the announcement.
+fn forced_set_validation_code_leaves_announced_works() {
+	// §6.3: a forced replacement clears the announcement but leaves both the
+	// displaced active code and the announced code referenced.
 	const ANN_CODE: &[u8] = b"announced-code";
 	const FORCED_CODE: &[u8] = b"forced-code";
 	let storage = fresh_storage(|s| {
@@ -234,22 +232,13 @@ fn forced_set_validation_code_releases_announced_works() {
 	let info = para_info(&storage, NEW_PARA).unwrap();
 	assert_eq!(info.validation_code, Some(forced_ref));
 	assert_eq!(info.announced_upgrade, None, "the announcement is cleared");
-	// Both displaced provided codes only unrequest on their first forget.
-	let logs = coretime_accumulate_logs(&storage);
-	assert!(
-		matches!(
-			logs[..],
-			[AccumulateLog::ForgetAgainAt { .. }, AccumulateLog::ForgetAgainAt { .. }]
-		),
-		"both displaced codes are released, got {logs:?}"
-	);
-	for displaced in [old_ref, ann_ref] {
+	assert!(coretime_accumulate_logs(&storage).is_empty(), "nothing is released");
+	for code in [old_ref, ann_ref, forced_ref] {
 		assert!(
-			registry_entry(&storage, displaced).is_some_and(|e| e.referencers.contains(&NEW_PARA)),
-			"displaced {displaced:?} is retained pending its second forget"
+			registry_entry(&storage, code).is_some_and(|e| e.referencers.contains(&NEW_PARA)),
+			"{code:?} stays referenced"
 		);
 	}
-	assert!(registry_entry(&storage, forced_ref).is_some_and(|e| e.referencers.contains(&NEW_PARA)));
 }
 
 #[test]

@@ -2,7 +2,7 @@
 //!
 //! A PVF SCALE-encodes each variant into the generic `send_upward_message` host
 //! call. Refine buffers them in emission order into the work digest; Accumulate
-//! replays the list in order (§5.1 step 7).
+//! replays the list in order (§5.1 step 6).
 
 extern crate alloc;
 
@@ -140,9 +140,9 @@ pub enum UpwardMessage {
 	/// Schedule a core's `assign` — queue + assigner,
 	/// written atomically (Coretime only, §7.1).
 	///
-	/// An empty `queue` cancels any cached entry for the core (no JAM call).
-	/// `new_assigner = None` keeps this service as the core's assigner;
-	/// `Some(s)` hands the core to `s` (one-way).
+	/// Rejected with `AccumulateLog::CoreNotAssignable` if this service is no
+	/// longer `core`'s assigner. `new_assigner = None` keeps this service as the
+	/// core's assigner; `Some(s)` hands the core to `s` (one-way).
 	AssignCore {
 		core: CoreIndex,
 		queue: Vec<AuthorizerHash>,

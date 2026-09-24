@@ -230,6 +230,10 @@ pub fn err_digest(para: ParaId, error: RefineLog) -> ParachainWorkDigest {
 	ParachainWorkDigest::Err { para_id: para, error }
 }
 
+/// Accumulate gas a test work item declares unless a test picks its own: enough
+/// to clear the §5.1 gas gate whatever the digest carries.
+pub const REPORT_GAS: u64 = u64::MAX;
+
 /// Wrap a digest as the work-item operand accumulate receives.
 pub fn work_item(digest: &ParachainWorkDigest) -> AccumulateItem {
 	work_item_with_auth_trace(digest, AuthTrace(vec![0xAA; 300]))
@@ -246,10 +250,18 @@ pub fn work_item_with_auth_trace(
 		exports_root: Default::default(),
 		authorizer_hash: Default::default(),
 		payload: Default::default(),
-		gas_limit: 0,
+		gas_limit: REPORT_GAS,
 		result: Ok(WorkOutput(digest.encode())),
 		auth_output,
 	})
+}
+
+/// [`work_item`] declaring `gas_limit` as its accumulate gas.
+pub fn work_item_with_gas(digest: &ParachainWorkDigest, gas_limit: u64) -> AccumulateItem {
+	let AccumulateItem::WorkItem(record) = work_item(digest) else {
+		unreachable!("work_item builds a work-item operand")
+	};
+	AccumulateItem::WorkItem(WorkItemRecord { gas_limit, ..record })
 }
 
 /// A work item whose refine was replaced by a gray-paper work error — JAM

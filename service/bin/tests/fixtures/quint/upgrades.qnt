@@ -1,8 +1,9 @@
 // Code-upgrade lifecycle sequences evaluated by the pinned Quint model.
 //
 // The model's `announce`/`apply` lifecycle (§5.2) has no deadline and no reap:
-// a `RequestCodeUpgrade({ phase: Announcement })` pins the announced code until
-// an `Apply` (or a superseding announcement) replaces it. These scenarios mirror
+// a `RequestCodeUpgrade({ phase: Announcement })` makes the announced code
+// validation code until an `Apply` (or a superseding announcement) replaces it.
+// These scenarios mirror
 // `tests/code_upgrades_test.qnt` through the block-level helpers so the traces
 // stay replayable.
 module upgrades {
@@ -47,22 +48,22 @@ module upgrades {
   // 3. The para announces the new code; the active code is untouched.
   // 4. Blocks pass with no deadline: the announcement still stands.
   // 5. The para applies the new code: `validationCode` flips, `announcedUpgrade`
-  //    clears, and the displaced code only unpins (still referenced and charged)
-  //    until the para forgets it.
+  //    clears, and the displaced code stays referenced and charged until the
+  //    para forgets it.
   run activation_works = {
     val b = codeB
-    val oldKey = (vchAsHash(codeA), FixedCodeLen)
+    val oldKey = (codeA.asPreimage(), FixedCodeLen)
     init
-      .then(provide(vchAsHash(codeA), FixedCodeLen))
+      .then(provide(codeA.asPreimage(), FixedCodeLen))
       .then(applyHappyPath(CoretimeParaId, codeA, List(
-        Solicit({ target: Parachain(CoretimeParaId), hash: vchAsHash(b), len: FixedCodeLen }))))
-      .then(provide(vchAsHash(b), FixedCodeLen))
+        Solicit({ target: Parachain(CoretimeParaId), hash: b.asPreimage(), len: FixedCodeLen }))))
+      .then(provide(b.asPreimage(), FixedCodeLen))
       .then(applyHappyPath(CoretimeParaId, codeA, List(
         RequestCodeUpgrade({ hash: b, len: FixedCodeLen, phase: Announcement }))))
       .then(expectThat(all {
         announcedHashOf(svc.paraInfo(CoretimeParaId)) == Some(b),
         svc.paraInfo(CoretimeParaId).validationCode == Some({ hash: codeA, len: FixedCodeLen }),
-        svc.preimageStatus.get((vchAsHash(b), FixedCodeLen)) == Provided
+        svc.preimageStatus.get((b.asPreimage(), FixedCodeLen)) == Provided
       }))
       // No deadline: an announcement outlives any number of empty blocks.
       .then(applyHappyPath(CoretimeParaId, codeA, List()))
@@ -74,15 +75,15 @@ module upgrades {
       .then(expectThat(all {
         svc.paraInfo(CoretimeParaId).validationCode == Some({ hash: b, len: FixedCodeLen }),
         svc.paraInfo(CoretimeParaId).announcedUpgrade == None,
-        svc.hasReferencer(vchAsHash(b), FixedCodeLen, CoretimeParaId),
-        // The displaced code merely unpins: still referenced and charged.
-        not(isPinnedCode(svc.paraInfo(CoretimeParaId), vchAsHash(codeA), FixedCodeLen)),
-        svc.hasReferencer(vchAsHash(codeA), FixedCodeLen, CoretimeParaId)
+        svc.hasReferencer(b.asPreimage(), FixedCodeLen, CoretimeParaId),
+        // The displaced code is no longer validation code: still referenced and charged.
+        not(isValidationCodeOf(svc.paraInfo(CoretimeParaId), codeA.asPreimage(), FixedCodeLen)),
+        svc.hasReferencer(codeA.asPreimage(), FixedCodeLen, CoretimeParaId)
       }))
       // Only now can the para reclaim the old code; it is available, so the
       // first forget only unrequests it.
       .then(applyHappyPath(CoretimeParaId, b, List(
-        Forget({ target: Parachain(CoretimeParaId), hash: vchAsHash(codeA), len: FixedCodeLen }))))
+        Forget({ target: Parachain(CoretimeParaId), hash: codeA.asPreimage(), len: FixedCodeLen }))))
       .then(expectThat(isUnrequested(svc.preimageStatus.get(oldKey))))
   }
 
@@ -91,12 +92,12 @@ module upgrades {
   // only by the para's own later forget (which is two-step).
   run provided_old_code_activation_works = {
     val b = codeB
-    val oldKey = (vchAsHash(codeA), FixedCodeLen)
+    val oldKey = (codeA.asPreimage(), FixedCodeLen)
     init
-      .then(provide(vchAsHash(codeA), FixedCodeLen))
+      .then(provide(codeA.asPreimage(), FixedCodeLen))
       .then(applyHappyPath(CoretimeParaId, codeA, List(
-        Solicit({ target: Parachain(CoretimeParaId), hash: vchAsHash(b), len: FixedCodeLen }))))
-      .then(provide(vchAsHash(b), FixedCodeLen))
+        Solicit({ target: Parachain(CoretimeParaId), hash: b.asPreimage(), len: FixedCodeLen }))))
+      .then(provide(b.asPreimage(), FixedCodeLen))
       .then(applyHappyPath(CoretimeParaId, codeA, List(
         RequestCodeUpgrade({ hash: b, len: FixedCodeLen, phase: Announcement }))))
       .then(applyHappyPath(CoretimeParaId, codeA, List(
@@ -104,18 +105,18 @@ module upgrades {
       .then(expectThat(all {
         svc.paraInfo(CoretimeParaId).validationCode == Some({ hash: b, len: FixedCodeLen }),
         svc.paraInfo(CoretimeParaId).announcedUpgrade == None,
-        svc.hasReferencer(vchAsHash(codeA), FixedCodeLen, CoretimeParaId),
+        svc.hasReferencer(codeA.asPreimage(), FixedCodeLen, CoretimeParaId),
         svc.preimageStatus.get(oldKey) == Provided,
-        not(isPinnedCode(svc.paraInfo(CoretimeParaId), vchAsHash(codeA), FixedCodeLen)),
+        not(isValidationCodeOf(svc.paraInfo(CoretimeParaId), codeA.asPreimage(), FixedCodeLen)),
         svc.paraInfo(CoretimeParaId).usedStateBalance ==
           prevSvc.paraInfo(CoretimeParaId).usedStateBalance
       }))
       .then(applyHappyPath(CoretimeParaId, b, List(
-        Forget({ target: Parachain(CoretimeParaId), hash: vchAsHash(codeA), len: FixedCodeLen }))))
+        Forget({ target: Parachain(CoretimeParaId), hash: codeA.asPreimage(), len: FixedCodeLen }))))
       .then(expectThat(all {
         isUnrequested(svc.preimageStatus.get(oldKey)),
         hasLog(svc, CoretimeParaId, ForgetAgainAt({
-          hash: vchAsHash(codeA), len: FixedCodeLen, due: now + ExpungePeriod }))
+          hash: codeA.asPreimage(), len: FixedCodeLen, due: now + ExpungePeriod }))
       }))
   }
 
@@ -125,15 +126,15 @@ module upgrades {
     val b = codeB
     init
       .then(applyHappyPath(CoretimeParaId, codeA, List(
-        Solicit({ target: Parachain(CoretimeParaId), hash: vchAsHash(b), len: FixedCodeLen }))))
+        Solicit({ target: Parachain(CoretimeParaId), hash: b.asPreimage(), len: FixedCodeLen }))))
       .then(applyHappyPath(CoretimeParaId, codeA, List(
         RequestCodeUpgrade({ hash: b, len: FixedCodeLen, phase: Announcement }))))
       .then(expectThat(all {
         svc.paraInfo(CoretimeParaId).announcedUpgrade == None,
         svc.paraInfo(CoretimeParaId).validationCode == Some({ hash: codeA, len: FixedCodeLen }),
-        svc.preimageStatus.get((vchAsHash(b), FixedCodeLen)) == Unprovided,
+        svc.preimageStatus.get((b.asPreimage(), FixedCodeLen)) == Unprovided,
         hasLog(svc, CoretimeParaId,
-          CodeUpgradeNotAvailable({ hash: vchAsHash(b), len: FixedCodeLen }))
+          CodeUpgradeNotAvailable({ hash: b.asPreimage(), len: FixedCodeLen }))
       }))
   }
 
@@ -143,16 +144,16 @@ module upgrades {
     val b = codeB
     init
       .then(applyHappyPath(AssetHubParaId, { vchBytes: 2 }, List(
-        Solicit({ target: Parachain(AssetHubParaId), hash: vchAsHash(b), len: FixedCodeLen }))))
-      .then(provide(vchAsHash(b), FixedCodeLen))
+        Solicit({ target: Parachain(AssetHubParaId), hash: b.asPreimage(), len: FixedCodeLen }))))
+      .then(provide(b.asPreimage(), FixedCodeLen))
       .then(applyHappyPath(CoretimeParaId, codeA, List(
         RequestCodeUpgrade({ hash: b, len: FixedCodeLen, phase: Announcement }))))
       .then(expectThat(all {
-        svc.preimageAvailable(vchAsHash(b), FixedCodeLen),
-        not(svc.hasReferencer(vchAsHash(b), FixedCodeLen, CoretimeParaId)),
+        svc.preimageAvailable(b.asPreimage(), FixedCodeLen),
+        not(svc.hasReferencer(b.asPreimage(), FixedCodeLen, CoretimeParaId)),
         svc.paraInfo(CoretimeParaId).announcedUpgrade == None,
         hasLog(svc, CoretimeParaId,
-          CodeUpgradeNotAvailable({ hash: vchAsHash(b), len: FixedCodeLen }))
+          CodeUpgradeNotAvailable({ hash: b.asPreimage(), len: FixedCodeLen }))
       }))
   }
 
@@ -166,7 +167,7 @@ module upgrades {
         svc.paraInfo(CoretimeParaId).validationCode == Some({ hash: codeA, len: FixedCodeLen }),
         svc.paraInfo(CoretimeParaId).announcedUpgrade == None,
         hasLog(svc, CoretimeParaId,
-          CodeUpgradeNotAnnounced({ hash: vchAsHash(b), len: FixedCodeLen }))
+          CodeUpgradeNotAnnounced({ hash: b.asPreimage(), len: FixedCodeLen }))
       }))
   }
 
@@ -177,8 +178,8 @@ module upgrades {
     val c = codeC
     init
       .then(applyHappyPath(CoretimeParaId, codeA, List(
-        Solicit({ target: Parachain(CoretimeParaId), hash: vchAsHash(b), len: FixedCodeLen }))))
-      .then(provide(vchAsHash(b), FixedCodeLen))
+        Solicit({ target: Parachain(CoretimeParaId), hash: b.asPreimage(), len: FixedCodeLen }))))
+      .then(provide(b.asPreimage(), FixedCodeLen))
       .then(applyHappyPath(CoretimeParaId, codeA, List(
         RequestCodeUpgrade({ hash: b, len: FixedCodeLen, phase: Announcement }))))
       .then(applyHappyPath(CoretimeParaId, codeA, List(
@@ -187,23 +188,23 @@ module upgrades {
         svc.paraInfo(CoretimeParaId).validationCode == Some({ hash: codeA, len: FixedCodeLen }),
         announcedHashOf(svc.paraInfo(CoretimeParaId)) == Some(b),
         hasLog(svc, CoretimeParaId,
-          CodeUpgradeNotAnnounced({ hash: vchAsHash(c), len: FixedCodeLen }))
+          CodeUpgradeNotAnnounced({ hash: c.asPreimage(), len: FixedCodeLen }))
       }))
   }
 
-  // A second announcement supersedes the first. The superseded code merely
-  // unpins: its referencer is the para's own solicit and stands until forgotten.
+  // A second announcement supersedes the first. The superseded code releases
+  // nothing: its referencer is the para's own solicit and stands until forgotten.
   run announcement_supersedes_previous_works = {
     val b = codeB
     val c = codeC
     init
       .then(fundForExtraCodes(2))
       .then(applyHappyPath(CoretimeParaId, codeA, List(
-        Solicit({ target: Parachain(CoretimeParaId), hash: vchAsHash(b), len: FixedCodeLen }))))
-      .then(provide(vchAsHash(b), FixedCodeLen))
+        Solicit({ target: Parachain(CoretimeParaId), hash: b.asPreimage(), len: FixedCodeLen }))))
+      .then(provide(b.asPreimage(), FixedCodeLen))
       .then(applyHappyPath(CoretimeParaId, codeA, List(
-        Solicit({ target: Parachain(CoretimeParaId), hash: vchAsHash(c), len: FixedCodeLen }))))
-      .then(provide(vchAsHash(c), FixedCodeLen))
+        Solicit({ target: Parachain(CoretimeParaId), hash: c.asPreimage(), len: FixedCodeLen }))))
+      .then(provide(c.asPreimage(), FixedCodeLen))
       .then(applyHappyPath(CoretimeParaId, codeA, List(
         RequestCodeUpgrade({ hash: b, len: FixedCodeLen, phase: Announcement }))))
       .then(expectThat(announcedHashOf(svc.paraInfo(CoretimeParaId)) == Some(b)))
@@ -211,48 +212,48 @@ module upgrades {
         RequestCodeUpgrade({ hash: c, len: FixedCodeLen, phase: Announcement }))))
       .then(expectThat(all {
         announcedHashOf(svc.paraInfo(CoretimeParaId)) == Some(c),
-        not(isPinnedCode(svc.paraInfo(CoretimeParaId), vchAsHash(b), FixedCodeLen)),
-        svc.hasReferencer(vchAsHash(b), FixedCodeLen, CoretimeParaId),
+        not(isValidationCodeOf(svc.paraInfo(CoretimeParaId), b.asPreimage(), FixedCodeLen)),
+        svc.hasReferencer(b.asPreimage(), FixedCodeLen, CoretimeParaId),
         svc.paraInfo(CoretimeParaId).validationCode == Some({ hash: codeA, len: FixedCodeLen })
       }))
   }
 
-  // A `Forget` of the announced code is refused while it is pinned, and goes
-  // through once a superseding announcement has unpinned it.
+  // A `Forget` of the announced code is refused while it is the announced code,
+  // and goes through once a superseding announcement has displaced it.
   run forget_announced_code_refused_works = {
     val b = codeB
     val c = codeC
     init
       .then(fundForExtraCodes(2))
       .then(applyHappyPath(CoretimeParaId, codeA, List(
-        Solicit({ target: Parachain(CoretimeParaId), hash: vchAsHash(b), len: FixedCodeLen }))))
-      .then(provide(vchAsHash(b), FixedCodeLen))
+        Solicit({ target: Parachain(CoretimeParaId), hash: b.asPreimage(), len: FixedCodeLen }))))
+      .then(provide(b.asPreimage(), FixedCodeLen))
       .then(applyHappyPath(CoretimeParaId, codeA, List(
-        Solicit({ target: Parachain(CoretimeParaId), hash: vchAsHash(c), len: FixedCodeLen }))))
-      .then(provide(vchAsHash(c), FixedCodeLen))
+        Solicit({ target: Parachain(CoretimeParaId), hash: c.asPreimage(), len: FixedCodeLen }))))
+      .then(provide(c.asPreimage(), FixedCodeLen))
       .then(applyHappyPath(CoretimeParaId, codeA, List(
         RequestCodeUpgrade({ hash: b, len: FixedCodeLen, phase: Announcement }))))
       // Refused while announced: the reference, charge and status all stay.
       .then(applyHappyPath(CoretimeParaId, codeA, List(
-        Forget({ target: Parachain(CoretimeParaId), hash: vchAsHash(b), len: FixedCodeLen }))))
+        Forget({ target: Parachain(CoretimeParaId), hash: b.asPreimage(), len: FixedCodeLen }))))
       .then(expectThat(all {
-        svc.preimageStatus.get((vchAsHash(b), FixedCodeLen)) == Provided,
-        svc.hasReferencer(vchAsHash(b), FixedCodeLen, CoretimeParaId),
-        isPinnedCode(svc.paraInfo(CoretimeParaId), vchAsHash(b), FixedCodeLen),
+        svc.preimageStatus.get((b.asPreimage(), FixedCodeLen)) == Provided,
+        svc.hasReferencer(b.asPreimage(), FixedCodeLen, CoretimeParaId),
+        isValidationCodeOf(svc.paraInfo(CoretimeParaId), b.asPreimage(), FixedCodeLen),
         announcedHashOf(svc.paraInfo(CoretimeParaId)) == Some(b),
         hasLog(svc, CoretimeParaId,
-          CanNotForgetValidationCode({ hash: vchAsHash(b), len: FixedCodeLen }))
+          CanNotForgetValidationCode({ hash: b.asPreimage(), len: FixedCodeLen }))
       }))
-      // Supersede with C, which unpins B; only then does the forget take effect.
+      // Supersede with C, which displaces B; only then does the forget take effect.
       .then(applyHappyPath(CoretimeParaId, codeA, List(
         RequestCodeUpgrade({ hash: c, len: FixedCodeLen, phase: Announcement }))))
       .then(applyHappyPath(CoretimeParaId, codeA, List(
-        Forget({ target: Parachain(CoretimeParaId), hash: vchAsHash(b), len: FixedCodeLen }))))
+        Forget({ target: Parachain(CoretimeParaId), hash: b.asPreimage(), len: FixedCodeLen }))))
       .then(expectThat(all {
         announcedHashOf(svc.paraInfo(CoretimeParaId)) == Some(c),
-        isUnrequested(svc.preimageStatus.get((vchAsHash(b), FixedCodeLen))),
+        isUnrequested(svc.preimageStatus.get((b.asPreimage(), FixedCodeLen))),
         hasLog(svc, CoretimeParaId, ForgetAgainAt({
-          hash: vchAsHash(b), len: FixedCodeLen, due: now + ExpungePeriod }))
+          hash: b.asPreimage(), len: FixedCodeLen, due: now + ExpungePeriod }))
       }))
   }
 
@@ -268,18 +269,18 @@ module upgrades {
           newTotal: svc.paraInfo(CoretimeParaId).usedStateBalance
             + preimageFootprint(FixedCodeLen) }))))
       .then(applyHappyPath(CoretimeParaId, codeA, List(
-        Solicit({ target: Parachain(CoretimeParaId), hash: vchAsHash(b), len: FixedCodeLen }))))
-      .then(provide(vchAsHash(b), FixedCodeLen))
+        Solicit({ target: Parachain(CoretimeParaId), hash: b.asPreimage(), len: FixedCodeLen }))))
+      .then(provide(b.asPreimage(), FixedCodeLen))
       .then(applyHappyPath(CoretimeParaId, codeA, List(
         RequestCodeUpgrade({ hash: b, len: FixedCodeLen, phase: Announcement }))))
       // The second solicit cannot be afforded: rejected and logged.
       .then(applyHappyPath(CoretimeParaId, codeA, List(
-        Solicit({ target: Parachain(CoretimeParaId), hash: vchAsHash(c), len: FixedCodeLen }))))
+        Solicit({ target: Parachain(CoretimeParaId), hash: c.asPreimage(), len: FixedCodeLen }))))
       .then(expectThat(all {
         announcedHashOf(svc.paraInfo(CoretimeParaId)) == Some(b),
-        not(svc.preimageRegistry.keys().contains((vchAsHash(c), FixedCodeLen))),
+        not(svc.preimageRegistry.keys().contains((c.asPreimage(), FixedCodeLen))),
         hasLog(svc, CoretimeParaId,
-          InsufficientStateBalance(FromSolicit({ hash: vchAsHash(c), len: FixedCodeLen })))
+          InsufficientStateBalance(FromSolicit({ hash: c.asPreimage(), len: FixedCodeLen })))
       }))
       // Announcing the unaffordable code is then rejected as unavailable.
       .then(applyHappyPath(CoretimeParaId, codeA, List(
@@ -287,7 +288,7 @@ module upgrades {
       .then(expectThat(all {
         announcedHashOf(svc.paraInfo(CoretimeParaId)) == Some(b),
         hasLog(svc, CoretimeParaId,
-          CodeUpgradeNotAvailable({ hash: vchAsHash(c), len: FixedCodeLen }))
+          CodeUpgradeNotAvailable({ hash: c.asPreimage(), len: FixedCodeLen }))
       }))
   }
 
@@ -317,8 +318,8 @@ module upgrades {
     val b = codeB
     init
       .then(applyHappyPath(CoretimeParaId, codeA, List(
-        Solicit({ target: Parachain(CoretimeParaId), hash: vchAsHash(b), len: FixedCodeLen }))))
-      .then(provide(vchAsHash(b), FixedCodeLen))
+        Solicit({ target: Parachain(CoretimeParaId), hash: b.asPreimage(), len: FixedCodeLen }))))
+      .then(provide(b.asPreimage(), FixedCodeLen))
       .then(applyHappyPath(CoretimeParaId, codeA, List(
         RequestCodeUpgrade({ hash: b, len: FixedCodeLen, phase: Announcement }))))
       .then(workErrorAt(now + MaxLookupAge))
