@@ -99,14 +99,13 @@ expunged, so it upgraded on a wrong `len` and on forgotten code. It now asks JAM
 `query(hash, len)` and accepts the same two states (`accumulate_upgrades.rs`,
 `service_upgrade_*`).
 
-## M-7: `is_valid_val_count` is dead code
+## M-7: `is_valid_val_count` was dead code — resolved
 
-`service/src/constants.rs` defines `is_valid_val_count` (multiples of 3 in `[6, 3 * CORE_COUNT]`,
-the model's `ValCount`). Nothing calls it: the §5.3 length check is JAM's own. The vendored
-host's `designate` takes a bounded set and rejects a length outside `valcount`, which the
-service logs as `DesignateRejected` — the model's rule, so the two sides now agree.
-
-Fix: delete `is_valid_val_count`.
+The service's uncalled copy of the model's `ValCount` rule is deleted. The §5.3 length check is
+JAM's own: `designate` rejects a set whose length is not a multiple of 3 in
+`[6, 3 * core_count()]`, which the service logs as `DesignateRejected`, as the model does for a
+length outside `ValCount`. JAM bounds the set by the chain's core count; the model fixes it at
+341 cores.
 
 ## M-8: SCALE discriminants differ between Rust, the design doc and the model
 

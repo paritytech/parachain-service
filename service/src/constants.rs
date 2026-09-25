@@ -40,12 +40,6 @@ pub const MAX_INCOMING_TRANSFERS: usize = 1000;
 /// next arrival opens a fresh id (§5.1).
 pub const MAX_TRANSFERS_PER_BUCKET: u32 = 512;
 
-/// Valid `stagingset` lengths for JAM `designate` (Gray Paper Safrole `valcount`):
-/// `3 * c` for `c` in `2 ..= CORE_COUNT`.
-pub fn is_valid_val_count(len: usize) -> bool {
-	len % 3 == 0 && len >= 6 && len <= 3 * CORE_COUNT
-}
-
 /// §5.1 gas gate — the fixed cost of applying one work report, independent of
 /// its contents. Sized for the costliest case measured: a full 64 KiB
 /// `parachain_log` rewritten under a 4 KiB head. PROVISIONAL: must be
