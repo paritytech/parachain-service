@@ -33,6 +33,12 @@ pub enum HostCall {
 	/// Write a segment to the JAM Data Lake, e.g. an outbound XCMP payload.
 	Export = 8,
 
+	// --- PolkaJam's non-GP host functions ---
+	/// PolkaJam's own `log` (index 100), imported by `jam-pvm-common`'s panic
+	/// handler: same `(level, target, message)` ABI as [`HostCall::Log`], and the
+	/// executor routes both to one body.
+	JamLog = 100,
+
 	// --- Parachain Service host functions (§4.3) ---
 	/// Declare the parent head hash this candidate was built on.
 	SetParentHeadHash = 200,
@@ -62,6 +68,7 @@ mod tests {
 		assert_eq!(HostCall::Fetch as u64, 2);
 		assert_eq!(HostCall::HistoricalLookup as u64, 7);
 		assert_eq!(HostCall::Export as u64, 8);
+		assert_eq!(HostCall::JamLog as u64, 100);
 		assert_eq!(HostCall::SetParentHeadHash as u64, 200);
 		assert_eq!(HostCall::SetHead as u64, 201);
 		assert_eq!(HostCall::SendUpwardMessage as u64, 202);

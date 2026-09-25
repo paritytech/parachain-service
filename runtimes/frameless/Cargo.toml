@@ -11,8 +11,7 @@ codec = { workspace = true }
 tiny-keccak = { workspace = true }
 blake2b_simd = { workspace = true }
 sp-io = { workspace = true }
-# The runtime supplies its own panic handler and allocator.
-parachain-service-core = { workspace = true, features = ["no-lang-items"] }
+parachain-service-core = { workspace = true }
 
 [target.'cfg(target_arch = "riscv64")'.dependencies]
 polkavm-derive = { workspace = true }

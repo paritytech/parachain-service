@@ -4,10 +4,15 @@
 //! `jam_validate_block`'s read/declare host-call surface.
 //!
 //! The service runs here as native Rust. Its child-PVM host calls (`machine`, `invoke`,
-//! `peek`, `poke`, `pages`, `gas`, `expunge`, `export`, `fetch`, `historical_lookup`,
-//! `log`) are JAM imports that only link inside a guest build; the shims below provide
-//! them, backed by a real polkavm 0.36 `RawInstance` in thread-local state, mirroring
-//! what polkajam's own `machine`/`invoke`/`pages` host calls do.
+//! `peek`, `poke`, `pages`, `gas`, `grow_heap`, `expunge`, `export`, `fetch`,
+//! `historical_lookup`, `log`) are JAM imports that only link inside a guest build; the
+//! shims below provide them, backed by a real polkavm 0.36 `RawInstance` in thread-local
+//! state, mirroring what polkajam's own `machine`/`invoke`/`pages` host calls do.
+//!
+//! `grow_heap` follows PolkaJam's page semantics: the argument is the absolute target heap
+//! size in pages and the result is the heap's resulting (or, when refused, current) page
+//! count. `log` serves both the service's own diagnostics and the frameless guest's panic
+//! handler, which logs through the non-GP `log` host call at index 100.
 //!
 //! The frameless guest reads its PoV as work-item extrinsic 0 (fetch kind 4,
 //! `OurExtrinsic`) and declares its results through the mandatory `set_parent_head_hash` (200)
@@ -44,6 +49,13 @@ struct VmState {
 	logs: Vec<String>,
 	/// `(trap PC, exit kind)` captured by `invoke` for the report when the guest panics.
 	trap: Option<(u32, &'static str)>,
+	/// The inner PVM currently (or most recently) running. `grow_heap` has no handle
+	/// argument, so it serves this instance.
+	current: Option<u64>,
+	/// The current inner PVM's heap size in pages, as `grow_heap` sees it: an absolute
+	/// page count (relative to address zero), initialized from the instance's memory map
+	/// and advanced by each successful `grow_heap`.
+	grown_pages: u64,
 }
 
 /// ABI of the `invoke` host call's `InvokeArgs` (`jam-types/src/pvm.rs`, `#[repr(C)]`):
@@ -71,6 +83,8 @@ fn with_vm<R>(f: impl FnOnce(&mut VmState) -> R) -> R {
 				preimages: HashMap::new(),
 				logs: Vec::new(),
 				trap: None,
+				current: None,
+				grown_pages: 0,
 			});
 		}
 		f(slot.as_mut().expect("initialized just above; qed"))
@@ -92,18 +106,18 @@ pub extern "C" fn log(
 	_level: u64,
 	target_ptr: *const u8,
 	target_len: u64,
-	msg_ptr: *const u8,
-	msg_len: u64,
+	text_ptr: *const u8,
+	text_len: u64,
 ) {
 	let target = if target_len == 0 {
 		&[][..]
 	} else {
 		unsafe { std::slice::from_raw_parts(target_ptr, target_len as usize) }
 	};
-	let msg = if msg_len == 0 {
+	let msg = if text_len == 0 {
 		&[][..]
 	} else {
-		unsafe { std::slice::from_raw_parts(msg_ptr, msg_len as usize) }
+		unsafe { std::slice::from_raw_parts(text_ptr, text_len as usize) }
 	};
 	with_vm(|vm| {
 		vm.logs.push(format!(
@@ -117,6 +131,42 @@ pub extern "C" fn log(
 #[no_mangle]
 pub extern "C" fn gas() -> u64 {
 	with_vm(|vm| vm.gas_remaining.max(0) as u64)
+}
+
+/// The JAM `grow_heap` host call (index 1) with PolkaJam's page semantics: `pages` is the
+/// absolute target heap size in pages and the return value is the heap's resulting page
+/// count, or its current count when the request is refused (`pages` is not above the
+/// current count, or exceeds the address-space limit). The interpreter backend does not
+/// implement `sbrk`, so the pages backing the growth are mapped explicitly.
+#[no_mangle]
+pub extern "C" fn grow_heap(pages: u64) -> u64 {
+	with_vm(|vm| {
+		let Some(handle) = vm.current else {
+			return 0;
+		};
+		let current = vm.grown_pages;
+		let inst = vm
+			.instances
+			.get_mut(&handle)
+			.expect("the running inner PVM handle is live; qed");
+		let map = inst.module().memory_map();
+		let page_size = u64::from(map.page_size());
+		let heap_base = u64::from(map.heap_base());
+		let address_space_limit = (heap_base + u64::from(map.max_heap_size())) / page_size;
+		if pages <= current || pages > address_space_limit {
+			return current;
+		}
+		let start = heap_base + current * page_size;
+		let length = (pages - current) * page_size;
+		inst.zero_memory_with_memory_protection(
+			start as u32,
+			length as u32,
+			MemoryProtection::ReadWrite,
+		)
+		.unwrap_or_else(|_| panic!("inner-PVM grow_heap page mapping failed"));
+		vm.grown_pages = pages;
+		pages
+	})
 }
 
 #[no_mangle]
@@ -136,6 +186,9 @@ pub extern "C" fn machine(code_ptr: *const u8, code_len: u64, pc: u64) -> u64 {
 		instance.set_next_program_counter(ProgramCounter(pc as u32));
 		let handle = vm.next_handle;
 		vm.next_handle += 1;
+		let map = instance.module().memory_map();
+		vm.grown_pages = u64::from(map.heap_base()).div_ceil(u64::from(map.page_size()));
+		vm.current = Some(handle);
 		vm.instances.insert(handle, instance);
 		handle
 	})
@@ -195,6 +248,7 @@ pub extern "C" fn pages(vm_handle: u64, page: u64, count: u64, operation: u64) -
 #[allow(improper_ctypes_definitions)]
 #[no_mangle]
 pub extern "C" fn invoke(vm_handle: u64, args: *mut core::ffi::c_void) -> (u64, u64) {
+	with_vm(|vm| vm.current = Some(vm_handle));
 	let args = unsafe { &mut *(args as *mut InvokeArgs) };
 	let inst = unsafe { &mut *inst_mut(vm_handle) };
 	inst.set_gas(args.gas);

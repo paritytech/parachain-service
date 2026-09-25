@@ -40,7 +40,6 @@ polkajam-trie = { workspace = true }
 
 [features]
 default = []
-no-lang-items = ["jam-pvm-common/no-lang-items"]
 std = [
 	"blake2b_simd/std",
 	"bounded-collections/std",

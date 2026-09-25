@@ -48,17 +48,19 @@ const A3: usize = Reg::A3 as usize;
 const A4: usize = Reg::A4 as usize;
 const A5: usize = Reg::A5 as usize;
 
-/// The child PVF's heap: a byte break plus the pages backing it.
+/// The child PVF's heap: the break (in bytes) plus the pages backing it.
 ///
 /// The service drives the inner PVM's memory itself (`pages` host calls), so it tracks
-/// the heap the guest grows, mirroring JAM's own `grow_heap` bounds in gp-v0.8.0
-/// (host `grow_heap` at `crates/node/src/chain/exec/vm/host.rs`): the break starts at
-/// the heap base `a` and may grow up to the address-space limit `b`
-/// (`heap_base + max_heap_size`), which §4.3 caps at [`MAX_PVF_HEAP_SIZE`].
+/// the heap the guest grows, mirroring PolkaJam's own `grow_heap` bounds
+/// (`crates/node/src/chain/exec/vm/host.rs`): the break starts at the heap base `a` and
+/// may grow up to the address-space limit `b` (`heap_base + max_heap_size`), which §4.3
+/// caps at [`MAX_PVF_HEAP_SIZE`]. `grow_heap` takes an absolute target page count, so
+/// after a growth the break is exactly `pages * page_size`.
 pub struct Heap {
 	/// The page size of the inner PVM's memory map.
 	pub page_size: u64,
-	/// The current break: the byte end of the region the guest has grown to.
+	/// The current break: the byte end of the region the guest has grown to. A
+	/// multiple of `page_size` after a growth; starts at the heap base.
 	pub top: u64,
 	/// The byte end of the pages mapped (zeroed) so far; always page-aligned.
 	pub mapped_until: u64,
@@ -81,14 +83,6 @@ impl Heap {
 			limit: u64::from(memory.heap_base()) +
 				u64::from(memory.max_heap_size()).min(MAX_PVF_HEAP_SIZE),
 		}
-	}
-
-	/// The new break after growing by `delta` bytes, or `None` if it would overflow or
-	/// exceed the address-space limit `b` (gp-v0.8.0's `pages > address_space_limit`
-	/// refusal, in byte terms).
-	fn grow_to(&self, delta: u64) -> Option<u64> {
-		let new_top = self.top.checked_add(delta)?;
-		(new_top <= self.limit).then_some(new_top)
 	}
 }
 
@@ -181,38 +175,36 @@ impl ExecutorState {
 				regs[A0] = refine::gas();
 			},
 			HostCall::GrowHeap => {
-				// Child heap growth (§4.3): the guest allocator (sp-io's riscv
-				// `global_alloc_riscv.rs`) calls `grow_heap(delta: usize) -> usize` — a
-				// byte delta returning the *previous* break, or `0` on failure, and
-				// `delta == 0` queries the current break. The service tracks the break
-				// and maps the pages backing it into the inner PVM on demand, mirroring
-				// gp-v0.8.0's host `grow_heap` bounds (break `h` vs limit `b`).
-				let delta = regs[A0];
-				if delta == 0 {
-					regs[A0] = self.heap.top;
-				} else {
-					let Some(new_top) = self.heap.grow_to(delta) else {
-						// Would overflow or exceed the address-space limit `b`: refuse.
-						regs[A0] = 0;
-						return Ok(());
-					};
-					if let Some((page, count, end)) =
-						fresh_pages(self.heap.mapped_until, new_top, self.heap.page_size)
-					{
-						refine::zero(handle, page, count, PageMode::ReadWrite).unwrap_or_else(
-							|_| {
-								panic!("PVF `grow_heap` page mapping failed; §4.2 whole-refine failure")
-							},
-						);
-						self.heap.mapped_until = end;
-					}
-					let old_top = self.heap.top;
-					self.heap.top = new_top;
-					regs[A0] = old_top;
-					// Logging is forbidden on this path: `jam_pvm_common::info!` always evaluates
-					// `alloc::format!`, so a log here allocates, which re-enters `grow_heap`. The
-					// resulting feedback loop exhausts the refine gas budget and the guest traps.
+				// Child heap growth (§4.3): the guest allocator (jam-pvm-common's
+				// picoalloc `System`) calls `grow_heap(pages: u64) -> u64` with an
+				// ABSOLUTE target page count — `ceil((heap_base + size) / page_size)`
+				// — and treats the call as success iff `grow_heap(pages) >= pages`.
+				// Mirrors PolkaJam's host `grow_heap`: a request at or below the
+				// current top page count is a no-op returning the current top (still
+				// `>= pages`); a request past the address-space limit `b` is refused
+				// by returning the current top (`< pages`); otherwise the heap grows
+				// to `pages * page_size` and `pages` is returned.
+				let pages = regs[A0];
+				let top_pages = self.heap.top.div_ceil(self.heap.page_size);
+				let limit_pages = self.heap.limit / self.heap.page_size;
+				if pages <= top_pages || pages > limit_pages {
+					regs[A0] = top_pages;
+					return Ok(());
 				}
+				let new_top = pages * self.heap.page_size;
+				if let Some((page, count, end)) =
+					fresh_pages(self.heap.mapped_until, new_top, self.heap.page_size)
+				{
+					refine::zero(handle, page, count, PageMode::ReadWrite).unwrap_or_else(|_| {
+						panic!("PVF `grow_heap` page mapping failed; §4.2 whole-refine failure")
+					});
+					self.heap.mapped_until = end;
+				}
+				self.heap.top = new_top;
+				regs[A0] = pages;
+				// Logging is forbidden on this path: `jam_pvm_common::info!` always evaluates
+				// `alloc::format!`, so a log here allocates, which re-enters `grow_heap`. The
+				// resulting feedback loop exhausts the refine gas budget and the guest traps.
 			},
 			HostCall::Fetch => {
 				// Forwarded unchanged (§4.3): the child's `(kind, a, b)` go straight
@@ -296,24 +288,7 @@ impl ExecutorState {
 				});
 				self.push(msg)?;
 			},
-			HostCall::Log => {
-				// Diagnostics only (§4.3): no state, no digest, no bearing on the
-				// result. This is how a guest panic leaves a message — `sp_io`'s riscv
-				// panic handler formats the `PanicInfo` and sends it here, so an
-				// assertion inside `jam_validate_block` shows up as text instead of a
-				// bare trap at some program counter.
-				let target = peek_bytes(handle, regs[A1], regs[A2].min(MAX_LOG_TARGET));
-				let message = peek_bytes(handle, regs[A3], regs[A4].min(MAX_LOG_MESSAGE));
-				let target = String::from_utf8_lossy(&target);
-				let message = String::from_utf8_lossy(&message);
-				match regs[A0] {
-					0 => jam_pvm_common::error!("PVF [{target}] {message}"),
-					1 => jam_pvm_common::warn!("PVF [{target}] {message}"),
-					2 => jam_pvm_common::info!("PVF [{target}] {message}"),
-					3 => jam_pvm_common::debug!("PVF [{target}] {message}"),
-					_ => jam_pvm_common::trace!("PVF [{target}] {message}"),
-				}
-			},
+			HostCall::JamLog | HostCall::Log => self.log(handle, regs),
 			HostCall::ReportError => {
 				// Abort the PVF, failing Refine with the opaque payload; bytes
 				// beyond the cap are truncated (§4.3).
@@ -325,6 +300,27 @@ impl ExecutorState {
 			},
 		}
 		Ok(())
+	}
+
+	/// Shared body of the two `log` host calls: PolkaJam's non-GP `log` (100, what
+	/// `jam-pvm-common`'s panic handler imports) and the Parachain Service's own
+	/// (204). Diagnostics only (§4.3): no state, no digest, no bearing on the
+	/// result. This is how a guest panic leaves a message, so an assertion inside
+	/// `jam_validate_block` shows up as text instead of a bare trap at some program
+	/// counter. ABI: `(level, target_ptr, target_len, text_ptr, text_len)` in
+	/// `A0..A4`.
+	fn log(&self, handle: u64, regs: &mut [u64; 13]) {
+		let target = peek_bytes(handle, regs[A1], regs[A2].min(MAX_LOG_TARGET));
+		let message = peek_bytes(handle, regs[A3], regs[A4].min(MAX_LOG_MESSAGE));
+		let target = String::from_utf8_lossy(&target);
+		let message = String::from_utf8_lossy(&message);
+		match regs[A0] {
+			0 => jam_pvm_common::error!("PVF [{target}] {message}"),
+			1 => jam_pvm_common::warn!("PVF [{target}] {message}"),
+			2 => jam_pvm_common::info!("PVF [{target}] {message}"),
+			3 => jam_pvm_common::debug!("PVF [{target}] {message}"),
+			_ => jam_pvm_common::trace!("PVF [{target}] {message}"),
+		}
 	}
 
 	/// Buffer an upward message, applying every §4.3 rule the per-message host
