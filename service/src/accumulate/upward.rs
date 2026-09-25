@@ -11,7 +11,7 @@ use crate::{
 	state_balance,
 };
 use alloc::vec::Vec;
-use jam_pvm_common::accumulate::{is_available, my_info, upgrade};
+use jam_pvm_common::accumulate::{my_info, query, upgrade, LookupRequestStatus};
 use jam_types::{CodeHash, ServiceId, Slot};
 use parachain_service_core::{
 	types::{ParaId, Timeslot, ASSET_HUB_PARA_ID},
@@ -111,13 +111,20 @@ pub fn apply(
 
 		UpwardMessage::CleanUpBucketsUpTo(id) => transfers::clean_up_buckets_up_to(id),
 
-		UpwardMessage::UpgradeService { code_hash, len: _, min_acc_gas, min_memo_gas } => {
+		UpwardMessage::UpgradeService { code_hash, len, min_acc_gas, min_memo_gas } => {
 			// §5.4: forward to JAM `upgrade` only when the new code's preimage is
-			// actually provided — a solicited-but-unprovided registry entry is
-			// not enough.
+			// provided and still requested. A solicited-but-unprovided or a
+			// forgotten one is not enough, even though `lookup` still finds the
+			// latter until it is expunged.
 			// FIXME: consensus-critical — JAM `upgrade` does not validate that
 			// the hash decodes to a well-formed service blob.
-			if is_available(&code_hash) {
+			let available = matches!(
+				query(&code_hash, len.0 as usize),
+				Some(
+					LookupRequestStatus::Provided { .. } | LookupRequestStatus::Rerequested { .. }
+				)
+			);
+			if available {
 				upgrade(&CodeHash(code_hash), min_acc_gas, min_memo_gas);
 			} else {
 				logs.push(AccumulateLog::ServiceUpgradePreimageMissing { code_hash });

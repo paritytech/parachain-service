@@ -90,24 +90,14 @@ Quint `4cff218575` introduced the separate 40 KiB encoded upward-message budget.
 that streaming budget in `send_upward_message`, then retains the actual Gray Paper 48 KiB
 combined-output check as a backstop.
 
-## M-6: `UpgradeService` ignores the declared `len`
+## M-6: `UpgradeService` ignored the declared `len` — resolved
 
-**Rust is weaker; low severity.**
-
-`quint/accumulate.qnt:315` gates the service self-upgrade on
-`preimageAvailable(payload.codeHash, payload.len)` — the `(hash, len)` pair, matching how the
-preimage registry is keyed. `service/src/accumulate/upward.rs:114` destructures `len: _` and
-calls `is_available(&code_hash)`, which takes no length at all
-(`vendor/polkajam/crates/jam-pvm-common/src/host_calls.rs:532`).
-
-So an `UpgradeService` declaring a wrong `len` upgrades in Rust and is rejected with
-`ServiceUpgradePreimageMissing` by the model. Severity is low — a hash pins its own preimage,
-so the length is determined and cannot select a different blob — but the field is carried on
-the wire and then not validated, which is worse than not carrying it.
-
-Fix: either check `len` against the looked-up blob, or drop it from the message.
-
-**Spec feedback**: §5.4 should say whether `len` is authoritative or advisory.
+`quint/accumulate.qnt:315` gates the service self-upgrade on the request status of the
+`(hash, len)` pair (`preimageAvailable`: `Provided` or `Rerequested`). Rust used JAM's
+`lookup`, which is keyed by hash alone and still finds a forgotten preimage until it is
+expunged, so it upgraded on a wrong `len` and on forgotten code. It now asks JAM's
+`query(hash, len)` and accepts the same two states (`accumulate_upgrades.rs`,
+`service_upgrade_*`).
 
 ## M-7: `is_valid_val_count` is dead code
 

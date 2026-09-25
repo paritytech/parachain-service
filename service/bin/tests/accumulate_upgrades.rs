@@ -6,10 +6,13 @@
 mod common;
 
 use common::*;
+use jam_std_common::hash_raw;
+use jam_types::CodeHash;
 use parachain_service::{
 	state::log::{AccumulateLog, InsufficientBalanceReason, LogEntry},
 	state_balance::preimage_footprint,
 };
+use parachain_service_bin::mock::provide_preimage;
 use parachain_service_core::{
 	types::{ParaId, ASSET_HUB_PARA_ID},
 	upward_message::{CodeUpgradePhase, Target, UpwardMessage},
@@ -492,4 +495,67 @@ fn service_upgrade_works() {
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert!(accumulate_logs(&storage, ASSET_HUB_PARA_ID).is_empty());
+}
+
+const NEW_SERVICE_CODE: &[u8] = b"the-new-parachain-service-code";
+
+/// Asset Hub with `NEW_SERVICE_CODE` provided, then `prepare` applied to the storage.
+fn upgrade_storage(prepare: impl FnOnce(&mut jam_node::vm::Storage)) -> jam_node::vm::Storage {
+	fresh_storage(|s| {
+		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", b"ah-code", RICH);
+		provide_preimage(s, NEW_SERVICE_CODE);
+		prepare(s);
+		s.commit();
+	})
+}
+
+/// Replay an `UpgradeService` to `NEW_SERVICE_CODE` declaring `len`. Returns Asset
+/// Hub's log and whether the service now runs that code.
+fn upgrade_service(storage: jam_node::vm::Storage, len: u32) -> (Vec<AccumulateLog>, bool) {
+	let code_hash = hash_raw(NEW_SERVICE_CODE);
+	let msg = UpwardMessage::UpgradeService {
+		code_hash,
+		len: len.into(),
+		min_acc_gas: 100,
+		min_memo_gas: 100,
+	};
+	let digest = ok_digest(ASSET_HUB_PARA_ID, b"ah-code", b"ah-genesis", b"ah-1", vec![msg], 0);
+
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+
+	let upgraded = storage.service(SVC).expect("service exists").code_hash == CodeHash(code_hash);
+	(accumulate_logs(&storage, ASSET_HUB_PARA_ID), upgraded)
+}
+
+fn preimage_missing() -> Vec<AccumulateLog> {
+	vec![AccumulateLog::ServiceUpgradePreimageMissing { code_hash: hash_raw(NEW_SERVICE_CODE) }]
+}
+
+#[test]
+fn service_upgrade_wrong_len_errors() {
+	// §5.4: a preimage is keyed by `(hash, len)`, so a wrong `len` names none.
+	let len = NEW_SERVICE_CODE.len() as u32;
+	assert_eq!(upgrade_service(upgrade_storage(|_| {}), len + 1), (preimage_missing(), false));
+}
+
+#[test]
+fn service_upgrade_unrequested_errors() {
+	// §5.4: a forgotten preimage stays stored until expunged, but is not available.
+	let len = NEW_SERVICE_CODE.len() as u32;
+	let storage = upgrade_storage(|s| {
+		s.forget(1, SVC, hash_raw(NEW_SERVICE_CODE), len).expect("provided preimage");
+	});
+	assert_eq!(upgrade_service(storage, len), (preimage_missing(), false));
+}
+
+#[test]
+fn service_upgrade_rerequested_works() {
+	// §5.4: soliciting a forgotten preimage again makes it available again.
+	let len = NEW_SERVICE_CODE.len() as u32;
+	let storage = upgrade_storage(|s| {
+		let hash = hash_raw(NEW_SERVICE_CODE);
+		s.forget(1, SVC, hash, len).expect("provided preimage");
+		s.solicit(2, SVC, hash, len).expect("unrequested preimage");
+	});
+	assert_eq!(upgrade_service(storage, len), (vec![], true));
 }
