@@ -16,7 +16,7 @@ pub fn hash() -> [u8; 32] {
 
 /// The mock transfer-destination service blob (gas benchmarks only) — a
 /// realistic memo handler standing in for a legitimate `TransferOut`
-/// destination, to size `MAX_TRANSFER_GAS`.
+/// destination.
 #[cfg(feature = "test-utils")]
 pub fn mock_dest_blob() -> Vec<u8> {
 	cargo_jam_build::blob("mock-dest-service")
@@ -30,7 +30,7 @@ pub fn authorizer_blob() -> Vec<u8> {
 
 /// The frameless runtime's PVF: the linked program, not a JAM container, because that is what
 /// the service resolves `jam_validate_block` out of and runs as a nested PVM. The crate declares
-/// `keep-symbols`, which is what makes its blob that program.
+/// the `generic` blob type, which is what makes its blob that program.
 #[cfg(feature = "test-utils")]
 pub fn frameless_pvf() -> Vec<u8> {
 	cargo_jam_build::blob("frameless")

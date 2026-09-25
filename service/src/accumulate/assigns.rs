@@ -10,11 +10,12 @@ use crate::{
 };
 use alloc::vec::Vec;
 use jam_pvm_common::{accumulate::assign, ApiError};
-use jam_types::{auth_queue_len, AuthQueue, AuthorizerHash as JamAuthorizerHash};
+use jam_types::{auth_queue_len, core_count, AuthQueue, AuthorizerHash as JamAuthorizerHash};
 use parachain_service_core::types::{AuthorizerHash, CoreIndex, ServiceId, Timeslot};
 
 /// Replay an `AssignCore` message (Coretime only, §4.3). Refine rejects a
-/// malformed queue, so one is a defensive no-op here. An already-due `jam_slot`
+/// malformed queue or an unknown core (§3.3), so either is a defensive no-op
+/// here. An already-due `jam_slot`
 /// applies inline (always-accumulate has already run this block); otherwise the
 /// entry is cached until its slot.
 pub fn schedule(
@@ -26,7 +27,7 @@ pub fn schedule(
 	jam_slot: Timeslot,
 	logs: &mut Vec<AccumulateLog>,
 ) {
-	if !well_formed(&queue, new_assigner) {
+	if !well_formed(&queue, new_assigner) || core >= core_count() {
 		return;
 	}
 	if jam_slot <= now {
@@ -107,7 +108,7 @@ pub fn apply_due_assigns(now: Timeslot, service_id: ServiceId) -> Vec<Accumulate
 	logs
 }
 
-/// §4.3: a queue holds 1 to `AUTHORIZER_QUEUE_LEN` hashes, and one handing the
+/// §3.3: a queue holds 1 to `AUTHORIZER_QUEUE_LEN` hashes, and one handing the
 /// core to another service holds exactly `AUTHORIZER_QUEUE_LEN`.
 fn well_formed(queue: &[AuthorizerHash], new_assigner: Option<ServiceId>) -> bool {
 	match new_assigner {

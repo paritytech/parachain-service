@@ -6,7 +6,7 @@ use codec::Encode;
 use common::*;
 use jam_types::{AccumulateItem, Memo as JamMemo, TransferRecord};
 use parachain_service::{
-	constants::{CORE_COUNT, MAX_TRANSFER_GAS},
+	constants::CORE_COUNT,
 	state::{
 		assigns::{PendingAssign, PendingAssignCores},
 		storage_key, Tag,
@@ -54,7 +54,7 @@ mod gas {
 	pub const MAX_KV_WRITES: u64 = 49_200_957;
 	/// 331 outbound transfers to a friendly destination.
 	pub const MAX_TRANSFER_OUTS: u64 = 5_421_808;
-	/// 331 outbound transfers to a destination demanding the full cap.
+	/// 331 outbound transfers to a destination demanding `HIGH_TRANSFER_GAS`.
 	pub const MAX_GAS_TRANSFER_OUTS: u64 = 5_387_843;
 	/// Gas for 1024 incoming transfers recorded in one bucket write.
 	pub const MAX_INCOMING_TRANSFERS: u64 = 8_655_792;
@@ -77,7 +77,6 @@ fn worst_case_margin_works() {
 	assert!(gas::MAX_GAS_TRANSFER_OUTS <= budget);
 	assert!(gas::MAX_INCOMING_TRANSFERS <= budget);
 	assert!(gas::ALL_DUE_ASSIGNS <= ga);
-	assert!(gas::DEST_HANDLER_PER_TRANSFER <= MAX_TRANSFER_GAS / 10);
 }
 
 /// Benchmarks a maximum-size digest of validation-code solicitations.
@@ -151,22 +150,25 @@ fn transfer_out_bench_works() {
 /// Maximum transfers fitting in `Wr`.
 const WR_TRANSFER_BENCH: u32 = 331;
 
-/// Benchmarks a report-sized batch of maximum-gas outbound transfers.
+/// Gas each transfer forwards in the high-gas benchmarks, `Ga / 100`.
+const HIGH_TRANSFER_GAS: u64 = 100_000;
+
+/// Benchmarks a report-sized batch of high-gas outbound transfers.
 #[test]
 fn transfer_out_max_gas_bench_works() {
 	let storage = fresh_storage(|s| {
 		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
-		seed_service(s, 42, MAX_TRANSFER_GAS);
+		seed_service(s, 42, HIGH_TRANSFER_GAS);
 	});
 	let msgs = (0..WR_TRANSFER_BENCH)
-		.map(|i| transfer_out_msg(42, 1, i as u64, Some(([7; 128], MAX_TRANSFER_GAS))))
+		.map(|i| transfer_out_msg(42, 1, i as u64, Some(([7; 128], HIGH_TRANSFER_GAS))))
 		.collect();
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", msgs, 0);
 	let digest_len = digest.encode().len();
 	assert!(digest_len <= MAX_REPORT_ELECTIVE_DATA, "fits into the WR size limit");
 
 	let (outcome, _, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
-	let gas_used = outcome.gas_used - u64::from(WR_TRANSFER_BENCH) * MAX_TRANSFER_GAS;
+	let gas_used = outcome.gas_used - u64::from(WR_TRANSFER_BENCH) * HIGH_TRANSFER_GAS;
 
 	report("transfer_out_max_gas_bench", gas_used, outcome.elapsed, digest_len);
 	assert_eq!(gas_used, gas::MAX_GAS_TRANSFER_OUTS);
@@ -181,7 +183,7 @@ fn dest_transfer_item(i: u32) -> AccumulateItem {
 		destination: SVC,
 		amount: 1_000_000,
 		memo: JamMemo(memo),
-		gas_limit: MAX_TRANSFER_GAS,
+		gas_limit: HIGH_TRANSFER_GAS,
 	})
 }
 

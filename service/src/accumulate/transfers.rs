@@ -1,7 +1,7 @@
 //! Incoming-transfer processing and outbound-transfer replay (spec §5.1).
 
 use crate::{
-	constants::{MAX_INCOMING_TRANSFERS, MAX_TRANSFERS_PER_BUCKET, MAX_TRANSFER_GAS},
+	constants::{MAX_INCOMING_TRANSFERS, MAX_TRANSFERS_PER_BUCKET},
 	state::{
 		log::{AccumulateLog, InsufficientBalanceReason, TransferError},
 		transfers::{
@@ -14,7 +14,10 @@ use crate::{
 use alloc::vec::Vec;
 use jam_pvm_common::accumulate::{service_info, transfer};
 use jam_types::{Memo as JamMemo, TransferRecord};
-use parachain_service_core::{types::BucketId, upward_message::TransferOutArgs};
+use parachain_service_core::{
+	types::{BucketId, ServiceId},
+	upward_message::TransferOutArgs,
+};
 
 /// §5.1 incoming-transfer processing. JAM credited the balances before this
 /// code runs, so handling is best effort: within the pre-provisioned portion a
@@ -134,17 +137,17 @@ pub fn clean_up_buckets_up_to(bucket_id: BucketId) {
 	reattribute_transfer_queue(old_count as u64, queue.count as u64);
 }
 
-/// Replay a `TransferOut` (Asset Hub only) via JAM `transfer` (§5.1 step 6).
+/// Replay a `TransferOut` (Asset Hub only) via JAM `transfer` (§5.1 step 6),
+/// refusing in the order JAM checks: source, destination, control of the source,
+/// a plain move's target, the destination's gas minimum, the source's funds.
 ///
-/// The vendored JAM host is Gray Paper 0.7.2, whose `transfer` always runs the
-/// destination's accumulate (the deferred mode), always debits this service, and
-/// knows a single balance per service. Three of the spec's shapes therefore have
-/// no host support and are refused with the error the design assigns them: a
-/// foreign `source`, a plain move (`deferred: None`, which §5.1 also rejects
-/// whenever this service does not supervise `dest` — it never does), and either
-/// supervisor-balance selector.
+/// The vendored host's `transfer` always runs the destination's accumulate (the
+/// deferred mode), always debits this service, and knows one balance per service.
+/// So this service controls only itself, and its supervisor balance is always
+/// empty. What needs more is refused: a plain move to anything but its own other
+/// balance, and a non-zero credit to a supervisor balance (D-11).
 /// FIXME: revisit once the host exposes a GP >= 0.8 `transfer`.
-pub fn transfer_out(args: TransferOutArgs, logs: &mut Vec<AccumulateLog>) {
+pub fn transfer_out(service_id: ServiceId, args: TransferOutArgs, logs: &mut Vec<AccumulateLog>) {
 	let TransferOutArgs {
 		source,
 		dest,
@@ -156,32 +159,38 @@ pub fn transfer_out(args: TransferOutArgs, logs: &mut Vec<AccumulateLog>) {
 	} = args;
 	let mut fail = |error| logs.push(AccumulateLog::TransferFailed { id, error });
 
-	// Only this service's own regular balance is exempt from supervision, so any
-	// named source fails; which error depends on whether it exists at all.
-	if let Some(source) = source {
-		return fail(if service_info(source).is_none() {
-			TransferError::UnknownSource
-		} else {
-			TransferError::SourceNotSupervised
-		});
+	let foreign_source = source.filter(|&source| source != service_id);
+	if foreign_source.is_some_and(|source| service_info(source).is_none()) {
+		return fail(TransferError::UnknownSource);
 	}
-	if source_supervisor_balance || dest_supervisor_balance {
-		return fail(TransferError::DestinationNotSupervised);
-	}
-	let Some((memo, gas)) = deferred else {
-		return fail(TransferError::DestinationNotSupervised);
-	};
-	let Some(info) = service_info(dest) else {
+	let Some(dest_info) = service_info(dest) else {
 		return fail(TransferError::UnknownDestination);
 	};
-	if gas < info.min_memo_gas {
+	if foreign_source.is_some() {
+		return fail(TransferError::SourceNotSupervised);
+	}
+	let moves = amount.0 > 0;
+	let Some((memo, gas)) = deferred else {
+		if dest != service_id || source_supervisor_balance == dest_supervisor_balance {
+			return fail(TransferError::DestinationNotSupervised);
+		}
+		if moves {
+			fail(if source_supervisor_balance {
+				TransferError::InsufficientServiceBalance
+			} else {
+				TransferError::DestinationNotSupervised
+			});
+		}
+		return;
+	};
+	if gas < dest_info.min_memo_gas {
 		return fail(TransferError::GasBelowDestinationMinimum);
 	}
-	if gas > MAX_TRANSFER_GAS {
-		// `Ω_T` charges the forwarded gas to this service's own accumulate meter,
-		// so an unbounded request burns the whole invocation (D-6).
-		// FIXME: the design defines no error for a sender-side gas cap.
+	if moves && source_supervisor_balance {
 		return fail(TransferError::InsufficientServiceBalance);
+	}
+	if moves && dest_supervisor_balance {
+		return fail(TransferError::DestinationNotSupervised);
 	}
 	if transfer(dest, amount.0, gas, &JamMemo(memo)).is_err() {
 		fail(TransferError::InsufficientServiceBalance);

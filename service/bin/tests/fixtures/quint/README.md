@@ -51,8 +51,9 @@ Mutation tests check that storage, log, and commitment mismatches are rejected.
 - Incoming-transfer replay requires explicit `replayIncoming` operands and an
   initially empty queue. Regular-balance arrivals are supported; supervisor
   arrivals fail explicitly because the vendored host has no selector. Integer
-  memos use a u64 little-endian prefix padded to 128 bytes. The model does not
-  represent the JAM service's actual monetary balance.
+  memos use a u64 little-endian prefix padded to 128 bytes. The model's JAM
+  balances (`svc.jamAccount`, and each foreign service's `account`) are ghost
+  state and are not compared.
 - Accumulate-log decoding supports `ForgetAgainAt`, `StateBalanceUpdateRejected`,
   `TooMuchStateHeld`, `InvalidCodeHashAcc`, `CodeUpgradeNotAvailable`,
   `CodeUpgradeNotAnnounced`, `CanNotForgetValidationCode`, `CoreNotAssignable`, and

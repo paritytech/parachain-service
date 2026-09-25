@@ -302,6 +302,32 @@ fn invalid_authorizer_queue_errors() {
 	}
 }
 
+fn assign_to(core: u32) -> Config {
+	Config::Mock(vec![MockAction::AssignCore {
+		core,
+		queue: vec![[3; 32]],
+		assigner: None,
+		jam_slot: 100,
+	}])
+}
+
+#[test]
+fn invalid_core_index_errors() {
+	// §3.3: JAM's `assign` knows only cores below the core count, active or not.
+	let action = assign_to(u32::from(jam_types::core_count()));
+	let parent = genesis(action.clone());
+	let outcome = run_block(action, &parent, 1, vec![CORETIME_PARA_ID]);
+	assert_eq!(expect_log(outcome), RefineLog::InvalidCoreIndex);
+}
+
+#[test]
+fn last_core_index_works() {
+	let action = assign_to(u32::from(jam_types::core_count()) - 1);
+	let parent = genesis(action.clone());
+	let (_, _, messages, _) = expect_ok(run_block(action, &parent, 1, vec![CORETIME_PARA_ID]));
+	assert_eq!(messages.len(), 1);
+}
+
 #[test]
 fn valid_authorizer_queue_works() {
 	for (len, assigner) in [(1, None), (80, None), (80, Some(7))] {

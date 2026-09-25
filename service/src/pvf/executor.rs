@@ -23,7 +23,7 @@ use crate::{
 use alloc::{string::String, vec::Vec};
 use codec::{DecodeAll, Encode};
 use jam_pvm_common::refine;
-use jam_types::{Hash, PageMode};
+use jam_types::{core_count, Hash, PageMode};
 use parachain_service_core::{
 	host_call::HostCall,
 	types::ParaId,
@@ -332,13 +332,17 @@ impl ExecutorState {
 			return Err(RefineLog::RestrictedHostFunction);
 		}
 		match &msg {
-			UpwardMessage::AssignCore { queue, new_assigner, .. } => {
+			UpwardMessage::AssignCore { core, queue, new_assigner, .. } => {
 				// A handoff cannot re-present a short queue afterwards, so it
-				// requires exactly `AUTHORIZER_QUEUE_LEN` hashes (§4.3, §7.1).
+				// requires exactly `AUTHORIZER_QUEUE_LEN` hashes (§3.3, §7.1).
 				let len_ok = (1..=AUTHORIZER_QUEUE_LEN).contains(&queue.len());
 				let handoff_ok = new_assigner.is_none() || queue.len() == AUTHORIZER_QUEUE_LEN;
 				if !len_ok || !handoff_ok {
 					return Err(RefineLog::InvalidAuthorizerQueue);
+				}
+				// JAM's `assign` knows only cores below its core count, active or not (§3.3).
+				if *core >= core_count() {
+					return Err(RefineLog::InvalidCoreIndex);
 				}
 			},
 			UpwardMessage::SetValidatorKeys { keys, .. } => {

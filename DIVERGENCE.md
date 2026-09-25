@@ -3,7 +3,7 @@
 Places where the Rust implementation and the
 [Quint spec](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/) disagree on
 observable behaviour or on a derived constant. Found by reading both sides and by trace replay;
-checked against spec pin `64713864ffa`.
+checked against spec pin `73d4d9eb9d8`.
 
 Scope: this file covers **Quint model vs Rust**. Two neighbouring documents cover the
 neighbouring questions, and entries here cross-reference them rather than restating them:
@@ -23,35 +23,35 @@ Entries that invert this — the model is wrong and the finding goes upstream �
 
 ---
 
-## M-2: `TransferOut` logs failures the model treats as silent no-ops
+## M-2: `TransferOut` shapes the host cannot express
 
-**Rust is arguably right; the divergence is unpinned and undocumented either way.**
+**Neither is wrong; the host is behind both.**
 
-`quint/accumulate.qnt:242-255` appends `TransferFailed` for exactly one shape — a plain move
-(`deferred: None`) to a destination that is not this service's supervisor. Every other refusal
-falls through as a no-op with no log: a named `source`, either supervisor selector, and the
-self-move cases. `service/src/accumulate/transfers.rs:147-189` logs `TransferFailed` on every
-refusal path.
+Since Quint `148fbfb7856` the model replays a `TransferOut` as JAM's `transfer`
+(`quint/foreign_services.qnt`, `transferOut`) and logs `TransferFailed` for every refusal, in
+JAM's order: `UnknownSource`, `UnknownDestination`, `SourceNotSupervised`,
+`DestinationNotSupervised`, `GasBelowDestinationMinimum`, `InsufficientServiceBalance`.
+`service/src/accumulate/transfers.rs` refuses in the same order, and matches the model wherever
+the vendored host can do what the model does (`accumulate_transfers.rs`,
+`transfer_out_refusal_order_errors`).
 
-The model pins its own reading:
-`quint/tests/transfers_test.qnt:76` (`transferOutPlainMoveNeedsSupervisionTest`) walks six
-`TransferOut` shapes and asserts the log holds exactly `[{id: 77}, {id: 82}]`. Replaying that
-same sequence through Rust also logs ids 79, 80 and 81. So this is a `parachain_log` state
-divergence, and it is the first thing a trace replay of that test will hit.
+The host has no supervision and one balance per service ([DECISIONS.md](./DECISIONS.md) D-11),
+so Rust controls only this service and treats its supervisor balance as always empty. The model
+differs for:
 
-[DECISIONS.md](./DECISIONS.md) D-11 tabulates the same refusals and claims "the Quint model
-reaches the same verdicts". That holds for the accept/reject decision and not for the log.
+- a `source`, or a plain move's `dest`, that this service supervises in the model because it
+  created it (M-11): the model moves the funds; Rust logs `SourceNotSupervised` or
+  `DestinationNotSupervised`;
+- a non-zero credit to a supervisor balance, including a plain move from this service's regular
+  balance into its own supervisor balance: the model credits it; Rust logs
+  `DestinationNotSupervised`;
+- spending this service's supervisor balance after the model has funded it (through the moves
+  above, or an incoming transfer to it, M-12): the model spends it; Rust logs
+  `InsufficientServiceBalance`.
 
-Compounding it: these paths have no Rust test at all. `service/bin/tests/common/mod.rs:40`
-hard-codes `source: None` and both selectors `false`, so `UnknownSource`,
-`SourceNotSupervised` and the selector refusal never execute in the suite.
-
-Fix: decide whether a refused transfer is observable, then make one side match — and add the
-missing Rust cases regardless.
-
-**Spec feedback**: §5.1 should state which `transfer_out` refusals are logged. Silent failure
-of a balance move is a poor default; the model's own `id` echo-back exists precisely so the
-parachain can reconcile.
+The model also approximates this service's threshold balance from above (it bills each
+parachain as the sole user of shared entries), so close to the threshold it can refuse a
+spend JAM allows. The replay harness cannot replay `TransferOut` yet.
 
 ## M-3: the model drops `ForgetAgainAt` on the code-upgrade paths — resolved
 
@@ -64,9 +64,9 @@ displaced code referenced until the parachain forgets it. No code-upgrade path c
 
 **Neither is wrong; the two orderings need reconciling.**
 
-`quint/refine.qnt:233-264` scans the *finished* upward-message list in a fixed priority:
-message count → `set_validator_keys` repetition and chunk size → assign queues → parachain
-restrictions → 40 KiB message budget → output size → head declarations. Rust has no such scan —
+`quint/refine.qnt:245-275` scans the *finished* upward-message list in a fixed priority:
+message count → `set_validator_keys` repetition and chunk size → assign queues → assign core
+indices → parachain restrictions → 40 KiB message budget → output size → head declarations. Rust has no such scan —
 the checks live in the host-call dispatcher and abort at the first offending call in **emission
 order** (`ExecutorState::push` in `service/src/pvf/executor.rs`).
 
@@ -94,7 +94,7 @@ combined-output check as a backstop.
 
 **Rust is weaker; low severity.**
 
-`quint/accumulate.qnt:326` gates the service self-upgrade on
+`quint/accumulate.qnt:315` gates the service self-upgrade on
 `preimageAvailable(payload.codeHash, payload.len)` — the `(hash, len)` pair, matching how the
 preimage registry is keyed. `service/src/accumulate/upward.rs:114` destructures `len: _` and
 calls `is_available(&code_hash)`, which takes no length at all
@@ -148,11 +148,11 @@ since Refine rejects them first (Quint `6b8f7292e0`).
 
 ## M-10: no model invariant is checked against Rust
 
-The replay harness ([QUINT_REPLAY.md](./QUINT_REPLAY.md)) replays 71 deterministic fixtures and
+The replay harness ([QUINT_REPLAY.md](./QUINT_REPLAY.md)) replays 73 deterministic fixtures and
 streaming fuzz campaigns, comparing storage, logs, head commitments and JAM effects after every
 transition. It covers Accumulate only: Refine divergences (M-4) are still found by reading.
 
-None of the 31 invariants in `quint/invariants.qnt` is asserted on the Rust side. Several are
+None of the 32 invariants in `quint/invariants.qnt` is asserted on the Rust side. Several are
 cheap to port against real storage and would catch derived-constant drift of the kind that
 made Asset Hub's baseline under-reserve its pending-assign queues:
 `used_balance_consistency`, `pending_authorizer_cores_consistent`,
@@ -168,23 +168,28 @@ six operations: a `Service`-targeted `forget` runs the same two-step expunge as 
 and emits `ForgetAgainAt`; a `Service`-targeted `solicit` creates the request, rescues
 an `Unrequested` one, or fails `AlreadySolicited`; `remove_service_storage` shrinks the
 store idempotently; `eject_service` refuses `TargetIsSelf`/`NotEmpty`/`CreatedThisSlot`
-and otherwise deletes; `set_service_supervisor` moves the link.
+and otherwise deletes; `set_service_supervisor` moves the link. Since `148fbfb7856` it also
+tracks JAM balances as ghost state: a `solicit` the target cannot keep paying for fails
+`TargetCannotAfford`, and `eject_service` pays both of the target's balances into this
+service's regular balance.
 
 `service/src/accumulate/foreign_services.rs` reaches none of those verdicts. The
-vendored PolkaJAM host is Gray Paper 0.7.2 and has no supervisor relation at all, so
-the Parachain Service is never any service's effective supervisor and all five refuse
-with `UnknownService` (when JAM does not know the target) or `NotSupervised`. Only
-`create_service` agrees with the model, including `desired_id` honouring and `IdTaken`.
+vendored PolkaJAM host has no supervisor relation at all, so the Parachain Service is
+never any service's effective supervisor and all five refuse with `UnknownService` (when
+JAM does not know the target) or `NotSupervised`. Only `create_service` agrees with the
+model: both fund the new service with exactly its threshold balance, check funds before a
+`desired_id`, and report `CannotAfford` and `IdTaken` alike. The exception is
+`new_supervisor_balance`, which the host cannot honour: Rust reports `CannotAfford` where
+the model creates the service.
 
 So for any trace that exercises §6.5, the model's `foreignServices` and log diverge
 from Rust's log on every frame. This is a **host** gap, not a spec or implementation
 error on either side — see [DECISIONS.md](./DECISIONS.md) D-13 for the per-operation
 table and the two residual `create_service` gaps.
 
-Consequence for the replay harness: `foreignServices` joins `prevSvc` and friends in
-[QUINT_REPLAY.md](./QUINT_REPLAY.md)'s "not compared" list until the host gains GP >= 0.8
-supervision, and a §6.5-carrying frame must be checked for the *refusal* log rather than
-the model's outcome.
+Consequence for the replay harness: it compares neither `foreignServices` nor the model's
+ghost balances, and a §6.5-carrying frame must be checked for the *refusal* log rather
+than the model's outcome.
 
 **Spec feedback**: none for §6.5's semantics, which are self-consistent. The gap is
 JAM's.
@@ -192,7 +197,8 @@ JAM's.
 ## M-12: incoming transfers cannot expose a supervisor-balance selector yet
 
 Quint `6c74e58525` adds `to_supervisor_balance` to each queued incoming transfer;
-`0cfb689cad` adds the corresponding model field. Rust stores and encodes that
+`0cfb689cad` adds the corresponding model field, and since `148fbfb7856` the model credits
+each transfer to the balance it names. Rust stores and encodes that
 flag and reserves its extra byte (196 balance units per worst-case bucket).
 The vendored JAM `TransferRecord` has no destination-balance selector and its
 host only delivers transfers to the regular balance. Rust therefore records
@@ -208,15 +214,11 @@ future-slot `AssignCore` is cached whatever the core's assigner, and the flush t
 once it falls due drops the entry and logs `CoreNotAssignable` in the Coretime chain's log. Pinned
 by the `future_assign_after_handoff_works` replay fixture.
 
-## M-14: an `assign` JAM rejects for a bad core index is unspecified
+## M-14: an `assign` JAM rejects for a bad core index — resolved
 
-Refine checks only an `AssignCore` queue, never `core`, and the model treats every well-formed
-assign as succeeding. JAM rejects a core index ≥ 341 with `CORE`. Rust logs nothing for it: an
-inline assign is dropped (any entry cached for the core stays), and a cached one is retried at
-every block (`apply_due_assigns`, marked `TODO`). Worse, the dirty-core index holds at most 341
-entries, so once more than 341 distinct cores are waiting, the `expect` in
-`DirtyCores::upsert` panics and the invocation reverts to its last checkpoint. (JAM's `WHO`
-rejection is unreachable: every `u32` service id fits.)
-
-Fix: bound `core` below the core count in Refine (§4.3), and say what an `assign` rejected for
-another reason than a handoff does.
+Since Quint `73d4d9eb9d8` Refine rejects an `AssignCore` naming a core at or above
+`C_corecount` with `InvalidCoreIndex`, and Accumulate ignores one defensively. Rust bounds
+`core` by the chain's `core_count()`, inactive cores included, so JAM's `assign` can no longer
+answer `CORE`, and the dirty-core index's 341-entry bound holds. `WHO` was already unreachable,
+so an `assign` now fails only for a handoff. The model fixes `CoreCount` at the full chain's
+341.

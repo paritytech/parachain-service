@@ -95,18 +95,24 @@ always defers, always debits this service, and knows one balance per service; "s
 does not appear anywhere in `jam-types`.
 
 The PoC therefore accepts the full spec shape on the wire but executes only what the host
-can express, refusing the rest with the error the design itself assigns:
+can express. It refuses in JAM's order, as the model does since spec `148fbfb7856`, so this
+service controls only itself and its supervisor balance counts as always empty:
 
-| Requested shape | Outcome |
-|---|---|
-| `source = Some(_)` | `UnknownSource` / `SourceNotSupervised` |
-| either supervisor selector set | `DestinationNotSupervised` |
-| `deferred = None` (plain move) | `DestinationNotSupervised` |
-| `deferred = Some((memo, gas))` | forwarded to JAM `transfer` |
+| Requested shape | Outcome | The model |
+|---|---|---|
+| `source` names another service | `UnknownSource`, or `SourceNotSupervised` once `dest` is known | the same, unless it supervises the source |
+| unknown `dest` | `UnknownDestination` | the same |
+| plain move to another service, or onto the balance it draws on | `DestinationNotSupervised` | the same, unless it supervises `dest` |
+| plain move between the service's own two balances | `InsufficientServiceBalance` out of the supervisor balance, `DestinationNotSupervised` into it | moves the funds |
+| deferred, gas below `dest`'s minimum | `GasBelowDestinationMinimum` | the same |
+| deferred, out of the supervisor balance | `InsufficientServiceBalance` | the same while that balance is empty |
+| deferred, into a supervisor balance | `DestinationNotSupervised` | credits it |
+| any other deferred transfer | forwarded to JAM `transfer`; its refusal is `InsufficientServiceBalance` | the same |
 
-This is not merely a degradation: the Quint model reaches the same verdicts, because a plain
-move requires supervision of `dest` that the Parachain Service never holds, and a foreign
-`source` always fails. The gap is confined to the self-move cases the model leaves abstract.
+A zero amount touches no balance, so no balance refusal applies to it. There is no
+sender-side gas cap: the §5.1 gas gate charges each deferred transfer's gas to its report
+(F-17). The model differs only where it supervises a service or holds a supervisor balance
+([DIVERGENCE.md](./DIVERGENCE.md) M-2).
 
 **Spec feedback**: §5.1 should say which `transfer_out` shapes are expected to be reachable
 in practice. If only the deferred mode ever is, the selectors and `source` are dead wire
@@ -170,11 +176,13 @@ than silently dropping a parachain's request.
 
 `create_service` really runs. Two residual gaps:
 
-- **The balance selectors are inexpressible.** GP 0.7.2 knows one balance per
-  service, so `source_supervisor_balance` / `new_supervisor_balance` cannot be
-  honoured. `ServiceCreationResult` has no variant for a refused-because-
-  unrepresentable request, so the PoC reports `CannotAfford` — the same missing-
-  error-code gap as F-14.
+- **The balance selectors are inexpressible.** The host knows one balance per
+  service. Funding from `source_supervisor_balance` draws on a balance that is
+  therefore always empty, so the PoC reports `CannotAfford`, as the model (spec
+  `148fbfb7856`) does for an empty one. `new_supervisor_balance` cannot be honoured
+  at all; the PoC reports `CannotAfford` too, where the model creates the service.
+  `ServiceCreationResult` has no variant for a refused-because-unrepresentable
+  request.
 - **A `desired_id` outside the protected range is silently allocated elsewhere.**
   The host honours `new_service_id` only while the caller holds `registrar` *and*
   the index is below `NEW_ID_BASE` (2^16, matching the model's
@@ -239,41 +247,6 @@ scheduler adds it to the invocation unconditionally), so the service's `min_memo
 cover the measured ~8.5k-per-transfer recording cost with margin — a token value like the
 mock's 100 would be under water.
 
-## F-13: forwarded transfer gas multiplies past `Ga` despite both caps
-
-Sharpens F-10. `Ω_T` charges each replayed `TransferOut`'s forwarded gas to the sender's
-meter. Both bounds are individually enforced — per-transfer `MAX_TRANSFER_GAS = Ga/100`
-(#17), per-report ~345 transfers under `Wr` (F-11) — but their product exceeds `Ga`: an
-Asset Hub digest of 331 transfers to a destination demanding `min_memo_gas =
-MAX_TRANSFER_GAS` measures 38.1M gas — 3.8x `Ga`, of which 33.1M is forwarded
-(`accumulate_gas.rs::transfer_out_max_gas_bench_works`). Destinations are user-chosen, so this
-is reachable. The replay loop needs a **cumulative** forwarded-gas budget per digest, not only
-a per-transfer cap — which spec `ed73e50f0c`'s gas gate now provides: it charges each deferred
-transfer's gas against the limit the report declared and skips a report that cannot cover it
-(F-17), instead of letting it run dry after ~90 replays.
-Only Asset Hub digests may carry `TransferOut`, and 345 is the most ~134-B transfers that
-fit the `Wr = 48 KiB` report bound.
-
-NOTE: §5.1's reworked `TransferOut` changes the arithmetic above. A deferred transfer now
-encodes to ~146 B (the memo still dominates) and a plain move to ~15 B, so the per-report
-count is no longer ~345 for every shape. The forwarded-gas conclusion is unchanged — only
-deferred transfers carry gas — but the bound must be re-derived per shape.
-
-## F-14: no error code exists for a sender-side transfer-gas cap
-
-§5.1 moved the transfer gas limit from a replay-time lookup of the destination's
-`min_memo_gas` to a caller-supplied value, and defines six `TransferError` variants. None of
-them covers the PoC's own protective refusal when the requested gas exceeds
-`MAX_TRANSFER_GAS` (D-6, F-13) — the cap that stops one digest's transfers from burning the
-whole accumulate budget. The PoC reports `InsufficientServiceBalance`, which is the closest
-available variant but describes balance rather than gas.
-
-Either `TransferError` needs a variant for a refused gas request, or §5.1 must state that the
-service may not impose such a cap and instead relies on a per-digest cumulative budget
-(F-13). The two findings should be resolved together. Spec `ed73e50f0c`'s gas gate already
-charges each deferred transfer's gas against the limit its report declared (F-17), which is
-that cumulative budget; the per-transfer cap is now redundant.
-
 ## F-17: the §5.1 gas gate runs on provisional costs
 
 Spec `ed73e50f0c` skips a report whose base cost plus content-derived cost exceeds the gas the
@@ -325,13 +298,15 @@ citation in the repo resolvable — to a live `## D-n:`/`## F-n:` heading above 
 | D-3 | state-balance accounting uses the exact §6.1 formulas, with `Balance = u64` | issue missing |
 | D-6 | `TransferOut` replay looks up the destination's `min_memo_gas`, capped by `MAX_TRANSFER_GAS` (F-13) | issue missing |
 | D-7 | `assign_core` queues shorter than 80 are cycle-repeated | issue missing |
-| D-9 | transfer-gas cap — orphan: never a DECISIONS.md heading in this repo's history; folded into D-6 (`service/src/constants.rs:43` cites "D-6/D-9") | issue missing |
+| D-9 | transfer-gas cap — orphan: never a DECISIONS.md heading in this repo's history; folded into D-6, and cited nowhere since the cap was dropped | issue missing |
 | F-4 | the queued-transfer count needs a counter in state | issue missing |
 | F-5 | §6.1 sizing tables need re-deriving for the real wire types | issue missing |
 | F-6 | `UpgradeService` verifies actual preimage availability, not registry membership | issue missing |
 | F-2 | §4.3's `import_segments() -> Vec<SegmentMeta>` has no host-call backing — **accepted upstream**: spec `931846282d` drops it from the §4.3 table | [#11883](https://github.com/paritytech/polkadot-sdk/pull/11883) |
 | F-3 | no error codes for oversized `set_head` / oversized `assign_core` queues (retired; cited nowhere today) | issue missing |
 | F-7 | no log events for failed JAM `assign` / `designate` host calls (retired; cited nowhere today) | issue missing |
+| F-13 | forwarded transfer gas multiplied past `Ga` despite the per-transfer cap (331 transfers at `Ga/100` measure 38.1M) — **resolved upstream**: spec `ed73e50f0c`'s gas gate charges it to the report, and spec `148fbfb7856` has no per-transfer cap | [#11883](https://github.com/paritytech/polkadot-sdk/pull/11883) |
+| F-14 | no error code for a sender-side transfer-gas cap — **accepted upstream**: spec `148fbfb7856`'s `transfer_out` has no such cap, so the PoC dropped `MAX_TRANSFER_GAS` | [#11883](https://github.com/paritytech/polkadot-sdk/pull/11883) |
 | F-15 | a failed `assign` left no log, unlike `designate` — **accepted upstream**: spec `6b8f7292e0` adds `CoreNotAssignable` | [#11883](https://github.com/paritytech/polkadot-sdk/pull/11883) |
 
 Notes: F-2, F-3, and F-7 were retired in the same pass and are cited nowhere in the tree (included as

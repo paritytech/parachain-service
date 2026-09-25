@@ -147,7 +147,7 @@ These arrivals queue records and can charge Asset Hub's used state balance;
 they do not directly top up a parachain's state allowance. Queue contents,
 ordering, endpoints, count, and orphan storage keys are compared. Deterministic
 `balances` fixtures additionally cross the bucket capacity and reservation limit.
-The host service balance itself is not modeled by this replay profile.
+The model's ghost JAM balances are not compared.
 
 The streaming initializer is `replayInit` (model `init` plus an empty operand
 list); `replayStep` clears operands on block/provision actions. CLI parity tests

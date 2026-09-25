@@ -99,7 +99,7 @@ pub fn apply(
 			}
 		},
 
-		UpwardMessage::TransferOut(args) => transfers::transfer_out(args, logs),
+		UpwardMessage::TransferOut(args) => transfers::transfer_out(service_id, args, logs),
 
 		UpwardMessage::AssignCore { core, queue, new_assigner, jam_slot } => {
 			assigns::schedule(now, service_id, core, queue, new_assigner, jam_slot, logs)

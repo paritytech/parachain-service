@@ -31,10 +31,9 @@ std = [
 [lints]
 workspace = true
 
+# A PVF is entered by name: the service resolves `jam_validate_block` and runs it as a nested
+# PVM, so it needs a `generic` blob, the raw program with its export table.
 [package.metadata.jam]
 type = "generic"
-cargo-args = ["--no-default-features"]
-rustflags = ["--cfg", "substrate_runtime"]
-# A PVF is entered by name: the service resolves `jam_validate_block` and runs it as a nested
-# PVM, so it needs the export table and the raw program rather than a JAM container.
-keep-symbols = true
+default-cargo-args = ["--no-default-features"]
+default-rustflags = ["--cfg", "substrate_runtime"]

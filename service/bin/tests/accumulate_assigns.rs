@@ -203,6 +203,27 @@ fn malformed_queue_is_noop_works() {
 }
 
 #[test]
+fn invalid_core_is_noop_works() {
+	// Refine rejects a core at or above the core count (§3.3); if a crafted
+	// digest carries one, it is neither applied nor cached, due or not.
+	let core = jam_types::core_count();
+	for jam_slot in [NOW, NOW + 10] {
+		let msg =
+			UpwardMessage::AssignCore { core, queue: vec![HASH_A], new_assigner: None, jam_slot };
+		let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
+
+		let (_, storage, mutations) = accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
+
+		assert!(mutations.auths.is_empty());
+		let cached: Option<PendingAssign> =
+			get_state(&storage, &storage_key(Tag::PendingAssigns, &core));
+		assert_eq!(cached, None, "jam_slot {jam_slot}");
+		assert!(dirty_cores(&storage).is_empty(), "jam_slot {jam_slot}");
+		assert!(ct_accumulate_logs(&storage).is_empty());
+	}
+}
+
+#[test]
 fn non_tiling_queue_rotates_works() {
 	let queue: Vec<AuthorizerHash> = (0..11).map(|i| [i; 32]).collect();
 	let msg = assign_msg(queue.clone(), NOW);

@@ -4,7 +4,7 @@ mod common;
 
 use common::*;
 use parachain_service::{
-	constants::{MAX_INCOMING_TRANSFERS, MAX_TRANSFER_GAS},
+	constants::MAX_INCOMING_TRANSFERS,
 	state::{
 		log::{AccumulateLog, LogEntry, TransferError},
 		storage_key,
@@ -13,7 +13,10 @@ use parachain_service::{
 	},
 	state_balance::{excess_transfer_footprint, INCOMING_TRANSFER_ENTRY_FOOTPRINT},
 };
-use parachain_service_core::{types::ASSET_HUB_PARA_ID, upward_message::UpwardMessage};
+use parachain_service_core::{
+	types::ASSET_HUB_PARA_ID,
+	upward_message::{TransferOutArgs, UpwardMessage},
+};
 
 const NOW: u32 = 100;
 const AH_CODE: &[u8] = b"ah-code";
@@ -363,25 +366,119 @@ fn transfer_out_unknown_dest_errors() {
 	);
 }
 
-#[test]
-fn transfer_out_gas_over_cap_errors() {
-	// D-6: forwarded gas above MAX_TRANSFER_GAS is never committed, since
-	// `Ω_T` charges it to this service's own accumulate meter.
+/// A deferred 100 from this service's regular balance to service 42.
+fn pay_42() -> TransferOutArgs {
+	TransferOutArgs {
+		source: None,
+		dest: 42,
+		amount: 100.into(),
+		id: 1.into(),
+		source_supervisor_balance: false,
+		dest_supervisor_balance: false,
+		deferred: Some(([3; 128], 500)),
+	}
+}
+
+/// Replay one Asset Hub `TransferOut`, with service 42 asking for 500 gas. Returns the
+/// accumulate log and the gas of each transfer JAM was asked to make.
+fn replay_transfer_out(args: TransferOutArgs) -> (Vec<AccumulateLog>, Vec<u64>) {
 	let storage = fresh_storage(|s| {
 		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
-		seed_service(s, 42, MAX_TRANSFER_GAS + 1);
+		seed_service(s, 42, 500);
 	});
-	let msg = transfer_out_msg(42, 12345, 4, Some(([3; 128], MAX_TRANSFER_GAS + 1)));
+	let msg = UpwardMessage::TransferOut(args);
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
 
 	let (_, storage, mutations) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
-	assert!(mutations.transfers.is_empty());
-	assert_eq!(
-		ah_accumulate_logs(&storage),
-		vec![AccumulateLog::TransferFailed {
-			id: 4.into(),
-			error: TransferError::InsufficientServiceBalance
-		}]
-	);
+	(ah_accumulate_logs(&storage), mutations.transfers.iter().map(|t| t.gas_limit).collect())
+}
+
+#[test]
+fn transfer_out_refusal_order_errors() {
+	use TransferError::*;
+	// §5.1, in JAM's order. The host has no supervision and no supervisor balances, so
+	// this service controls only itself and its supervisor balance is always empty.
+	let unknown = 998;
+	let cases = [
+		(TransferOutArgs { source: Some(999), dest: unknown, ..pay_42() }, UnknownSource),
+		(TransferOutArgs { source: Some(42), dest: unknown, ..pay_42() }, UnknownDestination),
+		(TransferOutArgs { dest: unknown, deferred: None, ..pay_42() }, UnknownDestination),
+		(
+			TransferOutArgs { dest: unknown, dest_supervisor_balance: true, ..pay_42() },
+			UnknownDestination,
+		),
+		(TransferOutArgs { source: Some(42), ..pay_42() }, SourceNotSupervised),
+		(TransferOutArgs { deferred: None, ..pay_42() }, DestinationNotSupervised),
+		(TransferOutArgs { dest: SVC, deferred: None, ..pay_42() }, DestinationNotSupervised),
+		(
+			TransferOutArgs {
+				source_supervisor_balance: true,
+				deferred: Some(([3; 128], 499)),
+				..pay_42()
+			},
+			GasBelowDestinationMinimum,
+		),
+		(
+			TransferOutArgs { source_supervisor_balance: true, ..pay_42() },
+			InsufficientServiceBalance,
+		),
+		(
+			TransferOutArgs {
+				dest: SVC,
+				source_supervisor_balance: true,
+				deferred: None,
+				..pay_42()
+			},
+			InsufficientServiceBalance,
+		),
+		// Crediting a supervisor balance, which the host cannot do.
+		(TransferOutArgs { dest_supervisor_balance: true, ..pay_42() }, DestinationNotSupervised),
+		(
+			TransferOutArgs {
+				dest: SVC,
+				dest_supervisor_balance: true,
+				deferred: None,
+				..pay_42()
+			},
+			DestinationNotSupervised,
+		),
+	];
+
+	let mismatches: Vec<_> = cases
+		.into_iter()
+		.filter_map(|(args, error)| {
+			let got = replay_transfer_out(args.clone());
+			let want = (vec![AccumulateLog::TransferFailed { id: 1.into(), error }], vec![]);
+			(got != want).then_some((args, got))
+		})
+		.collect();
+	assert!(mismatches.is_empty(), "{mismatches:#?}");
+}
+
+#[test]
+fn transfer_out_named_self_source_works() {
+	// §5.1: naming this service as the source is naming none.
+	let args = TransferOutArgs { source: Some(SVC), ..pay_42() };
+	assert_eq!(replay_transfer_out(args), (vec![], vec![500]));
+}
+
+#[test]
+fn transfer_out_high_gas_works() {
+	// §5.1 caps no forwarded gas; the report pays for it (F-17).
+	let args = TransferOutArgs { deferred: Some(([3; 128], 1_000_000)), ..pay_42() };
+	assert_eq!(replay_transfer_out(args), (vec![], vec![1_000_000]));
+}
+
+#[test]
+fn transfer_out_empty_self_move_works() {
+	// Moving nothing between this service's two balances touches neither.
+	let args = TransferOutArgs {
+		dest: SVC,
+		amount: 0.into(),
+		source_supervisor_balance: true,
+		deferred: None,
+		..pay_42()
+	};
+	assert_eq!(replay_transfer_out(args), (vec![], vec![]));
 }

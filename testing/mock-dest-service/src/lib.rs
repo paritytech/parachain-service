@@ -1,10 +1,10 @@
 //! A mock JAM transfer-destination service for gas benchmarks.
 //!
 //! Stands in for a legitimate foreign destination of a `TransferOut` (e.g. an
-//! exchange deposit service) to size `MAX_TRANSFER_GAS`: its memo handler does
-//! the realistic minimum of bookkeeping — index the transfer in a forward and
-//! a backward lookup map and bump a received-counter. Not part of the
-//! parachain service; only embedded by `parachain-service-bin`'s `test-utils`.
+//! exchange deposit service): its memo handler does the realistic minimum of
+//! bookkeeping — index the transfer in a forward and a backward lookup map and
+//! bump a received-counter. Not part of the parachain service; only embedded by
+//! `parachain-service-bin`'s `test-utils`.
 
 #![cfg_attr(any(target_arch = "riscv32", target_arch = "riscv64"), no_std)]
 

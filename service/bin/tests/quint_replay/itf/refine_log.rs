@@ -31,6 +31,7 @@ pub fn refine_log(value: &Value) -> Result<RefineLog, String> {
 		"RestrictedHostFunction" => Ok(RefineLog::RestrictedHostFunction),
 		"RefineOutputTooLarge" => Ok(RefineLog::RefineOutputTooLarge),
 		"MissingHeadDeclaration" => Ok(RefineLog::MissingHeadDeclaration),
+		"InvalidCoreIndex" => Ok(RefineLog::InvalidCoreIndex),
 		// `is_authorized` runs before Refine and rejects an undecodable config
 		// (`UndecodableAuthConfig`) and a config naming a different number of
 		// paras than items (`InvalidWorkItemCount`), so these can never reach
@@ -76,6 +77,7 @@ mod tests {
 			("RestrictedHostFunction", RefineLog::RestrictedHostFunction),
 			("RefineOutputTooLarge", RefineLog::RefineOutputTooLarge),
 			("MissingHeadDeclaration", RefineLog::MissingHeadDeclaration),
+			("InvalidCoreIndex", RefineLog::InvalidCoreIndex),
 		] {
 			let value = json!({ "tag": tag, "value": { "#tup": [] } });
 			assert_eq!(refine_log(&value).unwrap(), expected, "{tag}");

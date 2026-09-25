@@ -769,8 +769,11 @@ dependencies = [
  "clap",
  "jam-codec",
  "jam-program-blob-common",
+ "parking_lot",
  "polkavm-linker",
+ "serde",
  "serde_json",
+ "tempfile",
  "toml",
 ]
 

@@ -116,7 +116,7 @@ pub fn create(args: CreateServiceArgs, logs: &mut Vec<AccumulateLog>) {
 	// defines no error for one. Refusing is the conservative reading: reusing
 	// `CannotAfford` at least tells the caller the funding did not happen.
 	// FIXME: the design needs an error for an inexpressible balance selector
-	// (same gap as F-14).
+	// (D-13).
 	if source_supervisor_balance || new_supervisor_balance {
 		logs.push(AccumulateLog::ServiceCreation {
 			id,

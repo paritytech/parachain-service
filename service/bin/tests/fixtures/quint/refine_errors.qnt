@@ -44,6 +44,9 @@ module refine_errors {
   run missing_head_declaration_works =
     init.then(logError(MissingHeadDeclaration, 7)).then(applyWork(WorkErr, 7))
 
+  run invalid_core_index_works =
+    init.then(logError(InvalidCoreIndex, 7)).then(applyWork(WorkErr, 7))
+
   run opaque_0_auth_0_works =
     init.then(logError(Opaque(0), 0)).then(applyWork(WorkErr, 7))
 

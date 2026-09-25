@@ -99,6 +99,8 @@ pub enum RefineLog {
 	/// `set_head` was called with head data beyond the 4 KiB `HeadData` bound.
 	/// See §4.3.
 	HeadDataTooLarge,
+	/// An `AssignCore` named a core at or above `C_corecount`. See §3.3.
+	InvalidCoreIndex,
 }
 
 /// The maximum byte length of a `report_error` payload. Spec §4.3.

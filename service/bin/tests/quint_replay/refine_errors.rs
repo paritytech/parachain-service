@@ -46,6 +46,14 @@ fn missing_head_declaration_works() {
 }
 
 #[test]
+fn invalid_core_index_works() {
+	replay::trace(include_str!(
+		"../fixtures/quint/refine_errors/invalid_core_index_works.itf.json"
+	))
+	.expect("the refine error and its trace should be stored");
+}
+
+#[test]
 fn opaque_payload_and_auth_trace_boundaries_works() {
 	for fixture in [
 		include_str!("../fixtures/quint/refine_errors/opaque_0_auth_0_works.itf.json"),
