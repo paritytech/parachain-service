@@ -152,14 +152,16 @@ pub enum AccumulateLog {
 	/// A `set_validator_keys` chunk would overflow `staged_validator_keys`;
 	/// the append is rejected. Spec §5.3.
 	StagedValidatorKeysOverflow,
-	/// `parachain_service_upgrade` rejected: new code's preimage missing. Spec §5.4.
+	/// An `UpgradeService` whose code Asset Hub does not reference, or that is
+	/// not available for lookup. Spec §5.4.
 	ServiceUpgradePreimageMissing { code_hash: Hash },
 	/// An `Announcement` whose code is not usable (§5.2).
 	CodeUpgradeNotAvailable { hash: Hash, len: Compact<u32> },
 	/// An `Apply` that does not match the standing announcement (§5.2).
 	CodeUpgradeNotAnnounced { hash: Hash, len: Compact<u32> },
-	/// A `Forget` naming the para's active or announced validation code (§5.2).
-	CanNotForgetValidationCode { hash: Hash, len: Compact<u32> },
+	/// A `Forget` naming code in use: the para's active or announced validation
+	/// code (§5.2), or for Asset Hub the Parachain Service's active code (§5.4).
+	CanNotRemoveCode { hash: Hash, len: Compact<u32> },
 	/// JAM rejected an `assign` because this service is no longer the core's
 	/// assigner (§7.1).
 	CoreNotAssignable { core: CoreIndex },

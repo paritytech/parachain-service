@@ -42,7 +42,7 @@ module refine_errors {
     init.then(logError(RefineOutputTooLarge, 7)).then(applyWork(WorkErr, 7))
 
   run missing_head_declaration_works =
-    init.then(logError(MissingHeadDeclaration, 7)).then(applyWork(WorkErr, 7))
+    init.then(logError(InvalidHeadDeclaration, 7)).then(applyWork(WorkErr, 7))
 
   run invalid_core_index_works =
     init.then(logError(InvalidCoreIndex, 7)).then(applyWork(WorkErr, 7))
@@ -96,22 +96,22 @@ module refine_errors {
     init.then(logError(RefineOutputTooLarge, 0)).then(logError(RefineOutputTooLarge, 255)).then(logError(RefineOutputTooLarge, 256)).then(logError(RefineOutputTooLarge, 257))
 
   run missing_head_declaration_unregistered_works =
-    init.then(applyWork(WorkOk(Err({ paraId: MkParaId(999), error: MissingHeadDeclaration })), 300))
+    init.then(applyWork(WorkOk(Err({ paraId: MkParaId(999), error: InvalidHeadDeclaration })), 300))
 
   run missing_head_declaration_auth_trace_boundaries_works =
-    init.then(logError(MissingHeadDeclaration, 0)).then(logError(MissingHeadDeclaration, 255)).then(logError(MissingHeadDeclaration, 256)).then(logError(MissingHeadDeclaration, 257))
+    init.then(logError(InvalidHeadDeclaration, 0)).then(logError(InvalidHeadDeclaration, 255)).then(logError(InvalidHeadDeclaration, 256)).then(logError(InvalidHeadDeclaration, 257))
 
   run opaque_unregistered_works =
     init.then(applyWork(WorkOk(Err({ paraId: MkParaId(999), error: Opaque(1024) })), 300))
 
   run repeated_error_works =
-    init.then(logError(MissingHeadDeclaration, 7)).then(logError(MissingHeadDeclaration, 7)).then(applyWork(WorkErr, 300))
+    init.then(logError(InvalidHeadDeclaration, 7)).then(logError(InvalidHeadDeclaration, 7)).then(applyWork(WorkErr, 300))
 
   run mixed_errors_preserve_log_works =
-    init.then(logError(InvalidCodeHash, 7)).then(logError(TooManyValidatorKeys, 7)).then(logError(TooManyUpwardMessages, 7)).then(logError(RestrictedHostFunction, 7)).then(logError(RefineOutputTooLarge, 7)).then(logError(MissingHeadDeclaration, 7)).then(logError(Opaque(1024), 7)).then(applyWork(WorkErr, 0))
+    init.then(logError(InvalidCodeHash, 7)).then(logError(TooManyValidatorKeys, 7)).then(logError(TooManyUpwardMessages, 7)).then(logError(RestrictedHostFunction, 7)).then(logError(RefineOutputTooLarge, 7)).then(logError(InvalidHeadDeclaration, 7)).then(logError(Opaque(1024), 7)).then(applyWork(WorkErr, 0))
 
   run unregistered_error_preserves_other_log_works =
-    init.then(logError(Opaque(42), 7)).then(applyWork(WorkOk(Err({ paraId: MkParaId(999), error: MissingHeadDeclaration })), 300))
+    init.then(logError(Opaque(42), 7)).then(applyWork(WorkOk(Err({ paraId: MkParaId(999), error: InvalidHeadDeclaration })), 300))
 
   run work_error_empty_log_works =
     init.then(applyWork(WorkErr, 0)).then(applyWork(WorkErr, 300))

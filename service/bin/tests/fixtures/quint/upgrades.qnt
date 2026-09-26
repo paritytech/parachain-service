@@ -242,7 +242,7 @@ module upgrades {
         isValidationCodeOf(svc.paraInfo(CoretimeParaId), b.asPreimage(), FixedCodeLen),
         announcedHashOf(svc.paraInfo(CoretimeParaId)) == Some(b),
         hasLog(svc, CoretimeParaId,
-          CanNotForgetValidationCode({ hash: b.asPreimage(), len: FixedCodeLen }))
+          CanNotRemoveCode({ hash: b.asPreimage(), len: FixedCodeLen }))
       }))
       // Supersede with C, which displaces B; only then does the forget take effect.
       .then(applyHappyPath(CoretimeParaId, codeA, List(

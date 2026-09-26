@@ -3,7 +3,7 @@
 Places where the Rust implementation and the
 [Quint spec](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/) disagree on
 observable behaviour or on a derived constant. Found by reading both sides and by trace replay;
-checked against spec pin `73d4d9eb9d8`.
+checked against spec pin `d5208ab8d5c`.
 
 Scope: this file covers **Quint model vs Rust**. Two neighbouring documents cover the
 neighbouring questions, and entries here cross-reference them rather than restating them:
@@ -60,29 +60,14 @@ The two-phase §5.2 lifecycle has no reap and no activation release: `Apply`, a 
 displaced code referenced until the parachain forgets it. No code-upgrade path calls
 `removeReferencer` any more, so there is no `ForgetAgainAt` left to drop.
 
-## M-4: Refine reports a different `RefineLog` variant for the same PVF
+## M-4: Refine reported a different `RefineLog` variant for the same PVF — resolved
 
-**Neither is wrong; the two orderings need reconciling.**
-
-`quint/refine.qnt:245-275` scans the *finished* upward-message list in a fixed priority:
-message count → `set_validator_keys` repetition and chunk size → assign queues → assign core
-indices → parachain restrictions → 40 KiB message budget → output size → head declarations. Rust has no such scan —
-the checks live in the host-call dispatcher and abort at the first offending call in **emission
-order** (`ExecutorState::push` in `service/src/pvf/executor.rs`).
-
-A non-Coretime para emitting `[TransferOut, AssignCore { queue: [] }]` logs
-`InvalidAuthorizerQueue` in the model (queues are checked before restrictions) and
-`RestrictedHostFunction` in Rust (`TransferOut` aborts first). Likewise a 1025-message list
-whose first entry is restricted: `TooManyUpwardMessages` in the model,
-`RestrictedHostFunction` in Rust.
-
-Accept/reject is identical in every case — only the variant stored in `parachain_log` differs.
-Emission order is the more useful diagnostic (it names the call the PVF actually got wrong) and
-is the only order a streaming dispatcher can produce without buffering, so the model should
-probably follow Rust here.
-
-**Spec feedback**: §4.1/§4.3 should state whether the failure reason is the first violation in
-emission order or the highest-priority violation in the whole list.
+The model used to scan the finished message list in a fixed priority, while Rust aborts at the
+first failing host call. Since Quint `d5208ab8d5c` the model does the same: it applies the
+validation code's host calls in order and the first one breaking a rule aborts Refine with that
+rule's error. Each message is checked for its restriction, then its own rules, then the 40 KiB
+budget, then the message count, as in `ExecutorState::push`. Pinned by `refine.rs`
+`first_failing_call_errors`.
 
 ## M-5: `RefineOutputTooLarge` threshold — resolved
 
@@ -92,12 +77,12 @@ combined-output check as a backstop.
 
 ## M-6: `UpgradeService` ignored the declared `len` — resolved
 
-`quint/accumulate.qnt:315` gates the service self-upgrade on the request status of the
+`quint/accumulate.qnt:312-313` gates the service self-upgrade on the request status of the
 `(hash, len)` pair (`preimageAvailable`: `Provided` or `Rerequested`). Rust used JAM's
 `lookup`, which is keyed by hash alone and still finds a forgotten preimage until it is
 expunged, so it upgraded on a wrong `len` and on forgotten code. It now asks JAM's
 `query(hash, len)` and accepts the same two states (`accumulate_upgrades.rs`,
-`service_upgrade_*`).
+`service_upgrade_*`). Since Quint `baad02abcf8` both also require Asset Hub to reference the code.
 
 ## M-7: `is_valid_val_count` was dead code — resolved
 
@@ -139,7 +124,8 @@ since Refine rejects them first (Quint `6b8f7292e0`).
 
 The replay harness ([QUINT_REPLAY.md](./QUINT_REPLAY.md)) replays 73 deterministic fixtures and
 streaming fuzz campaigns, comparing storage, logs, head commitments and JAM effects after every
-transition. It covers Accumulate only: Refine divergences (M-4) are still found by reading.
+transition. It covers Accumulate only: Rust Refine is checked against the model by reading and by
+`refine.rs`.
 
 None of the 32 invariants in `quint/invariants.qnt` is asserted on the Rust side. Several are
 cheap to port against real storage and would catch derived-constant drift of the kind that

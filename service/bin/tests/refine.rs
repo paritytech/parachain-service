@@ -340,6 +340,33 @@ fn valid_authorizer_queue_works() {
 }
 
 #[test]
+fn first_failing_call_errors() {
+	// §4.1: the first host call that breaks a rule aborts Refine with that rule's error;
+	// within one message the restriction comes before the message's own rules.
+	let empty_assign =
+		MockAction::AssignCore { core: 0, queue: vec![], assigner: None, jam_slot: 100 };
+	let complaint = MockAction::ReportError(b"complaint".to_vec());
+	let opaque = RefineLog::Opaque(b"complaint".to_vec().try_into().unwrap());
+	let one_key = MockAction::SetValidatorKeys { keys: vec![0; 336], is_last: false };
+	let too_many_keys = MockAction::SetValidatorKeys { keys: vec![0; 31 * 336], is_last: true };
+	for (para, actions, expected) in [
+		(ParaId(0), vec![empty_assign.clone()], RefineLog::RestrictedHostFunction),
+		(
+			ParaId(0),
+			vec![empty_assign.clone(), complaint.clone()],
+			RefineLog::RestrictedHostFunction,
+		),
+		(ParaId(0), vec![complaint, empty_assign], opaque),
+		(ASSET_HUB_PARA_ID, vec![one_key, too_many_keys], RefineLog::TooManyValidatorKeys),
+	] {
+		let action = Config::Mock(actions);
+		let parent = genesis(action.clone());
+		let outcome = run_block(action, &parent, 1, vec![para]);
+		assert_eq!(expect_log(outcome), expected);
+	}
+}
+
+#[test]
 fn repeated_validator_keys_errors() {
 	let key = vec![0; 336];
 	let action = Config::Mock(vec![
@@ -395,7 +422,7 @@ fn skip_head_declarations_errors() {
 
 	let outcome = run_block(action, &parent, 1, vec![ParaId(0)]);
 
-	assert_eq!(expect_log(outcome), RefineLog::MissingHeadDeclaration);
+	assert_eq!(expect_log(outcome), RefineLog::InvalidHeadDeclaration);
 }
 
 #[test]
@@ -405,7 +432,7 @@ fn duplicate_set_head_errors() {
 
 	let outcome = run_block(action, &parent, 1, vec![ParaId(0)]);
 
-	assert_eq!(expect_log(outcome), RefineLog::MissingHeadDeclaration);
+	assert_eq!(expect_log(outcome), RefineLog::InvalidHeadDeclaration);
 }
 
 // Empty WPs are invalid per GP, hence panic.

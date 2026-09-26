@@ -77,7 +77,7 @@ module blocks {
 
   run empty_blocks_between_errors_works =
     init.then(emptyBlock).then(expectThat(svc == prevSvc))
-      .then(logError(MissingHeadDeclaration, 7))
+      .then(logError(InvalidHeadDeclaration, 7))
       .then(emptyBlock).then(expectThat(svc == prevSvc))
       .then(emptyBlock).then(expectThat(svc == prevSvc))
       .then(logError(Opaque(42), 255))
@@ -91,7 +91,7 @@ module blocks {
       .then(emptyBlock).then(expectThat(svc == prevSvc))
 
   run empty_blocks_between_error_and_candidate_works =
-    init.then(logError(MissingHeadDeclaration, 7))
+    init.then(logError(InvalidHeadDeclaration, 7))
       .then(emptyBlock).then(expectThat(svc == prevSvc))
       .then(candidate).then(expectThat(svc.paraInfo(CoretimeParaId).headData == 1))
       .then(emptyBlock).then(expectThat(svc == prevSvc))

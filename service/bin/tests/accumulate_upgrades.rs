@@ -9,12 +9,16 @@ use common::*;
 use jam_std_common::hash_raw;
 use jam_types::CodeHash;
 use parachain_service::{
-	state::log::{AccumulateLog, InsufficientBalanceReason, LogEntry},
+	state::{
+		log::{AccumulateLog, InsufficientBalanceReason, LogEntry},
+		preimage_registry::PreimageEntry,
+		storage_key, Tag,
+	},
 	state_balance::preimage_footprint,
 };
 use parachain_service_bin::mock::provide_preimage;
 use parachain_service_core::{
-	types::{ParaId, ASSET_HUB_PARA_ID},
+	types::{ParaId, ASSET_HUB_PARA_ID, CORETIME_PARA_ID},
 	upward_message::{CodeUpgradePhase, Target, UpwardMessage},
 };
 
@@ -325,10 +329,7 @@ fn forget_announced_refused_then_supersede_works() {
 	assert_eq!(info.used_state_balance, used_announced);
 	assert_eq!(
 		accumulate_logs(&storage, PARA),
-		vec![AccumulateLog::CanNotForgetValidationCode {
-			hash: new_ref.hash.0,
-			len: new_ref.len.into()
-		}]
+		vec![AccumulateLog::CanNotRemoveCode { hash: new_ref.hash.0, len: new_ref.len.into() }]
 	);
 
 	// Supersede with THIRD, displacing NEW; the forget now releases it (two-step,
@@ -453,6 +454,7 @@ fn rejected_candidate_cannot_use_privileged_calls_works() {
 	let storage = fresh_storage(|s| {
 		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", b"ah-code", RICH);
 		parachain_service_bin::mock::provide_preimage(s, &new_service_code);
+		reference(s, ASSET_HUB_PARA_ID, &new_service_code);
 	});
 	let new_code_hash = jam_std_common::hash_raw(&new_service_code);
 	let msg = UpwardMessage::UpgradeService {
@@ -477,11 +479,13 @@ fn rejected_candidate_cannot_use_privileged_calls_works() {
 
 #[test]
 fn service_upgrade_works() {
-	// §5.4: with the preimage present, the upgrade is forwarded to JAM.
+	// §5.4: with the preimage referenced by Asset Hub and present, the upgrade is
+	// forwarded to JAM.
 	let new_service_code = b"the-new-parachain-service-code".to_vec();
 	let storage = fresh_storage(|s| {
 		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", b"ah-code", RICH);
 		parachain_service_bin::mock::provide_preimage(s, &new_service_code);
+		reference(s, ASSET_HUB_PARA_ID, &new_service_code);
 	});
 	let code_hash = jam_std_common::hash_raw(&new_service_code);
 	let msg = UpwardMessage::UpgradeService {
@@ -499,11 +503,23 @@ fn service_upgrade_works() {
 
 const NEW_SERVICE_CODE: &[u8] = b"the-new-parachain-service-code";
 
-/// Asset Hub with `NEW_SERVICE_CODE` provided, then `prepare` applied to the storage.
-fn upgrade_storage(prepare: impl FnOnce(&mut jam_node::vm::Storage)) -> jam_node::vm::Storage {
+/// Record `para` as the only referencer of `code` in the preimage registry.
+fn reference(storage: &mut jam_node::vm::Storage, para: ParaId, code: &[u8]) {
+	let code = code_ref(code);
+	let entry = PreimageEntry { referencers: [para].into_iter().collect() };
+	set_state(storage, &storage_key(Tag::PreimageRegistry, &(code.hash.0, code.len)), &entry);
+}
+
+/// Asset Hub with `NEW_SERVICE_CODE` provided and referenced by `referencer`, then
+/// `prepare` applied to the storage.
+fn upgrade_storage(
+	referencer: ParaId,
+	prepare: impl FnOnce(&mut jam_node::vm::Storage),
+) -> jam_node::vm::Storage {
 	fresh_storage(|s| {
 		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", b"ah-code", RICH);
 		provide_preimage(s, NEW_SERVICE_CODE);
+		reference(s, referencer, NEW_SERVICE_CODE);
 		prepare(s);
 		s.commit();
 	})
@@ -535,14 +551,24 @@ fn preimage_missing() -> Vec<AccumulateLog> {
 fn service_upgrade_wrong_len_errors() {
 	// §5.4: a preimage is keyed by `(hash, len)`, so a wrong `len` names none.
 	let len = NEW_SERVICE_CODE.len() as u32;
-	assert_eq!(upgrade_service(upgrade_storage(|_| {}), len + 1), (preimage_missing(), false));
+	let storage = upgrade_storage(ASSET_HUB_PARA_ID, |_| {});
+	assert_eq!(upgrade_service(storage, len + 1), (preimage_missing(), false));
+}
+
+#[test]
+fn service_upgrade_unreferenced_errors() {
+	// §5.4: Asset Hub must reference the new code, or the para that does could
+	// forget it and expunge the running code.
+	let len = NEW_SERVICE_CODE.len() as u32;
+	let storage = upgrade_storage(CORETIME_PARA_ID, |_| {});
+	assert_eq!(upgrade_service(storage, len), (preimage_missing(), false));
 }
 
 #[test]
 fn service_upgrade_unrequested_errors() {
 	// §5.4: a forgotten preimage stays stored until expunged, but is not available.
 	let len = NEW_SERVICE_CODE.len() as u32;
-	let storage = upgrade_storage(|s| {
+	let storage = upgrade_storage(ASSET_HUB_PARA_ID, |s| {
 		s.forget(1, SVC, hash_raw(NEW_SERVICE_CODE), len).expect("provided preimage");
 	});
 	assert_eq!(upgrade_service(storage, len), (preimage_missing(), false));
@@ -552,7 +578,7 @@ fn service_upgrade_unrequested_errors() {
 fn service_upgrade_rerequested_works() {
 	// §5.4: soliciting a forgotten preimage again makes it available again.
 	let len = NEW_SERVICE_CODE.len() as u32;
-	let storage = upgrade_storage(|s| {
+	let storage = upgrade_storage(ASSET_HUB_PARA_ID, |s| {
 		let hash = hash_raw(NEW_SERVICE_CODE);
 		s.forget(1, SVC, hash, len).expect("provided preimage");
 		s.solicit(2, SVC, hash, len).expect("unrequested preimage");

@@ -141,7 +141,7 @@ impl ExecutorState {
 	pub fn finish(self) -> Result<(Hash, HeadData, UpwardMessages), RefineLog> {
 		match (self.parent_head_hash, self.head_data) {
 			(Some(parent), Some(head)) => Ok((parent, head, self.umps)),
-			_ => Err(RefineLog::MissingHeadDeclaration),
+			_ => Err(RefineLog::InvalidHeadDeclaration),
 		}
 	}
 
@@ -264,13 +264,13 @@ impl ExecutorState {
 				// Mandatory exactly once; a second call makes the invocation
 				// invalid, same as never calling it (§4.2).
 				if self.parent_head_hash.is_some() {
-					return Err(RefineLog::MissingHeadDeclaration);
+					return Err(RefineLog::InvalidHeadDeclaration);
 				}
 				self.parent_head_hash = Some(peek_hash(handle, regs[A0]));
 			},
 			HostCall::SetHead => {
 				if self.head_data.is_some() {
-					return Err(RefineLog::MissingHeadDeclaration);
+					return Err(RefineLog::InvalidHeadDeclaration);
 				}
 				let bytes = peek_bytes(handle, regs[A0], regs[A1]);
 				// §4.3: an oversized head fails this digest, not the whole

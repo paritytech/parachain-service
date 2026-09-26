@@ -75,7 +75,7 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 		"CoreNotAssignable" => Ok(AccumulateLog::CoreNotAssignable {
 			core: bounded_integer(field(value, "core")?, "assignment core")?,
 		}),
-		"CodeUpgradeNotAvailable" | "CodeUpgradeNotAnnounced" | "CanNotForgetValidationCode" => {
+		"CodeUpgradeNotAvailable" | "CodeUpgradeNotAnnounced" | "CanNotRemoveCode" => {
 			let len = u32::try_from(integer(field(value, "len")?)?)
 				.map_err(|_| format!("{tag} length out of range"))?;
 			let hash = codex.hash(integer(field(field(value, "hash")?, "hashBytes")?)?, len)?;
@@ -83,7 +83,7 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 			Ok(match tag {
 				"CodeUpgradeNotAvailable" => AccumulateLog::CodeUpgradeNotAvailable { hash, len },
 				"CodeUpgradeNotAnnounced" => AccumulateLog::CodeUpgradeNotAnnounced { hash, len },
-				_ => AccumulateLog::CanNotForgetValidationCode { hash, len },
+				_ => AccumulateLog::CanNotRemoveCode { hash, len },
 			})
 		},
 		"ForgetAgainAt" => {

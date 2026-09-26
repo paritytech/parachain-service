@@ -26,8 +26,8 @@ module lifecycle_inputs {
     val parent = if (svc.isLive(p)) svc.paraInfo(p).headData else 0
     val pkg: WorkPackage = { authorizedParas: List(p),
       items: List({ validationCode: { hash: { vchBytes: h }, len: FixedCodeLen } }) }
-    val wr = { result: refine(svc, pkg, false, CodeOk, Some(headHash(parent)),
-      HeadDeclared(parent + 1), msgs, now)[0], authTrace: 0 }
+    val calls = List(SetParentHeadHash(headHash(parent)), SetHead(parent + 1)).concat(sends(msgs))
+    val wr = { result: refine(svc, pkg, false, calls, now)[0], authTrace: 0 }
     val out = accumulateBlock(svc, now + gap, jamStagingSet, solicitedSet,
       FixedCodeLen, List(wr), foreignServices)
     all {

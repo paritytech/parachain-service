@@ -101,6 +101,8 @@ off the latest preceding same-para candidate's proposed head. All refine against
 state; Quint decides which results accumulate successfully. Empty blocks are
 sampled independently of work outcomes. Mode 0 selects active-code work; mode 8 selects announced-code work when an
 announcement exists, otherwise active code. Mode 6 still samples arbitrary candidates.
+A reported error or a panic is the PVF's last host call, so a message breaking a rule
+before it decides the outcome instead.
 Selecting whole outcome classes keeps successful candidates reachable frequently.
 Time gaps are at most `MaxLookupAge`, so sampled anchors lie between the valid
 lookback floor and the previous block slot.

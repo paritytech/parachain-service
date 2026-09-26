@@ -56,7 +56,7 @@ Mutation tests check that storage, log, and commitment mismatches are rejected.
   state and are not compared.
 - Accumulate-log decoding supports `ForgetAgainAt`, `StateBalanceUpdateRejected`,
   `TooMuchStateHeld`, `InvalidCodeHashAcc`, `CodeUpgradeNotAvailable`,
-  `CodeUpgradeNotAnnounced`, `CanNotForgetValidationCode`, `CoreNotAssignable`, and
+  `CodeUpgradeNotAnnounced`, `CanNotRemoveCode`, `CoreNotAssignable`, and
   `InsufficientStateBalance` from `FromSolicit` or `FromSetKV`; other events fail explicitly.
 - `Solicit` and `Forget` support explicit parachain targets, including delegated
   calls, and historical fixtures without `Target`. Service targets are rejected

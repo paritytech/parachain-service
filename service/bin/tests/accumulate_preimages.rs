@@ -9,7 +9,7 @@ use parachain_service::{
 	state_balance::preimage_footprint,
 };
 use parachain_service_core::{
-	types::{Hash, ParaId},
+	types::{Hash, ParaId, ValidationCodeRef},
 	upward_message::{CodeUpgradePhase, Target, UpwardMessage},
 };
 
@@ -323,7 +323,7 @@ fn forget_active_code_refused_works() {
 	assert!(registry_entry(&storage, cref).is_some_and(|e| e.referencers.contains(&PARA)));
 	assert_eq!(
 		accumulate_logs(&storage, PARA),
-		vec![AccumulateLog::CanNotForgetValidationCode { hash: cref.hash.0, len: cref.len.into() }]
+		vec![AccumulateLog::CanNotRemoveCode { hash: cref.hash.0, len: cref.len.into() }]
 	);
 }
 
@@ -367,10 +367,7 @@ fn forget_announced_code_refused_works() {
 	assert!(registry_entry(&storage, new_ref).is_some_and(|e| e.referencers.contains(&PARA)));
 	assert_eq!(
 		accumulate_logs(&storage, PARA),
-		vec![AccumulateLog::CanNotForgetValidationCode {
-			hash: new_ref.hash.0,
-			len: new_ref.len.into()
-		}]
+		vec![AccumulateLog::CanNotRemoveCode { hash: new_ref.hash.0, len: new_ref.len.into() }]
 	);
 }
 
@@ -379,55 +376,59 @@ fn forget_running_service_code_works() {
 	use parachain_service::state::{preimage_registry::PreimageEntry, storage_key, Tag};
 	use parachain_service_core::types::{ASSET_HUB_PARA_ID, CORETIME_PARA_ID};
 
-	// Both Asset Hub itself and Coretime acting on its behalf must preserve the code.
+	// §5.4: the running code is refused whether Asset Hub forgets it or Coretime on
+	// its behalf. Its hash at another length is a different preimage and is released.
 	for origin in [ASSET_HUB_PARA_ID, CORETIME_PARA_ID] {
 		let blob = parachain_service_bin::blob();
 		let own = code_ref(&blob);
+		let own_other_len = ValidationCodeRef { len: own.len + 1, ..own };
 		let other = code_ref(BLOB);
 		let storage = fresh_storage(|s| {
 			seed_para(s, ASSET_HUB_PARA_ID, b"genesis", CODE, RICH);
 			if origin != ASSET_HUB_PARA_ID {
 				seed_para(s, origin, b"genesis", b"coretime-code", RICH);
 			}
-			for reference in [own, other] {
+			for reference in [own, own_other_len, other] {
 				set_state(
 					s,
 					&storage_key(Tag::PreimageRegistry, &(reference.hash.0, reference.len)),
 					&PreimageEntry { referencers: [ASSET_HUB_PARA_ID].into_iter().collect() },
 				);
 			}
-			s.solicit(0, SVC, other.hash.0, other.len).unwrap();
+			for reference in [own_other_len, other] {
+				s.solicit(0, SVC, reference.hash.0, reference.len).unwrap();
+			}
 			let mut info = para_info(s, ASSET_HUB_PARA_ID).unwrap();
-			info.used_state_balance += preimage_footprint(own.len) + preimage_footprint(other.len);
+			info.used_state_balance += preimage_footprint(own.len) +
+				preimage_footprint(own_other_len.len) +
+				preimage_footprint(other.len);
 			set_state(s, &storage_key(Tag::Parachains, &ASSET_HUB_PARA_ID), &info);
 		});
 		let before = para_info(&storage, ASSET_HUB_PARA_ID).unwrap().used_state_balance;
+		let forget = |reference: ValidationCodeRef| UpwardMessage::Forget {
+			target: Target::Parachain(ASSET_HUB_PARA_ID),
+			hash: reference.hash.0,
+			len: reference.len.into(),
+		};
 		let digest = ok_digest(
 			origin,
 			if origin == ASSET_HUB_PARA_ID { CODE } else { b"coretime-code" },
 			b"genesis",
 			b"head-1",
-			vec![
-				UpwardMessage::Forget {
-					target: Target::Parachain(ASSET_HUB_PARA_ID),
-					hash: own.hash.0,
-					len: own.len.into(),
-				},
-				UpwardMessage::Forget {
-					target: Target::Parachain(ASSET_HUB_PARA_ID),
-					hash: other.hash.0,
-					len: other.len.into(),
-				},
-			],
+			vec![forget(own), forget(own_other_len), forget(other)],
 			0,
 		);
 		let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 		assert!(registry_entry(&storage, own).unwrap().referencers.contains(&ASSET_HUB_PARA_ID));
+		assert!(registry_entry(&storage, own_other_len).is_none());
 		assert!(registry_entry(&storage, other).is_none());
 		assert_eq!(
 			para_info(&storage, ASSET_HUB_PARA_ID).unwrap().used_state_balance,
-			before - preimage_footprint(other.len)
+			before - preimage_footprint(own_other_len.len) - preimage_footprint(other.len)
 		);
-		assert!(accumulate_logs(&storage, origin).is_empty());
+		assert_eq!(
+			accumulate_logs(&storage, origin),
+			vec![AccumulateLog::CanNotRemoveCode { hash: own.hash.0, len: own.len.into() }]
+		);
 	}
 }

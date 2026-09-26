@@ -30,7 +30,7 @@ pub fn refine_log(value: &Value) -> Result<RefineLog, String> {
 		"TooManyUpwardMessages" => Ok(RefineLog::TooManyUpwardMessages),
 		"RestrictedHostFunction" => Ok(RefineLog::RestrictedHostFunction),
 		"RefineOutputTooLarge" => Ok(RefineLog::RefineOutputTooLarge),
-		"MissingHeadDeclaration" => Ok(RefineLog::MissingHeadDeclaration),
+		"InvalidHeadDeclaration" => Ok(RefineLog::InvalidHeadDeclaration),
 		"InvalidCoreIndex" => Ok(RefineLog::InvalidCoreIndex),
 		// `is_authorized` runs before Refine and rejects an undecodable config
 		// (`UndecodableAuthConfig`) and a config naming a different number of
@@ -76,7 +76,7 @@ mod tests {
 			("TooManyUpwardMessages", RefineLog::TooManyUpwardMessages),
 			("RestrictedHostFunction", RefineLog::RestrictedHostFunction),
 			("RefineOutputTooLarge", RefineLog::RefineOutputTooLarge),
-			("MissingHeadDeclaration", RefineLog::MissingHeadDeclaration),
+			("InvalidHeadDeclaration", RefineLog::InvalidHeadDeclaration),
 			("InvalidCoreIndex", RefineLog::InvalidCoreIndex),
 		] {
 			let value = json!({ "tag": tag, "value": { "#tup": [] } });

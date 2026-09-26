@@ -32,12 +32,12 @@ module fuzz {
       items: List(if (mode == 6) candidate else if (mode == 8) announced
         else activeCodeCandidate(s, para))
     }
-    val result = if (mode == 1) WorkErr else refine(
-      s, pkg, false,
-      if (mode == 2) CodeReportError(42) else if (mode == 4) CodePanic else CodeOk,
-      if (mode == 3) None else Some(headHash(
-        if (mode == 7) StaleParentHead else curHead)),
-      if (mode == 5) HeadUndeclared else HeadDeclared(curHead + 1), msgs, anchor)[0]
+    val parentCalls = if (mode == 3) List()
+      else List(SetParentHeadHash(headHash(if (mode == 7) StaleParentHead else curHead)))
+    val headCalls = if (mode == 5) List() else List(SetHead(curHead + 1))
+    val codeEnd = if (mode == 2) List(ReportError(42)) else if (mode == 4) List(Panic) else List()
+    val calls = parentCalls.concat(headCalls).concat(sends(msgs)).concat(codeEnd)
+    val result = if (mode == 1) WorkErr else refine(s, pkg, false, calls, anchor)[0]
     { result: result, authTrace: auth }
   }
 

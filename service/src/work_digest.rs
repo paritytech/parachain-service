@@ -93,9 +93,9 @@ pub enum RefineLog {
 	/// exceed the Gray Paper's 48 KiB combined result-blob + auth-trace
 	/// budget. See §4.1.
 	RefineOutputTooLarge,
-	/// The PVF exited without calling `set_parent_head_hash` and/or `set_head`
-	/// exactly once. Both head declarations are mandatory. See §4.2.
-	MissingHeadDeclaration,
+	/// The PVF did not call `set_parent_head_hash` or `set_head` exactly once.
+	/// Both head declarations are mandatory. See §4.2.
+	InvalidHeadDeclaration,
 	/// `set_head` was called with head data beyond the 4 KiB `HeadData` bound.
 	/// See §4.3.
 	HeadDataTooLarge,

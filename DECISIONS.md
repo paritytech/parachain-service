@@ -284,6 +284,29 @@ field path, which works only because each consuming site is single-domain.
 **Spec feedback**: domain-tag the hash constructors, as `merkleHash` (`head_commitment.qnt:25-28`)
 already does for leaves vs nodes, so traces round-trip without an out-of-spec lookup table.
 
+## F-18: forgetting a preimage at the wrong length deletes the blob of the right one
+
+JAM keys a service's preimage blobs by hash alone and its requests by `(hash, len)`. Forgetting a
+request that was never provided removes the request and the blob under its hash (Gray Paper
+`forget`; `vendor/polkajam/crates/node/src/chain/exec/storage/lookup_stuff.rs:196-212`). A request
+at any length but the blob's can never be provided, so forgetting it deletes the blob another
+request provided.
+
+§6.1 lets any para `Solicit` and `Forget` any `(hash, len)` for itself. Checked against the
+vendored host: para B soliciting and then forgetting para A's validation-code hash at the wrong
+length, in one digest, deletes A's code from the store while A's request still reads provided, and
+B's log stays empty. The same with the Parachain Service's own code hash deletes the running code,
+and the next block cannot run at all. B pays a preimage deposit that the forget refunds.
+
+The Quint model keys preimages by `(hash, len)`, so it cannot express this. Its §5.4 guard (spec
+`baad02abcf8`) refuses a `Forget` of the running code only at its exact `(hash, len)`, and treats
+the same hash at another length as a different preimage: the shape that deletes it. Any para can
+also reach it through its own target, which that guard does not cover.
+
+**Spec feedback**: §6.1 must refuse a `Solicit` whose hash already has a request or a blob at
+another length, or never forward the `forget` of a never-provided request whose hash has a blob.
+JAM could instead drop a blob only with the last request for its hash.
+
 ## Retired decisions
 
 Entries are deleted once a GitHub issue exists for them (see line 9). The identifiers below were

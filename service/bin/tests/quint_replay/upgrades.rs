@@ -65,7 +65,7 @@ fn forget_announced_code_refused_works() {
 	replay::trace(include_str!(
 		"../fixtures/quint/upgrades/forget_announced_code_refused_works.itf.json"
 	))
-	.expect("forgetting announced validation code logs CanNotForgetValidationCode and keeps it");
+	.expect("forgetting announced validation code logs CanNotRemoveCode and keeps it");
 }
 
 #[test]

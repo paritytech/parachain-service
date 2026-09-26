@@ -7,14 +7,14 @@
 use crate::{
 	accumulate::{assigns, code_upgrades, foreign_services, management, transfers, validator_keys},
 	head_commitment::HeadTracker,
-	state::{log::AccumulateLog, para_info::Parachains},
+	state::{log::AccumulateLog, para_info::Parachains, preimage_registry::PreimageRegistry},
 	state_balance,
 };
 use alloc::vec::Vec;
-use jam_pvm_common::accumulate::{my_info, query, upgrade, LookupRequestStatus};
+use jam_pvm_common::accumulate::{lookup_into, my_info, query, upgrade, LookupRequestStatus};
 use jam_types::{CodeHash, ServiceId, Slot};
 use parachain_service_core::{
-	types::{ParaId, Timeslot, ASSET_HUB_PARA_ID},
+	types::{Hash, ParaId, Timeslot, ASSET_HUB_PARA_ID},
 	upward_message::{CodeUpgradePhase, Target, UpwardMessage},
 };
 
@@ -67,7 +67,8 @@ pub fn apply(
 
 		UpwardMessage::Forget { target: Target::Parachain(para_id), hash, len } => {
 			// §5.4: expunging the running service code would prevent future accumulation.
-			if para_id == ASSET_HUB_PARA_ID && hash == my_info().code_hash.0 {
+			if para_id == ASSET_HUB_PARA_ID && is_service_code(&hash, len.0) {
+				logs.push(AccumulateLog::CanNotRemoveCode { hash, len: len.0.into() });
 				return;
 			}
 			// `para_id` names whose reference is released (Coretime may name any
@@ -80,7 +81,7 @@ pub fn apply(
 				pi.validation_code.as_ref().is_some_and(|vc| vc.is(&hash, len.0)) ||
 					pi.announced_upgrade.as_ref().is_some_and(|vc| vc.is(&hash, len.0));
 			if is_validation_code {
-				logs.push(AccumulateLog::CanNotForgetValidationCode { hash, len: len.0.into() });
+				logs.push(AccumulateLog::CanNotRemoveCode { hash, len: len.0.into() });
 				return;
 			}
 			let out = state_balance::remove_referencer(para_id, &hash, len.0, now);
@@ -112,19 +113,20 @@ pub fn apply(
 		UpwardMessage::CleanUpBucketsUpTo(id) => transfers::clean_up_buckets_up_to(id),
 
 		UpwardMessage::UpgradeService { code_hash, len, min_acc_gas, min_memo_gas } => {
-			// §5.4: forward to JAM `upgrade` only when the new code's preimage is
-			// provided and still requested. A solicited-but-unprovided or a
-			// forgotten one is not enough, even though `lookup` still finds the
-			// latter until it is expunged.
+			// §5.4: forward to JAM `upgrade` only when Asset Hub references the new
+			// code, so no other para can forget it, and its preimage is provided and
+			// still requested. A solicited-but-unprovided or a forgotten one is not
+			// enough, even though `lookup` still finds the latter until it is expunged.
 			// FIXME: consensus-critical — JAM `upgrade` does not validate that
 			// the hash decodes to a well-formed service blob.
+			let referenced = PreimageRegistry::has_referencer(&code_hash, len.0, ASSET_HUB_PARA_ID);
 			let available = matches!(
 				query(&code_hash, len.0 as usize),
 				Some(
 					LookupRequestStatus::Provided { .. } | LookupRequestStatus::Rerequested { .. }
 				)
 			);
-			if available {
+			if referenced && available {
 				upgrade(&CodeHash(code_hash), min_acc_gas, min_memo_gas);
 			} else {
 				logs.push(AccumulateLog::ServiceUpgradePreimageMissing { code_hash });
@@ -152,4 +154,10 @@ pub fn apply(
 			management::set_state_balance(para_id, new_total.0, logs, heads)
 		},
 	}
+}
+
+/// Whether `(hash, len)` names this service's own running code. Its length is
+/// that of the blob JAM runs, which the service's preimage store holds.
+fn is_service_code(hash: &Hash, len: u32) -> bool {
+	*hash == my_info().code_hash.0 && lookup_into(hash, &mut []) == Some(len as usize)
 }
