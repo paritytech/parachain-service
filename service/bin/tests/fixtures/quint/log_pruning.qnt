@@ -47,7 +47,7 @@ module log_pruning {
       items: List({ validationCode: { hash: { vchBytes: 1 }, len: FixedCodeLen } })
     }
     init
-      .then(applyWork(WorkOk(Err({ paraId: CoretimeParaId, error: Opaque(42) }))))
+      .then(applyWork(WorkOk(Err({ paraId: CoretimeParaId, validationCode: { vchBytes: 1 }, error: Opaque(42) }))))
       .then(applyWork(refine(svc, pkg, false,
         wellFormedCalls(headHash(StaleParentHead), 1, List()), 2)[0]))
       .then(expectThat(svc == prevSvc))
@@ -55,8 +55,8 @@ module log_pruning {
 
   run refine_log_boundary_works =
     init
-      .then(applyWork(WorkOk(Err({ paraId: CoretimeParaId, error: InvalidHeadDeclaration }))))
-      .then(applyWork(WorkOk(Err({ paraId: CoretimeParaId, error: Opaque(42) }))))
+      .then(applyWork(WorkOk(Err({ paraId: CoretimeParaId, validationCode: { vchBytes: 1 }, error: InvalidHeadDeclaration }))))
+      .then(applyWork(WorkOk(Err({ paraId: CoretimeParaId, validationCode: { vchBytes: 1 }, error: Opaque(42) }))))
       .then(expectThat(svc.parachainLog.get(CoretimeParaId).length() == 2))
       .then(candidateAt(2))
       .then(expectThat(all {

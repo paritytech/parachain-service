@@ -355,7 +355,7 @@ mod host {
 	/// `jam_validate_block` itself and are no-ops here.
 	pub fn run_action(action: &MockAction) {
 		use parachain_service_core::{
-			types::{ParaId, ValidationCodeHash},
+			types::{ParaId, ValidationCodeHash, ValidationCodeRef},
 			upward_message::UpwardMessage,
 		};
 
@@ -428,8 +428,10 @@ mod host {
 			MockAction::ParachainSetValidationCode { para_id, hash, len } => {
 				UpwardMessage::ParachainSetValidationCode {
 					para_id: ParaId(*para_id),
-					new_validation_code_hash: ValidationCodeHash(*hash),
-					new_validation_code_len: (*len).into(),
+					new_validation_code: ValidationCodeRef {
+						hash: ValidationCodeHash(*hash),
+						len: *len,
+					},
 				}
 			},
 			MockAction::ParachainCleanUp { para_id } => {

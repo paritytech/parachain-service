@@ -19,12 +19,10 @@ use parachain_service_core::types::{
 
 /// Why a state-balance reservation failed (spec §3.1, §6.1).
 ///
-/// The first two variants are the spec's §6.1 reasons, produced by the
-/// headroom pre-checks on solicit/preimage and `kv_set` growth. The remaining
-/// variants name baseline-covered writes (validator keys, incoming transfers,
-/// `ParaInfo`); those have no §6.1 pre-check, so they are only ever produced by
-/// a backstop write failure (private headroom ≠ real JAM balance)
-/// and are kept self-describing by extending the enum beyond the spec's pair.
+/// The first two variants are produced by the headroom pre-checks on
+/// solicit/preimage and `kv_set` growth. The remaining variants name
+/// baseline-covered writes, which have no §6.1 pre-check, so they are only
+/// ever produced by a backstop write failure (private headroom ≠ real JAM balance).
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub enum InsufficientBalanceReason {
 	/// A `solicit` of the preimage with `hash` and `len`.
@@ -34,9 +32,9 @@ pub enum InsufficientBalanceReason {
 	SetKV { key_hash: Hash },
 	/// A `staged_validator_keys` append.
 	StagedValidatorKeys,
-	/// An `incoming_transfers` bucket or chain-pointer write.
+	/// An `incoming_transfers` or `incoming_transfer_buckets` write.
 	IncomingTransfer,
-	/// A `ParaInfo` write: head, registration, forced code, announced upgrade.
+	/// A `ParaInfo` write: head, registration, forced code or announced upgrade.
 	ParaInfo,
 }
 
@@ -334,7 +332,7 @@ mod tests {
 
 	fn refine_entry(trace_len: usize) -> LogEntry {
 		LogEntry::Refine {
-			error: RefineLog::InvalidCodeHash,
+			error: RefineLog::ValidationCodeLookupFailed,
 			auth_trace: truncate_auth_trace(&alloc::vec![0xAB; trace_len]),
 		}
 	}

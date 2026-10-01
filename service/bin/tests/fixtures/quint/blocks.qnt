@@ -34,7 +34,7 @@ module blocks {
   }
 
   action logError(error: RefineLog, authTrace: int): bool =
-    applyWork(WorkOk(Err({ paraId: CoretimeParaId, error: error })), authTrace)
+    applyWork(WorkOk(Err({ paraId: CoretimeParaId, validationCode: { vchBytes: 1 }, error: error })), authTrace)
 
   run stale_parent_candidate_rejected_works =
     staleParentCandidateRejectedTest

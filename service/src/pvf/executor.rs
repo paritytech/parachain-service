@@ -354,6 +354,16 @@ impl ExecutorState {
 				}
 				self.set_validator_keys_called = true;
 			},
+			// §3.3: JAM's `write` deletes a key given an empty value, so an empty
+			// key or value is rejected before it can reach Accumulate.
+			UpwardMessage::SetKV { key, value } => {
+				if key.is_empty() || value.is_empty() {
+					return Err(RefineLog::EmptyKVKeyOrValue);
+				}
+			},
+			UpwardMessage::RemoveKV { key, .. } if key.is_empty() => {
+				return Err(RefineLog::EmptyKVKeyOrValue);
+			},
 			_ => {},
 		}
 		// §4.3: the budget counts the encoded messages alone, independently of

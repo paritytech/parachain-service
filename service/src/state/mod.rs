@@ -2,7 +2,8 @@
 //!
 //! All state mutations happen through Accumulate; Refine is stateless. Each
 //! top-level storage item is assigned a 1-byte tag; the full JAM storage key is
-//! `[tag] || SCALE(logical key)` (the tag alone for singletons).
+//! `[tag] || SCALE(logical key)` (the tag alone for singletons). The exception is
+//! `key_value_storage`, see [`kv::storage_key`].
 //!
 //! Every submodule pairs the value types with typed accessors over the JAM
 //! `get_storage`/`set_storage` host calls. Pure logic (sizing, eviction) is kept

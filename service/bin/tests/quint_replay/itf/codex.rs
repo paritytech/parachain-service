@@ -101,6 +101,16 @@ impl Codex {
 		Ok(ValidationCodeRef { hash: ValidationCodeHash(self.hash(value, len)?), len })
 	}
 
+	/// A validation code a work digest names by hash alone. Code the trace gave a
+	/// length maps like any preimage; any other code was never solicited, so it only
+	/// needs a hash that no preimage has.
+	pub fn code_hash(&mut self, value: i128) -> Result<ValidationCodeHash, String> {
+		Ok(ValidationCodeHash(match self.lengths.get(&value).copied() {
+			Some(len) => self.hash(value, len)?,
+			None => hash_raw(&[b"unsolicited-code".as_slice(), &value.to_le_bytes()].concat()),
+		}))
+	}
+
 	pub fn hash(&mut self, value: i128, len: u32) -> Result<Hash, String> {
 		if let Some(previous) = self.lengths.get(&value) {
 			if *previous != len {
@@ -243,6 +253,17 @@ mod tests {
 
 		let trace = Codex::auth_trace(256).unwrap();
 		assert_eq!(Codex::auth_trace_int(&trace).unwrap(), 256);
+	}
+
+	#[test]
+	fn code_hash_works() {
+		let mut codex = Codex::default();
+		let solicited = codex.hash(7, 16).unwrap();
+		assert_eq!(codex.code_hash(7).unwrap().0, solicited);
+
+		let unsolicited = codex.code_hash(8).unwrap().0;
+		assert!(codex.preimages().iter().all(|(_, hash, _)| *hash != unsolicited));
+		assert_ne!(codex.hash(8, 16).unwrap(), unsolicited);
 	}
 
 	#[test]

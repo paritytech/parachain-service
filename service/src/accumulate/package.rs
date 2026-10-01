@@ -49,10 +49,17 @@ fn apply(
 	heads: &mut HeadTracker,
 ) {
 	match digest {
-		ParachainWorkDigest::Err { para_id, error } => {
-			// Step 2: a Refine failure is logged with the work-report's
+		ParachainWorkDigest::Err { para_id, validation_code, error } => {
+			// Steps 1–2: a failure is logged only for a registered para and only
+			// if it names the para's active code, so whoever runs other code on
+			// the para's coretime cannot fill its log.
+			let Some(pi) = Parachains::get(para_id) else { return };
+			if pi.validation_code.map(|code| code.hash) != Some(validation_code) {
+				return;
+			}
+
+			// Step 3: a Refine failure is logged with the work-report's
 			// authorizer trace (truncated to 256 B) and processing stops.
-			// `append_refine` no-ops for an unregistered para (step 1).
 			ParachainLogs::append_refine(
 				para_id,
 				now,
@@ -75,18 +82,16 @@ fn apply(
 				return;
 			}
 
-			// Step 3: parent-head check — reject candidates built on a stale,
-			// skipped, or non-canonical parent.
-			if parent_head_hash != blake2_256(&pi.head_data) {
+			// Step 2: authoritative validation-code check. Only the ACTIVE code
+			// is accepted; an announced upgrade becomes a validation option only
+			// once an `Apply` has made it active (§5.2).
+			if pi.validation_code.map(|code| code.hash) != Some(validation_code) {
 				return;
 			}
 
-			// Step 4: authoritative validation-code check. Only the ACTIVE code
-			// is accepted; an announced upgrade becomes a validation option only
-			// once an `Apply` has made it active (§5.2). Compares the whole
-			// `(hash, len)` pair: the preimage registry is keyed by both, so the
-			// same hash at another length is another code.
-			if pi.validation_code != Some(validation_code) {
+			// Step 4: parent-head check — reject candidates built on a stale,
+			// skipped, or non-canonical parent.
+			if parent_head_hash != blake2_256(&pi.head_data) {
 				return;
 			}
 

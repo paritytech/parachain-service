@@ -41,7 +41,7 @@ rules still need specifying.
 
 ## D-5: the parent-head check's `hash(head_data)` is blake2b-256
 
-New finding (not previously tracked). The design's parent-head check (§5.1 step 3) compares
+New finding (not previously tracked). The design's parent-head check (§5.1 step 4) compares
 `parent_head_hash` against `hash(ParaInfo.head_data)` but never names the hash function; the
 PVF (via `set_parent_head_hash`) and the service must agree on it. We pin **blake2b-256**,
 matching JAM's own preimage hashing (`jam_std_common::hash_raw`).

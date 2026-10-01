@@ -45,6 +45,7 @@ impl Service for ParachainService {
 			WorkResult(
 				ParachainWorkDigest::Err {
 					para_id: digest.para_id(),
+					validation_code: digest.validation_code(),
 					error: RefineLog::RefineOutputTooLarge,
 				}
 				.encode(),

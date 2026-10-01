@@ -16,7 +16,7 @@ use crate::{
 use alloc::vec::Vec;
 use jam_types::Slot;
 use parachain_service_core::types::{
-	Balance, HeadData, ParaId, ValidationCodeHash, ValidationCodeRef, ASSET_HUB_PARA_ID,
+	Balance, HeadData, ParaId, ValidationCodeRef, ASSET_HUB_PARA_ID,
 };
 
 /// §6.1 — the sole creator of `ParaInfo`. On an unused ParaId, creates the entry
@@ -126,8 +126,7 @@ pub fn set_head(
 /// `Forget`) releases them.
 pub fn set_validation_code(
 	para_id: ParaId,
-	new_hash: ValidationCodeHash,
-	code_len: u32,
+	new_code: ValidationCodeRef,
 	logs: &mut Vec<AccumulateLog>,
 ) {
 	let Some(pi) = Parachains::get(para_id) else { return };
@@ -137,13 +136,13 @@ pub fn set_validation_code(
 
 	// Acquire the new referencer (no charge if already solicited); reject the
 	// whole call if there is no headroom.
-	if let Err(log) = add_referencer(para_id, &new_hash.0, code_len) {
+	if let Err(log) = add_referencer(para_id, &new_code.hash.0, new_code.len) {
 		logs.push(log);
 		return;
 	}
 
 	let mut updated = Parachains::get(para_id).expect("still live; qed");
-	updated.validation_code = Some(ValidationCodeRef { hash: new_hash, len: code_len });
+	updated.validation_code = Some(new_code);
 	updated.announced_upgrade = None;
 	// A forced-code write can grow the record; a backstop write failure (§6.1
 	// invariant) logs the rejection.

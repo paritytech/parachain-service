@@ -14,7 +14,7 @@ use super::replay::{integer, variant};
 pub fn refine_log(value: &Value) -> Result<RefineLog, String> {
 	let (tag, value) = variant(value)?;
 	match tag {
-		"InvalidCodeHash" => Ok(RefineLog::InvalidCodeHash),
+		"ValidationCodeLookupFailed" => Ok(RefineLog::ValidationCodeLookupFailed),
 		"Opaque" => Ok(RefineLog::Opaque(
 			opaque_payload(integer(value)?)?
 				.try_into()
@@ -32,6 +32,7 @@ pub fn refine_log(value: &Value) -> Result<RefineLog, String> {
 		"RefineOutputTooLarge" => Ok(RefineLog::RefineOutputTooLarge),
 		"InvalidHeadDeclaration" => Ok(RefineLog::InvalidHeadDeclaration),
 		"InvalidCoreIndex" => Ok(RefineLog::InvalidCoreIndex),
+		"EmptyKVKeyOrValue" => Ok(RefineLog::EmptyKVKeyOrValue),
 		// `is_authorized` runs before Refine and rejects an undecodable config
 		// (`UndecodableAuthConfig`) and a config naming a different number of
 		// paras than items (`InvalidWorkItemCount`), so these can never reach
@@ -71,13 +72,14 @@ mod tests {
 	#[test]
 	fn nullary_variants_work() {
 		for (tag, expected) in [
-			("InvalidCodeHash", RefineLog::InvalidCodeHash),
+			("ValidationCodeLookupFailed", RefineLog::ValidationCodeLookupFailed),
 			("SetValidatorKeysTooManyKeys", RefineLog::TooManyValidatorKeys),
 			("TooManyUpwardMessages", RefineLog::TooManyUpwardMessages),
 			("RestrictedHostFunction", RefineLog::RestrictedHostFunction),
 			("RefineOutputTooLarge", RefineLog::RefineOutputTooLarge),
 			("InvalidHeadDeclaration", RefineLog::InvalidHeadDeclaration),
 			("InvalidCoreIndex", RefineLog::InvalidCoreIndex),
+			("EmptyKVKeyOrValue", RefineLog::EmptyKVKeyOrValue),
 		] {
 			let value = json!({ "tag": tag, "value": { "#tup": [] } });
 			assert_eq!(refine_log(&value).unwrap(), expected, "{tag}");

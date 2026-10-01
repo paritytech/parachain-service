@@ -15,7 +15,7 @@ module lifecycle_inputs {
     ParachainSetHead({ paraId: p, newHead: h })
   pure def code(p: ParaId, h: int): UpwardMessage =
     ParachainSetValidationCode({ paraId: p,
-      newValidationCodeHash: { vchBytes: h }, newValidationCodeLen: FixedCodeLen })
+      newValidationCode: { hash: { vchBytes: h }, len: FixedCodeLen } })
   pure val lifecycleMessages = lifecycleParas.fold(Set(), (acc, p) => acc.union(Set(
     fund(p, baselineFor(p) - 1), fund(p, baselineFor(p)), fund(p, InitialParaBalance),
     setHead(p, 0), setHead(p, 42), code(p, 777), code(p, 778), ParachainCleanUp(p))))

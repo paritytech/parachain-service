@@ -21,7 +21,6 @@ use crate::{
 		preimage_registry::PreimageRegistry,
 	},
 };
-use codec::{Compact, Encode};
 use jam_pvm_common::accumulate::{forget, query, solicit, LookupRequestStatus};
 use parachain_service_core::types::{Balance, Hash, ParaId, Timeslot, ASSET_HUB_PARA_ID};
 
@@ -30,11 +29,6 @@ pub const ITEM_DEPOSIT: u64 = 10;
 /// Gray Paper per-entry octet overhead (`C_bytedeposit` applies per octet;
 /// each storage entry carries 34 overhead octets).
 pub const ENTRY_OVERHEAD: u64 = 34;
-
-/// Byte width of a SCALE compact-encoded integer.
-pub fn compact_len(n: u64) -> u64 {
-	Compact(n).encoded_size() as u64
-}
 
 /// The single-referencer footprint a parachain pays for a solicited preimage of
 /// length `len` (§6.1): the JAM preimage request (2 items = 20, octets 81 + len)
@@ -45,17 +39,11 @@ pub fn preimage_footprint(len: u32) -> Balance {
 	(20 + 81 + len as u64) + (10 + ENTRY_OVERHEAD + 5 + 37)
 }
 
-/// Per-entry footprint of a `key_value_storage` write (§6.1):
-/// item 10 + overhead 34 + value (compact len + bytes) + key (1 B tag + 4 B
-/// ParaId + compact len + bytes) = `49 + compactLen(k) + k + compactLen(v) + v`.
+/// Per-entry footprint of a `key_value_storage` write (§6.1): item 10 +
+/// overhead 34 + value + key (1 B tag + 4 B ParaId + user key), with key and
+/// value stored as sent = `49 + k + v`.
 pub fn kv_entry_footprint(key_len: usize, value_len: usize) -> Balance {
-	let (k, v) = (key_len as u64, value_len as u64);
-	ITEM_DEPOSIT + ENTRY_OVERHEAD + 5 + compact_len(k) + k + compact_len(v) + v
-}
-
-/// SCALE size of a `Vec<u8>` value: compact length prefix + bytes.
-fn vec_bytes(len: usize) -> u64 {
-	compact_len(len as u64) + len as u64
+	ITEM_DEPOSIT + ENTRY_OVERHEAD + 5 + key_len as u64 + value_len as u64
 }
 
 /// Worst-case octets of the `(ParaId, ParaInfo)` entry (§6.1 table, with 9 B
@@ -347,12 +335,11 @@ pub fn apply_set_kv(para_id: ParaId, key: &[u8], value: &[u8]) -> Result<(), Acc
 	if pi.is_deregistering {
 		return Ok(());
 	}
-	let old = KeyValueStorage::get(para_id, key);
 	// Signed delta in balance units: a fresh entry pays the full footprint, an
-	// overwrite pays only the value-size difference (§6.1).
-	let delta: i128 = match &old {
+	// overwrite pays only the difference in value length (§6.1).
+	let delta: i128 = match KeyValueStorage::value_len(para_id, key) {
 		None => kv_entry_footprint(key.len(), value.len()) as i128,
-		Some(old_v) => vec_bytes(value.len()) as i128 - vec_bytes(old_v.len()) as i128,
+		Some(old_len) => value.len() as i128 - old_len as i128,
 	};
 	// `blake2_256` is computed lazily in each rejection branch: the rejection path
 	// must not pay for hashing a key it never rejects (§6.1 pre-check).
@@ -395,9 +382,8 @@ pub fn apply_set_kv(para_id: ParaId, key: &[u8], value: &[u8]) -> Result<(), Acc
 /// Replay a `RemoveKV`: drop the entry and refund its footprint. No-op on
 /// absent keys.
 pub fn apply_remove_kv(para_id: ParaId, key: &[u8]) {
-	let Some(value) = KeyValueStorage::get(para_id, key) else { return };
-	refund_para(para_id, kv_entry_footprint(key.len(), value.len()));
-	KeyValueStorage::remove(para_id, key);
+	let Some(value_len) = KeyValueStorage::remove(para_id, key) else { return };
+	refund_para(para_id, kv_entry_footprint(key.len(), value_len));
 }
 
 /// The exact `used_state_balance` a para may hold at clean-up (§6.4): its
@@ -434,9 +420,9 @@ mod tests {
 
 	#[test]
 	fn kv_entry_footprint_works() {
-		// §6.1: 49 + compactLen(k) + k + compactLen(v) + v.
-		assert_eq!(kv_entry_footprint(3, 5), 49 + 1 + 3 + 1 + 5);
-		assert_eq!(kv_entry_footprint(100, 20_000), 49 + 2 + 100 + 4 + 20_000);
+		// §6.1: 49 + k + v.
+		assert_eq!(kv_entry_footprint(3, 5), 49 + 3 + 5);
+		assert_eq!(kv_entry_footprint(100, 20_000), 49 + 100 + 20_000);
 	}
 
 	#[test]
@@ -456,17 +442,5 @@ mod tests {
 			ASSET_HUB_GLOBAL_ITEMS_FOOTPRINT,
 			1_237_307 + (MAX_INCOMING_TRANSFERS as u64) * 196
 		);
-	}
-
-	#[test]
-	fn compact_len_works() {
-		assert_eq!(compact_len(0), 1);
-		assert_eq!(compact_len(63), 1);
-		assert_eq!(compact_len(64), 2);
-		assert_eq!(compact_len(16383), 2);
-		assert_eq!(compact_len(16384), 4);
-		assert_eq!(compact_len((1 << 30) - 1), 4);
-		assert_eq!(compact_len(1 << 30), 5);
-		assert_eq!(compact_len(u64::MAX), 9);
 	}
 }

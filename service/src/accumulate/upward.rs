@@ -137,16 +137,9 @@ pub fn apply(
 			management::set_head(para_id, new_head, heads, logs)
 		},
 
-		UpwardMessage::ParachainSetValidationCode {
-			para_id,
-			new_validation_code_hash,
-			new_validation_code_len,
-		} => management::set_validation_code(
-			para_id,
-			new_validation_code_hash,
-			new_validation_code_len.0,
-			logs,
-		),
+		UpwardMessage::ParachainSetValidationCode { para_id, new_validation_code } => {
+			management::set_validation_code(para_id, new_validation_code, logs)
+		},
 
 		UpwardMessage::ParachainCleanUp(para_id) => management::clean_up(para_id, now, logs, heads),
 

@@ -5,6 +5,7 @@ mod common;
 
 use common::*;
 use parachain_service::{
+	constants::EXPUNGE_PERIOD,
 	state::log::{AccumulateLog, InsufficientBalanceReason, LogEntry},
 	state_balance::preimage_footprint,
 };
@@ -243,6 +244,106 @@ fn shared_referencer_leaves_works() {
 		used_charged - preimage_footprint(blob_len())
 	);
 	assert!(accumulate_logs(&storage, PARA).is_empty(), "immediate leave logs nothing");
+}
+
+const OTHER: ParaId = ParaId(2000);
+const OTHER_CODE: &[u8] = b"para-2000-code";
+
+fn solicit(para: ParaId) -> UpwardMessage {
+	UpwardMessage::Solicit {
+		target: Target::Parachain(para),
+		hash: blob_hash(),
+		len: blob_len().into(),
+	}
+}
+
+fn forget(para: ParaId) -> UpwardMessage {
+	UpwardMessage::Forget {
+		target: Target::Parachain(para),
+		hash: blob_hash(),
+		len: blob_len().into(),
+	}
+}
+
+/// Accumulate `para`'s candidate on `parent` sending `msg` at `slot`.
+fn send(
+	storage: jam_node::vm::Storage,
+	para: ParaId,
+	parent: &[u8],
+	head: &[u8],
+	msg: UpwardMessage,
+	slot: u32,
+) -> jam_node::vm::Storage {
+	let code = if para == PARA { CODE } else { OTHER_CODE };
+	let digest = ok_digest(para, code, parent, head, vec![msg], 0);
+	accumulate_block(storage, vec![work_item(&digest)], slot).1
+}
+
+/// `PARA` forgets the provided `BLOB` at `NOW + 1`, then `OTHER` rescues it at
+/// `NOW + 2` (§6.1).
+fn rescued_storage() -> jam_node::vm::Storage {
+	let storage = fresh_storage(|s| {
+		seed_para(s, PARA, b"genesis", CODE, RICH);
+		seed_para(s, OTHER, b"other-genesis", OTHER_CODE, RICH);
+	});
+	let mut storage = send(storage, PARA, b"genesis", b"head-1", solicit(PARA), NOW);
+	storage.provide(NOW, SVC, BLOB).expect("solicited in the previous block");
+	storage.commit();
+	let storage = send(storage, PARA, b"head-1", b"head-2", forget(PARA), NOW + 1);
+	send(storage, OTHER, b"other-genesis", b"other-1", solicit(OTHER), NOW + 2)
+}
+
+#[test]
+fn forget_rescued_three_steps_works() {
+	// §6.1: a rescue keeps the original expunge deadline, so the rescuing para needs
+	// three `Forget`s: one within the original period changes nothing, the next
+	// unrequests again and only the third expunges.
+	let storage = rescued_storage();
+	let used = para_info(&storage, OTHER).unwrap().used_state_balance;
+	let first_due = NOW + 1 + EXPUNGE_PERIOD;
+	let unrequested = first_due + 1;
+	let second_due = unrequested + EXPUNGE_PERIOD;
+
+	let storage = send(storage, OTHER, b"other-1", b"other-2", forget(OTHER), NOW + 3);
+	let storage = send(storage, OTHER, b"other-2", b"other-3", forget(OTHER), unrequested);
+	let entry = registry_entry(&storage, code_ref(BLOB)).expect("not expunged yet");
+	assert_eq!(entry.referencers.into_iter().collect::<Vec<_>>(), vec![OTHER]);
+	assert_eq!(para_info(&storage, OTHER).unwrap().used_state_balance, used);
+
+	let storage = send(storage, OTHER, b"other-3", b"other-4", forget(OTHER), second_due + 1);
+
+	assert!(registry_entry(&storage, code_ref(BLOB)).is_none());
+	assert_eq!(
+		para_info(&storage, OTHER).unwrap().used_state_balance,
+		used - preimage_footprint(blob_len())
+	);
+	let (hash, len) = (blob_hash(), blob_len().into());
+	assert_eq!(
+		accumulate_logs(&storage, OTHER),
+		vec![
+			AccumulateLog::ForgetAgainAt { hash, len, due: first_due },
+			AccumulateLog::ForgetAgainAt { hash, len, due: second_due },
+		]
+	);
+}
+
+#[test]
+fn forget_freed_ghost_works() {
+	// §6.1: the rescue dropped and refunded `PARA`, so its second `Forget` after the
+	// logged due changes nothing and logs nothing.
+	let used = |storage: &jam_node::vm::Storage| {
+		[PARA, OTHER].map(|para| para_info(storage, para).unwrap().used_state_balance)
+	};
+	let storage = rescued_storage();
+	let used_before = used(&storage);
+	let logs = accumulate_logs(&storage, PARA);
+
+	let storage = send(storage, PARA, b"head-2", b"head-3", forget(PARA), NOW + 2 + EXPUNGE_PERIOD);
+
+	let entry = registry_entry(&storage, code_ref(BLOB)).expect("still referenced");
+	assert_eq!(entry.referencers.into_iter().collect::<Vec<_>>(), vec![OTHER]);
+	assert_eq!(used(&storage), used_before);
+	assert_eq!(accumulate_logs(&storage, PARA), logs);
 }
 
 #[test]

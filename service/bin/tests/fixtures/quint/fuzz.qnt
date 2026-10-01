@@ -45,7 +45,8 @@ module fuzz {
   // Keep one length per hash, as required by the replay codex.
   pure def replayMessages(s: ParachainServiceState, para: ParaId, slot: Timeslot): Set[UpwardMessage] = {
     val code = activeCodeHashOr(s.paraInfo(para), NoCodeHash).asPreimage()
-    // No leading-zero keys: Quint's base-257 listHash aliases those keys.
+    // No leading-zero keys: Quint's base-257 listHash aliases those keys. Empty
+    // keys and values are included: Refine rejects them (§3.3).
     val kvKeys = Set(List(), List(1), List(2, 0, 255))
     val values = Set(List(), List(0), List(255), List(0, 255),
       range(0, 63).foldl(List(), (acc, _) => acc.append(255)),

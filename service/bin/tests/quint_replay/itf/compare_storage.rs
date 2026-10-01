@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use jam_node::vm::Storage;
 use jam_std_common::{ServiceKey, StorageKey};
-use parachain_service::state::{assigns::PendingAssign, storage_key, Tag};
+use parachain_service::state::{assigns::PendingAssign, kv, storage_key, Tag};
 use parachain_service_bin::mock::MOCK_SERVICE_ID;
 use serde_json::Value;
 
@@ -80,8 +80,8 @@ pub fn state(
 			return Err("KV key must contain para and bytes".into());
 		}
 		let para = para_id(&pair[0], codex)?;
-		let key = storage_key(Tag::KeyValueStorage, &(para, bytes(&pair[1])?));
-		if get_state::<Vec<u8>>(storage, &key) != Some(bytes(value)?) {
+		let key = kv::storage_key(para, &bytes(&pair[1])?);
+		if storage.service_key(MOCK_SERVICE_ID, &key) != Some(bytes(value)?) {
 			return Err(format!("frame {frame}: svc.keyValueStorage differs"));
 		}
 		allow(key);
@@ -194,10 +194,10 @@ mod tests {
 			let mut second_key = key;
 			second_key[0] = 8;
 			set_state(s, &storage_key(Tag::StagedValidatorKeys, &()), &vec![key, second_key]);
-			set_state(
-				s,
-				&storage_key(Tag::KeyValueStorage, &(Codex::para_id(3).unwrap(), vec![0u8, 255])),
-				&vec![42u8, 43],
+			s.set_service_key(
+				MOCK_SERVICE_ID,
+				&kv::storage_key(Codex::para_id(3).unwrap(), &[0, 255]),
+				&[42, 43],
 			);
 		});
 		(storage, expected)

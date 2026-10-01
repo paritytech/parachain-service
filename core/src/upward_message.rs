@@ -8,7 +8,8 @@ extern crate alloc;
 
 use crate::types::{
 	AuthorizerHash, Balance, BucketId, CoreIndex, Hash, HeadData, Memo, ParaId, ServiceId,
-	Timeslot, ValidationCodeHash, ValidatorKey, ASSET_HUB_PARA_ID, CORETIME_PARA_ID,
+	Timeslot, ValidationCodeHash, ValidationCodeRef, ValidatorKey, ASSET_HUB_PARA_ID,
+	CORETIME_PARA_ID,
 };
 use alloc::vec::Vec;
 use bounded_collections::{BoundedVec, ConstU32};
@@ -130,10 +131,12 @@ pub enum UpwardMessage {
 	/// Delete `key` from a supervised service's
 	/// own storage (Asset Hub only, §6.5).
 	RemoveServiceStorage { service: ServiceId, key: Vec<u8> },
-	/// Upsert `key_value_storage[(para_id, key)] = value` (§6.1).
+	/// Upsert `key_value_storage[(para_id, key)] = value` (§6.1). An empty `key`
+	/// or `value` aborts Refine with `Err(RefineLog::EmptyKVKeyOrValue)`.
 	SetKV { key: Vec<u8>, value: Vec<u8> },
-	/// Remove `key_value_storage[(para_id, key)]` (§6.1). Same
-	/// `para_id` delegation rule as `Forget`.
+	/// Remove `key_value_storage[(para_id, key)]` (§6.1). An empty `key` aborts
+	/// Refine with `Err(RefineLog::EmptyKVKeyOrValue)`. Same `para_id` delegation
+	/// rule as `Forget`.
 	RemoveKV { para_id: ParaId, key: Vec<u8> },
 	/// Move balance between JAM services (Asset Hub only, §5.1).
 	TransferOut(TransferOutArgs),
@@ -162,11 +165,7 @@ pub enum UpwardMessage {
 	ParachainSetHead { para_id: ParaId, new_head: HeadData },
 	/// Upsert a parachain's validation
 	/// code, bypassing the normal upgrade lifecycle (Coretime only, §6).
-	ParachainSetValidationCode {
-		para_id: ParaId,
-		new_validation_code_hash: ValidationCodeHash,
-		new_validation_code_len: Compact<u32>,
-	},
+	ParachainSetValidationCode { para_id: ParaId, new_validation_code: ValidationCodeRef },
 	/// Remove all per-parachain state (Coretime only, §6.4).
 	ParachainCleanUp(ParaId),
 	/// Overwrite a parachain's total state

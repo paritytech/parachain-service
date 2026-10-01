@@ -13,6 +13,7 @@ use jam_types::{
 };
 use parachain_service::{
 	state::{
+		kv,
 		log::ParachainLog,
 		para_info::ParaInfo,
 		preimage_registry::PreimageEntry,
@@ -120,7 +121,7 @@ pub fn registry_entry(storage: &Storage, code: ValidationCodeRef) -> Option<Prei
 }
 
 pub fn kv_value(storage: &Storage, para: ParaId, key: &[u8]) -> Option<Vec<u8>> {
-	get_state(storage, &storage_key(Tag::KeyValueStorage, &(para, key)))
+	storage.service_key(SVC, &kv::storage_key(para, key))
 }
 
 pub fn transfer_queue(storage: &Storage) -> Option<IncomingTransferBuckets> {
@@ -218,7 +219,7 @@ pub fn ok_digest(
 ) -> ParachainWorkDigest {
 	ParachainWorkDigest::Ok {
 		para_id: para,
-		validation_code: code_ref(code),
+		validation_code: code_ref(code).hash,
 		parent_head_hash: hash_raw(parent_head),
 		head_data: new_head.to_vec().try_into().expect("test heads fit 4 KiB"),
 		upward_messages: msgs.try_into().expect("test messages fit the bound"),
@@ -226,8 +227,9 @@ pub fn ok_digest(
 	}
 }
 
-pub fn err_digest(para: ParaId, error: RefineLog) -> ParachainWorkDigest {
-	ParachainWorkDigest::Err { para_id: para, error }
+/// A failed digest for `para`, naming `code` as the candidate's validation code.
+pub fn err_digest(para: ParaId, code: &[u8], error: RefineLog) -> ParachainWorkDigest {
+	ParachainWorkDigest::Err { para_id: para, validation_code: code_ref(code).hash, error }
 }
 
 /// Accumulate gas a test work item declares unless a test picks its own: enough

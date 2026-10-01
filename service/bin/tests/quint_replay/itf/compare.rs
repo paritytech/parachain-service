@@ -350,7 +350,7 @@ mod tests {
 		let log = vec![(
 			0,
 			LogEntry::Refine {
-				error: RefineLog::InvalidCodeHash,
+				error: RefineLog::ValidationCodeLookupFailed,
 				auth_trace: StoredAuthTrace::default(),
 			},
 		)];

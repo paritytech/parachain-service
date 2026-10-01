@@ -23,9 +23,9 @@ and `just quint-compact` before committing.
 
 | Scenarios | Checks |
 | --- | --- |
-| Refine errors, WorkErr, empty blocks | Error logs and unchanged state for skipped work |
+| Refine errors, WorkErr, empty blocks | Error logs, unlogged failures of other code, and unchanged state for skipped work |
 | Multiple work packages and parachains | Ordered processing, shared references, delegated forgets, and combined head commitments |
-| KV operations | Overwrite, empty values/keys, SCALE length boundary, refunds, delegated and unauthorized removal, failed reservations, and stale candidates |
+| KV operations | Overwrite, empty keys/values rejected at Refine, values crossing 64 bytes without a length prefix, refunds, delegated and unauthorized removal, failed reservations, and stale candidates |
 | Balances and incoming transfers | Allowance boundaries, authorization, reservations/refunds, queue packing and rollover, admission/drop at the reservation limit, and Asset Hub charges |
 | Lifecycle | Registration thresholds and repeated funding, unauthorized calls, forced head/code changes, cleanup refusal with extra storage, delayed cleanup, and re-registration |
 | Assignments | Immediate/delayed execution, due-slot boundaries, queue expansion/rotation, repeated replacements, authorization, invalid queues, handoffs, a cached assign rejected after a handoff, pending storage, and final JAM queues/privileges |

@@ -11,7 +11,7 @@ use frameless::{
 use jam_types::{AuthConfig, AuthTrace, Authorization as AuthToken, Hash};
 use parachain_service::{
 	refine::ParachainCandidate,
-	work_digest::{validation_code_hash, ParachainWorkDigest, RefineLog},
+	work_digest::{validation_code_hash, ParachainWorkDigest, RefineLog, ValidationCodeHash},
 };
 use parachain_service_bin::{
 	authorizer_blob as authorizer, blob as service,
@@ -47,7 +47,7 @@ fn run_block(
 	let block = BlockData { state: State { config, counter: 0 }, add };
 	let params = ValidationParams { parent_head: parent.encode(), block_data: block.encode() };
 	// §3.2: the payload names the code, the PoV is work-item extrinsic 0.
-	let payload = ParachainCandidate { validation_code_hash: pvf_hash }.encode();
+	let payload = ParachainCandidate { validation_code: pvf_hash }.encode();
 	refine_item(payload, params.encode(), para_ids)
 }
 
@@ -135,7 +135,8 @@ fn report_error_works() {
 
 #[test]
 fn legacy_pov_payload_errors() {
-	// §3.2: the payload is the code hash alone, so one still carrying the PoV is malformed.
+	// §3.2: the payload is the code hash alone, so one still carrying the PoV is
+	// malformed, and a malformed payload panics (§4.1 step 3).
 	let config = Config::Coretime;
 	let parent = genesis(config.clone());
 	let block = BlockData { state: State { config, counter: 0 }, add: 1 };
@@ -145,7 +146,26 @@ fn legacy_pov_payload_errors() {
 
 	let outcome = refine_item((pvf_hash, pov.clone()).encode(), pov, vec![ParaId(0)]);
 
-	assert_eq!(expect_log(outcome), RefineLog::MalformedPayload);
+	expect_work_error(outcome);
+}
+
+#[test]
+fn unavailable_code_errors() {
+	// §4.1 step 4: the failure names the candidate's code, so Accumulate can check
+	// it against the active code (§5.1 step 2).
+	let validation_code = ValidationCodeHash([7; 32]);
+	let payload = ParachainCandidate { validation_code }.encode();
+
+	let outcome = refine_item(payload, Vec::new(), vec![ParaId(0)]);
+
+	assert_eq!(
+		outcome.expect("Refine failed to return a ParachainWorkDigest").digest,
+		ParachainWorkDigest::Err {
+			para_id: ParaId(0),
+			validation_code,
+			error: RefineLog::ValidationCodeLookupFailed,
+		}
+	);
 }
 
 #[test]
@@ -393,9 +413,9 @@ fn too_many_validator_keys_errors() {
 
 #[test]
 fn oversized_upward_messages_errors() {
-	// Variant (1) + empty-key prefix (1) + four-byte value prefix (4) means
-	// 40 KiB - 5 bytes of value is the first rejected encoding.
-	let action = Config::Mock(vec![MockAction::KVSet(vec![], vec![0; 40 * 1024 - 5])]);
+	// Variant (1) + one-byte-key prefix and key (2) + four-byte value prefix (4)
+	// means 40 KiB - 6 bytes of value is the first rejected encoding.
+	let action = Config::Mock(vec![MockAction::KVSet(vec![0], vec![0; 40 * 1024 - 6])]);
 	let parent = genesis(action.clone());
 
 	let outcome = run_block(action, &parent, 1, vec![ParaId(0)]);
@@ -406,13 +426,34 @@ fn oversized_upward_messages_errors() {
 #[test]
 fn upward_messages_at_size_budget_works() {
 	// The same encoding with one less value byte is exactly 40 KiB.
-	let action = Config::Mock(vec![MockAction::KVSet(vec![], vec![0; 40 * 1024 - 6])]);
+	let action = Config::Mock(vec![MockAction::KVSet(vec![0], vec![0; 40 * 1024 - 7])]);
 	let parent = genesis(action.clone());
 
 	let outcome = run_block(action, &parent, 1, vec![ParaId(0)]);
 
 	let (_, _, messages, _) = expect_ok(outcome);
 	assert_eq!(messages.len(), 1);
+}
+
+#[test]
+fn empty_kv_key_or_value_errors() {
+	// §3.3: JAM's `write` deletes a key given an empty value, so Refine rejects an
+	// empty key or value before it can reach Accumulate.
+	for (action, expected) in [
+		(MockAction::KVSet(vec![], vec![0]), RefineLog::EmptyKVKeyOrValue),
+		(MockAction::KVSet(vec![0], vec![]), RefineLog::EmptyKVKeyOrValue),
+		(
+			MockAction::KVRemove { para_id: ParaId(0).0, key: vec![] },
+			RefineLog::EmptyKVKeyOrValue,
+		),
+	] {
+		let config = Config::Mock(vec![action]);
+		let parent = genesis(config.clone());
+
+		let outcome = run_block(config, &parent, 1, vec![ParaId(0)]);
+
+		assert_eq!(expect_log(outcome), expected);
+	}
 }
 
 #[test]

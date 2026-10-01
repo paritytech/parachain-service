@@ -63,7 +63,7 @@ fn deregistering_para_works() {
 
 #[test]
 fn parent_head_mismatch_works() {
-	// §5.1 step 3: rejected silently — no head change, no log entry.
+	// §5.1 step 4: rejected silently — no head change, no log entry.
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let digest = ok_digest(PARA, CODE, b"not-the-parent", b"head-1", vec![], 0);
 
@@ -111,7 +111,7 @@ fn stale_parent_candidate_pruning_works() {
 fn refine_error_logged_works() {
 	// §3.3: a Refine failure is logged with the truncated auth trace.
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
-	let digest = err_digest(PARA, RefineLog::InvalidCodeHash);
+	let digest = err_digest(PARA, CODE, RefineLog::ValidationCodeLookupFailed);
 
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
@@ -121,9 +121,39 @@ fn refine_error_logged_works() {
 		panic!("expected a refine entry, got {log:?}")
 	};
 	assert_eq!(*slot, NOW);
-	assert_eq!(*error, RefineLog::InvalidCodeHash);
+	assert_eq!(*error, RefineLog::ValidationCodeLookupFailed);
 	// The 300-byte trace from `work_item` is truncated to the 256-byte cap.
 	assert_eq!(auth_trace.len(), 256);
+}
+
+#[test]
+fn refine_error_wrong_code_errors() {
+	// §5.1 step 2: only a failure of the para's active code is logged, so one of
+	// another code, including the announced one, changes nothing.
+	use parachain_service::state::{storage_key, Tag};
+
+	let announced = b"announced-code";
+	let storage = fresh_storage(|s| {
+		seed_para(s, PARA, b"genesis", CODE, RICH);
+		let mut pi = para_info(s, PARA).unwrap();
+		pi.announced_upgrade = Some(code_ref(announced));
+		set_state(s, &storage_key(Tag::Parachains, &PARA), &pi);
+	});
+	let opaque = RefineLog::Opaque(vec![0xCD; 8].try_into().expect("within 1024"));
+	let items = [&b"some-other-code"[..], announced]
+		.into_iter()
+		.flat_map(|code| {
+			[
+				err_digest(PARA, code, opaque.clone()),
+				err_digest(PARA, code, RefineLog::ValidationCodeLookupFailed),
+			]
+		})
+		.map(|digest| work_item(&digest))
+		.collect();
+
+	let (_, storage, _) = accumulate_block(storage, items, NOW);
+
+	assert!(para_log(&storage, PARA).is_empty());
 }
 
 #[test]
@@ -132,7 +162,7 @@ fn log_pruning_works() {
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 
 	// Block 1: a refine failure lands in the log at slot NOW.
-	let bad = err_digest(PARA, RefineLog::InvalidCodeHash);
+	let bad = err_digest(PARA, CODE, RefineLog::ValidationCodeLookupFailed);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&bad)], NOW);
 	assert_eq!(para_log(&storage, PARA).len(), 1);
 
@@ -302,7 +332,7 @@ fn underfunded_refine_error_skipped_works() {
 	// §5.1 gas gate: a failed digest still costs the base, so an underfunded
 	// one is not logged.
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
-	let digest = err_digest(PARA, RefineLog::InvalidCodeHash);
+	let digest = err_digest(PARA, CODE, RefineLog::ValidationCodeLookupFailed);
 
 	let (_, storage, _) =
 		accumulate_block(storage, vec![work_item_with_gas(&digest, REPORT_BASE_GAS - 1)], NOW);

@@ -52,9 +52,9 @@ mod gas {
 	pub const MAX_SOLICITS: u64 = 64_246_958;
 	/// 1024 KV writes filling the report's elective-data limit.
 	pub const MAX_KV_WRITES: u64 = 49_200_957;
-	/// 331 outbound transfers to a friendly destination.
+	/// 332 outbound transfers to a friendly destination.
 	pub const MAX_TRANSFER_OUTS: u64 = 5_421_808;
-	/// 331 outbound transfers to a destination demanding `HIGH_TRANSFER_GAS`.
+	/// 332 outbound transfers to a destination demanding `HIGH_TRANSFER_GAS`.
 	pub const MAX_GAS_TRANSFER_OUTS: u64 = 5_387_843;
 	/// Gas for 1024 incoming transfers recorded in one bucket write.
 	pub const MAX_INCOMING_TRANSFERS: u64 = 8_655_792;
@@ -104,7 +104,7 @@ fn solicit_bench_works() {
 #[test]
 fn set_kv_bench_works() {
 	// We want to use up the whole WR size limit, so the last UMP must be large.
-	const LAST_VALUE_LEN: usize = 33_711;
+	const LAST_VALUE_LEN: usize = 33_715;
 
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let msgs = (0..MAX_UMPS)
@@ -135,7 +135,7 @@ fn transfer_out_bench_works() {
 	let msgs = (0..WR_TRANSFER_BENCH)
 		.map(|i| transfer_out_msg(42, 1, i as u64, Some(([7; 128], TRANSFER_GAS))))
 		.collect();
-	let head = [0; 147];
+	let head = [0; 4];
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", &head, msgs, 0);
 	let digest_len = digest.encode().len();
 	assert_eq!(digest_len, MAX_REPORT_ELECTIVE_DATA);
@@ -148,7 +148,7 @@ fn transfer_out_bench_works() {
 }
 
 /// Maximum transfers fitting in `Wr`.
-const WR_TRANSFER_BENCH: u32 = 331;
+const WR_TRANSFER_BENCH: u32 = 332;
 
 /// Gas each transfer forwards in the high-gas benchmarks, `Ga / 100`.
 const HIGH_TRANSFER_GAS: u64 = 100_000;

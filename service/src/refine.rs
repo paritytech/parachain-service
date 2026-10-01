@@ -2,7 +2,7 @@
 
 use crate::{
 	pvf,
-	work_digest::{ParachainWorkDigest, RefineLog, ValidationCodeRef},
+	work_digest::{ParachainWorkDigest, RefineLog},
 };
 use alloc::vec::Vec;
 use codec::{Decode, DecodeAll};
@@ -49,14 +49,17 @@ pub fn refine(
 	let para_id = para_ids[item_index];
 
 	let Ok(candidate) = ParachainCandidate::decode_all(&mut &raw_payload.0[..]) else {
-		return ParachainWorkDigest::Err { para_id, error: RefineLog::MalformedPayload };
+		panic!("Work item payload must decode as a ParachainCandidate (§4.1 step 3)")
 	};
 
-	let code_hash = candidate.validation_code_hash;
-	let Some(code) = historical_lookup(&code_hash.0) else {
-		return ParachainWorkDigest::Err { para_id, error: RefineLog::InvalidCodeHash };
+	let validation_code = candidate.validation_code;
+	let Some(code) = historical_lookup(&validation_code.0) else {
+		return ParachainWorkDigest::Err {
+			para_id,
+			validation_code,
+			error: RefineLog::ValidationCodeLookupFailed,
+		};
 	};
-	let code_len: u32 = code.len().try_into().expect("PVF code must be at most 4 GiB");
 
 	// An unparseable PVF is an abnormal exit: it fails the whole refine
 	// invocation, not the digest (§4.2).
@@ -65,12 +68,12 @@ pub fn refine(
 	};
 	let (parent_head_hash, head_data, upward_messages) = match pvf::pvm::run(&parsed, para_id) {
 		Ok(ok) => ok,
-		Err(error) => return ParachainWorkDigest::Err { para_id, error },
+		Err(error) => return ParachainWorkDigest::Err { para_id, validation_code, error },
 	};
 
 	ParachainWorkDigest::Ok {
 		para_id,
-		validation_code: ValidationCodeRef { hash: code_hash, len: code_len },
+		validation_code,
 		parent_head_hash,
 		head_data,
 		upward_messages,

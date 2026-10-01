@@ -194,11 +194,11 @@ const POLKAVM_BLOB_LEN: usize = 7_014_285;
 
 /// The collator hashes the validation-code blob with `sp_crypto_hashing::blake2_256`
 /// (SDK `cumulus/polkadot-omni-node/lib/src/nodes/jam/collation_task.rs:450`) and carries it
-/// as the candidate's `ParachainCandidate.validation_code_hash` (`:948-959`). The genesis
+/// as the candidate's `ParachainCandidate.validation_code` (`:948-959`). The genesis
 /// builder hashes the same blob with `parachain_service::work_digest::validation_code_hash`
 /// and records `ValidationCodeRef { hash, len }` in the para's `ParaInfo`. If the two
-/// disagree, refine's `historical_lookup(&code_hash.0)` misses and every candidate is refused
-/// with `RefineLog::InvalidCodeHash` — silently, on chain.
+/// disagree, refine's `historical_lookup(&validation_code.0)` misses and every candidate is
+/// refused with `RefineLog::ValidationCodeLookupFailed` — silently, on chain.
 ///
 /// The collator side is rebuilt from blake2b-256 via `blake2b_simd`, the exact primitive
 /// `sp_crypto_hashing::blake2_256` sits on (SDK `substrate/primitives/crypto/hashing/

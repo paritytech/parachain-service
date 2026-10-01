@@ -19,21 +19,25 @@ module kv {
 
   run overwrite_and_refund_works = {
     val key = List(1, 0, 255)
+    // 63 -> 64 bytes is where a SCALE length prefix would grow, but stored values have none.
     init
       .then(core(List(writeKV(key, valueOfLength(63)))))
       .then(core(List(writeKV(key, valueOfLength(64)))))
       .then(expectThat(svc.paraInfo(CoretimeParaId).usedStateBalance ==
-        prevSvc.paraInfo(CoretimeParaId).usedStateBalance + 2))
-      .then(core(List(writeKV(key, List()))))
-      .then(expectThat(svc.keyValueStorage.get((CoretimeParaId, key)) == List() and
+        prevSvc.paraInfo(CoretimeParaId).usedStateBalance + 1))
+      .then(core(List(writeKV(key, List(9)))))
+      .then(expectThat(svc.keyValueStorage.get((CoretimeParaId, key)) == List(9) and
         svc.paraInfo(CoretimeParaId).usedStateBalance ==
-          prevSvc.paraInfo(CoretimeParaId).usedStateBalance - 65))
+          prevSvc.paraInfo(CoretimeParaId).usedStateBalance - 63))
       .then(core(List(remove(CoretimeParaId, key), remove(CoretimeParaId, key))))
       .then(expectThat(svc.keyValueStorage == Map() and
         svc.paraInfo(CoretimeParaId).usedStateBalance ==
-          prevSvc.paraInfo(CoretimeParaId).usedStateBalance - kvEntryFootprint(key.length(), 0)))
-      .then(core(List(writeKV(List(), List()), remove(CoretimeParaId, List()), writeKV(List(), List(0, 255)))))
-      .then(expectThat(svc.keyValueStorage.get((CoretimeParaId, List())) == List(0, 255)))
+          prevSvc.paraInfo(CoretimeParaId).usedStateBalance - kvEntryFootprint(key.length(), 1)))
+      // §3.3: an empty key or value aborts Refine, so none of these three lands.
+      .then(core(List(writeKV(List(2), List()), remove(CoretimeParaId, List()), writeKV(List(2), List(0, 255)))))
+      .then(expectThat(not(svc.keyValueStorage.keys().contains((CoretimeParaId, List(2))))))
+      .then(core(List(writeKV(List(2), List(0, 255)))))
+      .then(expectThat(svc.keyValueStorage.get((CoretimeParaId, List(2))) == List(0, 255)))
   }
 
   // Identical keys have independent owners. Coretime sees and deletes the

@@ -237,3 +237,17 @@ fn opaque_1023_auth_257_works() {
 	))
 	.expect("Quint and Rust should agree after every error frame");
 }
+
+#[test]
+fn empty_kv_key_or_value_works() {
+	replay::trace(include_str!(
+		"../fixtures/quint/refine_errors/empty_kv_key_or_value_works.itf.json"
+	))
+	.expect("the refine error and its trace should be stored");
+}
+
+#[test]
+fn other_code_error_works() {
+	replay::trace(include_str!("../fixtures/quint/refine_errors/other_code_error_works.itf.json"))
+		.expect("a failure of any code but the active one should not be logged");
+}

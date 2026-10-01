@@ -3,7 +3,7 @@
 Places where the Rust implementation and the
 [Quint spec](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/) disagree on
 observable behaviour or on a derived constant. Found by reading both sides and by trace replay;
-checked against spec pin `d5208ab8d5c`.
+checked against spec pin `d0839624e5c`.
 
 Scope: this file covers **Quint model vs Rust**. Two neighbouring documents cover the
 neighbouring questions, and entries here cross-reference them rather than restating them:
@@ -96,23 +96,21 @@ length outside `ValCount`. JAM bounds the set by the chain's core count; the mod
 
 Each enum's variant order is its wire ABI. Against the design doc's listing:
 
-- `RefineLog`: Rust has `InvalidAuthorizerQueue` at 7 and `MalformedPayload` at 8
-  (`service/src/work_digest.rs`); the design doc has them the other way round. The model has no
-  `MalformedPayload` at all.
 - `UpwardMessage`: Rust follows the design doc; the model (`quint/messages.qnt`) puts
   `UpgradeService` last instead of before the four Coretime-only calls.
 - `AccumulateLog`: Rust follows the design doc for all 17 variants and appends an 18th,
   `InvalidCodeHash`, that nothing emits any more (the model dropped `InvalidCodeHashAcc`).
-- `InsufficientBalanceReason`: Rust extends the design doc's two variants with
-  `StagedValidatorKeys`, `IncomingTransfer` and `ParaInfo`, produced only by the §6.1 write
-  backstop.
+
+`RefineLog` agrees on all three sides since Quint `096a193dccf` dropped `MalformedPayload` and
+`d0839624e5c` appended `EmptyKVKeyOrValue`.
+`InsufficientBalanceReason` agrees with the design doc since Quint `1c2bb4e641e` lists Rust's
+three §6.1 write-backstop variants; the model still has only the first two.
 
 No behavioural consequence today: the digest is produced by this service's Refine and consumed
 by its own Accumulate, and every discriminant is 1 B, so no size computation moves. It matters
 the moment anything outside this repo decodes a work digest or a log.
 
-Fix: swap `MalformedPayload` and `InvalidAuthorizerQueue` in Rust, drop the dead
-`InvalidCodeHash`, and align `quint/messages.qnt` with the design doc.
+Fix: drop the dead `InvalidCodeHash`, and align `quint/messages.qnt` with the design doc.
 
 ## M-9: `AssignCore`'s empty-queue documentation — resolved
 
@@ -122,7 +120,7 @@ since Refine rejects them first (Quint `6b8f7292e0`).
 
 ## M-10: no model invariant is checked against Rust
 
-The replay harness ([QUINT_REPLAY.md](./QUINT_REPLAY.md)) replays 73 deterministic fixtures and
+The replay harness ([QUINT_REPLAY.md](./QUINT_REPLAY.md)) replays 75 deterministic fixtures and
 streaming fuzz campaigns, comparing storage, logs, head commitments and JAM effects after every
 transition. It covers Accumulate only: Rust Refine is checked against the model by reading and by
 `refine.rs`.

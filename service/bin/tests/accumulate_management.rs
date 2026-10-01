@@ -56,8 +56,7 @@ fn registration_works() {
 			},
 			UpwardMessage::ParachainSetValidationCode {
 				para_id: NEW_PARA,
-				new_validation_code_hash: new_ref.hash,
-				new_validation_code_len: new_ref.len.into(),
+				new_validation_code: new_ref,
 			},
 		],
 	);
@@ -168,8 +167,7 @@ fn forced_set_validation_code_works() {
 		b"ct-1",
 		vec![UpwardMessage::ParachainSetValidationCode {
 			para_id: NEW_PARA,
-			new_validation_code_hash: forced_ref.hash,
-			new_validation_code_len: forced_ref.len.into(),
+			new_validation_code: forced_ref,
 		}],
 	);
 
@@ -223,8 +221,7 @@ fn forced_set_validation_code_leaves_announced_works() {
 		b"ct-1",
 		vec![UpwardMessage::ParachainSetValidationCode {
 			para_id: NEW_PARA,
-			new_validation_code_hash: forced_ref.hash,
-			new_validation_code_len: forced_ref.len.into(),
+			new_validation_code: forced_ref,
 		}],
 	);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 2);
@@ -342,8 +339,7 @@ fn deregistering_updates_works() {
 			},
 			UpwardMessage::ParachainSetValidationCode {
 				para_id: NEW_PARA,
-				new_validation_code_hash: new_code.hash,
-				new_validation_code_len: new_code.len.into(),
+				new_validation_code: new_code,
 			},
 			UpwardMessage::Solicit {
 				target: parachain_service_core::upward_message::Target::Parachain(NEW_PARA),
@@ -383,7 +379,7 @@ fn deregistering_updates_works() {
 
 #[test]
 fn deregistering_remove_kv_works() {
-	use parachain_service::state::{storage_key, Tag};
+	use parachain_service::state::{kv, storage_key, Tag};
 	let storage = fresh_storage(|s| {
 		seed_para(s, CORETIME_PARA_ID, b"ct-genesis", CT_CODE, RICH);
 		seed_para(s, NEW_PARA, b"para-genesis", NEW_CODE, RICH);
@@ -391,7 +387,7 @@ fn deregistering_remove_kv_works() {
 		pi.is_deregistering = true;
 		pi.used_state_balance += parachain_service::state_balance::kv_entry_footprint(1, 1);
 		set_state(s, &storage_key(Tag::Parachains, &NEW_PARA), &pi);
-		set_state(s, &storage_key(Tag::KeyValueStorage, &(NEW_PARA, &b"k"[..])), &b"v".to_vec());
+		s.set_service_key(SVC, &kv::storage_key(NEW_PARA, b"k"), b"v");
 	});
 	let before = para_info(&storage, NEW_PARA).unwrap();
 	let digest = coretime_digest(
@@ -401,16 +397,12 @@ fn deregistering_remove_kv_works() {
 	);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 	assert_eq!(para_info(&storage, NEW_PARA).unwrap(), before);
-	assert_eq!(
-		get_state::<Vec<u8>>(&storage, &storage_key(Tag::KeyValueStorage, &(NEW_PARA, &b"k"[..]))),
-		Some(b"v".to_vec())
-	);
+	assert_eq!(kv_value(&storage, NEW_PARA, b"k"), Some(b"v".to_vec()));
 	assert!(coretime_accumulate_logs(&storage).is_empty());
 }
 
 #[test]
 fn set_kv_after_self_cleanup_works() {
-	use parachain_service::state::{storage_key, Tag};
 	let digest = coretime_digest(
 		b"ct-genesis",
 		b"ct-1",
@@ -421,9 +413,5 @@ fn set_kv_after_self_cleanup_works() {
 	);
 	let (_, storage, _) = accumulate_block(coretime_storage(), vec![work_item(&digest)], NOW);
 	assert!(para_info(&storage, CORETIME_PARA_ID).unwrap().is_deregistering);
-	assert!(get_state::<Vec<u8>>(
-		&storage,
-		&storage_key(Tag::KeyValueStorage, &(CORETIME_PARA_ID, &b"k"[..]))
-	)
-	.is_none());
+	assert!(kv_value(&storage, CORETIME_PARA_ID, b"k").is_none());
 }

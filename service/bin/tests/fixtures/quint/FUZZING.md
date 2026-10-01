@@ -124,13 +124,15 @@ unavailable, supersede another, and be applied or refused. Expected outcomes
 always come from Quint.
 
 KV messages share three keys across both paras, including an empty key. Values
-include empty, same-length replacements, and 63/64-byte values spanning a SCALE
-compact-length boundary. Removal targets include self and both registered paras,
-exercising delegated removal and unauthorized work alongside writes. Ordering
-can refund storage before another reservation, overwrite the same key, or leave
-writes unapplied when work fails. Storage contents, absence, balances, and KV
-failure-log key hashes are compared strictly. Keys avoid the leading-zero
-collisions in the model's abstract `listHash`.
+include empty and same-length replacements, and 63/64-byte values, where a SCALE
+length prefix would grow but stored values have none. An empty key or value is
+rejected by Refine with `EmptyKVKeyOrValue` (§3.3), so it never reaches
+Accumulate. Removal targets include self and both registered paras, exercising
+delegated removal and unauthorized work alongside writes. Ordering can refund storage before another reservation,
+overwrite the same key, or leave writes unapplied when work fails. Storage
+contents, absence, balances, and KV failure-log key hashes are compared
+strictly. Keys avoid the leading-zero collisions in the model's abstract
+`listHash`.
 
 Balance updates target both registered paras and sample zero, one below current
 usage, exact usage, one above usage, the current total, and enough headroom for

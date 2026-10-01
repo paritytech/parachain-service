@@ -107,17 +107,16 @@ fn work_digest(value: &Value, codex: &mut Codex) -> Result<ParachainWorkDigest, 
 
 fn digest_err(value: &Value, codex: &mut Codex) -> Result<ParachainWorkDigest, String> {
 	let para = para_id(field(value, "paraId")?, codex)?;
+	let validation_code =
+		codex.code_hash(integer(field(field(value, "validationCode")?, "vchBytes")?)?)?;
 	let error = refine_log(field(value, "error")?)?;
-	Ok(ParachainWorkDigest::Err { para_id: para, error })
+	Ok(ParachainWorkDigest::Err { para_id: para, validation_code, error })
 }
 
 fn digest_ok(value: &Value, codex: &mut Codex) -> Result<ParachainWorkDigest, String> {
 	let para = para_id(field(value, "paraId")?, codex)?;
-	let validation = field(value, "validationCode")?;
-	let validation_code = codex.validation_code(
-		integer(field(field(validation, "hash")?, "vchBytes")?)?,
-		integer(field(validation, "len")?)?,
-	)?;
+	let validation_code =
+		codex.code_hash(integer(field(field(value, "validationCode")?, "vchBytes")?)?)?;
 	let parent_hash = field(value, "parentHeadHash")?;
 	let parent = Codex::head(integer(
 		parent_hash
@@ -205,18 +204,10 @@ fn upward_message(
 			new_head: Codex::head(integer(field(value, "newHead")?)?)?,
 		}),
 		"ParachainCleanUp" => Ok(UpwardMessage::ParachainCleanUp(para_id(value, codex)?)),
-		"ParachainSetValidationCode" => {
-			let len = integer(field(value, "newValidationCodeLen")?)?;
-			let reference = codex.validation_code(
-				integer(field(field(value, "newValidationCodeHash")?, "vchBytes")?)?,
-				len,
-			)?;
-			Ok(UpwardMessage::ParachainSetValidationCode {
-				para_id: para_id(field(value, "paraId")?, codex)?,
-				new_validation_code_hash: reference.hash,
-				new_validation_code_len: Compact(reference.len),
-			})
-		},
+		"ParachainSetValidationCode" => Ok(UpwardMessage::ParachainSetValidationCode {
+			para_id: para_id(field(value, "paraId")?, codex)?,
+			new_validation_code: seed::validation_code(field(value, "newValidationCode")?, codex)?,
+		}),
 		other => Err(format!("unsupported upward message {other}")),
 	}
 }

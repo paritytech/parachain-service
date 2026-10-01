@@ -27,8 +27,8 @@ pub enum ParachainWorkDigest {
 	Ok {
 		/// The parachain this digest belongs to.
 		para_id: ParaId,
-		/// The validation code that Refine actually used to check the candidate.
-		validation_code: ValidationCodeRef,
+		/// Hash of the validation code Refine used to check the candidate.
+		validation_code: ValidationCodeHash,
 		/// Hash of the parent head data this candidate was built on top of.
 		parent_head_hash: Hash,
 		/// New head data produced by the parachain block.
@@ -38,10 +38,12 @@ pub enum ParachainWorkDigest {
 		/// The work package's lookup-anchor timeslot.
 		lookup_anchor: Timeslot,
 	},
-	/// PVF execution failed (e.g. invalid PoV, bad state proof, panic).
+	/// Refine failed. See §4.1.
 	Err {
 		/// The parachain this failure belongs to.
 		para_id: ParaId,
+		/// Hash of the validation code the candidate names. See §5.1 step 2.
+		validation_code: ValidationCodeHash,
 		/// Structured failure reason.
 		error: RefineLog,
 	},
@@ -54,6 +56,13 @@ impl ParachainWorkDigest {
 			Self::Err { para_id, .. } => *para_id,
 		}
 	}
+
+	pub fn validation_code(&self) -> ValidationCodeHash {
+		match self {
+			Self::Ok { validation_code, .. } => *validation_code,
+			Self::Err { validation_code, .. } => *validation_code,
+		}
+	}
 }
 
 /// Structured reason a `refine` invocation failed.
@@ -63,10 +72,10 @@ impl ParachainWorkDigest {
 /// that panic instead (§4.2).
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub enum RefineLog {
-	/// `historical_lookup(validation_code_hash)` returned `None`: the
+	/// `historical_lookup(validation_code)` returned `None`: the
 	/// validation code preimage is not available in the service's store
-	/// at the lookup-anchor. See §4.1 step 3.
-	InvalidCodeHash,
+	/// at the lookup-anchor. See §4.1 step 4.
+	ValidationCodeLookupFailed,
 	/// Opaque payload supplied by the PVF via `report_error(data)` before
 	/// failing the execution (max 1024 bytes).
 	Opaque(BoundedVec<u8, ConstU32<1024>>),
@@ -87,8 +96,6 @@ pub enum RefineLog {
 	/// queue other than exactly `AUTHORIZER_QUEUE_LEN` when handing the core to a
 	/// new assigner. See §4.3.
 	InvalidAuthorizerQueue,
-	/// The work package payload failed to be decoded.
-	MalformedPayload,
 	/// The encoded `ParachainWorkDigest` (head data + upward messages) would
 	/// exceed the Gray Paper's 48 KiB combined result-blob + auth-trace
 	/// budget. See §4.1.
@@ -101,6 +108,9 @@ pub enum RefineLog {
 	HeadDataTooLarge,
 	/// An `AssignCore` named a core at or above `C_corecount`. See §3.3.
 	InvalidCoreIndex,
+	/// A `SetKV` or `RemoveKV` carried an empty key, or a `SetKV` an empty value.
+	/// See §3.3.
+	EmptyKVKeyOrValue,
 }
 
 /// The maximum byte length of a `report_error` payload. Spec §4.3.
