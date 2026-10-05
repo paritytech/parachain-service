@@ -92,6 +92,11 @@ quint-fuzz-deploy server *args:
 	ansible-playbook -i "$quint_fuzz_server," ansible/quint-fuzz.yml \
 		-e quint_fuzz_target=all "$@"
 
+# Follow the remote fuzzing service logs (accepts an SSH alias or user@host).
+[positional-arguments]
+quint-fuzz-logs server:
+	ssh -t "$1" 'sudo journalctl -u quint-fuzz -f'
+
 # Short for check
 c: check
 check:

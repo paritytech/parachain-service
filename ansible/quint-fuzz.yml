@@ -34,12 +34,12 @@
         that:
           - >-
             ansible_facts.architecture != 'x86_64' or
-            (quint_fuzz_cpuinfo.content | b64decode) is search('(?m)^flags\s*:.*\bavx2\b')
+            (quint_fuzz_cpuinfo.content | b64decode) is search('(?m)^flags[^:]*:.*(?<![a-zA-Z0-9_])avx2(?![a-zA-Z0-9_])')
         fail_msg: >-
           The pinned PolkaVM simulator executes AVX2 instructions on x86_64.
           This host does not expose AVX2 and crashes with SIGILL before fuzzing.
-          Enable AVX2 in the VM CPU configuration (for example, host-passthrough),
-          reboot the VM, then rerun this playbook.
+          On a VM, expose AVX2 through its CPU configuration (for example,
+          host-passthrough) and reboot. On bare metal, use an AVX2-capable CPU.
 
     - name: Install native build and deployment dependencies
       become: true
@@ -54,6 +54,7 @@
           - libclang-dev
           - libssl-dev
           - nodejs
+          - npm
           - pkg-config
           - protobuf-compiler
           - rsync
@@ -136,7 +137,7 @@
         state: stopped
       when: "'quint-fuzz.service' in ansible_facts.services"
 
-    - name: Copy the working checkout including pinned submodules and Git revisions
+    - name: Copy the working checkout including pinned submodule sources
       environment:
         QUINT_FUZZ_PROGRESS_TTY: "{{ lookup('env', 'QUINT_FUZZ_PROGRESS_TTY') }}"
       ansible.posix.synchronize:
@@ -149,13 +150,34 @@
         use_ssh_args: true
         verify_host: true
         rsync_opts:
+          - --exclude=.git
           - --exclude=/ansible/rsync-progress
+          # chain-spec/ contains Rust crates required for workspace resolution.
+          - --exclude=chain-spec/**.json
+          - --exclude=**/chain-spec/**.json
+          - --exclude=chain-specs/
+          - --exclude=*.prdoc
           - --exclude=target/
           - --exclude=.DS_Store
           - --exclude=.env*
           - --exclude=.vscode/
           - --exclude=.omo/
           - --exclude=notes.md
+
+    - name: Read local revisions for failure reports
+      ansible.builtin.command: git rev-parse HEAD HEAD:vendor/polkadot-sdk-quint
+      args:
+        chdir: "{{ quint_fuzz_source }}"
+      delegate_to: localhost
+      become: false
+      register: quint_fuzz_revisions
+      changed_when: false
+
+    - name: Save revisions without uploading Git history
+      ansible.builtin.copy:
+        content: "{{ quint_fuzz_revisions.stdout }}\n"
+        dest: "{{ quint_fuzz_tools }}/revisions.txt"
+        mode: "0644"
 
     - name: Verify the deployed recipe parses
       ansible.builtin.command: "{{ quint_fuzz_tools }}/bin/just --show quint-fuzz"

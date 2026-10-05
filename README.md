@@ -20,12 +20,21 @@ just quint-fuzz --infinite # run until failure or interruption
 
 See [Quint replay](QUINT_REPLAY.md) for prerequisites, fixtures, and failure replay.
 
-Deploy an infinite campaign to the SSH alias `fuzzer2` using every available CPU:
+Deploy an infinite campaign to any SSH alias or hostname using every available CPU:
 
 ```sh
 ansible-galaxy collection install -r ansible/requirements.yml
-ansible-playbook -i ansible/inventory.ini ansible/quint-fuzz.yml
-ssh fuzzer2 'sudo journalctl -u quint-fuzz -f'
+just quint-fuzz-deploy scaleway
+ssh scaleway 'sudo journalctl -u quint-fuzz -f'
+```
+
+Additional arguments are forwarded to Ansible:
+
+```sh
+# With sudo password prompts:
+just quint-fuzz-deploy scaleway -K
+# With an explicit SSH user:
+just quint-fuzz-deploy server.example.com -u ubuntu
 ```
 
 The playbook requires local Ansible and rsync, initialized submodules, and an

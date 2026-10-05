@@ -58,12 +58,17 @@ fn preserve(envelope: &Value, error: &str) -> Result<PathBuf, String> {
 	let path = directory.join(format!("failure-{}-{seed}.json", std::process::id()));
 	let mut report = envelope.clone();
 	report["error"] = Value::String(error.into());
-	let revision = Command::new("git")
-		.current_dir(root())
-		.args(["rev-parse", "HEAD", "HEAD:vendor/polkadot-sdk-quint"])
-		.output()
-		.map_err(|e| e.to_string())?;
-	report["revisions"] = Value::String(String::from_utf8_lossy(&revision.stdout).into_owned());
+	let revisions = if let Some(path) = env::var_os("QUINT_FUZZ_REVISIONS_FILE") {
+		fs::read_to_string(path).map_err(|e| e.to_string())?
+	} else {
+		let revision = Command::new("git")
+			.current_dir(root())
+			.args(["rev-parse", "HEAD", "HEAD:vendor/polkadot-sdk-quint"])
+			.output()
+			.map_err(|e| e.to_string())?;
+		String::from_utf8_lossy(&revision.stdout).into_owned()
+	};
+	report["revisions"] = Value::String(revisions);
 	fs::write(&path, serde_json::to_vec(&report).map_err(|e| e.to_string())?)
 		.map_err(|e| e.to_string())?;
 	Ok(path)

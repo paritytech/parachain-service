@@ -13,6 +13,7 @@ Environment="RUSTUP_TOOLCHAIN={{ quint_fuzz_toolchain }}"
 Environment="QUINT_PACKAGE={{ quint_fuzz_tools }}/node_modules/@informalsystems/quint"
 Environment="QUINT_FUZZ_WORKERS={{ quint_fuzz_cpus.stdout }}"
 Environment="QUINT_FUZZ_FAILURE_DIR={{ quint_fuzz_failures }}"
+Environment="QUINT_FUZZ_REVISIONS_FILE={{ quint_fuzz_tools }}/revisions.txt"
 ExecStart={{ quint_fuzz_tools }}/bin/just quint-fuzz --infinite
 # Preserve the first failure for investigation instead of starting another campaign.
 Restart=no
