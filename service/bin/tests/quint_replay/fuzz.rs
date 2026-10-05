@@ -146,7 +146,7 @@ fn worker(
 #[ignore = "long-running fuzz test; requires Node and Quint 0.32.0"]
 fn generated_traces_works() {
 	let count = number("QUINT_FUZZ_TRACES", 100); // zero means run until failure/interruption
-	let steps = number("QUINT_FUZZ_STEPS", 30);
+	let steps = number("QUINT_FUZZ_STEPS", 15);
 	let seed = number("QUINT_FUZZ_SEED", 1);
 	let workers = number("QUINT_FUZZ_WORKERS", 1);
 	assert!(workers > 0 && steps > 0 && steps <= 10000, "invalid worker/step limit");

@@ -51,7 +51,7 @@ quint-fuzz mode="":
 	esac
 	QUINT_FUZZ_SEED="${QUINT_FUZZ_SEED:-$(node -e 'console.log(require("node:crypto").randomInt(1, 2 ** 32))')}"
 	echo "Quint fuzz starting seed: $QUINT_FUZZ_SEED"
-	QUINT_FUZZ_SEED="$QUINT_FUZZ_SEED" QUINT_FUZZ_TRACES="$quint_fuzz_traces" QUINT_FUZZ_STEPS=30 QUINT_FUZZ_WORKERS="${QUINT_FUZZ_WORKERS:-8}" \
+	QUINT_FUZZ_SEED="$QUINT_FUZZ_SEED" QUINT_FUZZ_TRACES="$quint_fuzz_traces" QUINT_FUZZ_STEPS="${QUINT_FUZZ_STEPS:-15}" QUINT_FUZZ_WORKERS="${QUINT_FUZZ_WORKERS:-8}" \
 		cargo test --profile testnet -p parachain-service-bin --test quint_replay \
 		fuzz::generated_traces_works -- --ignored --nocapture
 

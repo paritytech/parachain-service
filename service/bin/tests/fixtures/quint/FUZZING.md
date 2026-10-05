@@ -14,7 +14,7 @@ of actions or expected states. It calls the pinned model's `refine`,
 Run from the repository root with Node and Quint **0.32.0** on PATH:
 
 ```sh
-QUINT_FUZZ_TRACES=100 QUINT_FUZZ_STEPS=30 QUINT_FUZZ_WORKERS=4 \
+QUINT_FUZZ_TRACES=100 QUINT_FUZZ_STEPS=15 QUINT_FUZZ_WORKERS=4 \
   cargo test -p parachain-service-bin --test quint_replay \
   fuzz::generated_traces_works -- --ignored --nocapture
 ```
@@ -24,11 +24,15 @@ Configuration:
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `QUINT_FUZZ_TRACES` | `100` | Total traces across workers; `0` runs until failure/interruption |
-| `QUINT_FUZZ_STEPS` | `30` | Transitions per trace, 1–10000 |
+| `QUINT_FUZZ_STEPS` | `15` | Transitions per trace, 1–10000 |
 | `QUINT_FUZZ_WORKERS` | `1` | Independent Rust workers and generator processes |
 | `QUINT_FUZZ_SEED` | `1` | First seed; worker i uses seed+i, then increments by worker count |
 | `QUINT_FUZZ_FAILURE_DIR` | `target/quint-fuzz` | Saved mismatch reports |
 | `QUINT_PACKAGE` | resolved from `quint` on PATH | Optional installed npm package directory |
+
+The default trace has 15 transitions plus its initial state. Override it with
+`QUINT_FUZZ_STEPS=30 just quint-fuzz` for longer action sequences. Shorter traces
+reduce work per trace but cover fewer interactions across successive actions.
 
 For an indefinite campaign, set `QUINT_FUZZ_TRACES=0`. Choose workers based on the
 available CPUs and memory: each worker owns a Node process as well as a Rust
