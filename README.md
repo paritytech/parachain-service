@@ -53,7 +53,7 @@ There are [just](https://github.com/casey/just) recipes for the other operations
 
 ## Project Management
 
-# Poc2Production issues
+### Poc2Production issues
 
 Issues labeled with this label are about transforming the mainly vibe-coded PoC into production ready code.
 Fundamentally this means the code should be upstreamed to the respective project main/master branches. As the code
