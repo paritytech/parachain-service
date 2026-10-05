@@ -20,6 +20,27 @@ just quint-fuzz --infinite # run until failure or interruption
 
 See [Quint replay](QUINT_REPLAY.md) for prerequisites, fixtures, and failure replay.
 
+Deploy an infinite campaign to the SSH alias `fuzzer2` using every available CPU:
+
+```sh
+ansible-galaxy collection install -r ansible/requirements.yml
+ansible-playbook -i ansible/inventory.ini ansible/quint-fuzz.yml
+ssh fuzzer2 'sudo journalctl -u quint-fuzz -f'
+```
+
+The playbook requires local Ansible and rsync, initialized submodules, and an
+Ubuntu/Debian server with Python 3, Node >=18, npm, and sudo access (`-K` if needed).
+It copies the local checkout, including uncommitted changes and Git metadata,
+into `~/parachain-service-quint-fuzz`; build outputs and local environment files
+are excluded. Use this dedicated checkout only for the deployed campaign:
+redeploying stops the previous run and replaces its source. Dependencies are
+installed under `~/.local/share/quint-fuzz` and the existing Rust default is preserved.
+The service compiles on first startup, survives SSH disconnects, and starts at
+boot. It stops on a failure without automatically restarting; reports stay in
+`~/quint-fuzz-failures` across deployments. Inspect them before restarting with
+`sudo systemctl restart quint-fuzz`, or stop with `sudo systemctl stop quint-fuzz`.
+For local runs, `QUINT_FUZZ_WORKERS` overrides the recipe's default of eight workers.
+
 ## Code and references
 
 - [Service](service/src/lib.rs): [Refine](service/src/refine.rs) and

@@ -1,0 +1,25 @@
+[Unit]
+Description=Parachain service infinite Quint fuzzing
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=exec
+User={{ ansible_facts.user_id }}
+WorkingDirectory={{ quint_fuzz_checkout }}
+Environment="HOME={{ ansible_facts.user_dir }}"
+Environment="PATH={{ quint_fuzz_bin_path }}"
+Environment="RUSTUP_TOOLCHAIN={{ quint_fuzz_toolchain }}"
+Environment="QUINT_PACKAGE={{ quint_fuzz_tools }}/node_modules/@informalsystems/quint"
+Environment="QUINT_FUZZ_WORKERS={{ quint_fuzz_cpus.stdout }}"
+Environment="QUINT_FUZZ_FAILURE_DIR={{ quint_fuzz_failures }}"
+ExecStart={{ quint_fuzz_tools }}/bin/just quint-fuzz --infinite
+# Preserve the first failure for investigation instead of starting another campaign.
+Restart=no
+KillMode=control-group
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

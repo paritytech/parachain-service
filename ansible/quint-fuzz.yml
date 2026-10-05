@@ -1,0 +1,161 @@
+---
+- name: Deploy infinite Quint fuzzing on every available CPU
+  hosts: quint_fuzzers
+  gather_facts: true
+  vars:
+    quint_fuzz_source: "{{ playbook_dir }}/.."
+    quint_fuzz_checkout: "{{ ansible_facts.user_dir }}/parachain-service-quint-fuzz"
+    quint_fuzz_tools: "{{ ansible_facts.user_dir }}/.local/share/quint-fuzz"
+    quint_fuzz_failures: "{{ ansible_facts.user_dir }}/quint-fuzz-failures"
+    # Match the tested development toolchain without changing the user's default.
+    quint_fuzz_toolchain: nightly-2026-08-20
+    quint_fuzz_just_version: 1.58.0
+    quint_fuzz_bin_path: "{{ quint_fuzz_tools }}/bin:{{ ansible_facts.user_dir }}/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
+  tasks:
+    - name: Verify local submodules are initialized at their pinned revisions
+      ansible.builtin.command: git submodule status
+      args:
+        chdir: "{{ quint_fuzz_source }}"
+      delegate_to: localhost
+      become: false
+      register: quint_fuzz_submodules
+      changed_when: false
+      failed_when: >-
+        quint_fuzz_submodules.rc != 0 or
+        quint_fuzz_submodules.stdout is search('(?m)^[-+U]')
+
+    - name: Install native build and deployment dependencies
+      become: true
+      ansible.builtin.apt:
+        name:
+          - build-essential
+          - ca-certificates
+          - clang
+          - cmake
+          - curl
+          - git
+          - libclang-dev
+          - libssl-dev
+          - nodejs
+          - pkg-config
+          - protobuf-compiler
+          - rsync
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Check Node and npm prerequisites
+      ansible.builtin.shell: |
+        set -eu
+        node -e 'if (Number(process.versions.node.split(".")[0]) < 18) process.exit(1)'
+        npm --version
+      changed_when: false
+
+    - name: Create dedicated deployment directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0755"
+      loop:
+        - "{{ quint_fuzz_checkout }}"
+        - "{{ quint_fuzz_tools }}"
+        - "{{ quint_fuzz_failures }}"
+
+    - name: Check for rustup
+      ansible.builtin.stat:
+        path: "{{ ansible_facts.user_dir }}/.cargo/bin/rustup"
+      register: quint_fuzz_rustup
+
+    - name: Download rustup installer
+      ansible.builtin.get_url:
+        url: https://sh.rustup.rs
+        dest: "{{ quint_fuzz_tools }}/rustup-init.sh"
+        mode: "0700"
+      when: not quint_fuzz_rustup.stat.exists
+
+    - name: Install rustup without changing the default toolchain
+      ansible.builtin.command: >-
+        sh {{ quint_fuzz_tools }}/rustup-init.sh -y --no-modify-path --default-toolchain none
+      when: not quint_fuzz_rustup.stat.exists
+
+    - name: Install the campaign Rust toolchain and components
+      ansible.builtin.command: >-
+        {{ ansible_facts.user_dir }}/.cargo/bin/rustup toolchain install
+        {{ quint_fuzz_toolchain }} --profile minimal --component rust-src,rustfmt,clippy
+      register: quint_fuzz_rust_install
+      changed_when: "'installed' in quint_fuzz_rust_install.stdout"
+
+    - name: Install just with module support in the dedicated tools directory
+      ansible.builtin.command: >-
+        {{ ansible_facts.user_dir }}/.cargo/bin/cargo +{{ quint_fuzz_toolchain }}
+        install just --version {{ quint_fuzz_just_version }} --locked --root {{ quint_fuzz_tools }}
+      register: quint_fuzz_just_install
+      changed_when: "'Installing ' in quint_fuzz_just_install.stderr"
+
+    - name: Install the exact Quint version required by the streaming adapter
+      ansible.builtin.command: >-
+        npm install --prefix {{ quint_fuzz_tools }} --no-audit --no-fund
+        @informalsystems/quint@0.32.0
+      register: quint_fuzz_npm_install
+      changed_when: "'up to date' not in quint_fuzz_npm_install.stdout"
+
+    - name: Count CPUs available to the campaign
+      ansible.builtin.command: nproc
+      register: quint_fuzz_cpus
+      changed_when: false
+
+    - name: Inspect existing service
+      ansible.builtin.service_facts:
+
+    - name: Stop the previous campaign before updating its source
+      become: true
+      ansible.builtin.systemd_service:
+        name: quint-fuzz.service
+        state: stopped
+      when: "'quint-fuzz.service' in ansible_facts.services"
+
+    - name: Copy the working checkout including pinned submodules and Git revisions
+      ansible.posix.synchronize:
+        src: "{{ quint_fuzz_source }}/"
+        dest: "{{ quint_fuzz_checkout }}/"
+        delete: true
+        owner: false
+        group: false
+        set_remote_user: false
+        use_ssh_args: true
+        verify_host: true
+        rsync_opts:
+          - --exclude=target/
+          - --exclude=.DS_Store
+          - --exclude=.env*
+          - --exclude=.vscode/
+          - --exclude=.omo/
+          - --exclude=notes.md
+
+    - name: Verify the deployed recipe parses
+      ansible.builtin.command: "{{ quint_fuzz_tools }}/bin/just --show quint-fuzz"
+      args:
+        chdir: "{{ quint_fuzz_checkout }}"
+      changed_when: false
+
+    - name: Install the system service
+      become: true
+      ansible.builtin.template:
+        src: quint-fuzz.service.j2
+        dest: /etc/systemd/system/quint-fuzz.service
+        mode: "0644"
+
+    - name: Enable and start the infinite campaign
+      become: true
+      ansible.builtin.systemd_service:
+        name: quint-fuzz.service
+        daemon_reload: true
+        enabled: true
+        state: started
+
+    - name: Show campaign locations
+      ansible.builtin.debug:
+        msg:
+          - "Running just quint-fuzz --infinite with {{ quint_fuzz_cpus.stdout }} workers."
+          - "First startup compiles the Rust tests and PVM blob; watch journalctl -u quint-fuzz -f."
+          - "Failure reports: {{ quint_fuzz_failures }}"
