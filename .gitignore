@@ -5,3 +5,4 @@ vendor/
 notes.md
 .omo/
 /ansible/rsync-progress
+/ansible/inventory.ini
