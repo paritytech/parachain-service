@@ -47,6 +47,20 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 				let results = field(&pair[1], "lastStepWorkResults")?
 					.as_array()
 					.ok_or("lastStepWorkResults must be a list")?;
+				if pair[1].get("replayDesignate").is_none() &&
+					results.iter().any(|r| {
+						r.pointer("/result/value/value/upwardMessages")
+							.and_then(Value::as_array)
+							.is_some_and(|msgs| {
+								msgs.iter().any(|m| {
+									m.get("tag").and_then(Value::as_str) == Some("SetValidatorKeys")
+								})
+							})
+					}) {
+					return Err(format!(
+						"frame {frame}: validator-key inputs require replayDesignate"
+					));
+				}
 				let items = results
 					.iter()
 					.map(|result| work_item(result, &mut codex))
@@ -170,6 +184,10 @@ fn upward_message(
 				Ok(UpwardMessage::Forget { target, hash, len: Compact(len) })
 			}
 		},
+		"SetValidatorKeys" => Ok(UpwardMessage::SetValidatorKeys {
+			keys: super::validator_keys::keys(field(value, "keys")?)?,
+			is_last: boolean(field(value, "isLast")?)?,
+		}),
 		"AssignCore" => super::assignments::message(value),
 		"SetKV" => {
 			let key = bytes(field(value, "key")?)?;

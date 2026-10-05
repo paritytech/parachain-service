@@ -100,7 +100,7 @@ pub fn state(
 			root.map(|v| v.1)
 		));
 	}
-	staging(previous, current, mutations, frame)?;
+	super::validator_keys::compare(previous, current, mutations, frame)?;
 	// These effects have no representation in the supported replay input domain.
 	if !mutations.transfers.is_empty() ||
 		!mutations.provided.is_empty() ||
@@ -108,28 +108,6 @@ pub fn state(
 		!mutations.ejected.is_empty()
 	{
 		return Err(format!("frame {frame}: unexpected JAM transfer/provide/create/eject output"));
-	}
-	Ok(())
-}
-
-fn staging(
-	previous: &Value,
-	current: &Value,
-	mutations: &StateMutations,
-	frame: usize,
-) -> Result<(), String> {
-	// No validator-key messages are supported yet. Fail closed on both a model
-	// staging change and a Rust designate, including designation of the same set.
-	let before = field(previous, "jamStagingSet")?
-		.as_array()
-		.ok_or("jamStagingSet must be a list")?;
-	let after = field(current, "jamStagingSet")?
-		.as_array()
-		.ok_or("jamStagingSet must be a list")?;
-	if before != after || mutations.keys.is_some() {
-		return Err(format!(
-			"frame {frame}: jamStagingSet differs or requires a designation input codex"
-		));
 	}
 	Ok(())
 }

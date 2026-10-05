@@ -14,7 +14,7 @@ cargo test -p parachain-service-bin --test quint_replay
 ```
 
 The generator uses the pinned model, TypeScript backend, and seed 1. It regenerates
-`refine_errors`, `blocks`, `upgrades`, `log_pruning`, `kv`, `balances`, `lifecycle`, and `assignments` scenarios, including the
+`refine_errors`, `blocks`, `upgrades`, `log_pruning`, `kv`, `balances`, `lifecycle`, `assignments`, and `validator_keys` scenarios, including the
 root minimal and stale-parent fixtures. Other historical fixtures are retained.
 JSON is compact and timestamp-free; use `just quint-fmt` to expand it for review
 and `just quint-compact` before committing.
@@ -29,15 +29,27 @@ and `just quint-compact` before committing.
 | Balances and incoming transfers | Allowance boundaries, authorization, reservations/refunds, queue packing and rollover, admission/drop at the reservation limit, and Asset Hub charges |
 | Lifecycle | Registration thresholds and repeated funding, unauthorized calls, forced head/code changes, cleanup refusal with extra storage, delayed cleanup, and re-registration |
 | Assignments | Immediate/delayed execution, due-slot boundaries, queue expansion/rotation, repeated replacements, authorization, invalid queues, handoffs, a cached assign rejected after a handoff, pending storage, and final JAM queues/privileges |
+| Validator keys | Chunk staging, seeded buffers, full-size designation, same-set re-designation, empty aborts, invalid lengths, overflow, authorization, stale work, and final designation across multiple work packages |
 | Upgrades | Announcements and applies, supersession, refused forgets of validation code, unavailable or foreign code, failed reservations, and skipped work |
 | Log pruning | Rejected candidates retain logs; accepted candidates prune below the lookup anchor and retain the boundary |
 
-Mutation tests check that storage, log, and commitment mismatches are rejected.
+Mutation tests check that storage, log, commitment, and designation mismatches are rejected.
 
 ## Adapter limits
 
-- Validator-key inputs are unsupported; blocks must expect no staging-set change.
-  Unexpected designation, transfer, provide, create, or eject effects fail.
+- Validator-key integers map to a u64 little-endian prefix padded to 336 bytes.
+  Initial staging buffers are seeded, and stored buffers and final JAM key sets
+  are compared byte-for-byte in order. Blocks containing `SetValidatorKeys` must
+  include `replayDesignate`: the pinned model's last successful designation, or
+  an empty list for none. This distinguishes no call from designation of an
+  unchanged set. Historical fixtures without key inputs may omit this field.
+  The fixture wrapper evaluates `accumulateBlock` with an empty incoming JAM set
+  to expose that effect, then carries the prior set forward when no call occurs.
+  The host exposes only the final successful designation, so intermediate calls
+  overwritten in a block remain unobservable. The model assumes this service
+  holds the designation privilege; unprivileged-host rejection remains covered
+  by the direct Rust tests. The fuzz input pool does not yet include key updates.
+  Unexpected transfer, provide, create, or eject effects fail.
 - Assignment messages and initial pending queues are supported. Authorizer integers
   map to a u32 little-endian prefix padded to 32 bytes. Assignment service IDs swap
   Quint 1 with mock 0; all other IDs remain literal (incoming-transfer IDs retain
@@ -56,7 +68,8 @@ Mutation tests check that storage, log, and commitment mismatches are rejected.
   state and are not compared.
 - Accumulate-log decoding supports `ForgetAgainAt`, `StateBalanceUpdateRejected`,
   `TooMuchStateHeld`, `InvalidCodeHashAcc`, `CodeUpgradeNotAvailable`,
-  `CodeUpgradeNotAnnounced`, `CanNotRemoveCode`, `CoreNotAssignable`, and
+  `CodeUpgradeNotAnnounced`, `CanNotRemoveCode`, `CoreNotAssignable`,
+  `DesignateRejected`, `StagedValidatorKeysOverflow`, and
   `InsufficientStateBalance` from `FromSolicit` or `FromSetKV`; other events fail explicitly.
 - `Solicit` and `Forget` support explicit parachain targets, including delegated
   calls, and historical fixtures without `Target`. Service targets are rejected

@@ -56,17 +56,7 @@ pub fn state(
 		allow(key);
 	}
 
-	let expected_keys = field(svc, "stagedValidatorKeys")?
-		.as_array()
-		.ok_or("stagedValidatorKeys must be a list")?
-		.iter()
-		.map(|v| {
-			let n = u64::try_from(integer(v)?).map_err(|_| "validator key out of range")?;
-			let mut key = [0u8; 336];
-			key[..8].copy_from_slice(&n.to_le_bytes());
-			Ok(key)
-		})
-		.collect::<Result<Vec<_>, String>>()?;
+	let expected_keys = super::validator_keys::keys(field(svc, "stagedValidatorKeys")?)?;
 	let key = storage_key(Tag::StagedValidatorKeys, &());
 	let actual: Vec<[u8; 336]> = get_state(storage, &key).unwrap_or_default();
 	if actual != expected_keys {

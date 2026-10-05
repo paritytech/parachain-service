@@ -10,6 +10,7 @@ mod lifecycle;
 mod log_pruning;
 mod refine_errors;
 mod upgrades;
+mod validator_keys;
 
 #[test]
 fn minimal_replay_works() {

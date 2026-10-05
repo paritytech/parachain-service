@@ -60,6 +60,12 @@ pub fn seed(storage: &mut Storage, frame: &Value, codex: &mut Codex) -> Result<(
 			other => return Err(format!("initial preimage status {other} is not supported")),
 		}
 	}
+	let keys = super::validator_keys::keys(field(field(frame, "svc")?, "stagedValidatorKeys")?)?;
+	let staged: parachain_service::state::validator_keys::StagedKeys =
+		keys.try_into().map_err(|_| "initial stagedValidatorKeys exceeds capacity")?;
+	if !staged.is_empty() {
+		set_state(storage, &storage_key(Tag::StagedValidatorKeys, &()), &staged);
+	}
 	super::assignments::seed(storage, field(frame, "svc")?)?;
 	storage.commit();
 	Ok(())

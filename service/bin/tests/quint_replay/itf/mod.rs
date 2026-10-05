@@ -20,3 +20,5 @@ mod compare_output;
 mod transfers;
 
 mod assignments;
+
+mod validator_keys;

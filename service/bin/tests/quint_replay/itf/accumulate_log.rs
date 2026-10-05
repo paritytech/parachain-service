@@ -71,6 +71,10 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 				reason,
 			})
 		},
+		"DesignateRejected" => Ok(AccumulateLog::DesignateRejected {
+			len: Compact(bounded_integer::<u32>(field(value, "len")?, "designation length")?),
+		}),
+		"StagedValidatorKeysOverflow" => Ok(AccumulateLog::StagedValidatorKeysOverflow),
 		"TooMuchStateHeld" => Ok(AccumulateLog::TooMuchStateHeld),
 		"CoreNotAssignable" => Ok(AccumulateLog::CoreNotAssignable {
 			core: bounded_integer(field(value, "core")?, "assignment core")?,
