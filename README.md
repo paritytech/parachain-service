@@ -30,6 +30,9 @@ ssh fuzzer2 'sudo journalctl -u quint-fuzz -f'
 
 The playbook requires local Ansible and rsync, initialized submodules, and an
 Ubuntu/Debian server with Python 3, Node >=18, npm, and sudo access (`-K` if needed).
+On x86_64 the pinned PolkaVM simulator requires AVX2; the playbook checks this
+before deployment. VMs must expose it through their CPU configuration (for
+example, host-passthrough), otherwise the blob build crashes with `SIGILL`.
 It copies the local checkout, including uncommitted changes and Git metadata,
 into `~/parachain-service-quint-fuzz`; build outputs and local environment files
 are excluded. Use this dedicated checkout only for the deployed campaign:

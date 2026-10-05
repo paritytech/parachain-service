@@ -24,6 +24,23 @@
         quint_fuzz_submodules.rc != 0 or
         quint_fuzz_submodules.stdout is search('(?m)^[-+U]')
 
+    - name: Read CPU capabilities
+      ansible.builtin.slurp:
+        src: /proc/cpuinfo
+      register: quint_fuzz_cpuinfo
+
+    - name: Require AVX2 for the pinned PolkaVM simulator on x86_64
+      ansible.builtin.assert:
+        that:
+          - >-
+            ansible_facts.architecture != 'x86_64' or
+            (quint_fuzz_cpuinfo.content | b64decode) is search('(?m)^flags\s*:.*\bavx2\b')
+        fail_msg: >-
+          The pinned PolkaVM simulator executes AVX2 instructions on x86_64.
+          This host does not expose AVX2 and crashes with SIGILL before fuzzing.
+          Enable AVX2 in the VM CPU configuration (for example, host-passthrough),
+          reboot the VM, then rerun this playbook.
+
     - name: Install native build and deployment dependencies
       become: true
       ansible.builtin.apt:
