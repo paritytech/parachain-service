@@ -13,7 +13,9 @@ module fuzz {
   import lifecycle_inputs.* from "./lifecycle_inputs"
   import transfer_inputs.* from "./transfer_inputs"
 
-  action replayInit = all { init, noTransfers }
+  import validator_key_inputs.* from "./validator_key_inputs"
+
+  action replayInit = all { init, noTransfers, noDesignation }
 
   pure def activeCodeCandidate(s: ParachainServiceState, para: ParaId): ParachainCandidate =
     { validationCode: { hash: activeCodeHashOr(s.paraInfo(para), NoCodeHash), len: FixedCodeLen } }
@@ -64,7 +66,8 @@ module fuzz {
       msgs.union(totals.map(total =>
         ParachainSetStateBalance({ paraId: target, newTotal: total })))
     })
-    kv.union(balances).union(lifecycleMessages).union(assignmentMessages(slot)).union(Set(
+    kv.union(balances).union(lifecycleMessages).union(assignmentMessages(slot))
+      .union(validatorKeyMessages).union(Set(
       RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen, phase: Announcement }),
       RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen, phase: Apply }),
       RequestCodeUpgrade({ hash: { vchBytes: 778 }, len: FixedCodeLen, phase: Announcement }),
@@ -141,13 +144,20 @@ module fuzz {
     val wp2 = replayWork(svc, para2, head2, candidate2, mode2, anchor2, auth2, msgs2)
     val wp3 = replayWork(svc, para3, head3, candidate3, mode3, anchor3, auth3, msgs3)
     val packages = List(wp1, wp2, wp3).slice(0, numPkgs)
-    val out = accumulateBlock(svc, slot, jamStagingSet, solicitedSet,
+    replayBlock(packages, slot)
+  }
+
+  action replayBlock(packages: List[WorkResult], slot: Timeslot): bool = {
+    // An empty incoming JAM set exposes the last successful designation even
+    // when it repeats the current keys. Carry the old set forward for no call.
+    val out = accumulateBlock(svc, slot, List(), solicitedSet,
       FixedCodeLen, packages, foreignServices)
     all {
       svc' = out.state,
       foreignServices' = out.foreign,
       now' = slot,
-      jamStagingSet' = out.staging,
+      replayDesignate' = out.staging,
+      jamStagingSet' = if (out.staging == List()) jamStagingSet else out.staging,
       solicitedSet' = out.solicited,
       prevSvc' = svc,
       lastStepWorkResults' = out.results,
@@ -170,8 +180,25 @@ module fuzz {
     recordIncoming(transfers)
   }
 
+  // Give key chunks their own action so they regularly reach Accumulate,
+  // alongside ordinary blocks mixing them with other messages and failures.
+  action validatorKeysBlock = {
+    nondet caller = oneOf(Set(AssetHubParaId, CoretimeParaId))
+    nondet msg = oneOf(validatorKeyMessages)
+    nondet repeated = oneOf(Set(false, true))
+    nondet mode = oneOf(Set(0, 7))
+    val msgs = if (repeated) List(msg, msg) else List(msg)
+    val wr = replayWork(svc, caller, svc.paraInfo(caller).headData,
+      activeCodeCandidate(svc, caller), mode, now, 0, msgs)
+    replayBlock(List(wr), now + 1)
+  }
+
   action replayStep = any {
-    all { block, noTransfers }, all { provisionPreimage, noTransfers }, incoming,
-    all { lifecycleBlock, noTransfers }, all { assignmentBlock, noTransfers }
+    all { block, noTransfers },
+    all { provisionPreimage, noTransfers, noDesignation },
+    all { incoming, noDesignation },
+    all { lifecycleBlock, noTransfers, noDesignation },
+    all { assignmentBlock, noTransfers, noDesignation },
+    all { validatorKeysBlock, noTransfers }
   }
 }

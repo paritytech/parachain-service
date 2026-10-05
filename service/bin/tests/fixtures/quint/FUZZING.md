@@ -108,7 +108,7 @@ Time gaps are at most `MaxLookupAge`, so sampled anchors lie between the valid
 lookback floor and the previous block slot.
 
 Each WP independently samples zero to four upward messages from `Solicit`,
-`Forget`, `RequestCodeUpgrade`, `SetKV`, `RemoveKV`, and
+`Forget`, `RequestCodeUpgrade`, `SetKV`, `RemoveKV`, `SetValidatorKeys`, and
 `ParachainSetStateBalance`. Two shared hashes at length 1024 exercise duplicate requests,
 shared references, refunds, and provision/forget/re-solicit lifecycles. Active-code
 messages exercise the refused forget of validation code. Forget targets include the caller and
@@ -154,7 +154,8 @@ ordering, endpoints, count, and orphan storage keys are compared. Deterministic
 The model's ghost JAM balances are not compared.
 
 The streaming initializer is `replayInit` (model `init` plus an empty operand
-list); `replayStep` clears operands on block/provision actions. CLI parity tests
+list and no designation); `replayStep` clears operands on block/provision actions
+and clears designation effects on non-key actions. CLI parity tests
 use the same initializer.
 
 Lifecycle messages target ordinary para IDs 3 and 4, preserving both privileged
@@ -178,6 +179,17 @@ period. Ordinary blocks mix assignments with the other UMPs. Expected state and
 assignment outputs come from the pinned model. Host assigner ownership persists
 between frames; attempts after a handoff are not suppressed. See README.md for
 the final-mutation comparison limit.
+
+Validator-key messages sample chunks of 0, 1, 3, 5, 6, 30, and 31 keys from two
+ordered key ranges, with both partial and final flags. This covers staging,
+empty aborts, valid and invalid assembled lengths, and Refine's 30-key boundary.
+Ordinary blocks mix these messages with other UMPs. A dedicated
+`validatorKeysBlock` also samples Asset Hub and unauthorized Coretime callers,
+current and stale parents, and repeated messages to exercise Refine's one-call
+limit. Staged keys persist between blocks; large-buffer boundaries remain in
+the deterministic fixtures. Every generated block records `replayDesignate`
+from the pinned model, distinguishing no call from designation of an unchanged
+set. Non-key actions clear this effect so it cannot leak into later frames.
 
 Malformed
 authorizer configuration and invalid item counts are excluded because their

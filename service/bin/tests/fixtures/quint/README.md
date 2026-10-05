@@ -48,7 +48,7 @@ Mutation tests check that storage, log, commitment, and designation mismatches a
   The host exposes only the final successful designation, so intermediate calls
   overwritten in a block remain unobservable. The model assumes this service
   holds the designation privilege; unprivileged-host rejection remains covered
-  by the direct Rust tests. The fuzz input pool does not yet include key updates.
+  by the direct Rust tests. The fuzz input pool includes key updates and records the same effect.
   Unexpected transfer, provide, create, or eject effects fail.
 - Assignment messages and initial pending queues are supported. Authorizer integers
   map to a u32 little-endian prefix padded to 32 bytes. Assignment service IDs swap

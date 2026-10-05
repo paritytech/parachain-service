@@ -259,3 +259,21 @@ fn stream_matches_cli_works() {
 		assert_eq!(stream["trace"]["states"], cli["states"]);
 	}
 }
+
+#[test]
+#[ignore = "checks generated validator-key coverage; requires Node and Quint 0.32.0"]
+fn validator_keys_generated_works() {
+	// A pinned seed that reaches a successful designation through replayStep,
+	// guarding against accidentally removing keys or their effect from fuzzing.
+	let stream = generator(95, 1, 1, 30).output().expect("stream generator");
+	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
+	let envelope: Value = serde_json::from_slice(&stream.stdout).expect("stream envelope");
+	let trace = &envelope["trace"];
+	assert!(
+		trace["states"].as_array().unwrap().iter().any(|state| {
+			state["replayDesignate"].as_array().is_some_and(|keys| !keys.is_empty())
+		}),
+		"fuzz seed must exercise a successful validator-key designation"
+	);
+	replay::document_trace(trace).expect("generated validator keys should match Quint");
+}
