@@ -1,6 +1,6 @@
 ---
 - name: Deploy infinite Quint fuzzing on every available CPU
-  hosts: quint_fuzzers
+  hosts: "{{ quint_fuzz_target | default('quint_fuzzers') }}"
   gather_facts: true
   vars:
     quint_fuzz_source: "{{ playbook_dir }}/.."
@@ -124,6 +124,11 @@
     - name: Inspect existing service
       ansible.builtin.service_facts:
 
+    # The Just recipe supplies a temporary wrapper; direct Ansible runs use rsync.
+    - name: Resolve the local rsync executable
+      ansible.builtin.set_fact:
+        ansible_rsync_path: "{{ lookup('env', 'QUINT_FUZZ_RSYNC_PATH') | default('rsync', true) }}"
+
     - name: Stop the previous campaign before updating its source
       become: true
       ansible.builtin.systemd_service:
@@ -132,6 +137,8 @@
       when: "'quint-fuzz.service' in ansible_facts.services"
 
     - name: Copy the working checkout including pinned submodules and Git revisions
+      environment:
+        QUINT_FUZZ_PROGRESS_TTY: "{{ lookup('env', 'QUINT_FUZZ_PROGRESS_TTY') }}"
       ansible.posix.synchronize:
         src: "{{ quint_fuzz_source }}/"
         dest: "{{ quint_fuzz_checkout }}/"
@@ -142,6 +149,7 @@
         use_ssh_args: true
         verify_host: true
         rsync_opts:
+          - --exclude=/ansible/rsync-progress
           - --exclude=target/
           - --exclude=.DS_Store
           - --exclude=.env*

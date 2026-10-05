@@ -55,6 +55,43 @@ quint-fuzz mode="":
 		cargo test --profile testnet -p parachain-service-bin --test quint_replay \
 		fuzz::generated_traces_works -- --ignored --nocapture
 
+# Deploy an infinite campaign to an SSH host; pass -K for sudo prompts or -u USER for the SSH user.
+[positional-arguments]
+quint-fuzz-deploy server *args:
+	#!/usr/bin/env sh
+	set -eu
+	quint_fuzz_server="$1"
+	shift
+	trap 'rm -f ansible/rsync-progress' EXIT
+	trap 'exit 130' INT
+	trap 'exit 143' TERM
+	trap 'exit 129' HUP
+	cat > ansible/rsync-progress <<'EOF'
+	#!/usr/bin/env bash
+	set -euo pipefail
+	progress_tty="${QUINT_FUZZ_PROGRESS_TTY:-/dev/tty}"
+	if [[ -c "$progress_tty" ]] && { exec 3>"$progress_tty"; } 2>/dev/null; then
+	    printf 'Starting rsync: scanning files and connecting to the server…\n' >&3
+	    (
+	        while sleep 10; do
+	            printf '\nrsync still running (%ss elapsed)…\n' "$SECONDS" >&3
+	        done
+	    ) &
+	    progress_pid=$!
+	    trap 'kill "$progress_pid" 2>/dev/null || true; wait "$progress_pid" 2>/dev/null || true' EXIT
+	    rsync --verbose --progress "$@" | tee /dev/fd/3
+	    printf 'Checkout transfer complete.\n' >&3
+	else
+	    exec rsync "$@"
+	fi
+	EOF
+	chmod +x ansible/rsync-progress
+	QUINT_FUZZ_PROGRESS_TTY="$(tty 2>/dev/null || true)"
+	QUINT_FUZZ_RSYNC_PATH="$PWD/ansible/rsync-progress"
+	export QUINT_FUZZ_PROGRESS_TTY QUINT_FUZZ_RSYNC_PATH
+	ansible-playbook -i "$quint_fuzz_server," ansible/quint-fuzz.yml \
+		-e quint_fuzz_target=all "$@"
+
 # Short for check
 c: check
 check:

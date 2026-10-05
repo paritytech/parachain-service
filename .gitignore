@@ -4,3 +4,4 @@ vendor/
 .vscode/
 notes.md
 .omo/
+/ansible/rsync-progress
