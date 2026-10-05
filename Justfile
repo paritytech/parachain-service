@@ -92,6 +92,27 @@ quint-fuzz-deploy server *args:
 	ansible-playbook -i "$quint_fuzz_server," ansible/quint-fuzz.yml \
 		-e quint_fuzz_target=all "$@"
 
+# Set transitions per trace (1–10000) and restart the remote campaign.
+[positional-arguments]
+quint-fuzz-steps server steps:
+	#!/usr/bin/env sh
+	set -eu
+	steps="$2"
+	case "$steps" in
+		""|*[!0-9]*|0*) echo "Steps must be an integer from 1 to 10000." >&2; exit 2 ;;
+	esac
+	if [ "${#steps}" -gt 5 ] || [ "$steps" -gt 10000 ]; then
+		echo "Steps must be an integer from 1 to 10000." >&2
+		exit 2
+	fi
+	ssh -t -- "$1" "sudo sh -c '
+		set -eu
+		mkdir -p /etc/systemd/system/quint-fuzz.service.d
+		printf \"%s\\n\" \"[Service]\" \"Environment=QUINT_FUZZ_STEPS=$steps\" > /etc/systemd/system/quint-fuzz.service.d/steps.conf
+		systemctl daemon-reload
+		systemctl restart quint-fuzz
+	'"
+
 # Follow the remote fuzzing service logs (accepts an SSH alias or user@host).
 [positional-arguments]
 quint-fuzz-logs server:

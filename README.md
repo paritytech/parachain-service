@@ -37,6 +37,16 @@ just quint-fuzz-deploy scaleway -K
 just quint-fuzz-deploy server.example.com -u ubuntu
 ```
 
+Change the remote trace length and restart the campaign:
+
+```sh
+just quint-fuzz-steps scaleway 30
+```
+
+The step count must be 1–10000. This setting persists across reboots and
+redeployments; restarting begins a new campaign. Servers deployed with the old
+recipe that hardcodes the step count must be redeployed first.
+
 The playbook requires local Ansible and rsync, initialized submodules, and an
 Ubuntu/Debian server with Python 3, Node >=18, npm, and sudo access (`-K` if needed).
 On x86_64 the pinned PolkaVM simulator requires AVX2; the playbook checks this
