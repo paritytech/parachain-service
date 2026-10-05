@@ -50,3 +50,15 @@ cargo test
 ```
 
 There are [just](https://github.com/casey/just) recipes for the other operations (`just --list`).
+
+## Project Management
+
+# Poc2Production issues
+
+Issues labeled with this label are about transforming the mainly vibe-coded PoC into production ready code.
+Fundamentally this means the code should be upstreamed to the respective project main/master branches. As the code
+was mainly written by AI, it requires real human to understand, review and improve the code before they open the
+upstream pull requests. There is no value in blindly upstreaming the code and putting the review burden on the reviewers,
+ so please follow the rules :)
+
+Otherwise the issues are free to pick by anyone, but please reach out in the issue or by DM before.
