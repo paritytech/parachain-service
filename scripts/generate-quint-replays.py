@@ -48,6 +48,7 @@ def generate(source):
             for state in trace["states"]:
                 state.pop("#meta", None)
             root_fixtures = {
+                "refine_error_replay_works.itf.json": "refine_error_replay.itf.json",
                 "minimal_replay_works.itf.json": "minimal_replay.itf.json",
                 "stale_parent_candidate_rejected_works.itf.json": "staleParentCandidateRejectedTest.itf.json",
             }

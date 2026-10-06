@@ -29,6 +29,9 @@ module refine_errors {
   action logError(error: RefineLog, authTrace: int): bool =
     applyWork(WorkOk(Err({ paraId: CoretimeParaId, validationCode: { vchBytes: 1 }, error: error })), authTrace)
 
+  run refine_error_replay_works =
+    init.then(logError(ValidationCodeLookupFailed, 0)).then(applyWork(WorkErr, 0))
+
   run too_many_validator_keys_works =
     init.then(logError(TooManyValidatorKeys, 7)).then(applyWork(WorkErr, 7))
 
