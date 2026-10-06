@@ -8,8 +8,9 @@ module outgoing_inputs {
   import accumulate.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/accumulate"
   import foreign_services.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/foreign_services"
 
+  import service_inputs.* from "./service_inputs"
   var replayTransfers: List[TransferOutArgs]
-  action noOutgoing = replayTransfers' = List()
+  action noOutgoing = all { replayTransfers' = List(), noCreations }
   pure def destination(id: ServiceId, gas: int): ForeignService = {
     supervisor: id, supervisorCreated: 0, created: 0,
     requests: Map(), storage: Map(),
@@ -42,8 +43,8 @@ module outgoing_inputs {
 
   // Observe effects through pinned model functions; duplicate IDs and no-op
   // upgrades cannot be inferred from net balances or final code hashes.
-  type ReplayEffects = { transfers: List[TransferOutArgs], minAccGas: Option[int] }
-  pure val noEffects: ReplayEffects = { transfers: List(), minAccGas: None }
+  type ReplayEffects = { transfers: List[TransferOutArgs], minAccGas: Option[int], creations: List[CreationEffect] }
+  pure val noEffects: ReplayEffects = { transfers: List(), minAccGas: None, creations: List() }
   def messageEffects(packages: List[WorkResult], slot: Timeslot): ReplayEffects = {
     val initial = accumulateBlock(svc, slot, jamStagingSet, solicitedSet,
       FixedCodeLen, List(), foreignServices)
@@ -65,11 +66,15 @@ module outgoing_inputs {
                 jamDesignate: a.staging, jamSolicit: pre.jamSolicit,
                 jamForget: pre.jamForget, jamAssigns: List(), logs: pre.logs }
               val messages = ok.upwardMessages.foldl({ acc: base, effects: noEffects }, (m, msg) => {
-                val applied = applyUpwardMessage(m.acc, ok.paraId, FixedCodeLen, slot, ok.lookupAnchor, msg)
+                val applied = replayApply(m.acc, ok.paraId, FixedCodeLen, slot, ok.lookupAnchor, msg)
                 // applyUpwardMessage appends a log for every refused transfer or
                 // upgrade; logs are only bounded later, when the package ends.
                 val success = applied.logs.length() == m.acc.logs.length()
                 val effects = match msg {
+                  | CreateService(c) => {
+                    val fresh = applied.foreign.keys().exclude(m.acc.foreign.keys())
+                    { ...m.effects, creations: fresh.fold(m.effects.creations, (list, id) => list.append({ service: id, args: c })) }
+                  }
                   | TransferOut(t) => if (success and t.deferred != None)
                     { ...m.effects, transfers: m.effects.transfers.append(t) } else m.effects
                   | UpgradeService(u) => if (success)
@@ -83,11 +88,12 @@ module outgoing_inputs {
           }
         }
       }
-      val after = accumulateOnePackage(a.state, wr, a.solicited, a.staging,
+      val after = replayPackage(a.state, wr, a.solicited, a.staging,
         FixedCodeLen, slot, a.foreign)
       { state: after.state, foreign: after.foreign, solicited: after.solicited,
         staging: after.jamDesignate, effects: {
           transfers: a.effects.transfers.concat(emitted.transfers),
+          creations: a.effects.creations.concat(emitted.creations),
           minAccGas: if (emitted.minAccGas == None) a.effects.minAccGas else emitted.minAccGas
         } }
     })

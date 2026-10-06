@@ -7,6 +7,7 @@ module invocation_inputs {
   import main.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/main"
   import accumulate.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/accumulate"
 
+  import service_inputs.* from "./service_inputs"
   import transfer_inputs.* from "./transfer_inputs"
 
   import validator_key_inputs.* from "./validator_key_inputs"
@@ -36,7 +37,7 @@ module invocation_inputs {
     val prefix = accumulateBlock(svc, slot, List(), solicitedSet,
       FixedCodeLen, List(), foreignServices)
     val arrived = applyIncomingTransfers(prefix.state, incoming)
-    val out = accumulateAll(arrived, solicitedSet, List(), FixedCodeLen,
+    val out = replayAll(arrived, solicitedSet, List(), FixedCodeLen,
       slot, applied, foreignServices)
     val effects = messageEffectsFrom(arrived, applied, slot)
     all {
@@ -49,6 +50,7 @@ module invocation_inputs {
       now' = slot,
       replayDesignate' = out.jamDesignate,
       replayTransfers' = effects.transfers,
+      replayCreations' = effects.creations,
       replayMinAccGas' = effects.minAccGas.optionGetOr(replayMinAccGas),
       jamStagingSet' = if (out.jamDesignate == List()) jamStagingSet else out.jamDesignate,
       solicitedSet' = out.solicited,

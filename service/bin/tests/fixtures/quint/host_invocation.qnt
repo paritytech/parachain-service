@@ -14,17 +14,29 @@ module host_invocation {
   import service_upgrade_inputs.* from "./service_upgrade_inputs"
   import gas_inputs.* from "./gas_inputs"
   import host_metadata.* from "./host_metadata"
+  import service_inputs.* from "./service_inputs"
   import host_sizes.* from "./host_sizes"
   type HostAcc = { acc: AccumulateOutcome, free: int, safe: bool,
-    rejects: int, minGas: Option[int] }
+    rejects: int, minGas: Option[int], creations: List[CreationEffect] }
   pure def moved(h: HostAcc, acc: AccumulateOutcome): HostAcc = {
     val delta = hostCost(acc.state) - hostCost(h.acc.state)
+      + h.acc.state.jamAccount.balance - acc.state.jamAccount.balance
     { ...h, acc: acc, free: h.free - delta, safe: h.safe and delta <= h.free }
   }
   pure def limitedMessage(h: HostAcc, caller: ParaId, slot: int, anchor: int,
     message: UpwardMessage): HostAcc = {
     val applied = applyUpwardMessage(h.acc, caller, FixedCodeLen, slot, anchor, message)
     match message {
+      | CreateService(c) => {
+        val cost = BaseDeposit + 2 * ItemDeposit + PreimageRequestOverhead + c.len
+        val out = if (cost > h.free)
+          { ...h.acc, logs: h.acc.logs.append(ServiceCreation({ id: c.id, result: CannotAfford })) }
+          else replayApply(h.acc, caller, FixedCodeLen, slot, anchor, message)
+        val nextHost = moved(h, out)
+        { ...nextHost, creations: out.foreign.keys().exclude(h.acc.foreign.keys())
+          .fold(h.creations, (list, id) => list.append({ service: id, args: c })) }
+      }
+      | EjectService(_) => moved(h, applied)
       | SetKV(kv) => {
         val before = h.acc.state
         val pi = before.paraInfo(caller)
@@ -56,7 +68,7 @@ module host_invocation {
     }
   }
   type HostPackage = { state: ParachainServiceState, foreign: ForeignServices,
-    free: int, safe: bool, rejects: int, minGas: Option[int],
+    free: int, safe: bool, rejects: int, minGas: Option[int], creations: List[CreationEffect],
     solicited: Set[(ParaId, Hash, int)], pruned: List[(ParaId, Timeslot)] }
   pure def limitedPackage(h: HostPackage, wr: WorkResult, slot: int): HostPackage = match wr.result {
     | WorkErr => h
@@ -67,7 +79,7 @@ module host_invocation {
         if (prefix.rejected) h else {
           val delta = hostCost(prefix.state) - hostCost(h.state)
           val start: HostAcc = { free: h.free - delta, safe: h.safe and delta <= h.free,
-            rejects: h.rejects, minGas: h.minGas, acc: { state: prefix.state, foreign: h.foreign,
+            rejects: h.rejects, minGas: h.minGas, creations: h.creations, acc: { state: prefix.state, foreign: h.foreign,
               jamDesignate: List(), jamAssigns: List(), jamSolicit: Set(), jamForget: Set(), logs: List() } }
           val out = ok.upwardMessages.foldl(start, (a, m) => limitedMessage(a, ok.paraId, slot, ok.lookupAnchor, m))
           val logged = out.acc.state.appendAccumulateLogs(ok.paraId, slot, out.acc.logs)
@@ -75,7 +87,7 @@ module host_invocation {
           val logFits = logDelta <= out.free
           { ...h, state: if (logFits) logged else out.acc.state, foreign: out.acc.foreign,
             free: out.free - (if (logFits) logDelta else 0), safe: out.safe,
-            rejects: out.rejects, minGas: out.minGas,
+            rejects: out.rejects, minGas: out.minGas, creations: out.creations,
             solicited: ok.upwardMessages.foldl(h.solicited, (a, m) => match m {
               | Forget(p) => match p.target {
                 | Parachain(target) => a.exclude(Set((target, p.hash, p.len))) | _ => a
@@ -95,7 +107,7 @@ module host_invocation {
     val arrived = applyIncomingTransfers(due.state, incoming)
     val free = allowance + incoming.foldl(0, (n, t) => n + t.amount) - hostCost(arrived) + hostCost(svc)
     val start: HostPackage = { state: arrived, foreign: due.foreign, free: free, safe: free >= 0,
-      rejects: 0, minGas: None, solicited: solicitedSet, pruned: List() }
+      rejects: 0, minGas: None, creations: List(), solicited: solicitedSet, pruned: List() }
     range(0, packages.length()).foldl(start, (a, i) =>
       if (limits[i] < reportGas(packages[i])) a else limitedPackage(a, packages[i], slot))
   }
@@ -112,7 +124,7 @@ module host_invocation {
       lastHeadRoot' = if (interrupt < 0) headCommitment(svc, out.state) else None,
       logPrunedBelow' = out.pruned.foldl(logPrunedBelow, (m, pair) => m.put(pair._1, pair._2)),
       replayIncoming' = incoming, replayGasLimits' = limits, replayInterrupt' = interrupt,
-      replayDesignate' = List(), replayTransfers' = List(),
+      replayDesignate' = List(), replayTransfers' = List(), replayCreations' = out.creations,
       replayMinAccGas' = out.minGas.optionGetOr(replayMinAccGas),
       replayHostBudget' = allowance, replayHostFree' = out.free, replayHostRejects' = out.rejects
     }
