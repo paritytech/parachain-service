@@ -88,8 +88,8 @@ recovery. Quint predicts the completed prefix, including incoming transfers and
 due assignments; comparisons cover storage, balances, logs, and host effects.
 The failed report and the remaining suffix must leave no effects. No head
 commitment is returned on interruption. Subsequent frames replay from recovered
-state. This covers transfer-induced exhaustion; arbitrary instruction-level gas
-cutoffs are not yet sampled.
+state. This action covers transfer-induced exhaustion. Invocation gas sampling
+below also interrupts execution inside reports.
 
 A separate `panicBlock` action samples a malformed digest at the first, middle,
 or last report. `replayPanic = true` instructs the Rust adapter to replace that
@@ -106,6 +106,48 @@ report writes state. Existing out-of-gas cases test rollback after partial write
 Zero declared report gas is also sampled because decoding precedes the gas gate.
 `fuzz::panic_recovery_generated_works` requires all three panic positions, retained
 creation effects, zero-gas faults, and a subsequent normal work invocation.
+
+### Invocation gas cutoffs
+
+The Rust campaign worker deterministically converts about half of `panicBlock`
+frames into invocation gas cutoffs, using the trace seed. It removes the malformed
+output fault and admits the interrupted report with an unlimited report budget.
+The expected prefix is unchanged: that report contributes no model effects.
+Other panic frames still exercise the production decoder's trap path.
+
+Optional replay fields select the invocation gas pool independently of report
+budgets (omit all three for the mock's default pool):
+
+| Field | Meaning |
+| --- | --- |
+| `replayInvocationGas` | Exact nonnegative gas limit, at most `i64::MAX`, as an ITF integer |
+| `replayGasSample` | ITF integer from 0 to 1000000, selecting a position within the interrupted report's gas interval |
+| `replayGasBoundary` | `before:write`, `after:write`, `before:new`, `after:new`, `before:transfer`, or `after:transfer`; uses the first matching host call in the interrupted report |
+
+Sampling and boundary selection require `replayInterrupt`, `WorkOk` reports
+with unlimited report budgets, and no panic injection. A discarded execution with the default gas pool
+records host-call attempts through the pinned host's trace logger. Gas-only
+binary searches locate the interval after the selected checkpoint completes and
+before the next checkpoint is attempted. Reaching a subsequent host call proves
+the previous call completed, avoiding confusion between attempted and completed
+checkpoints. The probes verify stable host-call order and the expected number of
+checkpoints. They never inspect recovered storage or choose an expected state.
+
+The final execution must exhaust gas and match Quint's already chosen prefix,
+including storage, balances, creation requests, deferred transfers, and logs.
+Following frames continue from the recovered state. The sampled position is
+preserved in failure envelopes; replay recalibrates against the installed binary.
+Calibration adds PVM runs and depends on the pinned host's trace format; an
+unavailable observer or unexpected execution order fails replay.
+
+Deterministic tests cover five positions in each of three report intervals and
+both sides of write, creation, and transfer calls, followed by normal work.
+`fuzz::instruction_gas_generated_works` checks all three report positions and
+subsequent work in mixed generated traces. This samples gas at the interpreter's
+metering granularity; it does not exhaustively visit every instruction. Exhaustion
+before the first checkpoint and after the final report checkpoint is outside the
+sampled profile. Explicit gas limits that fail before any checkpoint are rejected
+because this profile's Quint oracle includes the always-accumulate phase.
 
 | Area | Sampled inputs |
 | --- | --- |

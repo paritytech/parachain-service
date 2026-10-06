@@ -27,6 +27,7 @@ and `just quint-compact` before committing.
 | Scenarios | Checks |
 | --- | --- |
 | Refine errors, WorkErr, empty blocks | Error logs, unlogged failures of other code, and unchanged state for skipped work |
+| Instruction gas recovery | Sampled invocation limits and cutoffs before/after writes, creation, and transfers; fixed Quint prefix, checkpoint effects, and subsequent invocations |
 | Accumulate panic recovery | Actual PVM traps from malformed work digests; first/middle/last checkpoints, zero report gas, repeated faults, due assignments, retained host effects, and successful later invocations |
 | Multiple work packages and parachains | Ordered processing, shared references, delegated forgets, and combined head commitments |
 | KV operations | Overwrite, empty keys/values rejected at Refine, values crossing 64 bytes without a length prefix, refunds, delegated and unauthorized removal, failed reservations, and stale candidates |
@@ -188,3 +189,10 @@ adapter replaces that report's output with an empty SCALE digest and requires
 an actual PVM `Trap`. The fault occurs before the report's gas gate and state
 writes. With `replayPanic` absent or false, interrupted traces retain the existing
 out-of-gas semantics. Unexpected VM failures always fail replay.
+
+Instruction gas tests reuse the `panic_recovery` fixtures' independently generated
+prefix states, replacing panic injection with gas exhaustion. No expected state
+is derived from the PVM probes. The default Rust fuzz worker also decorates mixed
+traces with deterministic gas samples; raw Node/Quint output remains unchanged.
+See [invocation gas cutoffs](FUZZING.md#invocation-gas-cutoffs) for metadata,
+calibration, and limits.
