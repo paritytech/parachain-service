@@ -25,7 +25,8 @@ Deploy an infinite campaign to any SSH alias or hostname using every available C
 ```sh
 ansible-galaxy collection install -r ansible/requirements.yml
 just quint-fuzz-deploy scaleway
-ssh scaleway 'sudo journalctl -u quint-fuzz -f'
+just quint-fuzz-logs scaleway    # follow the current campaign
+just quint-fuzz-restart scaleway # restart and follow the new campaign
 ```
 
 Additional arguments are forwarded to Ansible:
@@ -52,10 +53,10 @@ Ubuntu/Debian server with Python 3, Node >=18, npm, and sudo access (`-K` if nee
 On x86_64 the pinned PolkaVM simulator requires AVX2; the playbook checks this
 before deployment. VMs must expose it through their CPU configuration (for
 example, host-passthrough), otherwise the blob build crashes with `SIGILL`.
-It copies the local checkout, including uncommitted changes and Git metadata,
+It copies the local checkout, including uncommitted changes but excluding Git metadata,
 into `~/parachain-service-quint-fuzz`; build outputs and local environment files
 are excluded. Use this dedicated checkout only for the deployed campaign:
-redeploying stops the previous run and replaces its source. Dependencies are
+unchanged deployments keep it running; source updates stop it before copying. Dependencies are
 installed under `~/.local/share/quint-fuzz` and the existing Rust default is preserved.
 The service compiles on first startup, survives SSH disconnects, and starts at
 boot. It stops on a failure without automatically restarting; reports stay in

@@ -113,10 +113,41 @@ quint-fuzz-steps server steps:
 		systemctl restart quint-fuzz
 	'"
 
-# Follow the remote fuzzing service logs (accepts an SSH alias or user@host).
+# Restart, verify a new campaign, and follow only its logs (Ctrl-C stops following).
+[positional-arguments]
+quint-fuzz-restart server:
+	#!/usr/bin/env sh
+	set -eu
+	ssh -t -- "$1" '
+		set -eu
+		before=$(systemctl show quint-fuzz.service -p InvocationID --value)
+		sudo systemctl restart quint-fuzz.service
+		after=$(systemctl show quint-fuzz.service -p InvocationID --value)
+		if [ -z "$after" ] || [ "$after" = "$before" ] || ! systemctl is-active --quiet quint-fuzz.service; then
+			echo "Restart failed: no new active fuzzer invocation." >&2
+			sudo systemctl status quint-fuzz.service --no-pager || true
+			exit 1
+		fi
+		echo "Verified fresh fuzzer invocation: $after"
+		echo "Following only this campaign. Counters begin after any compilation finishes."
+		echo "Ctrl-C stops following logs; the fuzzer keeps running."
+		sudo journalctl -u quint-fuzz.service "_SYSTEMD_INVOCATION_ID=$after" -n 30 -f --no-pager
+	'
+
+# Follow only the current campaign's logs (accepts an SSH alias or user@host).
 [positional-arguments]
 quint-fuzz-logs server:
-	ssh -t "$1" 'sudo journalctl -u quint-fuzz -f'
+	#!/usr/bin/env sh
+	set -eu
+	ssh -t -- "$1" '
+		set -eu
+		invocation=$(systemctl show quint-fuzz.service -p InvocationID --value)
+		if [ -z "$invocation" ]; then
+			echo "No current fuzzer invocation. Run just quint-fuzz-restart to start one." >&2
+			exit 1
+		fi
+		sudo journalctl -u quint-fuzz.service "_SYSTEMD_INVOCATION_ID=$invocation" -n 30 -f --no-pager
+	'
 
 # Short for check
 c: check

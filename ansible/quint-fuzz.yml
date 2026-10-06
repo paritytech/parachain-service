@@ -11,6 +11,44 @@
     quint_fuzz_toolchain: nightly-2026-08-20
     quint_fuzz_just_version: 1.58.0
     quint_fuzz_bin_path: "{{ quint_fuzz_tools }}/bin:{{ ansible_facts.user_dir }}/.cargo/bin:/usr/local/bin:/usr/bin:/bin"
+    quint_fuzz_rsync_options:
+      - --exclude=.git
+      - --exclude=/ansible/rsync-progress
+      # chain-spec/ contains Rust crates required for workspace resolution.
+      - --exclude=chain-spec/**.json
+      - --exclude=**/chain-spec/**.json
+      - --exclude=chain-specs/
+      - --exclude=*.prdoc
+      - --exclude=target/
+      - --exclude=.DS_Store
+      - --exclude=.env*
+      - --exclude=.vscode/
+      - --exclude=.omo/
+      - --exclude=notes.md
+
+  # Maintain the notice even when a later prerequisite or deployment step fails.
+  pre_tasks:
+    - name: Install the system-wide SSH login notice
+      tags: [always]
+      become: true
+      ansible.builtin.blockinfile:
+        path: /etc/motd
+        create: true
+        owner: root
+        group: root
+        mode: "0644"
+        marker: "# {mark} ANSIBLE MANAGED QUINT FUZZ NOTICE"
+        block: |
+          QUINT FUZZER / BENCHMARKING
+          This machine hosts a background parachain-service fuzzer that can use all CPUs.
+          Stop it before benchmarking or other performance-sensitive work:
+            sudo systemctl stop quint-fuzz.service
+          Check that it is inactive:
+            systemctl is-active quint-fuzz.service
+          Start a new campaign when finished:
+            sudo systemctl start quint-fuzz.service
+          Stopping is temporary: rebooting or redeploying can start it again.
+
   tasks:
     - name: Verify local submodules are initialized at their pinned revisions
       ansible.builtin.command: git submodule status
@@ -53,8 +91,6 @@
           - git
           - libclang-dev
           - libssl-dev
-          - nodejs
-          - npm
           - pkg-config
           - protobuf-compiler
           - rsync
@@ -62,12 +98,51 @@
         update_cache: true
         cache_valid_time: 3600
 
-    - name: Check Node and npm prerequisites
-      ansible.builtin.shell: |
-        set -eu
-        node -e 'if (Number(process.versions.node.split(".")[0]) < 18) process.exit(1)'
-        npm --version
-      changed_when: false
+    # Third-party Node packages may bundle npm and conflict with Debian's npm.
+    # Probe using the same PATH as the campaign before choosing apt packages.
+    - name: Ensure Node and npm are available to the campaign
+      environment:
+        PATH: "{{ quint_fuzz_bin_path }}"
+      block:
+        - name: Check for an existing supported Node runtime
+          ansible.builtin.command:
+            argv:
+              - node
+              - -e
+              - 'if (Number(process.versions.node.split(".")[0]) < 18) process.exit(1)'
+          register: quint_fuzz_node_check
+          changed_when: false
+          failed_when: false
+
+        - name: Install Node when missing or too old
+          register: quint_fuzz_node_install
+          become: true
+          ansible.builtin.apt:
+            name: nodejs
+            state: present
+          when: quint_fuzz_node_check.rc != 0
+
+        # Check after installing Node: its package may have installed npm too.
+        - name: Check for an existing npm
+          ansible.builtin.command: npm --version
+          register: quint_fuzz_npm_check
+          changed_when: false
+          failed_when: false
+
+        - name: Install npm only when unavailable
+          register: quint_fuzz_system_npm_install
+          become: true
+          ansible.builtin.apt:
+            name: npm
+            state: present
+          when: quint_fuzz_npm_check.rc != 0
+
+        - name: Check Node and npm prerequisites
+          ansible.builtin.shell: |
+            set -eu
+            node -e 'if (Number(process.versions.node.split(".")[0]) < 18) process.exit(1)'
+            npm --version
+          changed_when: false
 
     - name: Create dedicated deployment directories
       ansible.builtin.file:
@@ -96,26 +171,65 @@
         sh {{ quint_fuzz_tools }}/rustup-init.sh -y --no-modify-path --default-toolchain none
       when: not quint_fuzz_rustup.stat.exists
 
+    - name: Inspect installed campaign Rust components
+      ansible.builtin.command: >-
+        {{ ansible_facts.user_dir }}/.cargo/bin/rustup component list
+        --toolchain {{ quint_fuzz_toolchain }} --installed
+      register: quint_fuzz_rust_components
+      changed_when: false
+      failed_when: false
+
     - name: Install the campaign Rust toolchain and components
       ansible.builtin.command: >-
         {{ ansible_facts.user_dir }}/.cargo/bin/rustup toolchain install
         {{ quint_fuzz_toolchain }} --profile minimal --component rust-src,rustfmt,clippy
       register: quint_fuzz_rust_install
-      changed_when: "'installed' in quint_fuzz_rust_install.stdout"
+      when: >-
+        quint_fuzz_rust_components.rc != 0 or
+        not (quint_fuzz_rust_components.stdout is search('(?m)^rust-src')) or
+        not (quint_fuzz_rust_components.stdout is search('(?m)^rustfmt-')) or
+        not (quint_fuzz_rust_components.stdout is search('(?m)^clippy-')) or
+        not (quint_fuzz_rust_components.stdout is search('(?m)^rustc-')) or
+        not (quint_fuzz_rust_components.stdout is search('(?m)^cargo-')) or
+        not (quint_fuzz_rust_components.stdout is search('(?m)^rust-std-'))
+
+    - name: Inspect the dedicated just version
+      ansible.builtin.command: "{{ quint_fuzz_tools }}/bin/just --version"
+      register: quint_fuzz_just_check
+      changed_when: false
+      failed_when: false
 
     - name: Install just with module support in the dedicated tools directory
       ansible.builtin.command: >-
         {{ ansible_facts.user_dir }}/.cargo/bin/cargo +{{ quint_fuzz_toolchain }}
         install just --version {{ quint_fuzz_just_version }} --locked --root {{ quint_fuzz_tools }}
       register: quint_fuzz_just_install
-      changed_when: "'Installing ' in quint_fuzz_just_install.stderr"
+      when: >-
+        quint_fuzz_just_check.rc != 0 or
+        quint_fuzz_just_check.stdout | trim != 'just ' ~ quint_fuzz_just_version
+
+    - name: Inspect the dedicated Quint installation
+      environment:
+        PATH: "{{ quint_fuzz_bin_path }}"
+      ansible.builtin.command:
+        argv:
+          - node
+          - "{{ quint_fuzz_tools }}/node_modules/@informalsystems/quint/dist/src/cli.js"
+          - --version
+      register: quint_fuzz_quint_check
+      changed_when: false
+      failed_when: false
 
     - name: Install the exact Quint version required by the streaming adapter
+      environment:
+        PATH: "{{ quint_fuzz_bin_path }}"
       ansible.builtin.command: >-
         npm install --prefix {{ quint_fuzz_tools }} --no-audit --no-fund
         @informalsystems/quint@0.32.0
       register: quint_fuzz_npm_install
-      changed_when: "'up to date' not in quint_fuzz_npm_install.stdout"
+      when: >-
+        quint_fuzz_quint_check.rc != 0 or
+        quint_fuzz_quint_check.stdout | trim != '0.32.0'
 
     - name: Count CPUs available to the campaign
       ansible.builtin.command: nproc
@@ -130,12 +244,31 @@
       ansible.builtin.set_fact:
         ansible_rsync_path: "{{ lookup('env', 'QUINT_FUZZ_RSYNC_PATH') | default('rsync', true) }}"
 
+    - name: Preview checkout changes without disturbing the campaign
+      environment:
+        QUINT_FUZZ_PROGRESS_TTY: "{{ lookup('env', 'QUINT_FUZZ_PROGRESS_TTY') }}"
+      ansible.posix.synchronize:
+        src: "{{ quint_fuzz_source }}/"
+        dest: "{{ quint_fuzz_checkout }}/"
+        delete: true
+        checksum: true
+        times: false
+        owner: false
+        group: false
+        set_remote_user: false
+        use_ssh_args: true
+        verify_host: true
+        rsync_opts: "{{ quint_fuzz_rsync_options + ['--dry-run'] }}"
+      register: quint_fuzz_source_preview
+
     - name: Stop the previous campaign before updating its source
       become: true
       ansible.builtin.systemd_service:
         name: quint-fuzz.service
         state: stopped
-      when: "'quint-fuzz.service' in ansible_facts.services"
+      when:
+        - "'quint-fuzz.service' in ansible_facts.services"
+        - quint_fuzz_source_preview.changed
 
     - name: Copy the working checkout including pinned submodule sources
       environment:
@@ -144,25 +277,16 @@
         src: "{{ quint_fuzz_source }}/"
         dest: "{{ quint_fuzz_checkout }}/"
         delete: true
+        checksum: true
+        times: false
         owner: false
         group: false
         set_remote_user: false
         use_ssh_args: true
         verify_host: true
-        rsync_opts:
-          - --exclude=.git
-          - --exclude=/ansible/rsync-progress
-          # chain-spec/ contains Rust crates required for workspace resolution.
-          - --exclude=chain-spec/**.json
-          - --exclude=**/chain-spec/**.json
-          - --exclude=chain-specs/
-          - --exclude=*.prdoc
-          - --exclude=target/
-          - --exclude=.DS_Store
-          - --exclude=.env*
-          - --exclude=.vscode/
-          - --exclude=.omo/
-          - --exclude=notes.md
+        rsync_opts: "{{ quint_fuzz_rsync_options }}"
+      when: quint_fuzz_source_preview.changed
+      register: quint_fuzz_source_copy
 
     - name: Read local revisions for failure reports
       ansible.builtin.command: git rev-parse HEAD HEAD:vendor/polkadot-sdk-quint
@@ -174,6 +298,7 @@
       changed_when: false
 
     - name: Save revisions without uploading Git history
+      register: quint_fuzz_revision_file
       ansible.builtin.copy:
         content: "{{ quint_fuzz_revisions.stdout }}\n"
         dest: "{{ quint_fuzz_tools }}/revisions.txt"
@@ -186,6 +311,7 @@
       changed_when: false
 
     - name: Install the system service
+      register: quint_fuzz_unit
       become: true
       ansible.builtin.template:
         src: quint-fuzz.service.j2
@@ -196,9 +322,19 @@
       become: true
       ansible.builtin.systemd_service:
         name: quint-fuzz.service
-        daemon_reload: true
+        daemon_reload: "{{ quint_fuzz_unit.changed }}"
         enabled: true
-        state: started
+        state: >-
+          {{ 'restarted' if (
+            quint_fuzz_source_copy.changed or
+            quint_fuzz_unit.changed or
+            quint_fuzz_revision_file.changed or
+            quint_fuzz_rust_install.changed or
+            quint_fuzz_just_install.changed or
+            quint_fuzz_npm_install.changed or
+            quint_fuzz_node_install.changed or
+            quint_fuzz_system_npm_install.changed
+          ) else 'started' }}
 
     - name: Show campaign locations
       ansible.builtin.debug:
