@@ -40,3 +40,5 @@ mod storage_budget;
 mod host_budget;
 
 mod services;
+
+mod instruction_gas;

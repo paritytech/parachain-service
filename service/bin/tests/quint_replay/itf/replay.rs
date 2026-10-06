@@ -35,6 +35,9 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 	super::services::validate(states)?;
 	let mut created_accounts = Default::default();
 	let first = states.first().ok_or("trace has no states")?;
+	if super::instruction_gas::enabled(first) {
+		return Err("initial frame cannot specify invocation gas".into());
+	}
 	let gas_profile = first.get("replayGasLimits").is_some();
 	if states.iter().any(|state| {
 		state.get("replayGasLimits").is_some() != gas_profile ||
@@ -80,7 +83,13 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 		let before_deregistering = super::invariants::deregistering(&storage, &codex)?;
 		let mut output = None;
 		let mut host_offset = None;
-		match classify(&pair[0], &pair[1])? {
+		let kind = classify(&pair[0], &pair[1])?;
+		if super::instruction_gas::enabled(&pair[1]) &&
+			!matches!(kind, FrameKind::Block | FrameKind::IncomingTransfer)
+		{
+			return Err("invocation gas requires an invocation frame".into());
+		}
+		match kind {
 			FrameKind::Noop => {
 				if let Err(error) = super::invariants::state(&storage, &pair[1], &mut codex, frame)
 				{
@@ -155,6 +164,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 					slot,
 					privileges.clone(),
 					super::recovery::expected(&pair[1])?,
+					Some(&pair[1]),
 				)?;
 				output = Some((outcome.yielded, mutations));
 				storage = next;
@@ -171,6 +181,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 					slot,
 					privileges.clone(),
 					super::recovery::expected(&pair[1])?,
+					Some(&pair[1]),
 				)?;
 				output = Some((outcome.yielded, mutations));
 				storage = next;
@@ -512,7 +523,7 @@ fn accumulate_block(
 	slot: u32,
 	privileges: jam_std_common::Privileges,
 ) -> Result<(executor::pj::AccumulateOutcome, Storage, jam_node::vm::StateMutations), String> {
-	accumulate_block_recovery(storage, items, slot, privileges, None)
+	accumulate_block_recovery(storage, items, slot, privileges, None, None)
 }
 
 fn accumulate_block_recovery(
@@ -521,12 +532,16 @@ fn accumulate_block_recovery(
 	slot: u32,
 	privileges: jam_std_common::Privileges,
 	interrupted: Option<&str>,
+	frame: Option<&Value>,
 ) -> Result<(executor::pj::AccumulateOutcome, Storage, jam_node::vm::StateMutations), String> {
 	let engine = jam_node::vm::Engine::new(Some(jam_node::PvmBackend::Interpreter))
 		.expect("interpreter engine should initialize");
 	let mut context = parachain_service_bin::mock::accumulate_context_with_privileges(
 		storage, items, slot, privileges,
 	);
+	if let Some(frame) = frame {
+		context.gas = super::instruction_gas::limit(&engine, &context, frame)?;
+	}
 	let code_hash = context
 		.storage
 		.service(MOCK_SERVICE_ID)
