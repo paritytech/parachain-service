@@ -1,17 +1,11 @@
 use super::itf::replay;
 
 #[test]
-fn rejected_solicit_ghost_errors() {
-	let error = replay::trace(include_str!(
+fn balance_reservations_works() {
+	replay::trace(include_str!(
 		"../fixtures/quint/balances/balance_reservations_works.itf.json"
 	))
-	.expect_err("the model records a rejected solicit in its success ghost");
-	assert!(
-		error
-			.lines()
-			.all(|line| line.contains("invariant solicit_implies_registry failed")),
-		"{error}"
-	);
+	.expect("balance reservations and rejected solicitations should match Quint");
 }
 
 #[test]

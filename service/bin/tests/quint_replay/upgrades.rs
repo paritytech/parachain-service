@@ -69,17 +69,11 @@ fn forget_announced_code_refused_works() {
 }
 
 #[test]
-fn rejected_reservation_solicit_ghost_errors() {
-	let error = replay::trace(include_str!(
+fn insufficient_balance_preserves_announcement_works() {
+	replay::trace(include_str!(
 		"../fixtures/quint/upgrades/insufficient_balance_preserves_announcement_works.itf.json"
 	))
-	.expect_err("the model records a rejected solicit in its success ghost");
-	assert!(
-		error
-			.lines()
-			.all(|line| line.contains("invariant solicit_implies_registry failed")),
-		"{error}"
-	);
+	.expect("a rejected reservation preserves the existing code-upgrade announcement");
 }
 
 #[test]
