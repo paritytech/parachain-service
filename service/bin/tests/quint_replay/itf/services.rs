@@ -153,5 +153,24 @@ pub fn accounts(
 			return Err("created foreign request differs".into());
 		}
 	}
+	// Seeded foreign accounts start empty and refusal-only service operations
+	// must keep them empty, on both the model and the host.
+	for (id, foreign) in map_entries(field(current, "foreignServices")?)? {
+		let id = service_id(id)?;
+		if service_id(field(foreign, "supervisor")?)? != id {
+			return Err(format!("frame {frame}: foreign service {id} supervisor changed"));
+		}
+		if known.contains_key(&id) {
+			continue;
+		}
+		let actual = storage.service(id).ok_or("missing foreign service")?;
+		if actual.items != 0 ||
+			actual.bytes != 0 ||
+			!map_entries(field(foreign, "requests")?)?.is_empty() ||
+			!map_entries(field(foreign, "storage")?)?.is_empty()
+		{
+			return Err(format!("frame {frame}: seeded foreign account {id} is not empty"));
+		}
+	}
 	Ok(())
 }

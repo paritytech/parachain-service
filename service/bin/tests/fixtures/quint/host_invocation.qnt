@@ -58,8 +58,14 @@ module host_invocation {
         val nextHost = moved(h, applied)
         { ...nextHost, minGas: if (applied.logs == h.acc.logs) Some(p.minAccGas) else h.minGas }
       }
+      | RemoveServiceStorage(_) => moved(h, replayApply(h.acc, caller, FixedCodeLen, slot, anchor, message))
+      | SetServiceSupervisor(_) => moved(h, replayApply(h.acc, caller, FixedCodeLen, slot, anchor, message))
       | RemoveKV(_) => moved(h, applied)
-      | Forget(_) => moved(h, applied)
+      | Forget(_) => moved(h, replayApply(h.acc, caller, FixedCodeLen, slot, anchor, message))
+      | Solicit(p) => match p.target {
+        | Service(_) => moved(h, replayApply(h.acc, caller, FixedCodeLen, slot, anchor, message))
+        | _ => { ...h, safe: false }
+      }
       | RequestCodeUpgrade(_) => moved(h, applied)
       | CleanUpBucketsUpTo(_) => moved(h, applied)
       // These actions use only zero-amount transfers to force real pool exhaustion.

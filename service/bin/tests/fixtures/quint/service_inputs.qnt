@@ -1,4 +1,4 @@
-// GP 0.7.2 compatibility for service creation. Keep the vendored design pin intact.
+// GP 0.7.2 compatibility for service management. Keep the vendored design pin intact.
 // The mock is registrar. Its allocator restarts at 65536 each invocation and
 // advances by 42 after public allocations; protected allocations do not advance it.
 module service_inputs {
@@ -34,8 +34,33 @@ module service_inputs {
       CreateService({ ...createArgs(None, 80), newSupervisorBalance: true })
     ))
   }
+  // Use the creation code request as well as absent requests on seeded accounts.
+  pure def serviceSolicit(id: ServiceId): UpwardMessage =
+    Solicit({ target: Service(id), hash: { hashBytes: 8801 }, len: 1024 })
+  pure def serviceForget(id: ServiceId): UpwardMessage =
+    Forget({ target: Service(id), hash: { hashBytes: 8801 }, len: 1024 })
+  pure def serviceRemove(id: ServiceId): UpwardMessage =
+    RemoveServiceStorage({ service: id, key: List(0, 255, 1) })
+  pure def serviceSupervisor(id: ServiceId, successor: ServiceId): UpwardMessage =
+    SetServiceSupervisor({ service: id, newSupervisor: successor })
   pure def replayApply(acc: AccumulateOutcome, caller: ParaId, codeLen: int,
     slot: int, anchor: int, msg: UpwardMessage): AccumulateOutcome = match msg {
+    // The pin looks only in foreignServices, which excludes this service.
+    // The host knows self exists, but still exposes no supervision capability.
+    | Solicit(p) => if (p.target == Service(ParachainServiceId))
+        { ...acc, logs: acc.logs.append(ServiceSolicitFailed({ service: ParachainServiceId, error: SolicitNotSupervised })) }
+      else applyUpwardMessage(acc, caller, codeLen, slot, anchor, msg)
+    | Forget(p) => if (p.target == Service(ParachainServiceId))
+        { ...acc, logs: acc.logs.append(ServiceStoreFailed({ service: ParachainServiceId, error: StoreNotSupervised })) }
+      else applyUpwardMessage(acc, caller, codeLen, slot, anchor, msg)
+    | RemoveServiceStorage(p) => if (p.service == ParachainServiceId)
+        { ...acc, logs: acc.logs.append(ServiceStoreFailed({ service: p.service, error: StoreNotSupervised })) }
+      else applyUpwardMessage(acc, caller, codeLen, slot, anchor, msg)
+    | SetServiceSupervisor(p) => if (p.service == ParachainServiceId)
+        { ...acc, logs: acc.logs.append(ServiceSupervisorFailed({ service: p.service,
+          error: if (p.newSupervisor == ParachainServiceId or acc.foreign.keys().contains(p.newSupervisor))
+            HandoffNotSupervised else HandoffUnknownNewSupervisor })) }
+      else applyUpwardMessage(acc, caller, codeLen, slot, anchor, msg)
     | CreateService(c) => {
       if (c.sourceSupervisorBalance or c.newSupervisorBalance)
         { ...acc, logs: acc.logs.append(ServiceCreation({ id: c.id, result: CannotAfford })) }

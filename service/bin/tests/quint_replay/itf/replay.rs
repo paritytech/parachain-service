@@ -309,7 +309,7 @@ fn upward_message(
 				let (kind, target) = variant(target)?;
 				match kind {
 					"Parachain" => Target::Parachain(para_id(target, codex)?),
-					// Foreign service outcomes cannot be replayed until the host supports them.
+					"Service" => Target::Service(super::assignments::service_id(target)?),
 					other => return Err(format!("unsupported preimage target {other}")),
 				}
 			} else if tag == "Solicit" {
@@ -324,6 +324,14 @@ fn upward_message(
 				Ok(UpwardMessage::Forget { target, hash, len: Compact(len) })
 			}
 		},
+		"RemoveServiceStorage" => Ok(UpwardMessage::RemoveServiceStorage {
+			service: super::assignments::service_id(field(value, "service")?)?,
+			key: bytes(field(value, "key")?)?,
+		}),
+		"SetServiceSupervisor" => Ok(UpwardMessage::SetServiceSupervisor {
+			service: super::assignments::service_id(field(value, "service")?)?,
+			new_supervisor: super::assignments::service_id(field(value, "newSupervisor")?)?,
+		}),
 		"CreateService" => super::services::message(value, codex),
 		"EjectService" => Ok(UpwardMessage::EjectService {
 			service: super::assignments::service_id(field(value, "service")?)?,

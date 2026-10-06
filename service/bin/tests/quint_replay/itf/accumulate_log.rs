@@ -3,7 +3,8 @@
 use codec::Compact;
 use parachain_service::state::log::{
 	AccumulateLog, InsufficientBalanceReason, ServiceCreationResult, ServiceEjectError,
-	StateBalanceRejection, TransferError,
+	ServiceSolicitError, ServiceStoreError, ServiceSupervisorError, StateBalanceRejection,
+	TransferError,
 };
 use parachain_service_core::types::ValidationCodeHash;
 use serde_json::Value;
@@ -99,6 +100,40 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 			Ok(AccumulateLog::ServiceCreation {
 				id: Compact(bounded_integer::<u64>(field(value, "id")?, "creation id")?),
 				result,
+			})
+		},
+		"ServiceSolicitFailed" => {
+			let error = match variant(field(value, "error")?)?.0 {
+				"SolicitUnknownService" => ServiceSolicitError::UnknownService,
+				"SolicitNotSupervised" => ServiceSolicitError::NotSupervised,
+				other => return Err(format!("unsupported service solicit error {other}")),
+			};
+			Ok(AccumulateLog::ServiceSolicitFailed {
+				service: super::assignments::service_id(field(value, "service")?)?,
+				error,
+			})
+		},
+		"ServiceStoreFailed" => {
+			let error = match variant(field(value, "error")?)?.0 {
+				"StoreUnknownService" => ServiceStoreError::UnknownService,
+				"StoreNotSupervised" => ServiceStoreError::NotSupervised,
+				other => return Err(format!("unsupported service store error {other}")),
+			};
+			Ok(AccumulateLog::ServiceStoreFailed {
+				service: super::assignments::service_id(field(value, "service")?)?,
+				error,
+			})
+		},
+		"ServiceSupervisorFailed" => {
+			let error = match variant(field(value, "error")?)?.0 {
+				"HandoffUnknownService" => ServiceSupervisorError::UnknownService,
+				"HandoffUnknownNewSupervisor" => ServiceSupervisorError::UnknownNewSupervisor,
+				"HandoffNotSupervised" => ServiceSupervisorError::NotSupervised,
+				other => return Err(format!("unsupported service supervisor error {other}")),
+			};
+			Ok(AccumulateLog::ServiceSupervisorFailed {
+				service: super::assignments::service_id(field(value, "service")?)?,
+				error,
 			})
 		},
 		"ServiceEjectFailed" => {
