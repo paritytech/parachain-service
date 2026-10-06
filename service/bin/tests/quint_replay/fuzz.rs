@@ -113,7 +113,7 @@ fn worker(
 		if reader.read_line(&mut line).map_err(|e| e.to_string())? == 0 {
 			break;
 		}
-		let envelope: Value =
+		let mut envelope: Value =
 			serde_json::from_str(&line).map_err(|e| format!("invalid Quint stream: {e}"))?;
 		let expected_seed = seed
 			.checked_add(completed.checked_mul(stride).ok_or("seed overflow")?)
@@ -129,6 +129,8 @@ fn worker(
 		if trace["states"].as_array().map(|s| s.len() as u64) != Some(steps + 1) {
 			return Err("Quint returned a truncated trace".into());
 		}
+		super::instruction_gas::sample(&mut envelope["trace"], expected_seed.parse().unwrap());
+		let trace = &envelope["trace"];
 		let result =
 			std::panic::catch_unwind(|| replay::document_trace(trace)).unwrap_or_else(|panic| {
 				Err(format!(
@@ -587,4 +589,34 @@ fn panic_recovery_generated_works() {
 	}
 	assert!(stops.is_superset(&[0, 1, 2].into()) && retained_creation && zero_gas && resumed,
         "panic coverage: stops={stops:?}, creation={retained_creation}, zero_gas={zero_gas}, resumed={resumed}");
+}
+
+#[test]
+#[ignore = "checks sampled instruction gas in mixed traces; requires Node and Quint 0.32.0"]
+fn instruction_gas_generated_works() {
+	let stream = generator(1, 1, 10, 30).output().expect("instruction gas generator");
+	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
+	let mut stops = std::collections::BTreeSet::new();
+	let mut resumed = false;
+	for line in stream.stdout.split(|b| *b == b'\n').filter(|line| !line.is_empty()) {
+		let mut envelope: Value = serde_json::from_slice(line).unwrap();
+		let seed = envelope["seed"].as_str().unwrap().parse().unwrap();
+		super::instruction_gas::sample(&mut envelope["trace"], seed);
+		for pair in envelope["trace"]["states"].as_array().unwrap().windows(2) {
+			if pair[1].get("replayGasSample").is_some() {
+				stops.insert(super::itf::replay::integer(&pair[1]["replayInterrupt"]).unwrap());
+			}
+			resumed |= pair[0].get("replayGasSample").is_some() &&
+				pair[1]["replayInterrupt"]["#bigint"] == "-1" &&
+				!pair[1]["lastStepWorkResults"].as_array().unwrap().is_empty();
+		}
+		if let Err(error) = replay::document_trace(&envelope["trace"]) {
+			let path = preserve(&envelope, &error).unwrap();
+			panic!("{error}; {}", path.display());
+		}
+	}
+	assert!(
+		stops.is_superset(&[0, 1, 2].into()) && resumed,
+		"instruction gas coverage: reports={stops:?}, resumed={resumed}"
+	);
 }

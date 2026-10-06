@@ -96,3 +96,33 @@ fn conflicting_faults_errors() {
 	trace["states"][1]["replayPanic"] = json!(true);
 	assert!(replay::document_trace(&trace).unwrap_err().contains("cannot be combined"));
 }
+
+/// Deterministic decoration of mixed Quint campaigns. Keep half of the panic
+/// frames as traps; sample invocation gas in eligible remaining frames. The
+/// preserved failure envelope includes both the original oracle and the sample.
+pub fn sample(trace: &mut Value, seed: u64) -> usize {
+	let mut random = seed;
+	let mut count = 0;
+	for state in trace["states"].as_array_mut().unwrap() {
+		random = random.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+		if state["replayPanic"] != true || (random >> 32) % 2 == 0 {
+			continue;
+		}
+		let stop = replay::integer(&state["replayInterrupt"]).unwrap() as usize;
+		if !state["replayGasLimits"].as_array().is_some_and(|limits| {
+			limits
+				.iter()
+				.enumerate()
+				.all(|(i, l)| i == stop || l["#bigint"] == u64::MAX.to_string())
+		}) {
+			continue;
+		}
+		// The interrupted report contributes no model effects at either budget.
+		// Admit it so exhaustion can happen inside its body, beyond the gas gate.
+		state["replayGasLimits"][stop] = json!({"#bigint": u64::MAX.to_string()});
+		state["replayPanic"] = json!(false);
+		state["replayGasSample"] = json!({"#bigint": ((random >> 33) % 1_000_001).to_string()});
+		count += 1;
+	}
+	count
+}
