@@ -5,6 +5,7 @@ mod blocks;
 mod common;
 mod fuzz;
 mod gas;
+mod panic_recovery;
 mod host_mixed;
 mod storage;
 mod itf;

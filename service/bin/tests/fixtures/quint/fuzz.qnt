@@ -253,6 +253,25 @@ module fuzz {
       List({ from: MkServiceId(7), amount: 1000, toSupervisorBalance: false, memo: 0 }),
       packages.foldl(List(), (acc, _) => acc.append(UnlimitedGas)), stop)
   }
+  // Malformed output is a replay fault, not an output valid Refine can emit.
+  // Completed reports exercise storage, creation, logs and deferred host effects.
+  action panicBlockAt(stop: int, faultGas: int): bool = {
+    val para = AssetHubParaId
+    val parent = svc.paraInfo(para).headData
+    val packages = range(0, 3).foldl(List(), (acc, i) => acc.append(replayWork(svc, para, parent + i,
+      activeCodeCandidate(svc, para), 0, now, 0,
+      List(SetKV({ key: List(72), value: List(i + 1) }),
+        CreateService(createArgs(Some(MkServiceId(42 + i)), 90 + i)),
+        serviceForget(MkServiceId(99)), TransferOut(transfer(0, 1, i, 100))))))
+    interruptedInvocation(packages, now + 1,
+      List({ from: MkServiceId(7), amount: 1000, toSupervisorBalance: false, memo: 0 }),
+      range(0, 3).foldl(List(), (acc, i) => acc.append(if (i == stop) faultGas else UnlimitedGas)), stop, true)
+  }
+  action panicBlock = {
+    nondet stop = oneOf(Set(0, 1, 2))
+    nondet faultGas = oneOf(Set(0, UnlimitedGas))
+    panicBlockAt(stop, faultGas)
+  }
   action checkpointBlock = {
     nondet stop = oneOf(Set(0, 1, 2))
     checkpointBlockAt(stop)
