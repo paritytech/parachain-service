@@ -23,6 +23,9 @@ module fuzz {
 
   import gas_inputs.* from "./gas_inputs"
 
+  import host_invocation.* from "./host_invocation"
+  import host_metadata.* from "./host_metadata"
+
   action replayInit = all { noGas, outgoingInit, noTransfers, noDesignation, replayMinAccGas' = 100 }
 
   pure def activeCodeCandidate(s: ParachainServiceState, para: ParaId): ParachainCandidate =
@@ -239,7 +242,55 @@ module fuzz {
     checkpointBlockAt(stop)
   }
 
+  // A low-balance invocation on this same state. KV rejection uses the host
+  // backstop while the other operations remain pinned-model transitions.
+  pure def hostMessages(s: ParachainServiceState): Set[UpwardMessage] = Set(
+    SetKV({ key: List(81), value: range(0, 4096).foldl(List(), (a, _) => a.append(42)) }),
+    RemoveKV({ paraId: AssetHubParaId, key: List(81) }),
+    RemoveKV({ paraId: AssetHubParaId, key: List(82) }),
+    CleanUpBucketsUpTo(nextBucketId(s)),
+    Forget({ target: Parachain(AssetHubParaId), hash: { hashBytes: 7 }, len: 1024 }),
+    Forget({ target: Parachain(AssetHubParaId), hash: { hashBytes: 777 }, len: FixedCodeLen }),
+    RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen, phase: Announcement }),
+    RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen, phase: Apply }),
+    upgrade({ hashBytes: 9001 }, 123456, 789))
+
+  action hostBlockAt(allowance: int, count: int, gasMode: int, stop: bool,
+    first: UpwardMessage, second: UpwardMessage): bool = {
+    val para = AssetHubParaId
+    val parent = svc.paraInfo(para).headData
+    val large = SetKV({ key: List(81), value: range(0, 4096).foldl(List(), (a, _) => a.append(42)) })
+    val small = SetKV({ key: List(82), value: List(42) })
+    val wr1 = replayWork(svc, para, parent, activeCodeCandidate(svc, para), 0, now, 0, List(large, first))
+    // Both competing and chained work stay observable when the first gas gate
+    // rejects. Build the second report against the actual modeled prefix.
+    val incoming = range(0, count).foldl(List(), (a, i) => a.append({
+      from: MkServiceId(7), amount: 0, toSupervisorBalance: false, memo: i }))
+    val limit1 = budget(wr1, gasMode)
+    val prefix = hostPrefix(List(wr1), now + 1, incoming, List(limit1), allowance)
+    val wr2 = replayWork(prefix.state, para, prefix.state.paraInfo(para).headData,
+      activeCodeCandidate(prefix.state, para), 0, now, 0, List(second, small))
+    val packages = List(wr1, wr2)
+    val limits = List(limit1, UnlimitedGas)
+    val beforeStop = hostPrefix(packages, now + 1, incoming, limits, allowance)
+    val interrupting = replayWork(beforeStop.state, para, beforeStop.state.paraInfo(para).headData,
+      activeCodeCandidate(beforeStop.state, para), 0, now, 0,
+      List(large, TransferOut(transfer(0, 0, 0, ExhaustPoolGas))))
+    hostInvocation(if (stop) packages.append(interrupting) else packages, now + 1, incoming,
+      if (stop) limits.append(UnlimitedGas) else limits, allowance, if (stop) 2 else -1)
+  }
+  action hostBlock = {
+    nondet allowance = oneOf(Set(1000, 2000, 4096, 5000))
+    nondet count = oneOf(Set(0, 1, 2, 3))
+    nondet gasMode = oneOf(Set(1, 2, 4))
+    nondet stop = oneOf(Set(false, true))
+    nondet first = oneOf(hostMessages(svc))
+    nondet second = oneOf(hostMessages(svc))
+    hostBlockAt(allowance, count, gasMode, stop, first, second)
+  }
+
   action replayStep = any {
+    hostBlock,
     checkpointBlock,
     block,
     all { provisionPreimage, noTransfers, noDesignation, noOutgoing, keepUpgradeGas, noGas },

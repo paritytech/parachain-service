@@ -136,6 +136,40 @@ QUINT_FUZZ_TRACES=2 QUINT_FUZZ_STEPS=10 QUINT_FUZZ_WORKERS=2 \
   -- --ignored --skip replay_input_works --nocapture
 ```
 
+## Mixed host budgets in the default campaign
+
+The default `fuzz` profile now samples `hostBlock` alongside ordinary blocks,
+provisioning, assignments, and lifecycle actions, preserving the same service
+state between them. These invocations mix real KV backstop rejection with gas
+limits, incoming transfers, due assignments, code announcements/application,
+service upgrades, forget, KV removal, and queue cleanup. Reports can free
+storage that later reports use. An optional final report forwards a zero-amount
+transfer with excessive gas, requiring real PVM exhaustion and checkpoint
+recovery even while the service has little free balance.
+
+`host_invocation.qnt` extends the pin at KV writes and log persistence;
+`host_sizes.qnt` independently calculates SCALE/JAM footprint changes, including
+existing logs and pending assignments. `replayHostBudget` is free balance injected
+before the invocation (`-1` means ordinary execution). Replay checks the expected
+`replayHostFree` after execution or checkpoint rollback, then restores only the
+injected balance offset. It retains real incoming credits, all storage changes,
+and other host effects. This permits subsequent ordinary actions and installed
+service-code replay without resetting service state.
+
+The mixed action samples allowances of 1000, 2000, 4096, and 5000 and 4 KiB KV
+writes. Its other message types must fit their modeled budget; unsupported
+backstop sites disable that generated action rather than assuming success.
+Head and incoming-queue write rejection remain covered by the isolated `storage`
+profile below. Arbitrary low-balance handling for every upward message is not
+modeled by the mixed action.
+
+`host_mixed.qnt` has deterministic cross-feature cases, including successful
+code/service upgrades before exhaustion and a failed KV write followed by a
+successful retry after space is freed. `fuzz::host_budget_generated_works` checks
+that sampled failures overlap arrivals and recovery, that gas gates reject work,
+and that ordinary actions resume afterward. All cases use the same replay and
+invariant checks as the general campaign.
+
 ## Host storage-budget profile
 
 Run `QUINT_FUZZ_PROFILE=storage just quint-fuzz` (or set that variable on the

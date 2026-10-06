@@ -288,7 +288,7 @@ fn stream_matches_cli_works() {
 fn validator_keys_generated_works() {
 	// A pinned seed that reaches a successful designation through replayStep,
 	// guarding against accidentally removing keys or their effect from fuzzing.
-	let stream = generator(63495, 1, 1, 50).output().expect("stream generator");
+	let stream = generator(63304, 1, 1, 50).output().expect("stream generator");
 	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
 	let envelope: Value = serde_json::from_slice(&stream.stdout).expect("stream envelope");
 	let trace = &envelope["trace"];
@@ -322,7 +322,7 @@ fn outgoing_generated_works() {
 #[test]
 #[ignore = "checks generated service-upgrade coverage; requires Node and Quint 0.32.0"]
 fn service_upgrade_generated_works() {
-	let stream = generator(7996, 1, 1, 50).output().expect("stream generator");
+	let stream = generator(8, 1, 1, 50).output().expect("stream generator");
 	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
 	let envelope: Value = serde_json::from_slice(&stream.stdout).expect("stream envelope");
 	let trace = &envelope["trace"];
@@ -368,8 +368,10 @@ fn gas_generated_works() {
 			stops.insert(super::itf::replay::integer(&state["replayInterrupt"]).unwrap());
 			for limit in state["replayGasLimits"].as_array().unwrap() {
 				let limit = super::itf::replay::integer(limit).unwrap();
-				rejected |= limit == 4_999_999;
-				exact |= limit == 5_000_000;
+				// Cover both message-free reports and the mixed host action
+				// with two messages (5,000,000 + 2 * 250,000 gas).
+				rejected |= matches!(limit, 4_999_999 | 5_499_999);
+				exact |= matches!(limit, 5_000_000 | 5_500_000);
 			}
 		}
 		replay::document_trace(trace).expect("gas and checkpoint state should match Quint");
@@ -416,4 +418,39 @@ fn deregistering_head_generated_works() {
 	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
 	let envelope: Value = serde_json::from_slice(&stream.stdout).expect("stream envelope");
 	replay::document_trace(&envelope["trace"]).expect("deregistering head should remain frozen");
+}
+
+#[test]
+#[ignore = "checks mixed host budgets; requires Node and Quint 0.32.0"]
+fn host_budget_generated_works() {
+	let stream = generator(1, 1, 10, 30).output().expect("mixed budget generator");
+	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
+	let mut recovered = false;
+	let mut arrivals = false;
+	let mut skipped = false;
+	let mut resumed = false;
+	for line in String::from_utf8(stream.stdout).unwrap().lines() {
+		let envelope: Value = serde_json::from_str(line).unwrap();
+		let states = envelope["trace"]["states"].as_array().unwrap();
+		for pair in states.windows(2) {
+			let state = &pair[1];
+			let active = state["replayHostBudget"]["#bigint"] != "-1";
+			let rejects =
+				state["replayHostRejects"]["#bigint"].as_str().unwrap().parse::<u64>().unwrap();
+			if active && rejects > 0 {
+				recovered |= state["replayInterrupt"]["#bigint"] != "-1";
+				arrivals |= !state["replayIncoming"].as_array().unwrap().is_empty();
+			}
+			if active {
+				skipped |= state["replayGasLimits"][0]["#bigint"] == "5499999";
+			}
+			resumed |= pair[0]["replayHostBudget"]["#bigint"] != "-1" && !active;
+		}
+		if let Err(error) = replay::document_trace(&envelope["trace"]) {
+			let path = preserve(&envelope, &error).unwrap();
+			panic!("{error}; {}", path.display());
+		}
+	}
+	assert!(recovered && arrivals && skipped && resumed,
+  "host-budget coverage: recovered={recovered}, arrivals={arrivals}, skipped={skipped}, resumed={resumed}");
 }

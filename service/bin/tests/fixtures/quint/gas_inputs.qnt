@@ -6,12 +6,13 @@ module gas_inputs {
   import state_vars.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state_vars"
   import main.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/main"
   import accumulate.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/accumulate"
+  import host_metadata.* from "./host_metadata"
   var replayGasLimits: List[int]
   // -1 means normal completion; otherwise this report exhausts the shared pool.
   var replayInterrupt: int
   pure val UnlimitedGas = 18446744073709551615
   pure val ExhaustPoolGas = 6000000000
-  action noGas = all { replayGasLimits' = List(), replayInterrupt' = -1 }
+  action noGas = all { noHostBudget, replayGasLimits' = List(), replayInterrupt' = -1 }
 
   // §5.1 implementation budget, including gas forwarded by deferred transfers.
   // Keep independent of Rust report_cost so boundary replays detect drift.

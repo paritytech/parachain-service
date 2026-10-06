@@ -19,6 +19,8 @@ module invocation_inputs {
 
   import gas_inputs.* from "./gas_inputs"
 
+  import host_metadata.* from "./host_metadata"
+
   action replayInvocation(packages: List[WorkResult], slot: Timeslot,
     incoming: List[IncomingTransfer]): bool =
     budgetedInvocation(packages, slot, incoming, packages.foldl(List(), (acc, _) => acc.append(UnlimitedGas)), -1)
@@ -38,6 +40,7 @@ module invocation_inputs {
       slot, applied, foreignServices)
     val effects = messageEffectsFrom(arrived, applied, slot)
     all {
+      noHostBudget,
       replayIncoming' = incoming,
       replayGasLimits' = limits,
       replayInterrupt' = interrupt,

@@ -31,6 +31,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 	super::value::ItfValue::try_from(document)?;
 	let document = super::storage_budget::normalize(document)?;
 	let states = document.get("states").and_then(Value::as_array).ok_or("missing states")?;
+	super::host_budget::validate(states)?;
 	let first = states.first().ok_or("trace has no states")?;
 	let gas_profile = first.get("replayGasLimits").is_some();
 	if states.iter().any(|state| {
@@ -76,6 +77,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 		let before_heads = super::invariants::heads(&storage, &codex)?;
 		let before_deregistering = super::invariants::deregistering(&storage, &codex)?;
 		let mut output = None;
+		let mut host_offset = None;
 		match classify(&pair[0], &pair[1])? {
 			FrameKind::Noop => {
 				if let Err(error) = super::invariants::state(&storage, &pair[1], &mut codex, frame)
@@ -91,6 +93,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 			},
 			FrameKind::Block => {
 				super::storage_budget::prepare(&mut storage, &pair[1])?;
+				host_offset = super::host_budget::prepare(&mut storage, &pair[1])?;
 				let results = field(&pair[1], "lastStepWorkResults")?
 					.as_array()
 					.ok_or("lastStepWorkResults must be a list")?;
@@ -170,6 +173,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 				storage = next;
 			},
 		}
+		super::host_budget::finish(&mut storage, &pair[1], host_offset, frame)?;
 		compare::state(&storage, &pair[1], &mut codex, frame)?;
 		super::storage_budget::compare(&storage, &pair[1], frame)?;
 		if let Err(error) = super::invariants::state(&storage, &pair[1], &mut codex, frame) {
@@ -319,6 +323,9 @@ fn upward_message(
 		},
 		"UpgradeService" => super::service_upgrade::message(value, codex),
 		"TransferOut" => super::outgoing::message(value),
+		"CleanUpBucketsUpTo" => {
+			Ok(UpwardMessage::CleanUpBucketsUpTo(bounded_integer::<u64>(value, "cleanup bucket")?))
+		},
 		"SetValidatorKeys" => Ok(UpwardMessage::SetValidatorKeys {
 			keys: super::validator_keys::keys(field(value, "keys")?)?,
 			is_last: boolean(field(value, "isLast")?)?,

@@ -139,3 +139,10 @@ boundaries, and recovery on later reports/invocations. `storage_inputs.qnt`
 is a replay-only extension for the host deposit check and extra failure-log
 variants absent from the pin. `storage_fuzz.qnt` samples these inputs through
 the regular streaming replay harness; see [FUZZING.md](FUZZING.md).
+
+`host_mixed.qnt` covers KV backstop failures in the general campaign alongside
+gas gates, checkpoint recovery, due assignments, upgrades, preimages, and
+cleanup. `host_invocation.qnt` uses the pin for supported operations and extends
+KV writes/log persistence with independently sized host deposits from
+`host_sizes.qnt`. Default `fuzz.qnt` samples these invocations on the same state
+as its ordinary actions; no extra profile selection is required.
