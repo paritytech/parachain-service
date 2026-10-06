@@ -26,7 +26,10 @@ module service_inputs {
   }
   pure def serviceMessages(fs: ForeignServices): Set[UpwardMessage] = {
     val targets = fs.keys().union(Set(ParachainServiceId, MkServiceId(99)))
-    targets.map(id => EjectService({ service: id })).union(Set(
+    targets.map(id => EjectService({ service: id })).union(
+      targets.fold(Set(), (msgs, id) => msgs.union(Set(serviceSolicit(id), serviceForget(id), serviceRemove(id))
+        .union(targets.map(u => serviceSupervisor(id, u))))))
+    .union(Set(
       CreateService(createArgs(None, 77)),
       CreateService(createArgs(Some(MkServiceId(42)), 77)),
       CreateService(createArgs(Some(MkServiceId(70000)), 78)),

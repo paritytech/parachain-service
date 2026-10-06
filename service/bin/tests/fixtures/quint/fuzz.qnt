@@ -272,6 +272,14 @@ module fuzz {
     CreateService(createArgs(None, 77)),
     CreateService(createArgs(Some(MkServiceId(42)), 78)),
     EjectService({ service: MkServiceId(42) }),
+    serviceSolicit(MkServiceId(42)),
+    serviceForget(MkServiceId(42)),
+    serviceSolicit(ParachainServiceId),
+    serviceForget(ParachainServiceId),
+    serviceRemove(MkServiceId(42)),
+    serviceRemove(ParachainServiceId),
+    serviceSupervisor(MkServiceId(42), MkServiceId(99)),
+    serviceSupervisor(ParachainServiceId, ParachainServiceId),
     upgrade({ hashBytes: 9001 }, 123456, 789))
 
   action hostBlockAt(allowance: int, count: int, gasMode: int, stop: bool,

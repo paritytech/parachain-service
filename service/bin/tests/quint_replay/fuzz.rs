@@ -288,7 +288,7 @@ fn stream_matches_cli_works() {
 fn validator_keys_generated_works() {
 	// A pinned seed that reaches a successful designation through replayStep,
 	// guarding against accidentally removing keys or their effect from fuzzing.
-	let stream = generator(63383, 1, 1, 50).output().expect("stream generator");
+	let stream = generator(2675664, 1, 1, 50).output().expect("stream generator");
 	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
 	let envelope: Value = serde_json::from_slice(&stream.stdout).expect("stream envelope");
 	let trace = &envelope["trace"];
@@ -462,7 +462,7 @@ fn services_generated_works() {
 	let mut interrupted_creation = false;
 	let mut refusals = std::collections::BTreeSet::new();
 	// Fixed seeds reach creation recovery and all five reachable refusal classes.
-	for seed in [14, 41, 51] {
+	for seed in [1152030, 1989862] {
 		let stream = generator(seed, 1, 1, 50).output().expect("service generator");
 		assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
 		let line = String::from_utf8(stream.stdout).unwrap();
@@ -491,4 +491,66 @@ fn services_generated_works() {
 	}
 	assert!(created && interrupted_creation && refusals.len() == 5,
 		"service coverage: created={created}, checkpoint={interrupted_creation}, refusals={refusals:?}");
+}
+
+#[test]
+#[ignore = "checks service preimage refusals in default replay fuzzing; requires Node and Quint 0.32.0"]
+fn service_preimages_generated_works() {
+	let stream = generator(209469, 1, 1, 50).output().expect("service preimage generator");
+	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
+	let mut refusals = std::collections::BTreeSet::new();
+	for line in stream.stdout.split(|b| *b == b'\n').filter(|line| !line.is_empty()) {
+		let envelope: Value = serde_json::from_slice(line).unwrap();
+		for state in envelope["trace"]["states"].as_array().unwrap() {
+			let logs = state["svc"]["parachainLog"].to_string();
+			for tag in [
+				"SolicitUnknownService",
+				"SolicitNotSupervised",
+				"StoreUnknownService",
+				"StoreNotSupervised",
+			] {
+				if logs.contains(&format!("\"tag\":\"{tag}\"")) {
+					refusals.insert(tag);
+				}
+			}
+		}
+		if let Err(error) = replay::document_trace(&envelope["trace"]) {
+			let path = preserve(&envelope, &error).unwrap();
+			panic!("{error}; {}", path.display());
+		}
+	}
+	assert_eq!(refusals.len(), 4, "service preimage refusals: {refusals:?}");
+}
+
+#[test]
+#[ignore = "checks service management refusals in default replay fuzzing; requires Node and Quint 0.32.0"]
+fn service_management_generated_works() {
+	let mut refusals = std::collections::BTreeSet::new();
+	// These seeds reach both store errors and all three handoff errors.
+	for seed in [104740, 1361488] {
+		let stream = generator(seed, 1, 1, 50).output().expect("service management generator");
+		assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
+		for line in stream.stdout.split(|b| *b == b'\n').filter(|line| !line.is_empty()) {
+			let envelope: Value = serde_json::from_slice(line).unwrap();
+			for state in envelope["trace"]["states"].as_array().unwrap() {
+				let logs = state["svc"]["parachainLog"].to_string();
+				for tag in [
+					"HandoffUnknownService",
+					"HandoffUnknownNewSupervisor",
+					"HandoffNotSupervised",
+					"StoreUnknownService",
+					"StoreNotSupervised",
+				] {
+					if logs.contains(&format!("\"tag\":\"{tag}\"")) {
+						refusals.insert(tag);
+					}
+				}
+			}
+			if let Err(error) = replay::document_trace(&envelope["trace"]) {
+				let path = preserve(&envelope, &error).unwrap();
+				panic!("{error}; {}", path.display());
+			}
+		}
+	}
+	assert_eq!(refusals.len(), 5, "service management refusals: {refusals:?}");
 }
