@@ -15,6 +15,7 @@ module fuzz {
 
   import validator_key_inputs.* from "./validator_key_inputs"
 
+  import service_inputs.* from "./service_inputs"
   import outgoing_inputs.* from "./outgoing_inputs"
 
   import service_upgrade_inputs.* from "./service_upgrade_inputs"
@@ -56,7 +57,7 @@ module fuzz {
 
   // A small shared preimage pool makes repeats and cross-para references common.
   // Keep one length per hash, as required by the replay codex.
-  pure def replayMessages(s: ParachainServiceState, para: ParaId, slot: Timeslot): Set[UpwardMessage] = {
+  def replayMessages(s: ParachainServiceState, para: ParaId, slot: Timeslot): Set[UpwardMessage] = {
     val code = activeCodeHashOr(s.paraInfo(para), NoCodeHash).asPreimage()
     // No leading-zero keys: Quint's base-257 listHash aliases those keys. Empty
     // keys and values are included: Refine rejects them (§3.3).
@@ -78,7 +79,7 @@ module fuzz {
         ParachainSetStateBalance({ paraId: target, newTotal: total })))
     })
     kv.union(balances).union(lifecycleMessages).union(assignmentMessages(slot))
-      .union(validatorKeyMessages).union(outgoingMessages).union(serviceUpgradeMessages).union(Set(
+      .union(serviceMessages(foreignServices)).union(validatorKeyMessages).union(outgoingMessages).union(serviceUpgradeMessages).union(Set(
       RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen, phase: Announcement }),
       RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen, phase: Apply }),
       RequestCodeUpgrade({ hash: { vchBytes: 778 }, len: FixedCodeLen, phase: Announcement }),
@@ -207,6 +208,21 @@ module fuzz {
     replayBlock(List(wr), now + 1)
   }
 
+  // Keep service creation/ejection frequent in the default campaign. Reports
+  // still mix with arrivals, gas rejection, and the surrounding lifecycle state.
+  action servicesBlock = {
+    nondet caller = oneOf(Set(AssetHubParaId, CoretimeParaId))
+    nondet first = oneOf(serviceMessages(foreignServices))
+    nondet second = oneOf(serviceMessages(foreignServices))
+    nondet mode = oneOf(Set(0, 7))
+    nondet gasMode = oneOf(Set(1, 2, 4))
+    nondet count = oneOf(Set(0, 1, 3))
+    val wr = replayWork(svc, caller, svc.paraInfo(caller).headData,
+      activeCodeCandidate(svc, caller), mode, now, 0, List(first, second))
+    budgetedInvocation(List(wr), now + 1,
+      range(0, count).foldl(List(), (list, i) => list.append({ from: MkServiceId(7), amount: 1000, toSupervisorBalance: false, memo: i })), List(budget(wr, gasMode)), -1)
+  }
+
   // Advance preparation as well as attempts, so success stays reachable even
   // though an executable service blob costs more than a normal code preimage.
   action serviceUpgradeBlock = {
@@ -253,6 +269,9 @@ module fuzz {
     Forget({ target: Parachain(AssetHubParaId), hash: { hashBytes: 777 }, len: FixedCodeLen }),
     RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen, phase: Announcement }),
     RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen, phase: Apply }),
+    CreateService(createArgs(None, 77)),
+    CreateService(createArgs(Some(MkServiceId(42)), 78)),
+    EjectService({ service: MkServiceId(42) }),
     upgrade({ hashBytes: 9001 }, 123456, 789))
 
   action hostBlockAt(allowance: int, count: int, gasMode: int, stop: bool,
@@ -290,6 +309,7 @@ module fuzz {
   }
 
   action replayStep = any {
+    servicesBlock,
     hostBlock,
     checkpointBlock,
     block,

@@ -288,7 +288,7 @@ fn stream_matches_cli_works() {
 fn validator_keys_generated_works() {
 	// A pinned seed that reaches a successful designation through replayStep,
 	// guarding against accidentally removing keys or their effect from fuzzing.
-	let stream = generator(63304, 1, 1, 50).output().expect("stream generator");
+	let stream = generator(63383, 1, 1, 50).output().expect("stream generator");
 	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
 	let envelope: Value = serde_json::from_slice(&stream.stdout).expect("stream envelope");
 	let trace = &envelope["trace"];
@@ -356,7 +356,7 @@ fn mixed_generated_works() {
 #[test]
 #[ignore = "checks gas and checkpoint coverage; requires Node and Quint 0.32.0"]
 fn gas_generated_works() {
-	let stream = generator(1, 1, 5, 30).output().expect("stream generator");
+	let stream = generator(1, 1, 10, 30).output().expect("stream generator");
 	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
 	let mut stops = std::collections::BTreeSet::new();
 	let mut rejected = false;
@@ -453,4 +453,42 @@ fn host_budget_generated_works() {
 	}
 	assert!(recovered && arrivals && skipped && resumed,
   "host-budget coverage: recovered={recovered}, arrivals={arrivals}, skipped={skipped}, resumed={resumed}");
+}
+
+#[test]
+#[ignore = "checks creation/ejection in default replay fuzzing; requires Node and Quint 0.32.0"]
+fn services_generated_works() {
+	let mut created = false;
+	let mut interrupted_creation = false;
+	let mut refusals = std::collections::BTreeSet::new();
+	// Fixed seeds reach creation recovery and all five reachable refusal classes.
+	for seed in [14, 41, 51] {
+		let stream = generator(seed, 1, 1, 50).output().expect("service generator");
+		assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
+		let line = String::from_utf8(stream.stdout).unwrap();
+		let envelope: Value = serde_json::from_str(&line).unwrap();
+		for state in envelope["trace"]["states"].as_array().unwrap() {
+			let has_creation = !state["replayCreations"].as_array().unwrap().is_empty();
+			created |= has_creation;
+			interrupted_creation |= has_creation && state["replayInterrupt"]["#bigint"] != "-1";
+			let logs = state["svc"]["parachainLog"].to_string();
+			for tag in [
+				"CannotAfford",
+				"IdTaken",
+				"TargetIsSelf",
+				"EjectUnknownService",
+				"EjectNotSupervised",
+			] {
+				if logs.contains(&format!("\"tag\":\"{tag}\"")) {
+					refusals.insert(tag);
+				}
+			}
+		}
+		if let Err(error) = replay::document_trace(&envelope["trace"]) {
+			let path = preserve(&envelope, &error).unwrap();
+			panic!("{error}; {}", path.display());
+		}
+	}
+	assert!(created && interrupted_creation && refusals.len() == 5,
+		"service coverage: created={created}, checkpoint={interrupted_creation}, refusals={refusals:?}");
 }
