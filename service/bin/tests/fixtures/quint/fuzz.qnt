@@ -339,6 +339,7 @@ module fuzz {
     servicesBlock,
     hostBlock,
     checkpointBlock,
+    panicBlock,
     block,
     all { provisionPreimage, noTransfers, noDesignation, noOutgoing, keepUpgradeGas, noGas },
     all { incoming, noDesignation, noOutgoing, keepUpgradeGas, noGas },
