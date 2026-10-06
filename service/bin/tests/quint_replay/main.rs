@@ -14,6 +14,8 @@ mod log_pruning;
 mod mixed;
 mod outgoing;
 mod service_upgrades;
+mod service_preimages;
+mod service_management;
 mod services;
 mod refine_errors;
 mod upgrades;
