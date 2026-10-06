@@ -55,7 +55,7 @@ JAM balances, installed code lengths, and upgrade gas-setting mismatches are rej
   overwritten in a block remain unobservable. The model assumes this service
   holds the designation privilege; unprivileged-host rejection remains covered
   by the direct Rust tests. The fuzz input pool includes key updates and records the same effect.
-  Unexpected provide, create, or eject effects fail; transfers use the explicit oracle below.
+  Unexpected provide or eject effects fail; creation and transfers use the explicit oracles below.
 - Assignment messages and initial pending queues are supported. Authorizer integers
   map to a u32 little-endian prefix padded to 32 bytes. Assignment service IDs swap
   Quint 1 with mock 0; all other IDs remain literal (incoming-transfer IDs retain
@@ -73,6 +73,23 @@ JAM balances, installed code lengths, and upgrade gas-setting mismatches are rej
   memos use a u64 little-endian prefix padded to 128 bytes. The model's JAM
   balances (`svc.jamAccount`, and each foreign service's `account`) are compared
   only in the outgoing-transfer profile below.
+- `CreateService` and `EjectService` run in the default fuzz campaign, including
+  mixed arrivals, gas gates, and checkpoint recovery. Creation traces carry
+  `replayCreations` in every frame, recording the allocated ID and original args
+  for each completed creation. Replay compares the complete host creation set,
+  balances, code hash, gas minima, parent, creation slot, footprint, and initial
+  unprovided code request; later frames keep checking those accounts.
+  `service_inputs.qnt` adapts only the pinned host differences: mock registrar
+  allocation (public IDs start at 65536 per invocation, advancing by 42), ignored
+  public desired IDs, unsupported balance selectors, and absent supervision.
+  New accounts are self-supervised in the compatibility model; JAM records the
+  creator as parent. Ejection therefore checks `TargetIsSelf`, `UnknownService`,
+  and `NotSupervised`, including accounts created in the same or an earlier
+  invocation. Successful ejection is unavailable on this host.
+  The pinned host debits creation funding **before** returning `IdTaken` for an
+  occupied protected ID. The compatibility oracle explicitly checks that debit;
+  this is host behavior, not the design's atomic refusal semantics. The gitlink
+  and production code remain unchanged.
 - Outgoing-transfer traces carry `replayTransfers` in **every** frame, including
   initialization. `outgoing_inputs.qnt` observes accepted packages and successful
   deferred calls through the pinned model's prefix, message, transfer, and package

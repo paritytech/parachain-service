@@ -197,3 +197,22 @@ second incoming bucket after the first was written. Storage/domain invariants
 remain enabled; leaked buckets are failures. The profile currently excludes
 other upward messages, gas interruptions, and transfers above the reserved
 queue capacity.
+
+## Creation and ejection
+
+The default `fuzz` profile mixes `CreateService` and `EjectService` into ordinary
+message pools and a dedicated action with incoming transfers and gas limits.
+Mixed host-budget actions also create services, exercising actual insufficient
+funds, successful funding, and recovery alongside KV write rejection.
+
+`services.qnt` covers repeated public allocations, protected ID collisions,
+ignored public desired IDs, all balance-selector refusals, ejection of self,
+unknown and existing services, transfers to created accounts, unauthorized
+origins, gas rejection, and creation rollback at first/middle/last checkpoints.
+`fuzz::services_generated_works` checks that the general campaign reaches both
+creation and the host's reachable refusal classes. All traces execute the same
+PVM replay and compare actual account/request effects, including after recovery.
+
+The host has parentage but no supervision API, so successful supervisor ejection
+is outside the replay domain. See [README.md](README.md) for the explicit host
+compatibility rules, including the pinned host's debit on `IdTaken`.

@@ -3,7 +3,8 @@
 The harness replays Quint ITF traces through Rust Accumulate in the PolkaJAM PVM.
 It compares storage, head commitments, and supported JAM effects after each
 transition. Coverage includes ordered outgoing transfers, regular JAM balances,
-validator designation, core assignments, and service upgrades. Upgrade checks
+validator designation, core assignments, service upgrades, service creation, and
+ejection refusals. Creation checks include the new account and its code request. Upgrade checks
 verify installed code and gas settings; subsequent invocations execute that code.
 Quint supplies work results; Rust Refine is not executed.
 
@@ -24,8 +25,10 @@ unknown or orphan entries. Traces must include `solicitedSet` and `logPrunedBelo
 Invariant failures report the frame and predicate and fail replay, including fuzzing.
 
 Replay rejects unsupported inputs and mismatches. Supervisor balances and mutable
-supervisor links are unavailable in the host; foreign accounts must already exist,
-be self-supervised, and have zero supervisor balance.
+supervisor links are unavailable in the host. Foreign accounts can be seeded or
+created during replay, use self-supervision in the compatibility model, and have
+zero supervisor balance. The host records the creator as parent but cannot
+perform supervisor-driven ejection.
 
 The Rust `parent_head_continuity` checker additionally snapshots deregistration
 flags from pre-invocation storage: candidates from already deregistering parachains
