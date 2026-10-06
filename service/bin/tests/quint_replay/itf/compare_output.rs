@@ -79,7 +79,12 @@ pub fn state(
 	codex: &mut Codex,
 	frame: usize,
 ) -> Result<(), String> {
-	let root = commitment(previous, current, codex)?;
+	let root = if super::gas::interrupted(current)?.is_some() {
+		// Interrupted invocations never reach the final commitment return.
+		None
+	} else {
+		commitment(previous, current, codex)?
+	};
 	let expected = match variant(field(current, "lastHeadRoot")?)? {
 		("None", _) => None,
 		("Some", hash) => Some(integer(

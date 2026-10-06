@@ -127,3 +127,8 @@ JAM balances, installed code lengths, and upgrade gas-setting mismatches are rej
   codex for Quint's base-257 `listHash`; ambiguous hashes (such as empty and
   leading-zero keys) and hashes exceeding i128 fail explicitly. The generator
   uses a small collision-free key pool.
+
+Gas and checkpoint fixtures live in `gas/`, generated from `gas.qnt`. They cover
+report-budget boundaries (including deferred gas and refine errors), continuing
+after a gas rejection, and rollback of partially applied reports after real VM
+out-of-gas. See [FUZZING.md](FUZZING.md) for the replay-only gas model and limits.

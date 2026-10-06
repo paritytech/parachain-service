@@ -21,7 +21,9 @@ module fuzz {
 
   import invocation_inputs.* from "./invocation_inputs"
 
-  action replayInit = all { outgoingInit, noTransfers, noDesignation, replayMinAccGas' = 100 }
+  import gas_inputs.* from "./gas_inputs"
+
+  action replayInit = all { noGas, outgoingInit, noTransfers, noDesignation, replayMinAccGas' = 100 }
 
   pure def activeCodeCandidate(s: ParachainServiceState, para: ParaId): ParachainCandidate =
     { validationCode: { hash: activeCodeHashOr(s.paraInfo(para), NoCodeHash), len: FixedCodeLen } }
@@ -157,7 +159,11 @@ module fuzz {
     val arrivals = range(0, count).foldl(List(), (acc, i) => acc.append({
       from: sender, amount: amount, toSupervisorBalance: false, memo: i
     }))
-    replayInvocation(packages, slot, arrivals)
+    nondet gas1 = oneOf(0.to(4))
+    nondet gas2 = oneOf(0.to(4))
+    nondet gas3 = oneOf(0.to(4))
+    val limits = List(budget(wp1, gas1), budget(wp2, gas2), budget(wp3, gas3)).slice(0, numPkgs)
+    budgetedInvocation(packages, slot, arrivals, limits, -1)
   }
 
   action replayBlock(packages: List[WorkResult], slot: Timeslot): bool =
@@ -215,12 +221,31 @@ module fuzz {
     replayBlock(List(wr), now + 1)
   }
 
+  // Valid chained reports make the interruption position observable. The
+  // failing report changes its head and KV before a transfer drains the pool.
+  action checkpointBlockAt(stop: int): bool = {
+    val para = AssetHubParaId
+    val parent = svc.paraInfo(para).headData
+    val packages = range(0, 3).foldl(List(), (acc, i) => acc.append(replayWork(svc, para, parent + i,
+      activeCodeCandidate(svc, para), 0, now, 0,
+      List(SetKV({ key: List(71), value: List(i + 1) }),
+        TransferOut(transfer(0, 1, i, if (i == stop) ExhaustPoolGas else 100))))))
+    budgetedInvocation(packages, now + 1,
+      List({ from: MkServiceId(7), amount: 1000, toSupervisorBalance: false, memo: 0 }),
+      packages.foldl(List(), (acc, _) => acc.append(UnlimitedGas)), stop)
+  }
+  action checkpointBlock = {
+    nondet stop = oneOf(Set(0, 1, 2))
+    checkpointBlockAt(stop)
+  }
+
   action replayStep = any {
+    checkpointBlock,
     block,
-    all { provisionPreimage, noTransfers, noDesignation, noOutgoing, keepUpgradeGas },
-    all { incoming, noDesignation, noOutgoing, keepUpgradeGas },
-    all { lifecycleBlock, noTransfers, noDesignation, noOutgoing, keepUpgradeGas },
-    all { assignmentBlock, noTransfers, noDesignation, noOutgoing, keepUpgradeGas },
+    all { provisionPreimage, noTransfers, noDesignation, noOutgoing, keepUpgradeGas, noGas },
+    all { incoming, noDesignation, noOutgoing, keepUpgradeGas, noGas },
+    all { lifecycleBlock, noTransfers, noDesignation, noOutgoing, keepUpgradeGas, noGas },
+    all { assignmentBlock, noTransfers, noDesignation, noOutgoing, keepUpgradeGas, noGas },
     validatorKeysBlock,
     outgoingBlock,
     serviceUpgradeBlock

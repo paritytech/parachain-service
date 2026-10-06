@@ -17,18 +17,30 @@ module invocation_inputs {
 
   import head_commitment.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/head_commitment"
 
+  import gas_inputs.* from "./gas_inputs"
+
   action replayInvocation(packages: List[WorkResult], slot: Timeslot,
-    incoming: List[IncomingTransfer]): bool = {
+    incoming: List[IncomingTransfer]): bool =
+    budgetedInvocation(packages, slot, incoming, packages.foldl(List(), (acc, _) => acc.append(UnlimitedGas)), -1)
+
+  action budgetedInvocation(packages: List[WorkResult], slot: Timeslot,
+    incoming: List[IncomingTransfer], limits: List[int], interrupt: int): bool = {
+    val applied = range(0, packages.length()).foldl(List(), (acc, i) =>
+      if ((interrupt < 0 or i < interrupt) and limits[i] >= reportGas(packages[i]))
+        acc.append(packages[i]) else acc)
+
     // Evaluate the pinned phases in runtime order, without inserting a second
     // invocation between incoming transfers and work reports.
     val prefix = accumulateBlock(svc, slot, List(), solicitedSet,
       FixedCodeLen, List(), foreignServices)
     val arrived = applyIncomingTransfers(prefix.state, incoming)
     val out = accumulateAll(arrived, solicitedSet, List(), FixedCodeLen,
-      slot, packages, foreignServices)
-    val effects = messageEffectsFrom(arrived, packages, slot)
+      slot, applied, foreignServices)
+    val effects = messageEffectsFrom(arrived, applied, slot)
     all {
       replayIncoming' = incoming,
+      replayGasLimits' = limits,
+      replayInterrupt' = interrupt,
       svc' = out.state,
       foreignServices' = out.foreign,
       now' = slot,
@@ -40,7 +52,7 @@ module invocation_inputs {
       prevSvc' = svc,
       lastStepWorkResults' = packages,
       lastStepAssigns' = prefix.assigns.concat(out.jamAssigns),
-      lastHeadRoot' = headCommitment(svc, out.state),
+      lastHeadRoot' = if (interrupt < 0) headCommitment(svc, out.state) else None,
       logPrunedBelow' = out.logPruned.foldl(logPrunedBelow,
         (m, pair) => m.put(pair._1, pair._2))
     }

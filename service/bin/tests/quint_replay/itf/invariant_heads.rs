@@ -60,7 +60,12 @@ pub fn transition(
 ) -> Result<(), String> {
 	let after = heads(storage, codex)?;
 	check(
-		yielded == commitment(before, &after),
+		yielded ==
+			if super::gas::interrupted(current)?.is_some() {
+				None
+			} else {
+				commitment(before, &after)
+			},
 		"head_commitment_matches_changed_heads",
 		frame,
 		yielded,

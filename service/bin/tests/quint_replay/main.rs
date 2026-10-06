@@ -4,6 +4,7 @@ mod blocks;
 #[path = "../common/mod.rs"]
 mod common;
 mod fuzz;
+mod gas;
 mod itf;
 mod kv;
 mod lifecycle;

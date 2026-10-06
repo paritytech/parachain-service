@@ -270,7 +270,7 @@ fn stream_matches_cli_works() {
 fn validator_keys_generated_works() {
 	// A pinned seed that reaches a successful designation through replayStep,
 	// guarding against accidentally removing keys or their effect from fuzzing.
-	let stream = generator(63353, 1, 1, 50).output().expect("stream generator");
+	let stream = generator(63495, 1, 1, 50).output().expect("stream generator");
 	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
 	let envelope: Value = serde_json::from_slice(&stream.stdout).expect("stream envelope");
 	let trace = &envelope["trace"];
@@ -333,4 +333,32 @@ fn mixed_generated_works() {
 		"fuzz seed must combine arrivals and work reports in one invocation"
 	);
 	replay::document_trace(trace).expect("generated mixed invocation should match Quint");
+}
+
+#[test]
+#[ignore = "checks gas and checkpoint coverage; requires Node and Quint 0.32.0"]
+fn gas_generated_works() {
+	let stream = generator(1, 1, 5, 30).output().expect("stream generator");
+	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
+	let mut stops = std::collections::BTreeSet::new();
+	let mut rejected = false;
+	let mut exact = false;
+	for line in stream.stdout.split(|b| *b == b'\n').filter(|line| !line.is_empty()) {
+		let envelope: Value = serde_json::from_slice(line).unwrap();
+		let trace = &envelope["trace"];
+		for state in trace["states"].as_array().unwrap() {
+			stops.insert(super::itf::replay::integer(&state["replayInterrupt"]).unwrap());
+			for limit in state["replayGasLimits"].as_array().unwrap() {
+				let limit = super::itf::replay::integer(limit).unwrap();
+				rejected |= limit == 4_999_999;
+				exact |= limit == 5_000_000;
+			}
+		}
+		replay::document_trace(trace).expect("gas and checkpoint state should match Quint");
+	}
+	assert!(rejected && exact, "must reach below-budget and exact-budget reports");
+	assert!(
+		stops.is_superset(&[0, 1, 2].into()),
+		"must interrupt first, middle, and last reports: {stops:?}"
+	);
 }

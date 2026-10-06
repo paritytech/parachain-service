@@ -31,6 +31,13 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 	super::value::ItfValue::try_from(document)?;
 	let states = document.get("states").and_then(Value::as_array).ok_or("missing states")?;
 	let first = states.first().ok_or("trace has no states")?;
+	let gas_profile = first.get("replayGasLimits").is_some();
+	if states.iter().any(|state| {
+		state.get("replayGasLimits").is_some() != gas_profile ||
+			state.get("replayInterrupt").is_some() != gas_profile
+	}) {
+		return Err("gas traces require replayGasLimits and replayInterrupt in every frame".into());
+	}
 	let upgrade_profile = first.get("replayMinAccGas").is_some();
 	if states
 		.iter()
@@ -126,12 +133,18 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 					.iter()
 					.map(|result| work_item(result, &mut codex))
 					.collect::<Result<Vec<_>, _>>()?;
+				super::gas::apply(&pair[1], &mut items)?;
 				// Put arrivals after reports deliberately: the runtime must collect all
 				// transfers before processing any work, regardless of operand position.
 				items.extend(incoming_items(&mut storage, &pair[1])?);
 				let slot = bounded_integer::<u32>(field(&pair[1], "now")?, "now")?;
-				let (outcome, next, mutations) =
-					accumulate_block(storage, items, slot, privileges.clone())?;
+				let (outcome, next, mutations) = accumulate_block_recovery(
+					storage,
+					items,
+					slot,
+					privileges.clone(),
+					super::gas::interrupted(&pair[1])?.is_some(),
+				)?;
 				output = Some((outcome.yielded, mutations));
 				storage = next;
 			},
@@ -141,8 +154,13 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 			FrameKind::IncomingTransfer => {
 				let items = incoming_items(&mut storage, &pair[1])?;
 				let slot = bounded_integer::<u32>(field(&pair[1], "now")?, "now")?;
-				let (outcome, next, mutations) =
-					accumulate_block(storage, items, slot, privileges.clone())?;
+				let (outcome, next, mutations) = accumulate_block_recovery(
+					storage,
+					items,
+					slot,
+					privileges.clone(),
+					super::gas::interrupted(&pair[1])?.is_some(),
+				)?;
 				output = Some((outcome.yielded, mutations));
 				storage = next;
 			},
@@ -158,7 +176,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 			if let Err(error) = super::invariant_heads::transition(
 				&before_heads,
 				&storage,
-				&pair[1],
+				&super::gas::effective(&pair[1])?,
 				yielded,
 				&mut codex,
 				frame,
@@ -457,11 +475,22 @@ pub(crate) fn bytes(value: &Value) -> Result<Vec<u8>, String> {
 }
 
 // Preserve host assigner ownership between frames, including after a handoff.
+#[cfg(test)]
 fn accumulate_block(
 	storage: Storage,
 	items: Vec<AccumulateItem>,
 	slot: u32,
 	privileges: jam_std_common::Privileges,
+) -> Result<(executor::pj::AccumulateOutcome, Storage, jam_node::vm::StateMutations), String> {
+	accumulate_block_recovery(storage, items, slot, privileges, false)
+}
+
+fn accumulate_block_recovery(
+	storage: Storage,
+	items: Vec<AccumulateItem>,
+	slot: u32,
+	privileges: jam_std_common::Privileges,
+	interrupted: bool,
 ) -> Result<(executor::pj::AccumulateOutcome, Storage, jam_node::vm::StateMutations), String> {
 	let engine = jam_node::vm::Engine::new(Some(jam_node::PvmBackend::Interpreter))
 		.expect("interpreter engine should initialize");
@@ -473,8 +502,23 @@ fn accumulate_block(
 		.service(MOCK_SERVICE_ID)
 		.expect("replay service exists")
 		.code_hash;
-	let outcome = executor::pj::accumulate(&engine, code_hash, &mut context)
-		.map_err(|error| format!("accumulate installed service {code_hash:?}: {error}"))?;
+	let (result, elapsed, gas_used) = engine.accumulate(code_hash, &mut context);
+	let yielded = if interrupted {
+		// The test VM API does not export its error enum. Require this exact
+		// nonfatal cause rather than accepting arbitrary execution failures.
+		if !result.as_ref().is_err_and(|error| format!("{error:?}") == "NotEnoughGas") {
+			return Err(format!("expected checkpoint out-of-gas, got {result:?}"));
+		}
+		if context.snapshot.is_none() {
+			return Err("out-of-gas before any checkpoint".into());
+		}
+		// Match JAM's nonfatal failure path, including host effects.
+		context.revert_changes();
+		context.mutations.yielded
+	} else {
+		result.map_err(|error| format!("accumulate installed service {code_hash:?}: {error}"))?
+	};
+	let outcome = executor::pj::AccumulateOutcome { yielded, elapsed, gas_used };
 	Ok((outcome, context.storage, context.mutations))
 }
 

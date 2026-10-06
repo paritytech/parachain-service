@@ -73,6 +73,23 @@ Due assignments flush first, arrivals are recorded next, and reports execute las
 Up to four upward messages per package exercise ordering,
 authorization, and rejected-work behavior.
 
+Per-report gas limits sample zero, one below the required cost, the exact cost,
+one above it, and `u64::MAX`. The replay-only `gas_inputs.qnt` layer models the
+§5.1 gate (5,000,000 base + 250,000 per message + deferred transfer gas, saturated
+at `u64::MAX`); admitted reports use the unchanged pinned transition functions.
+An empty `replayGasLimits` list selects unlimited budgets for legacy actions.
+
+A dedicated action interrupts the first, middle, or last of three chained reports.
+The failing report updates its head and KV, then forwards 6,000,000,000 gas into
+a deferred transfer, exhausting the mock invocation's 5,000,000,000 gas pool.
+The harness requires an actual VM out-of-gas error and applies JAM's checkpoint
+recovery. Quint predicts the completed prefix, including incoming transfers and
+due assignments; comparisons cover storage, balances, logs, and host effects.
+The failed report and the remaining suffix must leave no effects. No head
+commitment is returned on interruption. Subsequent frames replay from recovered
+state. This covers transfer-induced exhaustion; arbitrary instruction-level gas
+cutoffs and Accumulate panics are not yet sampled.
+
 | Area | Sampled inputs |
 | --- | --- |
 | Preimages and parachain code | Shared solicitations, provision, forget/re-solicit, announcements, and upgrade application |
