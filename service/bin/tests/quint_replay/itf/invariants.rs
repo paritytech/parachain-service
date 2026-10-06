@@ -317,8 +317,8 @@ pub fn state(
 }
 
 /// Unsigned JAM balances make non-negativity structural. The host has no
-/// supervisor balances or mutable supervisor links; only self-supervised,
-/// transfer-only foreign fixtures are supported (also enforced by outgoing).
+/// supervisor balances or mutable supervisor links; only self-supervised
+/// foreign accounts are used; parentage and creation effects are checked separately.
 fn host_accounts(storage: &Storage, current: &Value, frame: usize) -> Result<(), String> {
 	let own = storage
 		.service(MOCK_SERVICE_ID)
@@ -417,19 +417,12 @@ pub fn effects(mutations: &StateMutations, frame: usize) -> Result<(), String> {
 		frame,
 		&mutations.auths,
 	)?;
-	// Foreign management is outside this host's replay domain. Reject any
-	// creation instead of treating uncheckable supervisor predicates as passed.
+	// The complete creation set and account metadata are checked by services.rs.
 	check(
 		!mutations.created.contains(&MOCK_SERVICE_ID),
 		"foreign_excludes_self",
 		frame,
 		&mutations.created,
-	)?;
-	check(
-		mutations.created.is_empty(),
-		"foreign_supervisor_is_us_or_self",
-		frame,
-		"foreign creation unsupported by replay host",
 	)?;
 	Ok(())
 }

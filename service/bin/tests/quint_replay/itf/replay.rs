@@ -32,6 +32,8 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 	let document = super::storage_budget::normalize(document)?;
 	let states = document.get("states").and_then(Value::as_array).ok_or("missing states")?;
 	super::host_budget::validate(states)?;
+	super::services::validate(states)?;
+	let mut created_accounts = Default::default();
 	let first = states.first().ok_or("trace has no states")?;
 	let gas_profile = first.get("replayGasLimits").is_some();
 	if states.iter().any(|state| {
@@ -208,6 +210,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 			invariant_errors.push(error);
 		}
 		super::outgoing::balances(&storage, &pair[1], frame)?;
+		super::services::accounts(&storage, &pair[1], &mut created_accounts, &mut codex, frame)?;
 	}
 	if invariant_errors.is_empty() {
 		Ok(())
@@ -321,6 +324,10 @@ fn upward_message(
 				Ok(UpwardMessage::Forget { target, hash, len: Compact(len) })
 			}
 		},
+		"CreateService" => super::services::message(value, codex),
+		"EjectService" => Ok(UpwardMessage::EjectService {
+			service: super::assignments::service_id(field(value, "service")?)?,
+		}),
 		"UpgradeService" => super::service_upgrade::message(value, codex),
 		"TransferOut" => super::outgoing::message(value),
 		"CleanUpBucketsUpTo" => {

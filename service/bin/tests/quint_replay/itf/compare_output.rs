@@ -107,11 +107,9 @@ pub fn state(
 	}
 	super::validator_keys::compare(previous, current, mutations, frame)?;
 	super::outgoing::compare(current, mutations, frame)?;
+	super::services::effects(previous, current, mutations, frame)?;
 	// These effects have no representation in the supported replay input domain.
-	if !mutations.provided.is_empty() ||
-		!mutations.created.is_empty() ||
-		!mutations.ejected.is_empty()
-	{
+	if !mutations.provided.is_empty() || !mutations.ejected.is_empty() {
 		return Err(format!("frame {frame}: unexpected JAM provide/create/eject output"));
 	}
 	Ok(())

@@ -2,7 +2,8 @@
 
 use codec::Compact;
 use parachain_service::state::log::{
-	AccumulateLog, InsufficientBalanceReason, StateBalanceRejection, TransferError,
+	AccumulateLog, InsufficientBalanceReason, ServiceCreationResult, ServiceEjectError,
+	StateBalanceRejection, TransferError,
 };
 use parachain_service_core::types::ValidationCodeHash;
 use serde_json::Value;
@@ -83,6 +84,33 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 				code_hash: codex
 					.known_hash(hash)
 					.ok_or("service upgrade error hash has no mapped preimage")?,
+			})
+		},
+		"ServiceCreation" => {
+			let (tag, payload) = variant(field(value, "result")?)?;
+			let result = match tag {
+				"Created" => {
+					ServiceCreationResult::Created(super::assignments::service_id(payload)?)
+				},
+				"CannotAfford" => ServiceCreationResult::CannotAfford,
+				"IdTaken" => ServiceCreationResult::IdTaken,
+				other => return Err(format!("unsupported creation result {other}")),
+			};
+			Ok(AccumulateLog::ServiceCreation {
+				id: Compact(bounded_integer::<u64>(field(value, "id")?, "creation id")?),
+				result,
+			})
+		},
+		"ServiceEjectFailed" => {
+			let error = match variant(field(value, "error")?)?.0 {
+				"TargetIsSelf" => ServiceEjectError::TargetIsSelf,
+				"EjectUnknownService" => ServiceEjectError::UnknownService,
+				"EjectNotSupervised" => ServiceEjectError::NotSupervised,
+				other => return Err(format!("unsupported ejection error {other}")),
+			};
+			Ok(AccumulateLog::ServiceEjectFailed {
+				service: super::assignments::service_id(field(value, "service")?)?,
+				error,
 			})
 		},
 		"TransferFailed" => {

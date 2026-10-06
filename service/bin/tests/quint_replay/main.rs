@@ -14,6 +14,7 @@ mod log_pruning;
 mod mixed;
 mod outgoing;
 mod service_upgrades;
+mod services;
 mod refine_errors;
 mod upgrades;
 mod validator_keys;
