@@ -47,8 +47,13 @@ module outgoing_inputs {
   def messageEffects(packages: List[WorkResult], slot: Timeslot): ReplayEffects = {
     val initial = accumulateBlock(svc, slot, jamStagingSet, solicitedSet,
       FixedCodeLen, List(), foreignServices)
-    val observed = packages.foldl({ state: initial.state, foreign: initial.foreign,
-      solicited: initial.solicited, staging: initial.staging, effects: noEffects }, (a, wr) => {
+    messageEffectsFrom(initial.state, packages, slot)
+  }
+  // Observe packages after the invocation's assignment/arrival phases.
+  def messageEffectsFrom(state: ParachainServiceState,
+    packages: List[WorkResult], slot: Timeslot): ReplayEffects = {
+    val observed = packages.foldl({ state: state, foreign: foreignServices,
+      solicited: solicitedSet, staging: jamStagingSet, effects: noEffects }, (a, wr) => {
       val emitted = match wr.result {
         | WorkErr => noEffects
         | WorkOk(digest) => match digest {

@@ -68,7 +68,9 @@ unbounded), and steps. Stdout carries JSON; diagnostics go to stderr.
 Blocks contain zero to three work packages, with valid and invalid candidates,
 stale parents, missing head declarations, PVF errors and panics, JAM work errors,
 auth traces, and lookup anchors. Packages can compete for a head or chain off
-preceding candidates. Up to four upward messages per package exercise ordering,
+preceding candidates. Blocks independently sample zero to three incoming transfers in the same invocation.
+Due assignments flush first, arrivals are recorded next, and reports execute last.
+Up to four upward messages per package exercise ordering,
 authorization, and rejected-work behavior.
 
 | Area | Sampled inputs |

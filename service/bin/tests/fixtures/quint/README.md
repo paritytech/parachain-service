@@ -15,7 +15,7 @@ cargo test -p parachain-service-bin --test quint_replay
 
 The generator uses the pinned model, TypeScript backend, and seed 1. It regenerates
 `refine_errors`, `blocks`, `upgrades`, `log_pruning`, `kv`, `balances`, `lifecycle`,
-`assignments`, `validator_keys`, `outgoing`, and `service_upgrades` scenarios,
+`assignments`, `validator_keys`, `outgoing`, `service_upgrades`, and `mixed` scenarios,
 including the root minimal and stale-parent fixtures. Other historical fixtures
 are retained.
 JSON is compact and timestamp-free; use `just quint-fmt` to expand it for review
@@ -28,6 +28,7 @@ and `just quint-compact` before committing.
 | Refine errors, WorkErr, empty blocks | Error logs, unlogged failures of other code, and unchanged state for skipped work |
 | Multiple work packages and parachains | Ordered processing, shared references, delegated forgets, and combined head commitments |
 | KV operations | Overwrite, empty keys/values rejected at Refine, values crossing 64 bytes without a length prefix, refunds, delegated and unauthorized removal, failed reservations, and stale candidates |
+| Mixed invocations | Arrivals and accepted/rejected reports in one call, bucket rollover, due assignments, and incoming credit funding an outgoing payment |
 | Balances and incoming transfers | Allowance boundaries, authorization, reservations/refunds, queue packing and rollover, admission/drop at the reservation limit, and Asset Hub charges |
 | Outgoing transfers | Ordered deferred records (source, destination, amount, memo, gas), zero amounts, repeated IDs, all refusal reasons, gas boundaries, rejected work, persistent debits, and service balances |
 | Lifecycle | Registration thresholds and repeated funding, unauthorized calls, forced head/code changes, cleanup refusal with extra storage, delayed cleanup, and re-registration |
@@ -66,7 +67,8 @@ JAM balances, installed code lengths, and upgrade gas-setting mismatches are rej
   calls and ordering between independent cores cannot be compared. The model's
   `jamCoreAssigners` ghost state is checked only through those privileges.
 - Incoming-transfer replay requires explicit `replayIncoming` operands and an
-  initially empty queue. Regular-balance arrivals are supported; supervisor
+  initially empty queue. Frames may carry arrivals and work reports together;
+  replay credits arrivals before one invocation containing both input types. Regular-balance arrivals are supported; supervisor
   arrivals fail explicitly because the vendored host has no selector. Integer
   memos use a u64 little-endian prefix padded to 128 bytes. The model's JAM
   balances (`svc.jamAccount`, and each foreign service's `account`) are compared

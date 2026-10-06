@@ -8,6 +8,7 @@ mod itf;
 mod kv;
 mod lifecycle;
 mod log_pruning;
+mod mixed;
 mod outgoing;
 mod service_upgrades;
 mod refine_errors;

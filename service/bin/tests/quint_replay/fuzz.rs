@@ -304,7 +304,7 @@ fn outgoing_generated_works() {
 #[test]
 #[ignore = "checks generated service-upgrade coverage; requires Node and Quint 0.32.0"]
 fn service_upgrade_generated_works() {
-	let stream = generator(7920, 1, 1, 50).output().expect("stream generator");
+	let stream = generator(7996, 1, 1, 50).output().expect("stream generator");
 	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
 	let envelope: Value = serde_json::from_slice(&stream.stdout).expect("stream envelope");
 	let trace = &envelope["trace"];
@@ -316,4 +316,21 @@ fn service_upgrade_generated_works() {
 		"fuzz seed must install new service code"
 	);
 	replay::document_trace(trace).expect("generated service upgrades should match Quint");
+}
+
+#[test]
+#[ignore = "checks generated mixed-invocation coverage; requires Node and Quint 0.32.0"]
+fn mixed_generated_works() {
+	let stream = generator(1, 1, 1, 15).output().expect("stream generator");
+	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
+	let envelope: Value = serde_json::from_slice(&stream.stdout).expect("stream envelope");
+	let trace = &envelope["trace"];
+	assert!(
+		trace["states"].as_array().unwrap().iter().any(|state| {
+			state["replayIncoming"].as_array().is_some_and(|items| !items.is_empty()) &&
+				state["lastStepWorkResults"].as_array().is_some_and(|items| !items.is_empty())
+		}),
+		"fuzz seed must combine arrivals and work reports in one invocation"
+	);
+	replay::document_trace(trace).expect("generated mixed invocation should match Quint");
 }

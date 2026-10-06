@@ -122,10 +122,13 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 					}) {
 					return Err("UpgradeService inputs require replayMinAccGas".into());
 				}
-				let items = results
+				let mut items = results
 					.iter()
 					.map(|result| work_item(result, &mut codex))
 					.collect::<Result<Vec<_>, _>>()?;
+				// Put arrivals after reports deliberately: the runtime must collect all
+				// transfers before processing any work, regardless of operand position.
+				items.extend(incoming_items(&mut storage, &pair[1])?);
 				let slot = bounded_integer::<u32>(field(&pair[1], "now")?, "now")?;
 				let (outcome, next, mutations) =
 					accumulate_block(storage, items, slot, privileges.clone())?;
@@ -136,15 +139,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 				provision(&mut storage, &pair[0], &pair[1], &mut codex)?
 			},
 			FrameKind::IncomingTransfer => {
-				let items = super::transfers::operands(&pair[1])?;
-				if pair[1].get("replayTransfers").is_some() {
-					for item in &items {
-						if let AccumulateItem::Transfer(t) = item {
-							super::outgoing::credit(&mut storage, MOCK_SERVICE_ID, t.amount)?;
-						}
-					}
-					storage.commit();
-				}
+				let items = incoming_items(&mut storage, &pair[1])?;
 				let slot = bounded_integer::<u32>(field(&pair[1], "now")?, "now")?;
 				let (outcome, next, mutations) =
 					accumulate_block(storage, items, slot, privileges.clone())?;
@@ -190,6 +185,24 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 	} else {
 		Err(invariant_errors.join("\n"))
 	}
+}
+
+/// JAM credits arrivals before invocation, including arrivals whose queue entry
+/// is dropped. Legacy fixtures without explicit operands carry no arrivals.
+fn incoming_items(storage: &mut Storage, frame: &Value) -> Result<Vec<AccumulateItem>, String> {
+	if frame.get("replayIncoming").is_none() {
+		return Ok(Vec::new());
+	}
+	let items = super::transfers::operands(frame)?;
+	if frame.get("replayTransfers").is_some() {
+		for item in &items {
+			if let AccumulateItem::Transfer(t) = item {
+				super::outgoing::credit(storage, MOCK_SERVICE_ID, t.amount)?;
+			}
+		}
+		storage.commit();
+	}
+	Ok(items)
 }
 
 fn work_item(value: &Value, codex: &mut Codex) -> Result<AccumulateItem, String> {

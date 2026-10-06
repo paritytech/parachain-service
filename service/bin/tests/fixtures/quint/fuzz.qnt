@@ -19,6 +19,8 @@ module fuzz {
 
   import service_upgrade_inputs.* from "./service_upgrade_inputs"
 
+  import invocation_inputs.* from "./invocation_inputs"
+
   action replayInit = all { outgoingInit, noTransfers, noDesignation, replayMinAccGas' = 100 }
 
   pure def activeCodeCandidate(s: ParachainServiceState, para: ParaId): ParachainCandidate =
@@ -148,32 +150,18 @@ module fuzz {
     val wp2 = replayWork(svc, para2, head2, candidate2, mode2, anchor2, auth2, msgs2)
     val wp3 = replayWork(svc, para3, head3, candidate3, mode3, anchor3, auth3, msgs3)
     val packages = List(wp1, wp2, wp3).slice(0, numPkgs)
-    replayBlock(packages, slot)
+    nondet sender = oneOf(Set(MkServiceId(0), MkServiceId(3), MkServiceId(7)))
+    nondet amount = oneOf(Set(0, IncomingTransferEntryFootprint - 1,
+      IncomingTransferEntryFootprint, IncomingTransferEntryFootprint + 1, 10000))
+    nondet count = oneOf(Set(0, 1, 2, 3))
+    val arrivals = range(0, count).foldl(List(), (acc, i) => acc.append({
+      from: sender, amount: amount, toSupervisorBalance: false, memo: i
+    }))
+    replayInvocation(packages, slot, arrivals)
   }
 
-  action replayBlock(packages: List[WorkResult], slot: Timeslot): bool = {
-    // An empty incoming JAM set exposes the last successful designation even
-    // when it repeats the current keys. Carry the old set forward for no call.
-    val out = accumulateBlock(svc, slot, List(), solicitedSet,
-      FixedCodeLen, packages, foreignServices)
-    val effects = messageEffects(packages, slot)
-    all {
-      svc' = out.state,
-      foreignServices' = out.foreign,
-      now' = slot,
-      replayDesignate' = out.staging,
-      replayTransfers' = effects.transfers,
-      replayMinAccGas' = effects.minAccGas.optionGetOr(replayMinAccGas),
-      jamStagingSet' = if (out.staging == List()) jamStagingSet else out.staging,
-      solicitedSet' = out.solicited,
-      prevSvc' = svc,
-      lastStepWorkResults' = out.results,
-      lastStepAssigns' = out.assigns,
-      lastHeadRoot' = out.headRoot,
-      logPrunedBelow' = out.logPruned.foldl(logPrunedBelow,
-        (m, pair) => m.put(pair._1, pair._2))
-    }
-  }
+  action replayBlock(packages: List[WorkResult], slot: Timeslot): bool =
+    replayInvocation(packages, slot, List())
 
   action incoming = {
     nondet sender = oneOf(Set(MkServiceId(0), MkServiceId(3), MkServiceId(7)))
@@ -228,13 +216,13 @@ module fuzz {
   }
 
   action replayStep = any {
-    all { block, noTransfers },
+    block,
     all { provisionPreimage, noTransfers, noDesignation, noOutgoing, keepUpgradeGas },
     all { incoming, noDesignation, noOutgoing, keepUpgradeGas },
     all { lifecycleBlock, noTransfers, noDesignation, noOutgoing, keepUpgradeGas },
     all { assignmentBlock, noTransfers, noDesignation, noOutgoing, keepUpgradeGas },
-    all { validatorKeysBlock, noTransfers },
-    all { outgoingBlock, noTransfers },
-    all { serviceUpgradeBlock, noTransfers }
+    validatorKeysBlock,
+    outgoingBlock,
+    serviceUpgradeBlock
   }
 }

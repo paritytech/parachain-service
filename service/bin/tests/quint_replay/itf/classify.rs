@@ -36,7 +36,7 @@ pub fn classify(previous: &Value, current: &Value) -> Result<FrameKind, String> 
 					.and_then(Value::as_array)
 					.is_none_or(|results| !results.is_empty())
 			{
-				return Err("incoming frame also contains a block".into());
+				return Ok(FrameKind::Block);
 			}
 			return Ok(FrameKind::IncomingTransfer);
 		}
@@ -139,11 +139,11 @@ mod tests {
 	}
 
 	#[test]
-	fn mixed_incoming_errors() {
+	fn mixed_incoming_works() {
 		let previous = frame(0, svc(), json!([]));
 		for mut current in [frame(1, svc(), json!([])), frame(0, svc(), json!([{}]))] {
 			current["replayIncoming"] = json!([{}]);
-			assert!(classify(&previous, &current).unwrap_err().contains("also contains a block"));
+			assert_eq!(classify(&previous, &current).unwrap(), FrameKind::Block);
 		}
 	}
 
