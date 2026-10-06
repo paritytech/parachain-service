@@ -33,6 +33,7 @@ mod invariant_tests;
 mod invariants;
 
 mod gas;
+mod recovery;
 
 mod storage_budget;
 

@@ -27,7 +27,11 @@ module invocation_inputs {
     budgetedInvocation(packages, slot, incoming, packages.foldl(List(), (acc, _) => acc.append(UnlimitedGas)), -1)
 
   action budgetedInvocation(packages: List[WorkResult], slot: Timeslot,
-    incoming: List[IncomingTransfer], limits: List[int], interrupt: int): bool = {
+    incoming: List[IncomingTransfer], limits: List[int], interrupt: int): bool =
+    interruptedInvocation(packages, slot, incoming, limits, interrupt, false)
+
+  action interruptedInvocation(packages: List[WorkResult], slot: Timeslot,
+    incoming: List[IncomingTransfer], limits: List[int], interrupt: int, panic: bool): bool = {
     val applied = range(0, packages.length()).foldl(List(), (acc, i) =>
       if ((interrupt < 0 or i < interrupt) and limits[i] >= reportGas(packages[i]))
         acc.append(packages[i]) else acc)
@@ -45,6 +49,7 @@ module invocation_inputs {
       replayIncoming' = incoming,
       replayGasLimits' = limits,
       replayInterrupt' = interrupt,
+      replayPanic' = panic,
       svc' = out.state,
       foreignServices' = out.foreign,
       now' = slot,

@@ -129,7 +129,7 @@ module host_invocation {
       lastStepWorkResults' = packages, lastStepAssigns' = due.assigns,
       lastHeadRoot' = if (interrupt < 0) headCommitment(svc, out.state) else None,
       logPrunedBelow' = out.pruned.foldl(logPrunedBelow, (m, pair) => m.put(pair._1, pair._2)),
-      replayIncoming' = incoming, replayGasLimits' = limits, replayInterrupt' = interrupt,
+      replayIncoming' = incoming, replayGasLimits' = limits, replayInterrupt' = interrupt, replayPanic' = false,
       replayDesignate' = List(), replayTransfers' = List(), replayCreations' = out.creations,
       replayMinAccGas' = out.minGas.optionGetOr(replayMinAccGas),
       replayHostBudget' = allowance, replayHostFree' = out.free, replayHostRejects' = out.rejects

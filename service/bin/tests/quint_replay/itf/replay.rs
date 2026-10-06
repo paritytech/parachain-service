@@ -144,6 +144,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 					.map(|result| work_item(result, &mut codex))
 					.collect::<Result<Vec<_>, _>>()?;
 				super::gas::apply(&pair[1], &mut items)?;
+				super::recovery::inject(&pair[1], &mut items)?;
 				// Put arrivals after reports deliberately: the runtime must collect all
 				// transfers before processing any work, regardless of operand position.
 				items.extend(incoming_items(&mut storage, &pair[1])?);
@@ -153,7 +154,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 					items,
 					slot,
 					privileges.clone(),
-					super::gas::interrupted(&pair[1])?.is_some(),
+					super::recovery::expected(&pair[1])?,
 				)?;
 				output = Some((outcome.yielded, mutations));
 				storage = next;
@@ -169,7 +170,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 					items,
 					slot,
 					privileges.clone(),
-					super::gas::interrupted(&pair[1])?.is_some(),
+					super::recovery::expected(&pair[1])?,
 				)?;
 				output = Some((outcome.yielded, mutations));
 				storage = next;
@@ -511,7 +512,7 @@ fn accumulate_block(
 	slot: u32,
 	privileges: jam_std_common::Privileges,
 ) -> Result<(executor::pj::AccumulateOutcome, Storage, jam_node::vm::StateMutations), String> {
-	accumulate_block_recovery(storage, items, slot, privileges, false)
+	accumulate_block_recovery(storage, items, slot, privileges, None)
 }
 
 fn accumulate_block_recovery(
@@ -519,7 +520,7 @@ fn accumulate_block_recovery(
 	items: Vec<AccumulateItem>,
 	slot: u32,
 	privileges: jam_std_common::Privileges,
-	interrupted: bool,
+	interrupted: Option<&str>,
 ) -> Result<(executor::pj::AccumulateOutcome, Storage, jam_node::vm::StateMutations), String> {
 	let engine = jam_node::vm::Engine::new(Some(jam_node::PvmBackend::Interpreter))
 		.expect("interpreter engine should initialize");
@@ -532,14 +533,14 @@ fn accumulate_block_recovery(
 		.expect("replay service exists")
 		.code_hash;
 	let (result, elapsed, gas_used) = engine.accumulate(code_hash, &mut context);
-	let yielded = if interrupted {
+	let yielded = if let Some(expected) = interrupted {
 		// The test VM API does not export its error enum. Require this exact
 		// nonfatal cause rather than accepting arbitrary execution failures.
-		if !result.as_ref().is_err_and(|error| format!("{error:?}") == "NotEnoughGas") {
-			return Err(format!("expected checkpoint out-of-gas, got {result:?}"));
+		if !result.as_ref().is_err_and(|error| format!("{error:?}") == expected) {
+			return Err(format!("expected checkpoint {expected}, got {result:?}"));
 		}
 		if context.snapshot.is_none() {
-			return Err("out-of-gas before any checkpoint".into());
+			return Err(format!("{expected} before any checkpoint"));
 		}
 		// Match JAM's nonfatal failure path, including host effects.
 		context.revert_changes();
