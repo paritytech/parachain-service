@@ -198,10 +198,13 @@ remain enabled; leaked buckets are failures. The profile currently excludes
 other upward messages, gas interruptions, and transfers above the reserved
 queue capacity.
 
-## Creation and ejection
+## Creation, ejection, and service preimages
 
 The default `fuzz` profile mixes `CreateService` and `EjectService` into ordinary
 message pools and a dedicated action with incoming transfers and gas limits.
+The same pools sample service-targeted `Solicit` and `Forget`, including unknown,
+self, seeded, and newly created targets. Mixed host-budget actions include both
+preimage operations, with expected refusal logs and no changes to requests.
 Mixed host-budget actions also create services, exercising actual insufficient
 funds, successful funding, and recovery alongside KV write rejection.
 
@@ -214,5 +217,17 @@ creation and the host's reachable refusal classes. All traces execute the same
 PVM replay and compare actual account/request effects, including after recovery.
 
 The host has parentage but no supervision API, so successful supervisor ejection
-is outside the replay domain. See [README.md](README.md) for the explicit host
+and foreign preimage changes are outside the replay domain.
+`service_preimages.qnt` adds deterministic refusal, authorization, stale-work,
+gas, checkpoint, and host-budget cases. `fuzz::service_preimages_generated_works`
+requires all four reachable solicit/forget refusal classes in the general campaign.
+See [README.md](README.md) for the explicit host
 compatibility rules, including the pinned host's debit on `IdTaken`.
+
+`service_management.qnt` covers storage removal and supervisor handoff with the
+same authorization, gas, checkpoint, and host-budget scenarios. The general
+message pool includes removal targets and pairs of target/new-supervisor IDs,
+including self, unknown, seeded, and created services.
+`fuzz::service_management_generated_works` requires both store refusal classes
+and all three handoff refusal classes. No refused operation may change foreign
+storage, requests, or the model's supervisor links.

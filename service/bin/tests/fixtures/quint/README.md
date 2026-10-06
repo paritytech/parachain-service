@@ -15,7 +15,8 @@ cargo test -p parachain-service-bin --test quint_replay
 
 The generator uses the pinned model, TypeScript backend, and seed 1. It regenerates
 `refine_errors`, `blocks`, `upgrades`, `log_pruning`, `kv`, `balances`, `lifecycle`,
-`assignments`, `validator_keys`, `outgoing`, `service_upgrades`, and `mixed` scenarios,
+`assignments`, `validator_keys`, `outgoing`, `service_upgrades`, `mixed`, `gas`,
+`storage`, `host_mixed`, `services`, `service_preimages`, and `service_management` scenarios,
 including the root minimal and stale-parent fixtures. Other historical fixtures
 are retained.
 JSON is compact and timestamp-free; use `just quint-fmt` to expand it for review
@@ -36,6 +37,8 @@ and `just quint-compact` before committing.
 | Validator keys | Chunk staging, seeded buffers, full-size designation, same-set re-designation, empty aborts, invalid lengths, overflow, authorization, stale work, and final designation across multiple work packages |
 | Upgrades | Announcements and applies, supersession, refused forgets of validation code, unavailable or foreign code, failed reservations, and skipped work |
 | Service self-upgrades | Availability and Asset Hub reference checks, wrong lengths, unrequested/rerequested code, running-code protection, repeated upgrades and gas changes, ordered requests, and execution of installed code on later blocks |
+| Service management | Storage removal and supervisor handoff refusals; target/new-supervisor error precedence, self and set-free cases, created accounts, authorization, stale work, gas gates, checkpoints, and host budgets |
+| Service preimages | Solicit/forget refusals for unknown, seeded, created, and self targets; retained creation requests; authorization, stale work, gas gates, checkpoint recovery, and mixed host budgets |
 | Log pruning | Rejected candidates retain logs; accepted candidates prune below the lookup anchor and retain the boundary |
 
 Mutation tests check that storage, logs, commitments, designation, transfer records,
@@ -136,8 +139,15 @@ JAM balances, installed code lengths, and upgrade gas-setting mismatches are rej
   `ServiceUpgradePreimageMissing`, and
   `InsufficientStateBalance` from `FromSolicit` or `FromSetKV`; other events fail explicitly.
 - `Solicit` and `Forget` support explicit parachain targets, including delegated
-  calls, and historical fixtures without `Target`. Service targets are rejected
-  pending host support ([DIVERGENCE.md M-11](../../../../../DIVERGENCE.md#m-11-the-model-decides-the-65-supervised-service-outcomes-rust-can-only-refuse)).
+  calls, and historical fixtures without `Target`. Service targets replay the
+  host's `UnknownService` and `NotSupervised` refusals. Seeded foreign accounts
+  remain empty; created accounts retain their initial code request. Both account
+  footprints and model requests are checked after every invocation.
+  The compatibility model explicitly returns `NotSupervised` for self targets:
+  the pinned model searches only `foreignServices` and returns `UnknownService`,
+  while the host knows this service exists. Other targets use the pinned model.
+  Successful foreign solicit/forget remains outside the host's capabilities
+  ([DIVERGENCE.md M-11](../../../../../DIVERGENCE.md#m-11-the-model-decides-the-65-supervised-service-outcomes-rust-can-only-refuse)).
 - Abstract hashes require a consistent preimage length within each domain.
   `solicitedSet` is model ghost state, not a returned JAM output.
 - KV keys and values are literal byte lists. Failure-log key hashes use a separate
@@ -163,3 +173,11 @@ cleanup. `host_invocation.qnt` uses the pin for supported operations and extends
 KV writes/log persistence with independently sized host deposits from
 `host_sizes.qnt`. Default `fuzz.qnt` samples these invocations on the same state
 as its ordinary actions; no extra profile selection is required.
+
+`service_management.qnt` covers `RemoveServiceStorage` and
+`SetServiceSupervisor`. The self-target compatibility rule also applies here:
+the host knows self exists, while the pinned foreign-service map excludes it.
+For supervisor handoff, a missing new supervisor precedes `NotSupervised`.
+Every replay frame requires foreign services to remain self-supervised in the
+compatibility model; the host has no mutable supervisor link. Successful storage
+removal and supervisor handoff remain outside this host's replay domain.

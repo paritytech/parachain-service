@@ -4,7 +4,9 @@ The harness replays Quint ITF traces through Rust Accumulate in the PolkaJAM PVM
 It compares storage, head commitments, and supported JAM effects after each
 transition. Coverage includes ordered outgoing transfers, regular JAM balances,
 validator designation, core assignments, service upgrades, service creation, and
-ejection refusals. Creation checks include the new account and its code request. Upgrade checks
+ejection, service-targeted solicit/forget, storage removal, and supervisor handoff
+refusals. Creation checks include the
+new account and its code request. Upgrade checks
 verify installed code and gas settings; subsequent invocations execute that code.
 Quint supplies work results; Rust Refine is not executed.
 
