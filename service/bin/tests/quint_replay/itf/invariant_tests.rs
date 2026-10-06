@@ -292,6 +292,7 @@ fn heads_errors() {
 }
 
 #[test]
+#[ignore = "solicit_implies_registry disabled pending https://github.com/paritytech/parachain-service/issues/54"]
 fn solicited_ghost_errors() {
 	rejects("solicit_implies_registry", |_, _, f| {
 		f["solicitedSet"] = json!({"#set": [{"#tup": [
@@ -303,7 +304,8 @@ fn solicited_ghost_errors() {
 
 #[test]
 fn missing_ghost_errors() {
-	for name in ["solicitedSet", "logPrunedBelow", "foreignServices"] {
+	// FIXME: Restore solicitedSet coverage when issue #54 is fixed.
+	for name in ["logPrunedBelow", "foreignServices"] {
 		let (s, mut c, mut f) = seeded();
 		f.as_object_mut().unwrap().remove(name);
 		assert!(state(&s, &f, &mut c, 0).unwrap_err().contains(name));

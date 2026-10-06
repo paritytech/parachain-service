@@ -275,6 +275,9 @@ pub fn state(
 			)?;
 		}
 	}
+	// FIXME: Re-enable solicit_implies_registry once Quint records only successful
+	// solicitations: https://github.com/paritytech/parachain-service/issues/54
+	#[cfg(any())]
 	{
 		let solicited = field(current, "solicitedSet")?;
 		for triple in set_values(solicited)? {
