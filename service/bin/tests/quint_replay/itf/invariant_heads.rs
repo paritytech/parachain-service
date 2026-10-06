@@ -72,9 +72,11 @@ pub fn transition(
 	)?;
 	let mut replayed = before.clone();
 	let mut claims = Vec::new();
-	for result in field(current, "lastStepWorkResults")?
+	for (index, result) in field(current, "lastStepWorkResults")?
 		.as_array()
 		.ok_or("work results must be a list")?
+		.iter()
+		.enumerate()
 	{
 		let (tag, digest) = variant(field(result, "result")?)?;
 		if tag != "WorkOk" {
@@ -95,7 +97,7 @@ pub fn transition(
 				.ok_or("parent head missing")?,
 		)?)?;
 		let accepted = replayed.get(&p) == Some(&parent);
-		if accepted {
+		if accepted && !super::storage_budget::failed_head(current, index)? {
 			replayed.insert(p, head);
 		}
 		for message in field(ok, "upwardMessages")?.as_array().ok_or("messages must be a list")? {

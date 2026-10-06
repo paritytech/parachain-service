@@ -27,10 +27,19 @@ fn number(name: &str, default: u64) -> u64 {
 }
 
 fn generator(seed: u64, stride: u64, count: u64, steps: u64) -> Command {
+	generator_profile("fuzz", seed, stride, count, steps)
+}
+
+fn generator_profile(profile: &str, seed: u64, stride: u64, count: u64, steps: u64) -> Command {
+	let input = match profile {
+		"fuzz" => "service/bin/tests/fixtures/quint/fuzz.qnt",
+		"storage" => "service/bin/tests/fixtures/quint/storage_fuzz.qnt",
+		_ => panic!("unknown QUINT_FUZZ_PROFILE: {profile}"),
+	};
 	let mut command = Command::new("node");
 	command.current_dir(root()).args([
 		"scripts/quint-replay-stream.cjs",
-		"service/bin/tests/fixtures/quint/fuzz.qnt",
+		input,
 		&seed.to_string(),
 		&stride.to_string(),
 		&count.to_string(),
@@ -82,8 +91,17 @@ fn worker(
 	stop: &AtomicBool,
 	progress: &Progress,
 ) -> Result<u64, String> {
-	let mut child =
-		Generator(generator(seed, stride, count, steps).spawn().map_err(|e| e.to_string())?);
+	let mut child = Generator(
+		generator_profile(
+			&env::var("QUINT_FUZZ_PROFILE").unwrap_or_else(|_| "fuzz".into()),
+			seed,
+			stride,
+			count,
+			steps,
+		)
+		.spawn()
+		.map_err(|e| e.to_string())?,
+	);
 	let mut reader = BufReader::new(child.0.stdout.take().ok_or("missing generator stdout")?);
 	let mut completed = 0;
 	let mut line = String::new();
@@ -361,4 +379,30 @@ fn gas_generated_works() {
 		stops.is_superset(&[0, 1, 2].into()),
 		"must interrupt first, middle, and last reports: {stops:?}"
 	);
+}
+
+#[test]
+#[ignore = "requires Quint 0.32.0"]
+fn storage_generated_works() {
+	let stream = generator_profile("storage", 1, 1, 10, 30).output().expect("storage generator");
+	assert!(stream.status.success());
+	let mut reasons = std::collections::BTreeSet::new();
+	let mut failed_heads = false;
+	for line in String::from_utf8(stream.stdout).unwrap().lines() {
+		let envelope: Value = serde_json::from_str(line).unwrap();
+		for frame in envelope["trace"]["states"].as_array().unwrap() {
+			failed_heads |= !frame["replayFailedHeads"].as_array().unwrap().is_empty();
+			for entry in frame["replayStorageLogs"].as_array().unwrap() {
+				for reason in entry["#tup"][1].as_array().unwrap() {
+					reasons.insert(reason["tag"].as_str().unwrap().to_owned());
+				}
+			}
+		}
+		if let Err(error) = replay::document_trace(&envelope["trace"]) {
+			let path = preserve(&envelope, &error).unwrap();
+			panic!("{error}; {}", path.display());
+		}
+	}
+	assert!(failed_heads, "campaign must reject a head write");
+	assert!(reasons.contains("KVWrite") && reasons.contains("QueueWrite"), "{reasons:?}");
 }

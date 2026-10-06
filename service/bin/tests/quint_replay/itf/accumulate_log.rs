@@ -35,6 +35,12 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 						reason: InsufficientBalanceReason::Solicit { hash, len: Compact(len) },
 					})
 				},
+				"FromParaInfo" => Ok(AccumulateLog::InsufficientStateBalance {
+					reason: InsufficientBalanceReason::ParaInfo,
+				}),
+				"FromIncomingTransfer" => Ok(AccumulateLog::InsufficientStateBalance {
+					reason: InsufficientBalanceReason::IncomingTransfer,
+				}),
 				"FromSetKV" => Ok(AccumulateLog::InsufficientStateBalance {
 					reason: InsufficientBalanceReason::SetKV {
 						key_hash: codex.kv_key_hash(integer(field(

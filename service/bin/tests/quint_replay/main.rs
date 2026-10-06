@@ -5,6 +5,7 @@ mod blocks;
 mod common;
 mod fuzz;
 mod gas;
+mod storage;
 mod itf;
 mod kv;
 mod lifecycle;

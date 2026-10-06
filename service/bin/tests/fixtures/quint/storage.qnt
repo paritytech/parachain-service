@@ -1,0 +1,22 @@
+module storage {
+  import storage_inputs.* from "./storage_inputs"
+  run head_rejection_works = storageInit.then(storageBlock(7, 0, 0, 0, 1, false))
+    .then(storageBlock(1000, 0, 0, 1, 2, true))
+  run kv_rollback_works = storageInit.then(storageBlock(100, 0, 0, 256, 1, true))
+    .then(storageBlock(1000, 0, 0, 1, 3, true))
+  run bucket_rejection_works = storageInit.then(storageBlock(100, 1, 0, 0, 1, true))
+    .then(storageBlock(1000, 1, 0, 1, 3, true))
+  run endpoint_rejection_works = storageInit.then(storageBlock(188, 1, 0, 0, 1, true))
+    .then(storageBlock(1000, 1, 0, 1, 3, true))
+  run boundaries_works = storageInit.then(storageBlock(8, 0, 0, 0, 1, true))
+    .then(storageBlock(50, 0, 0, 1, 3, true))
+    .then(storageBlock(51, 0, 0, 1, 5, true))
+    .then(storageBlock(0, 0, 0, 256, 7, true))
+  run incoming_credit_works = storageInit.then(storageBlock(187, 1, 1, 0, 1, false))
+    .then(storageBlock(0, 3, 64, 64, 0, true))
+  run later_bucket_rejection_works = storageInit.then(storageBlock(68663, 513, 0, 0, 1, true))
+    .then(storageBlock(1000, 1, 0, 1, 3, true))
+  run head_partial_effects_works = storageInit.then(storageBlock(1000, 0, 0, 256, 1, true))
+    .then(storageBlock(0, 0, 0, 256, 0, false))
+    .then(storageBlock(7, 0, 0, 1, 3, false))
+}

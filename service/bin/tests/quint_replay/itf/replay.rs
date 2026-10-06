@@ -29,6 +29,7 @@ pub fn trace(json: &str) -> Result<(), String> {
 pub fn document_trace(document: &Value) -> Result<(), String> {
 	// Validate every Quint value strictly before using the ergonomic JSON view.
 	super::value::ItfValue::try_from(document)?;
+	let document = super::storage_budget::normalize(document)?;
 	let states = document.get("states").and_then(Value::as_array).ok_or("missing states")?;
 	let first = states.first().ok_or("trace has no states")?;
 	let gas_profile = first.get("replayGasLimits").is_some();
@@ -60,6 +61,8 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 	let mut seeded = Ok(());
 	let mut storage = fresh_storage(|storage| seeded = seed::seed(storage, first, &mut codex));
 	seeded?;
+	super::storage_budget::prepare(&mut storage, first)?;
+	super::storage_budget::compare(&storage, first, 0)?;
 	compare::state(&storage, first, &mut codex, 0)?;
 	if let Err(error) = super::invariants::state(&storage, first, &mut codex, 0) {
 		invariant_errors.push(error);
@@ -86,6 +89,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 				continue;
 			},
 			FrameKind::Block => {
+				super::storage_budget::prepare(&mut storage, &pair[1])?;
 				let results = field(&pair[1], "lastStepWorkResults")?
 					.as_array()
 					.ok_or("lastStepWorkResults must be a list")?;
@@ -166,6 +170,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 			},
 		}
 		compare::state(&storage, &pair[1], &mut codex, frame)?;
+		super::storage_budget::compare(&storage, &pair[1], frame)?;
 		if let Err(error) = super::invariants::state(&storage, &pair[1], &mut codex, frame) {
 			invariant_errors.push(error);
 		}
@@ -212,7 +217,7 @@ fn incoming_items(storage: &mut Storage, frame: &Value) -> Result<Vec<Accumulate
 		return Ok(Vec::new());
 	}
 	let items = super::transfers::operands(frame)?;
-	if frame.get("replayTransfers").is_some() {
+	if frame.get("replayTransfers").is_some() || frame.get("replayStorageBudget").is_some() {
 		for item in &items {
 			if let AccumulateItem::Transfer(t) = item {
 				super::outgoing::credit(storage, MOCK_SERVICE_ID, t.amount)?;

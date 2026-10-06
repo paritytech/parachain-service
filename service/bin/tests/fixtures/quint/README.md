@@ -132,3 +132,10 @@ Gas and checkpoint fixtures live in `gas/`, generated from `gas.qnt`. They cover
 report-budget boundaries (including deferred gas and refine errors), continuing
 after a gas rejection, and rollback of partially applied reports after real VM
 out-of-gas. See [FUZZING.md](FUZZING.md) for the replay-only gas model and limits.
+
+`storage.qnt` provides host backstop fixtures: head and KV rejection, incoming
+bucket and endpoint failures, cleanup of earlier buckets, credit and write
+boundaries, and recovery on later reports/invocations. `storage_inputs.qnt`
+is a replay-only extension for the host deposit check and extra failure-log
+variants absent from the pin. `storage_fuzz.qnt` samples these inputs through
+the regular streaming replay harness; see [FUZZING.md](FUZZING.md).

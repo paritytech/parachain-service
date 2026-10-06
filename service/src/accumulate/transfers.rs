@@ -82,8 +82,12 @@ pub fn record_incoming(records: &[&TransferRecord]) -> Vec<AccumulateLog> {
 
 	// The endpoints are advanced only once every bucket landed, so a backstop
 	// failure never leaves them naming a bucket that was not written.
-	for (id, bucket) in &filled {
+	for (index, (id, bucket)) in filled.iter().enumerate() {
 		if TransferBuckets::set(*id, bucket).is_err() {
+			// None of these fresh buckets is reachable until endpoints persist.
+			for (written, _) in &filled[..index] {
+				TransferBuckets::remove(*written);
+			}
 			reject();
 			return logs;
 		}
@@ -94,6 +98,9 @@ pub fn record_incoming(records: &[&TransferRecord]) -> Vec<AccumulateLog> {
 		count: queued,
 	};
 	if TransferQueue::set(&endpoints).is_err() {
+		for (id, _) in &filled {
+			TransferBuckets::remove(*id);
+		}
 		reject();
 		return logs;
 	}

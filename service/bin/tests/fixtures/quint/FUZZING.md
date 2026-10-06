@@ -19,6 +19,7 @@ Configuration:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
+| `QUINT_FUZZ_PROFILE` | `fuzz` | `fuzz` for general inputs; `storage` for host storage-budget failures |
 | `QUINT_FUZZ_TRACES` | `100` | Total traces across workers; `0` runs until failure/interruption |
 | `QUINT_FUZZ_STEPS` | `15` | Transitions per trace, 1–10000 |
 | `QUINT_FUZZ_WORKERS` | `1` | Independent Rust workers and generator processes |
@@ -134,3 +135,31 @@ QUINT_FUZZ_TRACES=2 QUINT_FUZZ_STEPS=10 QUINT_FUZZ_WORKERS=2 \
   cargo test -p parachain-service-bin --test quint_replay fuzz:: \
   -- --ignored --skip replay_input_works --nocapture
 ```
+
+## Host storage-budget profile
+
+Run `QUINT_FUZZ_PROFILE=storage just quint-fuzz` (or set that variable on the
+campaign command above). This uses `storage_fuzz.qnt` and the same streaming
+workers, PVM replay, failure artifacts, and invariant checks. The ignored
+`fuzz::storage_generated_works` regression asserts rejection coverage across
+10 seeds and 300 transitions.
+
+Before each invocation, an explicit environment input sets the actual JAM
+balance to the current host threshold plus a sampled allowance. Incoming
+amounts are then credited normally. Private parachain reservations remain
+funded, isolating the host backstop from the private headroom check. Expected
+free balance, write outcomes, logs, and partial effects are calculated in
+`storage_inputs.qnt`, independently of Rust's storage encoders and write calls.
+The extension fixes the pinned host's deposit parameters (10 per item, 1 per
+byte, 34 bytes overhead) and SCALE sizes for its restricted input vocabulary.
+It does not change the vendored Quint model.
+
+Each invocation mixes zero to three arrivals with two reports, choosing
+competing or chained parents, empty/eight-byte heads, and KV values of 1, 63,
+64, or 256 bytes. It covers failed head growth followed by message execution,
+KV charge rollback, bucket/endpoint rejection and cleanup, log write rejection,
+and subsequent reports and invocations. Deterministic fixtures also reject a
+second incoming bucket after the first was written. Storage/domain invariants
+remain enabled; leaked buckets are failures. The profile currently excludes
+other upward messages, gas interruptions, and transfers above the reserved
+queue capacity.
