@@ -74,6 +74,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 	for (index, pair) in states.windows(2).enumerate() {
 		let frame = index + 1;
 		let before_heads = super::invariants::heads(&storage, &codex)?;
+		let before_deregistering = super::invariants::deregistering(&storage, &codex)?;
 		let mut output = None;
 		match classify(&pair[0], &pair[1])? {
 			FrameKind::Noop => {
@@ -180,6 +181,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 			}
 			if let Err(error) = super::invariant_heads::transition(
 				&before_heads,
+				&before_deregistering,
 				&storage,
 				&super::gas::effective(&pair[1])?,
 				yielded,

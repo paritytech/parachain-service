@@ -65,6 +65,20 @@ pub fn heads(storage: &Storage, codex: &Codex) -> Result<BTreeMap<ParaId, HeadDa
 		.collect()
 }
 
+/// Snapshot lifecycle flags before executing the invocation. Post-state flags
+/// cannot decide whether a candidate preceding a cleanup was accepted.
+pub fn deregistering(storage: &Storage, codex: &Codex) -> Result<BTreeSet<ParaId>, String> {
+	let mut result = BTreeSet::new();
+	for p in codex.paras() {
+		if read::<ParaInfo>(storage, &storage_key(Tag::Parachains, &p))?
+			.is_some_and(|info| info.is_deregistering)
+		{
+			result.insert(p);
+		}
+	}
+	Ok(result)
+}
+
 pub fn state(
 	storage: &Storage,
 	current: &Value,

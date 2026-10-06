@@ -273,21 +273,25 @@ fn heads_errors() {
 	use super::invariant_heads::{commitment, transition};
 	let (mut storage, mut codex, mut frame) = seeded();
 	let before = heads(&storage, &codex).unwrap();
-	transition(&before, &storage, &frame, None, &mut codex, 0).unwrap();
-	let error = transition(&before, &storage, &frame, Some([0; 32]), &mut codex, 8).unwrap_err();
+	transition(&before, &Default::default(), &storage, &frame, None, &mut codex, 0).unwrap();
+	let error =
+		transition(&before, &Default::default(), &storage, &frame, Some([0; 32]), &mut codex, 8)
+			.unwrap_err();
 	assert!(error.contains("head_commitment_matches_changed_heads"), "{error}");
 	info_change(&mut storage, |i| i.head_data = Codex::head(1).unwrap());
 	let after = heads(&storage, &codex).unwrap();
 	let root = commitment(&before, &after);
-	let error = transition(&before, &storage, &frame, root, &mut codex, 8).unwrap_err();
+	let error = transition(&before, &Default::default(), &storage, &frame, root, &mut codex, 8)
+		.unwrap_err();
 	assert!(error.contains("head_state_matches_outcomes"), "{error}");
 	let trace: Value =
 		serde_json::from_str(include_str!("../../fixtures/quint/minimal_replay.itf.json")).unwrap();
 	frame["lastStepWorkResults"] = trace["states"][1]["lastStepWorkResults"].clone();
-	transition(&before, &storage, &frame, root, &mut codex, 8).unwrap();
+	transition(&before, &Default::default(), &storage, &frame, root, &mut codex, 8).unwrap();
 	frame["lastStepWorkResults"][0]["result"]["value"]["value"]["parentHeadHash"] =
 		json!({"headBytes":{"#bigint":"99"}});
-	let error = transition(&before, &storage, &frame, root, &mut codex, 8).unwrap_err();
+	let error = transition(&before, &Default::default(), &storage, &frame, root, &mut codex, 8)
+		.unwrap_err();
 	assert!(error.contains("parent_head_continuity"), "{error}");
 }
 
@@ -324,4 +328,45 @@ fn foreign_domain_errors() {
 			{"supervisor":{"tag":"MkServiceId", "value":{"#bigint":"8"}}}
 		]]});
 	});
+}
+
+#[test]
+fn deregistering_heads_works() {
+	use super::invariant_heads::{commitment, transition};
+	// Cover both a deregistering origin (its messages must be rejected too)
+	// and an active origin forcing a deregistering target's head.
+	for frozen in [1, 2] {
+		let (mut storage, mut codex, mut frame) = seeded();
+		let target = Codex::para_id(frozen).unwrap();
+		let key = storage_key(Tag::Parachains, &target);
+		let mut info: ParaInfo = get_state(&storage, &key).unwrap();
+		info.is_deregistering = true;
+		set_state(&mut storage, &key, &info);
+		let before = heads(&storage, &codex).unwrap();
+		let frozen = deregistering(&storage, &codex).unwrap();
+		let trace: Value =
+			serde_json::from_str(include_str!("../../fixtures/quint/minimal_replay.itf.json"))
+				.unwrap();
+		frame["lastStepWorkResults"] = trace["states"][1]["lastStepWorkResults"].clone();
+		frame["lastStepWorkResults"][0]["result"]["value"]["value"]["upwardMessages"] = json!([
+			{"tag": "ParachainSetHead", "value": {
+				"paraId": {"tag": "MkParaId", "value": {"#bigint": "2"}},
+				"newHead": {"#bigint": "99"}
+			}}
+		]);
+		if !frozen.contains(&Codex::para_id(1).unwrap()) {
+			info_change(&mut storage, |i| i.head_data = Codex::head(1).unwrap());
+		}
+		let root = commitment(&before, &heads(&storage, &codex).unwrap());
+		transition(&before, &frozen, &storage, &frame, root, &mut codex, 8).unwrap();
+
+		// Matching a claimed head must not conceal an illegal write while frozen.
+		info.head_data =
+			Codex::head(if target == Codex::para_id(1).unwrap() { 1 } else { 99 }).unwrap();
+		set_state(&mut storage, &key, &info);
+		let root = commitment(&before, &heads(&storage, &codex).unwrap());
+		let error =
+			transition(&before, &frozen, &storage, &frame, root, &mut codex, 8).unwrap_err();
+		assert!(error.contains("parent_head_continuity"), "{error}");
+	}
 }

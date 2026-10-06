@@ -25,6 +25,11 @@ Invariant failures report the frame and predicate and fail replay, including fuz
 
 Replay rejects unsupported inputs and mismatches. Supervisor balances and mutable
 supervisor links are unavailable in the host; foreign accounts must already exist,
-be self-supervised, and have zero supervisor balance. Negative regression tests
-require specific failures in the pinned model's `solicit_implies_registry` and
-`parent_head_continuity` predicates, even where Rust and model storage agree.
+be self-supervised, and have zero supervisor balance.
+
+The Rust `parent_head_continuity` checker additionally snapshots deregistration
+flags from pre-invocation storage: candidates from already deregistering parachains
+and forced head updates targeting them are ignored. The pinned Quint predicate
+omits this guard. The cleanup-retry fixture and fuzz seed `3123773523` cover the
+correction; mutation tests still reject illegal head changes while deregistering.
+`solicit_implies_registry` remains disabled pending issue #54.

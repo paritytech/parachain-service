@@ -8,7 +8,7 @@ use jam_node::vm::Storage;
 use jam_types::Hash;
 use parachain_service_core::types::{HeadData, ParaId};
 use serde_json::Value;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use tiny_keccak::{Hasher, Keccak};
 
 fn keccak(bytes: &[u8]) -> Hash {
@@ -52,6 +52,7 @@ pub fn commitment(
 
 pub fn transition(
 	before: &BTreeMap<ParaId, HeadData>,
+	deregistering: &BTreeSet<ParaId>,
 	storage: &Storage,
 	current: &Value,
 	yielded: Option<Hash>,
@@ -96,7 +97,8 @@ pub fn transition(
 				.or_else(|| parent.get("hashBytes"))
 				.ok_or("parent head missing")?,
 		)?)?;
-		let accepted = replayed.get(&p) == Some(&parent);
+		// A retained ParaInfo is not necessarily eligible for more work (§6.4).
+		let accepted = !deregistering.contains(&p) && replayed.get(&p) == Some(&parent);
 		if accepted && !super::storage_budget::failed_head(current, index)? {
 			replayed.insert(p, head);
 		}
@@ -106,7 +108,7 @@ pub fn transition(
 				let target = para_id(field(payload, "paraId")?, codex)?;
 				let head = Codex::head(integer(field(payload, "newHead")?)?)?;
 				claims.push((target, head.clone()));
-				if accepted && replayed.contains_key(&target) {
+				if accepted && !deregistering.contains(&target) && replayed.contains_key(&target) {
 					replayed.insert(target, head);
 				}
 			}
@@ -134,5 +136,13 @@ pub fn unchanged(
 	codex: &mut Codex,
 	frame: usize,
 ) -> Result<(), String> {
-	transition(before, storage, &serde_json::json!({"lastStepWorkResults": []}), None, codex, frame)
+	transition(
+		before,
+		&BTreeSet::new(),
+		storage,
+		&serde_json::json!({"lastStepWorkResults": []}),
+		None,
+		codex,
+		frame,
+	)
 }

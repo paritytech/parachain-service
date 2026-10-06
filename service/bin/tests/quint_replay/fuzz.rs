@@ -406,3 +406,14 @@ fn storage_generated_works() {
 	assert!(failed_heads, "campaign must reject a head write");
 	assert!(reasons.contains("KVWrite") && reasons.contains("QueueWrite"), "{reasons:?}");
 }
+
+#[test]
+#[ignore = "requires Node and Quint 0.32.0"]
+fn deregistering_head_generated_works() {
+	// Scaleway failure: a matching-parent candidate for a retained, deregistering
+	// para must leave its head unchanged (frame 15).
+	let stream = generator(3123773523, 1, 1, 15).output().expect("stream generator");
+	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
+	let envelope: Value = serde_json::from_slice(&stream.stdout).expect("stream envelope");
+	replay::document_trace(&envelope["trace"]).expect("deregistering head should remain frozen");
+}
