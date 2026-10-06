@@ -16,7 +16,7 @@ cargo test -p parachain-service-bin --test quint_replay
 The generator uses the pinned model, TypeScript backend, and seed 1. It regenerates
 `refine_errors`, `blocks`, `upgrades`, `log_pruning`, `kv`, `balances`, `lifecycle`,
 `assignments`, `validator_keys`, `outgoing`, `service_upgrades`, `mixed`, `gas`,
-`storage`, `host_mixed`, `services`, `service_preimages`, and `service_management` scenarios,
+`storage`, `host_mixed`, `services`, `service_preimages`, `service_management`, and `panic_recovery` scenarios,
 including the root minimal and stale-parent fixtures. Other historical fixtures
 are retained.
 JSON is compact and timestamp-free; use `just quint-fmt` to expand it for review
@@ -27,6 +27,7 @@ and `just quint-compact` before committing.
 | Scenarios | Checks |
 | --- | --- |
 | Refine errors, WorkErr, empty blocks | Error logs, unlogged failures of other code, and unchanged state for skipped work |
+| Accumulate panic recovery | Actual PVM traps from malformed work digests; first/middle/last checkpoints, zero report gas, repeated faults, due assignments, retained host effects, and successful later invocations |
 | Multiple work packages and parachains | Ordered processing, shared references, delegated forgets, and combined head commitments |
 | KV operations | Overwrite, empty keys/values rejected at Refine, values crossing 64 bytes without a length prefix, refunds, delegated and unauthorized removal, failed reservations, and stale candidates |
 | Mixed invocations | Arrivals and accepted/rejected reports in one call, bucket rollover, due assignments, and incoming credit funding an outgoing payment |
@@ -181,3 +182,9 @@ For supervisor handoff, a missing new supervisor precedes `NotSupervised`.
 Every replay frame requires foreign services to remain self-supervised in the
 compatibility model; the host has no mutable supervisor link. Successful storage
 removal and supervisor handoff remain outside this host's replay domain.
+
+Panic fixtures set `replayPanic` together with `replayInterrupt`. The replay
+adapter replaces that report's output with an empty SCALE digest and requires
+an actual PVM `Trap`. The fault occurs before the report's gas gate and state
+writes. With `replayPanic` absent or false, interrupted traces retain the existing
+out-of-gas semantics. Unexpected VM failures always fail replay.

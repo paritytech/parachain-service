@@ -89,7 +89,23 @@ due assignments; comparisons cover storage, balances, logs, and host effects.
 The failed report and the remaining suffix must leave no effects. No head
 commitment is returned on interruption. Subsequent frames replay from recovered
 state. This covers transfer-induced exhaustion; arbitrary instruction-level gas
-cutoffs and Accumulate panics are not yet sampled.
+cutoffs are not yet sampled.
+
+A separate `panicBlock` action samples a malformed digest at the first, middle,
+or last report. `replayPanic = true` instructs the Rust adapter to replace that
+report's output with empty SCALE bytes. The production decoder panics, and replay
+requires the PVM's exact `Trap` outcome before restoring the checkpoint. The
+Quint oracle evaluates only the completed prefix. Incoming transfers, due
+assignments, earlier KV writes, creation requests, logs, and deferred transfers
+must survive; the failing report and suffix must leave no effects or head
+commitment. Later invocations continue from that recovered state.
+
+This is explicit fault injection: valid Rust Refine does not emit this malformed
+output. It tests Accumulate's panic recovery at the report boundary, before the
+report writes state. Existing out-of-gas cases test rollback after partial writes.
+Zero declared report gas is also sampled because decoding precedes the gas gate.
+`fuzz::panic_recovery_generated_works` requires all three panic positions, retained
+creation effects, zero-gas faults, and a subsequent normal work invocation.
 
 | Area | Sampled inputs |
 | --- | --- |

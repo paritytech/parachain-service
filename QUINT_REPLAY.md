@@ -8,7 +8,9 @@ ejection, service-targeted solicit/forget, storage removal, and supervisor hando
 refusals. Creation checks include the
 new account and its code request. Upgrade checks
 verify installed code and gas settings; subsequent invocations execute that code.
-Quint supplies work results; Rust Refine is not executed.
+Quint supplies work results; Rust Refine is not executed. Recovery coverage
+includes transfer-induced out-of-gas and explicit malformed-digest faults that
+trigger real Accumulate panics in the PVM.
 
 - [Fixture guide](service/bin/tests/fixtures/quint/README.md): regeneration,
   coverage, and adapter limitations.
