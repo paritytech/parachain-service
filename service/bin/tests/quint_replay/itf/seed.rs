@@ -67,6 +67,8 @@ pub fn seed(storage: &mut Storage, frame: &Value, codex: &mut Codex) -> Result<(
 		set_state(storage, &storage_key(Tag::StagedValidatorKeys, &()), &staged);
 	}
 	super::assignments::seed(storage, field(frame, "svc")?)?;
+	super::outgoing::seed(storage, frame)?;
+	super::service_upgrade::seed(storage, frame)?;
 	storage.commit();
 	Ok(())
 }

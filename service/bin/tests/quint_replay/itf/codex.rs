@@ -48,6 +48,10 @@ impl Codex {
 		Ok(())
 	}
 
+	pub fn kv_keys(&self) -> impl Iterator<Item = &[u8]> {
+		self.kv_keys.values().map(Vec::as_slice)
+	}
+
 	pub fn kv_key_hash(&self, value: i128) -> Result<Hash, String> {
 		self.kv_keys
 			.get(&value)
@@ -129,6 +133,10 @@ impl Codex {
 		Ok(hash)
 	}
 
+	pub fn known_hash(&self, value: i128) -> Option<Hash> {
+		self.hashes.get(&value).copied()
+	}
+
 	pub fn hash_int(&self, hash: Hash) -> Result<i128, String> {
 		self.hashes
 			.iter()
@@ -148,6 +156,9 @@ impl Codex {
 	}
 
 	pub fn blob(value: i128, len: u32) -> Result<Vec<u8>, String> {
+		if super::service_upgrade::is_code(value) {
+			return super::service_upgrade::blob(value, len);
+		}
 		let value = u64::try_from(value).map_err(|_| format!("hashBytes out of range: {value}"))?;
 		let mut blob = vec![0; len as usize];
 		let encoded = value.to_le_bytes();

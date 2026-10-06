@@ -20,9 +20,19 @@ fn cleanup_storage_works() {
 }
 
 #[test]
-fn cleanup_retry_works() {
-	replay::trace(include_str!("../fixtures/quint/lifecycle/cleanup_retry_works.itf.json"))
-		.expect("parachain lifecycle should match Quint");
+fn cleanup_retry_invariants_errors() {
+	let error =
+		replay::trace(include_str!("../fixtures/quint/lifecycle/cleanup_retry_works.itf.json"))
+			.expect_err("pinned predicates ignore deregistration and retain old solicit ghosts");
+	assert_eq!(
+		error,
+		concat!(
+			"frame 9: invariant parent_head_continuity failed: ParaId(3)\n",
+			"frame 10: invariant parent_head_continuity failed: ParaId(3)\n",
+			"frame 14: invariant solicit_implies_registry failed: ParaId(3)\n",
+			"frame 15: invariant solicit_implies_registry failed: ParaId(3)"
+		)
+	);
 }
 
 #[test]

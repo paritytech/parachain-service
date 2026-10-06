@@ -1,15 +1,11 @@
 # Streaming Quint replay
 
-The opt-in Rust test starts a persistent Node/Quint process per worker. Quint
-chooses inputs and computes expected states; Rust replays the resulting work
-results through Accumulate in the PVM and compares storage after every transition.
-Incoming-transfer actions retain their actual operands and replay them through
-the same PVM entry point, including operands the model drops.
-After each block it also checks the returned head commitment and rejects JAM
-host effects outside the supported input domain (see [README.md](README.md)).
-Rust Refine is not executed. `fuzz.qnt` defines the input domain, not a sequence
-of actions or expected states. It calls the pinned model's `refine`,
-`accumulateBlock`, and `provisionPreimage` implementations.
+Each worker runs a persistent Node/Quint generator and replays its traces through
+Rust Accumulate in the PolkaJAM PVM interpreter. Quint supplies expected states
+and work results; Rust Refine is not executed. Storage, head commitments, supported
+JAM effects, and invariants are checked by the [replay harness](../../../../../QUINT_REPLAY.md).
+
+## Running campaigns
 
 Run from the repository root with Node and Quint **0.32.0** on PATH:
 
@@ -30,42 +26,23 @@ Configuration:
 | `QUINT_FUZZ_FAILURE_DIR` | `target/quint-fuzz` | Saved mismatch reports |
 | `QUINT_PACKAGE` | resolved from `quint` on PATH | Optional installed npm package directory |
 
-The default trace has 15 transitions plus its initial state. Override it with
-`QUINT_FUZZ_STEPS=30 just quint-fuzz` for longer action sequences. Shorter traces
-reduce work per trace but cover fewer interactions across successive actions.
 
-For an indefinite campaign, set `QUINT_FUZZ_TRACES=0`. Choose workers based on the
-available CPUs and memory: each worker owns a Node process as well as a Rust
-thread. `just quint-fuzz` uses the `testnet` Cargo profile: release optimizations
-with debug assertions and overflow checks enabled. Add `--profile testnet` to
-the Cargo commands here to use the same profile. The service blob already uses
-its production build profile. The current PVM helper uses the
-interpreter. This remains an integration test; a separate executable can reuse
-the parsed-document replay entry point later.
+`just quint-fuzz` runs 100 traces with eight workers; `just quint-fuzz --infinite`
+runs until failure or interruption. Set `QUINT_FUZZ_STEPS=30` for longer traces.
+Each worker owns a Node process and a Rust thread, so choose worker counts to fit
+available CPU and memory.
 
-## Transport and reproducibility
+The recipe uses the `testnet` Cargo profile, with release optimizations, debug
+assertions, and overflow checks. Add `--profile testnet` to the Cargo commands
+here for the same settings. The service blob uses its production build profile.
+Progress reports aggregate successful traces and transitions across workers at
+most every five seconds. Timing includes first-use blob compilation.
 
-No trace files are written during successful generation/replay. Each generator
-parses and typechecks the model once, then emits newline-delimited JSON envelopes
-through its stdout pipe. Each envelope contains `seed`, `steps`, `version`,
-`generation_ms`, and the complete ITF `trace`. Rust parses that document once and
-passes it directly to the existing comparator. The OS pipe and Node's awaited
-write backpressure bound the queue; generation can overlap Rust replay. There
-are no named pipes, temporary trace directories, or CLI launches per trace.
-Memory remains proportional to trace length and worker count, not campaign length.
+## Failure replay
 
-Quint 0.32.0's CLI does not expose this transport, so
-`scripts/quint-replay-stream.cjs` uses the CLI's internal TypeScript simulator and
-ITF converter. It requires exactly that version. The `stream_matches_cli_works`
-test compares two streamed seeds with independent CLI invocations, including a
-second trace from the same persistent process. A future Quint update must check
-this adapter explicitly. The simulator is invoked once per trace; the model
-parse/typecheck is reused. This is not the Quint Rust simulation backend.
-
-Workers stop on a mismatch, unsupported input, or replay panic, and terminate
-their generators. A mismatch report contains the complete generated trace, seed,
-limits, version, error, and repository/gitlink revisions. Replaying that report
-does not require Quint and does not regenerate a potentially changed model:
+Workers stop on a mismatch, unsupported input, or replay panic. Reports contain
+the complete trace, seed, limits, Quint version, error, and repository/gitlink
+revisions. Replay a saved report without Quint:
 
 ```sh
 QUINT_REPLAY_TRACE=target/quint-fuzz/failure-PID-SEED.json \
@@ -73,8 +50,7 @@ QUINT_REPLAY_TRACE=target/quint-fuzz/failure-PID-SEED.json \
   fuzz::replay_input_works -- --ignored --nocapture
 ```
 
-The replay input test also accepts an ITF document or a single stream envelope
-on stdin. For example, this generates and replays one trace without trace files:
+The replay test also accepts an ITF document or a stream envelope on stdin:
 
 ```sh
 node scripts/quint-replay-stream.cjs \
@@ -83,131 +59,56 @@ node scripts/quint-replay-stream.cjs \
     fuzz::replay_input_works -- --ignored --nocapture
 ```
 
-Adapter arguments are model path, first seed, seed stride, trace count (0 means
-unbounded), and steps. Its stdout is exclusively the JSON protocol; diagnostics
-go to stderr. Rust aggregates successful replays across all workers into one
-progress line, at most once every five seconds as traces complete. It reports
-traces/s and transitions/s since the previous update, total completed traces and
-transitions, and elapsed wall time. The final summary reports average throughput
-over the whole run. Quint's per-simulation terminal bar is disabled. First-use
-blob building is included in timing, so initial figures are not steady-state
-benchmarks.
+Adapter arguments are model path, first seed, seed stride, trace count (`0` for
+unbounded), and steps. Stdout carries JSON; diagnostics go to stderr.
 
-## Initial input domain and known findings
+## Input coverage
 
-The generator samples zero to three WPs per block, both registered parachains,
-valid candidates, stale parents, invalid code, missing head declarations,
-reported PVF errors, PVF panic, JAM WorkErr, auth-trace lengths, time gaps, and
-lookup anchors. It also samples external provision of solicited preimages.
-Each WP independently samples its para, outcome, auth-trace length, and lookup
-anchor. Same-para WPs either compete for the pre-block head or chain a candidate
-off the latest preceding same-para candidate's proposed head. All refine against pre-block
-state; Quint decides which results accumulate successfully. Empty blocks are
-sampled independently of work outcomes. Mode 0 selects active-code work; mode 8 selects announced-code work when an
-announcement exists, otherwise active code. Mode 6 still samples arbitrary candidates.
-A reported error or a panic is the PVF's last host call, so a message breaking a rule
-before it decides the outcome instead.
-Selecting whole outcome classes keeps successful candidates reachable frequently.
-Time gaps are at most `MaxLookupAge`, so sampled anchors lie between the valid
-lookback floor and the previous block slot.
+[`fuzz.qnt`](fuzz.qnt) samples inputs and calls the pinned model for outcomes.
+Blocks contain zero to three work packages, with valid and invalid candidates,
+stale parents, missing head declarations, PVF errors and panics, JAM work errors,
+auth traces, and lookup anchors. Packages can compete for a head or chain off
+preceding candidates. Up to four upward messages per package exercise ordering,
+authorization, and rejected-work behavior.
 
-Each WP independently samples zero to four upward messages from `Solicit`,
-`Forget`, `RequestCodeUpgrade`, `SetKV`, `RemoveKV`, `SetValidatorKeys`, and
-`ParachainSetStateBalance`. Two shared hashes at length 1024 exercise duplicate requests,
-shared references, refunds, and provision/forget/re-solicit lifecycles. Active-code
-messages exercise the refused forget of validation code. Forget targets include the caller and
-both registered paras, allowing Quint Refine to reject unauthorized foreign
-calls. Messages are also sampled for failed work and stale-parent candidates;
-Quint determines whether they reach Accumulate and take effect. The codex requires
-one length per abstract hash, so conflicting lengths are excluded.
+| Area | Sampled inputs |
+| --- | --- |
+| Preimages and parachain code | Shared solicitations, provision, forget/re-solicit, announcements, and upgrade application |
+| Key-value storage | Shared keys, empty inputs, replacement, removal, authorization, and storage-cost boundaries |
+| State balances | Values below, at, and above usage; reservation headroom and unauthorized updates |
+| Incoming transfers | Batches, multiple sources and memos, zero amounts, and per-entry reservation boundaries |
+| Lifecycle | Registration, funding, deregistration, delayed cleanup, and re-registration for ordinary paras |
+| Core assignments | Queue-size and rotation boundaries, handoffs, and unauthorized callers |
+| Validator keys | Partial/final chunks, empty aborts, assembled-length boundaries, and repeated calls |
+| Outgoing transfers | Source/destination authorization, ordered payments, overdrafts, zero amounts, and memo-gas boundaries |
+| Service upgrades | Funding and code preparation, unavailable code, wrong lengths, repeated upgrades, gas changes, and rejected work |
 
-Upgrade requests announce or apply two shared code hashes (777 and 778, each
-`FixedCodeLen`) and the caller's active code. The same hashes can be solicited,
-provided and forgotten, so an announcement can find its code unreferenced or
-unavailable, supersede another, and be applied or refused. Expected outcomes
-always come from Quint.
+Dedicated actions exercise lifecycle, assignments, validator keys, outgoing
+transfers, and service upgrades alongside mixed-message blocks. External actions
+provide solicited preimages and incoming transfers. Replay retains incoming
+operands even when the model rejects them and checks ordered outgoing records
+and regular JAM balances. Service-upgrade checks include installed code and gas
+settings; subsequent invocations execute the installed binary.
 
-KV messages share three keys across both paras, including an empty key. Values
-include empty and same-length replacements, and 63/64-byte values, where a SCALE
-length prefix would grow but stored values have none. An empty key or value is
-rejected by Refine with `EmptyKVKeyOrValue` (§3.3), so it never reaches
-Accumulate. Removal targets include self and both registered paras, exercising
-delegated removal and unauthorized work alongside writes. Ordering can refund storage before another reservation,
-overwrite the same key, or leave writes unapplied when work fails. Storage
-contents, absence, balances, and KV failure-log key hashes are compared
-strictly. Keys avoid the leading-zero collisions in the model's abstract
-`listHash`.
+Initialization uses the model's service state, empty input/effect lists, and two
+empty self-supervised foreign services (IDs 0 and 7, minimum memo gas 100 and 200).
+Minimum accumulate gas starts at 100 and follows accepted upgrades.
 
-Balance updates target both registered paras and sample zero, one below current
-usage, exact usage, one above usage, the current total, and enough headroom for
-code reservations. Both paras can emit these messages, letting Quint reject
-unauthorized callers. Their position within a WP and block varies alongside
-writes, refunds, solicitations, and upgrade requests.
+Malformed authorizer configuration and invalid item counts are excluded because
+their model log representations cannot be mapped to Rust Refine errors. Abstract
+hashes use one length each; KV keys avoid model hash collisions. Host, transfer,
+and comparison limits are documented in the [fixture guide](README.md).
+Unsupported inputs and invariant failures fail replay; failing traces are not discarded.
 
-Incoming actions sample batches of one to three transfers, three source service
-IDs, distinct integer memos, and amounts below/at/above the per-entry footprint
-as well as zero and 10000. Each action records `replayIncoming` independently of
-expected state, so replay checks rejected arrivals too. Source IDs are literal
-u32 values; memo integers map to a u64 little-endian prefix padded to 128 bytes.
-Only regular-balance transfers are generated: the vendored JAM host has no
-supervisor-balance selector, and the adapter rejects that unsupported input.
-These arrivals queue records and can charge Asset Hub's used state balance;
-they do not directly top up a parachain's state allowance. Queue contents,
-ordering, endpoints, count, and orphan storage keys are compared. Deterministic
-`balances` fixtures additionally cross the bucket capacity and reservation limit.
-The model's ghost JAM balances are not compared.
+## Generator checks
 
-The streaming initializer is `replayInit` (model `init` plus an empty operand
-list and no designation); `replayStep` clears operands on block/provision actions
-and clears designation effects on non-key actions. CLI parity tests
-use the same initializer.
+`scripts/quint-replay-stream.cjs` uses Quint 0.32.0's internal TypeScript simulator
+and ITF converter. Each worker parses and typechecks once, then emits one JSON
+envelope per trace. Pipe backpressure bounds buffering; successful traces are
+not written to disk. Memory scales with trace length and worker count.
 
-Lifecycle messages target ordinary para IDs 3 and 4, preserving both privileged
-chains so campaigns can continue registering and funding paras. The dedicated
-`lifecycleBlock` action samples registration bundles, cleanup, individual
-management messages, and work for present or absent targets. Gaps include the
-expunge period and one slot beyond it to exercise delayed cleanup. Ordinary
-blocks also mix lifecycle messages with KV, balances, and upgrades; both
-privileged and ordinary callers can attempt them. Repeated funding updates an
-existing allowance rather than rejecting duplicate registration. Deterministic
-`lifecycle` fixtures cover cleanup refusal with extra storage, active/announced
-code release, deregistration restrictions, and re-registration. All semantics
-come from the pinned model; replay does not suppress mismatches.
-
-Assignment inputs cover cores 0, 1, and 340, queues of lengths 0, 1, 2, 3, 5,
-79, 80, and 81, and slots before/at/after the block or one queue period ahead.
-`None` retains this service as assigner; `Some(7)` exercises handoffs and Refine's
-full-queue requirement. A dedicated `assignmentBlock` samples up to two messages,
-both privileged and unauthorized callers, and gaps around the 80-slot rotation
-period. Ordinary blocks mix assignments with the other UMPs. Expected state and
-assignment outputs come from the pinned model. Host assigner ownership persists
-between frames; attempts after a handoff are not suppressed. See README.md for
-the final-mutation comparison limit.
-
-Validator-key messages sample chunks of 0, 1, 3, 5, 6, 30, and 31 keys from two
-ordered key ranges, with both partial and final flags. This covers staging,
-empty aborts, valid and invalid assembled lengths, and Refine's 30-key boundary.
-Ordinary blocks mix these messages with other UMPs. A dedicated
-`validatorKeysBlock` also samples Asset Hub and unauthorized Coretime callers,
-current and stale parents, and repeated messages to exercise Refine's one-call
-limit. Staged keys persist between blocks; large-buffer boundaries remain in
-the deterministic fixtures. Every generated block records `replayDesignate`
-from the pinned model, distinguishing no call from designation of an unchanged
-set. Non-key actions clear this effect so it cannot leak into later frames.
-
-Malformed
-authorizer configuration and invalid item counts are excluded because their
-model Refine-log representations cannot be replayed as Rust Refine errors.
-Other comparator limitations remain those in [README.md](README.md). Unsupported
-values fail explicitly; the runner does not discard failing traces.
-
-Quint `06c2a49202` changed rejection to preserve state. Rust now matches it:
-rejected candidates neither prune logs nor change any other state.
-The regenerated `log_pruning/stale_parent_seed_1_works.itf.json` covers the
-rejection/pruning shape found by the old campaign; it no longer contains the
-old model's expected states.
-
-A small machinery check that precedes those failures, plus CLI parity:
+The CLI parity test compares streamed traces with independent CLI runs. Recheck
+the adapter when changing Quint versions. Run the generator and coverage checks:
 
 ```sh
 QUINT_FUZZ_TRACES=2 QUINT_FUZZ_STEPS=10 QUINT_FUZZ_WORKERS=2 \

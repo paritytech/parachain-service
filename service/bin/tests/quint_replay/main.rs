@@ -8,6 +8,8 @@ mod itf;
 mod kv;
 mod lifecycle;
 mod log_pruning;
+mod outgoing;
+mod service_upgrades;
 mod refine_errors;
 mod upgrades;
 mod validator_keys;

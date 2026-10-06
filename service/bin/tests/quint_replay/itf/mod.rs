@@ -22,3 +22,12 @@ mod transfers;
 mod assignments;
 
 mod validator_keys;
+
+mod outgoing;
+
+mod service_upgrade;
+
+mod invariant_heads;
+#[cfg(test)]
+mod invariant_tests;
+mod invariants;

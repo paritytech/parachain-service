@@ -51,7 +51,10 @@ differs for:
 
 The model also approximates this service's threshold balance from above (it bills each
 parachain as the sole user of shared entries), so close to the threshold it can refuse a
-spend JAM allows. The replay harness cannot replay `TransferOut` yet.
+spend JAM allows. Replay now covers deferred regular-balance transfers and the
+host-compatible refusals, checking ordered transfer records and regular balances.
+Its input profile excludes supervised-service moves and spends near the model's
+approximate threshold; unsupported outcomes fail rather than being normalized.
 
 ## M-3: the model drops `ForgetAgainAt` on the code-upgrade paths — resolved
 
@@ -160,9 +163,10 @@ from Rust's log on every frame. This is a **host** gap, not a spec or implementa
 error on either side — see [DECISIONS.md](./DECISIONS.md) D-13 for the per-operation
 table and the two residual `create_service` gaps.
 
-Consequence for the replay harness: it compares neither `foreignServices` nor the model's
-ghost balances, and a §6.5-carrying frame must be checked for the *refusal* log rather
-than the model's outcome.
+Consequence for the replay harness: the outgoing-transfer profile seeds empty,
+self-supervised foreign accounts and compares their regular balances, but does not
+replay supervised-service state. A §6.5-carrying frame must be checked for the
+*refusal* log rather than the model's outcome.
 
 **Spec feedback**: none for §6.5's semantics, which are self-consistent. The gap is
 JAM's.

@@ -3114,6 +3114,7 @@ dependencies = [
  "ed25519-dalek",
  "executor",
  "frameless",
+ "jam-codec",
  "jam-node",
  "jam-std-common",
  "jam-types",

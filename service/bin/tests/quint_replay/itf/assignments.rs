@@ -99,6 +99,14 @@ pub fn compare(
 			if usize::from(core) >= privileges.assign.len() {
 				return Err(format!("assignment core {core} exceeds JAM core count"));
 			}
+			// Quint records successful effects, not attempts. Check ownership in
+			// call order: a handoff can revoke permission within this same frame.
+			// The requested assigner (including self) cannot restore permission.
+			if privileges.assign[usize::from(core)] != MOCK_SERVICE_ID {
+				return Err(format!(
+					"assignment for core {core} recorded after control was handed away"
+				));
+			}
 			let queue = queue(field(call, "queue")?)?;
 			if queue.len() != jam_types::AuthQueue::default().len() {
 				return Err("assignment host queue has wrong length".into());
@@ -196,6 +204,36 @@ mod tests {
 	fn assignment_service_ids_works() {
 		for (model, rust) in [(0, 1), (1, MOCK_SERVICE_ID), (7, 7), (u32::MAX, u32::MAX)] {
 			assert_eq!(service_id(&json!({"tag":"MkServiceId", "value": n(model)})).unwrap(), rust);
+		}
+	}
+
+	#[test]
+	fn assignment_after_handoff_errors() {
+		let before = initial_privileges(fresh_storage(|_| {}));
+		let handed_away = json!({"lastStepAssigns": [call(2, 7, 9)]});
+		let mut handoff = StateMutations::new(0);
+		handoff.auths.insert(2, jam_types::AuthQueue::new(Codex::authorizer_hash(9).unwrap()));
+		let mut foreign = before.clone();
+		foreign.assign[2] = 7;
+		handoff.privileges = Some(foreign.clone());
+		compare(&handed_away, &handoff, &before, 1).unwrap();
+
+		// A rejection in the next frame has no assignment or privilege effect.
+		compare(&json!({"lastStepAssigns": []}), &StateMutations::new(0), &foreign, 2)
+			.unwrap();
+
+		// Even matching (but impossible) host effects must not make a model
+		// success after handoff pass, either in this frame or the next one.
+		let mut reclaimed = StateMutations::new(0);
+		reclaimed.auths.insert(2, jam_types::AuthQueue::new(Codex::authorizer_hash(10).unwrap()));
+		reclaimed.privileges = Some(before.clone());
+		for (calls, privileges) in [
+			(json!([call(2, 7, 9), call(2, 1, 10)]), &before),
+			(json!([call(2, 1, 10)]), &foreign),
+		] {
+			let error = compare(&json!({"lastStepAssigns": calls}), &reclaimed, privileges, 2)
+				.unwrap_err();
+			assert!(error.contains("control was handed away"), "{error}");
 		}
 	}
 

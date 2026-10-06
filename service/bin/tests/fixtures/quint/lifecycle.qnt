@@ -48,10 +48,12 @@ module lifecycle {
     .then(work(List()))
 
   run cleanup_retry_works = init.then(registered)
-    .then(work(List(RequestCodeUpgrade({ hash: { vchBytes: 778 }, len: FixedCodeLen, phase: Announcement }))))
+    // Both blobs must be requested before they can be provided to JAM.
     .then(applyHappyPaths(List()))
     .then(provide({ hashBytes: 777 }, FixedCodeLen))
+    .then(work(List(Solicit({ target: Parachain(p), hash: { hashBytes: 778 }, len: FixedCodeLen }))))
     .then(provide({ hashBytes: 778 }, FixedCodeLen))
+    .then(work(List(RequestCodeUpgrade({ hash: { vchBytes: 778 }, len: FixedCodeLen, phase: Announcement }))))
     .then(core(List(ParachainCleanUp(p))))
     .then(expectThat(svc.paraInfo(p).isDeregistering))
     .then(core(List(fund(p, InitialParaBalance), setHead(p, 0), code(p, 778))))

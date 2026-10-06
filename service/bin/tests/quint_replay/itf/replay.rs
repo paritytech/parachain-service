@@ -31,18 +31,53 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 	super::value::ItfValue::try_from(document)?;
 	let states = document.get("states").and_then(Value::as_array).ok_or("missing states")?;
 	let first = states.first().ok_or("trace has no states")?;
+	let upgrade_profile = first.get("replayMinAccGas").is_some();
+	if states
+		.iter()
+		.any(|state| state.get("replayMinAccGas").is_some() != upgrade_profile)
+	{
+		return Err("UpgradeService traces require replayMinAccGas in every frame".into());
+	}
+	let transfer_profile = first.get("replayTransfers").is_some();
+	if states
+		.iter()
+		.any(|state| state.get("replayTransfers").is_some() != transfer_profile)
+	{
+		return Err(
+			"TransferOut traces require replayTransfers in every frame, including initialization"
+				.into(),
+		);
+	}
+	let mut invariant_errors = Vec::new();
 	let mut codex = Codex::default();
 	let mut seeded = Ok(());
 	let mut storage = fresh_storage(|storage| seeded = seed::seed(storage, first, &mut codex));
 	seeded?;
 	compare::state(&storage, first, &mut codex, 0)?;
+	if let Err(error) = super::invariants::state(&storage, first, &mut codex, 0) {
+		invariant_errors.push(error);
+	}
+	super::outgoing::compare(first, &jam_node::vm::StateMutations::new(0), 0)?;
+	super::outgoing::balances(&storage, first, 0)?;
 	let mut privileges = super::assignments::initial_privileges(storage.clone());
 
 	for (index, pair) in states.windows(2).enumerate() {
 		let frame = index + 1;
+		let before_heads = super::invariants::heads(&storage, &codex)?;
 		let mut output = None;
 		match classify(&pair[0], &pair[1])? {
-			FrameKind::Noop => continue,
+			FrameKind::Noop => {
+				if let Err(error) = super::invariants::state(&storage, &pair[1], &mut codex, frame)
+				{
+					invariant_errors.push(error);
+				}
+				if let Err(error) =
+					super::invariant_heads::unchanged(&before_heads, &storage, &mut codex, frame)
+				{
+					invariant_errors.push(error);
+				}
+				continue;
+			},
 			FrameKind::Block => {
 				let results = field(&pair[1], "lastStepWorkResults")?
 					.as_array()
@@ -61,13 +96,39 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 						"frame {frame}: validator-key inputs require replayDesignate"
 					));
 				}
+				if pair[1].get("replayTransfers").is_none() &&
+					results.iter().any(|r| {
+						r.pointer("/result/value/value/upwardMessages")
+							.and_then(Value::as_array)
+							.is_some_and(|msgs| {
+								msgs.iter().any(|m| {
+									m.get("tag").and_then(Value::as_str) == Some("TransferOut")
+								})
+							})
+					}) {
+					return Err(format!(
+						"frame {frame}: TransferOut inputs require replayTransfers"
+					));
+				}
+				if !upgrade_profile &&
+					results.iter().any(|r| {
+						r.pointer("/result/value/value/upwardMessages")
+							.and_then(Value::as_array)
+							.is_some_and(|msgs| {
+								msgs.iter().any(|m| {
+									m.get("tag").and_then(Value::as_str) == Some("UpgradeService")
+								})
+							})
+					}) {
+					return Err("UpgradeService inputs require replayMinAccGas".into());
+				}
 				let items = results
 					.iter()
 					.map(|result| work_item(result, &mut codex))
 					.collect::<Result<Vec<_>, _>>()?;
 				let slot = bounded_integer::<u32>(field(&pair[1], "now")?, "now")?;
 				let (outcome, next, mutations) =
-					accumulate_block(storage, items, slot, privileges.clone());
+					accumulate_block(storage, items, slot, privileges.clone())?;
 				output = Some((outcome.yielded, mutations));
 				storage = next;
 			},
@@ -76,15 +137,39 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 			},
 			FrameKind::IncomingTransfer => {
 				let items = super::transfers::operands(&pair[1])?;
+				if pair[1].get("replayTransfers").is_some() {
+					for item in &items {
+						if let AccumulateItem::Transfer(t) = item {
+							super::outgoing::credit(&mut storage, MOCK_SERVICE_ID, t.amount)?;
+						}
+					}
+					storage.commit();
+				}
 				let slot = bounded_integer::<u32>(field(&pair[1], "now")?, "now")?;
 				let (outcome, next, mutations) =
-					accumulate_block(storage, items, slot, privileges.clone());
+					accumulate_block(storage, items, slot, privileges.clone())?;
 				output = Some((outcome.yielded, mutations));
 				storage = next;
 			},
 		}
 		compare::state(&storage, &pair[1], &mut codex, frame)?;
+		if let Err(error) = super::invariants::state(&storage, &pair[1], &mut codex, frame) {
+			invariant_errors.push(error);
+		}
 		if let Some((yielded, mutations)) = output {
+			if let Err(error) = super::invariants::effects(&mutations, frame) {
+				invariant_errors.push(error);
+			}
+			if let Err(error) = super::invariant_heads::transition(
+				&before_heads,
+				&storage,
+				&pair[1],
+				yielded,
+				&mut codex,
+				frame,
+			) {
+				invariant_errors.push(error);
+			}
 			super::assignments::compare(&pair[1], &mutations, &privileges, frame)?;
 			if let Some(next) = &mutations.privileges {
 				privileges = next.clone();
@@ -92,9 +177,19 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 			super::compare_output::state(
 				&pair[0], &pair[1], yielded, &mutations, &mut codex, frame,
 			)?;
+			super::outgoing::credit_outputs(&mut storage, &mutations)?;
+		} else if let Err(error) =
+			super::invariant_heads::unchanged(&before_heads, &storage, &mut codex, frame)
+		{
+			invariant_errors.push(error);
 		}
+		super::outgoing::balances(&storage, &pair[1], frame)?;
 	}
-	Ok(())
+	if invariant_errors.is_empty() {
+		Ok(())
+	} else {
+		Err(invariant_errors.join("\n"))
+	}
 }
 
 fn work_item(value: &Value, codex: &mut Codex) -> Result<AccumulateItem, String> {
@@ -184,6 +279,8 @@ fn upward_message(
 				Ok(UpwardMessage::Forget { target, hash, len: Compact(len) })
 			}
 		},
+		"UpgradeService" => super::service_upgrade::message(value, codex),
+		"TransferOut" => super::outgoing::message(value),
 		"SetValidatorKeys" => Ok(UpwardMessage::SetValidatorKeys {
 			keys: super::validator_keys::keys(field(value, "keys")?)?,
 			is_last: boolean(field(value, "isLast")?)?,
@@ -352,14 +449,37 @@ fn accumulate_block(
 	items: Vec<AccumulateItem>,
 	slot: u32,
 	privileges: jam_std_common::Privileges,
-) -> (executor::pj::AccumulateOutcome, Storage, jam_node::vm::StateMutations) {
+) -> Result<(executor::pj::AccumulateOutcome, Storage, jam_node::vm::StateMutations), String> {
 	let engine = jam_node::vm::Engine::new(Some(jam_node::PvmBackend::Interpreter))
 		.expect("interpreter engine should initialize");
 	let mut context = parachain_service_bin::mock::accumulate_context_with_privileges(
 		storage, items, slot, privileges,
 	);
-	let code_hash = jam_types::CodeHash(hash_raw(&parachain_service_bin::blob()));
+	let code_hash = context
+		.storage
+		.service(MOCK_SERVICE_ID)
+		.expect("replay service exists")
+		.code_hash;
 	let outcome = executor::pj::accumulate(&engine, code_hash, &mut context)
-		.expect("accumulate should run to completion");
-	(outcome, context.storage, context.mutations)
+		.map_err(|error| format!("accumulate installed service {code_hash:?}: {error}"))?;
+	Ok((outcome, context.storage, context.mutations))
+}
+
+#[cfg(test)]
+mod service_code_tests {
+	use super::*;
+
+	#[test]
+	fn missing_installed_code_errors() {
+		let storage = fresh_storage(|storage| {
+			let mut service = storage.service(MOCK_SERVICE_ID).unwrap();
+			service.code_hash = jam_types::CodeHash([99; 32]);
+			storage.set_service(MOCK_SERVICE_ID, &service);
+		});
+		let privileges = super::super::assignments::initial_privileges(storage.clone());
+		let error = accumulate_block(storage, Vec::new(), 1, privileges)
+			.err()
+			.expect("missing installed code must fail");
+		assert!(error.contains("accumulate installed service"));
+	}
 }

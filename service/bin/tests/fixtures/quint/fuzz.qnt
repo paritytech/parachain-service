@@ -15,7 +15,11 @@ module fuzz {
 
   import validator_key_inputs.* from "./validator_key_inputs"
 
-  action replayInit = all { init, noTransfers, noDesignation }
+  import outgoing_inputs.* from "./outgoing_inputs"
+
+  import service_upgrade_inputs.* from "./service_upgrade_inputs"
+
+  action replayInit = all { outgoingInit, noTransfers, noDesignation, replayMinAccGas' = 100 }
 
   pure def activeCodeCandidate(s: ParachainServiceState, para: ParaId): ParachainCandidate =
     { validationCode: { hash: activeCodeHashOr(s.paraInfo(para), NoCodeHash), len: FixedCodeLen } }
@@ -67,7 +71,7 @@ module fuzz {
         ParachainSetStateBalance({ paraId: target, newTotal: total })))
     })
     kv.union(balances).union(lifecycleMessages).union(assignmentMessages(slot))
-      .union(validatorKeyMessages).union(Set(
+      .union(validatorKeyMessages).union(outgoingMessages).union(serviceUpgradeMessages).union(Set(
       RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen, phase: Announcement }),
       RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen, phase: Apply }),
       RequestCodeUpgrade({ hash: { vchBytes: 778 }, len: FixedCodeLen, phase: Announcement }),
@@ -152,11 +156,14 @@ module fuzz {
     // when it repeats the current keys. Carry the old set forward for no call.
     val out = accumulateBlock(svc, slot, List(), solicitedSet,
       FixedCodeLen, packages, foreignServices)
+    val effects = messageEffects(packages, slot)
     all {
       svc' = out.state,
       foreignServices' = out.foreign,
       now' = slot,
       replayDesignate' = out.staging,
+      replayTransfers' = effects.transfers,
+      replayMinAccGas' = effects.minAccGas.optionGetOr(replayMinAccGas),
       jamStagingSet' = if (out.staging == List()) jamStagingSet else out.staging,
       solicitedSet' = out.solicited,
       prevSvc' = svc,
@@ -193,12 +200,41 @@ module fuzz {
     replayBlock(List(wr), now + 1)
   }
 
+  action outgoingBlock = {
+    nondet caller = oneOf(Set(AssetHubParaId, CoretimeParaId))
+    nondet first = oneOf(outgoingMessages)
+    nondet second = oneOf(outgoingMessages)
+    nondet mode = oneOf(Set(0, 7))
+    val wr = replayWork(svc, caller, svc.paraInfo(caller).headData,
+      activeCodeCandidate(svc, caller), mode, now, 0, List(first, second))
+    replayBlock(List(wr), now + 1)
+  }
+
+  // Advance preparation as well as attempts, so success stays reachable even
+  // though an executable service blob costs more than a normal code preimage.
+  action serviceUpgradeBlock = {
+    nondet hash = oneOf(serviceCodes)
+    nondet caller = oneOf(Set(AssetHubParaId, CoretimeParaId))
+    nondet msg = oneOf(serviceUpgradeMessages)
+    nondet mode = oneOf(Set(0, 7))
+    val prepare = List(ParachainSetStateBalance({ paraId: AssetHubParaId,
+        newTotal: svc.paraInfo(AssetHubParaId).usedStateBalance + 2 * ServiceCodeLen + 10000 }),
+      Solicit({ target: Parachain(AssetHubParaId), hash: hash, len: ServiceCodeLen }))
+    val msgs = if (not(svc.hasReferencer(hash, ServiceCodeLen, AssetHubParaId))) prepare
+      else List(upgrade(hash, 123456, 789), msg)
+    val wr = replayWork(svc, caller, svc.paraInfo(caller).headData,
+      activeCodeCandidate(svc, caller), mode, now, 0, msgs)
+    replayBlock(List(wr), now + 1)
+  }
+
   action replayStep = any {
     all { block, noTransfers },
-    all { provisionPreimage, noTransfers, noDesignation },
-    all { incoming, noDesignation },
-    all { lifecycleBlock, noTransfers, noDesignation },
-    all { assignmentBlock, noTransfers, noDesignation },
-    all { validatorKeysBlock, noTransfers }
+    all { provisionPreimage, noTransfers, noDesignation, noOutgoing, keepUpgradeGas },
+    all { incoming, noDesignation, noOutgoing, keepUpgradeGas },
+    all { lifecycleBlock, noTransfers, noDesignation, noOutgoing, keepUpgradeGas },
+    all { assignmentBlock, noTransfers, noDesignation, noOutgoing, keepUpgradeGas },
+    all { validatorKeysBlock, noTransfers },
+    all { outgoingBlock, noTransfers },
+    all { serviceUpgradeBlock, noTransfers }
   }
 }

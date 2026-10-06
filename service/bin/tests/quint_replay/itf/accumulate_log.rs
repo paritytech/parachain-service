@@ -2,7 +2,7 @@
 
 use codec::Compact;
 use parachain_service::state::log::{
-	AccumulateLog, InsufficientBalanceReason, StateBalanceRejection,
+	AccumulateLog, InsufficientBalanceReason, StateBalanceRejection, TransferError,
 };
 use parachain_service_core::types::ValidationCodeHash;
 use serde_json::Value;
@@ -69,6 +69,29 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 					"attempted",
 				)?),
 				reason,
+			})
+		},
+		"ServiceUpgradePreimageMissing" => {
+			let hash = integer(field(field(value, "codeHash")?, "hashBytes")?)?;
+			Ok(AccumulateLog::ServiceUpgradePreimageMissing {
+				code_hash: codex
+					.known_hash(hash)
+					.ok_or("service upgrade error hash has no mapped preimage")?,
+			})
+		},
+		"TransferFailed" => {
+			let error = match variant(field(value, "error")?)?.0 {
+				"UnknownSource" => TransferError::UnknownSource,
+				"UnknownDestination" => TransferError::UnknownDestination,
+				"SourceNotSupervised" => TransferError::SourceNotSupervised,
+				"DestinationNotSupervised" => TransferError::DestinationNotSupervised,
+				"GasBelowDestinationMinimum" => TransferError::GasBelowDestinationMinimum,
+				"InsufficientServiceBalance" => TransferError::InsufficientServiceBalance,
+				other => return Err(format!("unsupported transfer error {other}")),
+			};
+			Ok(AccumulateLog::TransferFailed {
+				id: Compact(bounded_integer::<u64>(field(value, "id")?, "transfer id")?),
+				error,
 			})
 		},
 		"DesignateRejected" => Ok(AccumulateLog::DesignateRejected {
