@@ -12,6 +12,7 @@ moved forward one upstream commit at a time with the matching Rust change in the
 
 ## Conventions
 
+- Follow [ISSUE_GUIDELINES.md](ISSUE_GUIDELINES.md) when writing or editing issues.
 - Write test names in the form of `[<context>|trivial]_[errors|works]`. For example, `two_work_items_errors` or `trivial_works`. Assume that the file or module name is prefixed to the test function name.
 - Put things into their own files, if it makes sense. This keeps merge conflicts minimal and allows for easier navigation. For example: `refine.rs`, `accumulate.rs`, `is_authorized.rs`, etc.
 - Use `TODO:` for uncritical stuff that can be done later and `FIXME:` for consensus critical things that needs to be fixed before production usage.
