@@ -3,7 +3,7 @@
 Places where the Rust implementation and the
 [Quint spec](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/) disagree on
 observable behaviour or on a derived constant. Found by reading both sides and by trace replay;
-checked against spec pin `d0839624e5c`.
+checked against spec pin `85eb47d5e4`.
 
 Scope: this file covers **Quint model vs Rust**. Two neighbouring documents cover the
 neighbouring questions, and entries here cross-reference them rather than restating them:
@@ -99,21 +99,31 @@ length outside `ValCount`. JAM bounds the set by the chain's core count; the mod
 
 Each enum's variant order is its wire ABI. Against the design doc's listing:
 
-- `UpwardMessage`: Rust follows the design doc; the model (`quint/messages.qnt`) puts
-  `UpgradeService` last instead of before the four Coretime-only calls.
+- `UpwardMessage`: all three agree since Quint `85eb47d5e4` moved `UpgradeService`
+  before the four Coretime-only calls.
 - `AccumulateLog`: Rust follows the design doc for all 17 variants and appends an 18th,
   `InvalidCodeHash`, that nothing emits any more (the model dropped `InvalidCodeHashAcc`).
 
 `RefineLog` agrees on all three sides since Quint `096a193dccf` dropped `MalformedPayload` and
 `d0839624e5c` appended `EmptyKVKeyOrValue`.
-`InsufficientBalanceReason` agrees with the design doc since Quint `1c2bb4e641e` lists Rust's
-three §6.1 write-backstop variants; the model still has only the first two.
+Quint `85eb47d5e4` also aligns `MerkleTree` with Rust and the design (`Node = 0`,
+`Leaf = 1`); the replay codex now uses those discriminants for abstract hashes.
 
-No behavioural consequence today: the digest is produced by this service's Refine and consumed
-by its own Accumulate, and every discriminant is 1 B, so no size computation moves. It matters
-the moment anything outside this repo decodes a work digest or a log.
+`InsufficientBalanceReason`: Quint `85eb47d5e4` removes `StagedValidatorKeys`,
+`IncomingTransfer`, and `ParaInfo` from the design, leaving only `Solicit` and `SetKV`,
+as in the model. Rust retains the three appended variants for actual JAM `StorageFull`
+failures on baseline-covered writes. These are not allowance pre-checks: §6.1 says such
+a host failure indicates a bookkeeping bug, but does not specify replacement recovery
+or logging. Dropping these variants would remove existing failure diagnostics. The
+replay-only storage-budget extension continues to exercise the head and queue failures;
+ordinary model traces never emit these reasons.
 
-Fix: drop the dead `InvalidCodeHash`, and align `quint/messages.qnt` with the design doc.
+Retaining the appended Rust variants preserves the existing wire encoding and failure
+handling. A log decoder built strictly from the current design will not recognize the
+three backstop reasons; the replay adapter handles them through its storage-budget extension.
+
+Fix: drop the dead `InvalidCodeHash`; agree on the baseline-write failure log vocabulary
+with the design before removing Rust's backstop variants.
 
 ## M-9: `AssignCore`'s empty-queue documentation — resolved
 

@@ -23,6 +23,7 @@ use parachain_service_core::types::{
 /// solicit/preimage and `kv_set` growth. The remaining variants name
 /// baseline-covered writes, which have no §6.1 pre-check, so they are only
 /// ever produced by a backstop write failure (private headroom ≠ real JAM balance).
+/// They are a Rust extension to the current design; see DIVERGENCE.md M-8.
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub enum InsufficientBalanceReason {
 	/// A `solicit` of the preimage with `hash` and `len`.
