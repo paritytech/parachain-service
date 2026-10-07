@@ -18,7 +18,7 @@ pub mod validator_keys;
 use crate::{head_commitment::HeadTracker, state::log::ParachainLogs};
 use jam_pvm_common::accumulate::{accumulate_items, checkpoint};
 use jam_types::{AccumulateItem, Hash, ServiceId, Slot};
-use parachain_service_core::types::{ASSET_HUB_PARA_ID, CORETIME_PARA_ID};
+use parachain_service_core::types::CORETIME_PARA_ID;
 
 #[derive(Debug)]
 pub enum AccumulateError {}
@@ -48,12 +48,7 @@ pub fn accumulate(
 			_ => None,
 		})
 		.collect();
-	// A bucket/chain write that hits the §6.1 backstop is logged
-	// to Asset Hub; recording continues for the admitted transfers.
-	let transfer_logs = transfers::record_incoming(&transfers);
-	if !transfer_logs.is_empty() {
-		ParachainLogs::append_accumulate(ASSET_HUB_PARA_ID, now, transfer_logs);
-	}
+	transfers::record_incoming(&transfers);
 
 	// The always-accumulate work is done; protect it from a later failure.
 	// TODO: the design only mandates checkpointing after each work-report; the

@@ -16,8 +16,7 @@ const FIELDS: [&str; 5] = [
 	"replayFailedHeads",
 ];
 
-/// The pin has no ParaInfo/IncomingTransfer backstop log variants. Translate
-/// the extension's log vocabulary into the common comparison representation.
+/// Translate the host-budget model's KV failures into the common log representation.
 pub fn normalize(document: &Value) -> Result<Cow<'_, Value>, String> {
 	let states = field(document, "states")?.as_array().ok_or("missing states")?;
 	let profile = states.first().is_some_and(|s| s.get(FIELDS[0]).is_some());
@@ -54,8 +53,6 @@ pub fn normalize(document: &Value) -> Result<Cow<'_, Value>, String> {
 			for reason in pair[1].as_array().ok_or("expected storage reasons")? {
 				let (tag, payload) = variant(reason)?;
 				let reason = match tag {
-					"HeadWrite" => json!({"tag":"FromParaInfo", "value":{"#tup":[]}}),
-					"QueueWrite" => json!({"tag":"FromIncomingTransfer", "value":{"#tup":[]}}),
 					"KVWrite" => {
 						let key = bounded_integer::<u8>(payload, "storage KV key")?;
 						json!({"tag":"FromSetKV", "value":{"keyHash":{"kvKeyBytes":{"#bigint":key.to_string()}}}})

@@ -394,10 +394,15 @@ fn storage_generated_works() {
 	assert!(stream.status.success());
 	let mut reasons = std::collections::BTreeSet::new();
 	let mut failed_heads = false;
+	let mut failed_queue = false;
 	for line in String::from_utf8(stream.stdout).unwrap().lines() {
 		let envelope: Value = serde_json::from_str(line).unwrap();
 		for frame in envelope["trace"]["states"].as_array().unwrap() {
 			failed_heads |= !frame["replayFailedHeads"].as_array().unwrap().is_empty();
+			// This profile stays within the prepaid queue and never cleans it up.
+			// Nonempty arrivals with no queue change therefore indicate a host rejection.
+			failed_queue |= !frame["replayIncoming"].as_array().unwrap().is_empty() &&
+				frame["svc"]["incomingTransfers"] == frame["prevSvc"]["incomingTransfers"];
 			for entry in frame["replayStorageLogs"].as_array().unwrap() {
 				for reason in entry["#tup"][1].as_array().unwrap() {
 					reasons.insert(reason["tag"].as_str().unwrap().to_owned());
@@ -410,7 +415,8 @@ fn storage_generated_works() {
 		}
 	}
 	assert!(failed_heads, "campaign must reject a head write");
-	assert!(reasons.contains("KVWrite") && reasons.contains("QueueWrite"), "{reasons:?}");
+	assert!(failed_queue, "campaign must reject a queue write");
+	assert_eq!(reasons, std::collections::BTreeSet::from(["KVWrite".to_owned()]));
 }
 
 #[test]

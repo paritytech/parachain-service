@@ -10,7 +10,7 @@ module storage_inputs {
   import state_balance.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state_balance"
   import head_commitment.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/head_commitment"
   import transfer_inputs.* from "./transfer_inputs"
-  type StorageReason = HeadWrite | QueueWrite | KVWrite(int)
+  type StorageReason = KVWrite(int)
   type StorageLog = List[(Timeslot, List[StorageReason])]
   var replayStorageBudget: int
   var replayStorageFree: int
@@ -30,7 +30,7 @@ module storage_inputs {
     { ...h, free: h.free - footprint + oldCost(h, key), sizes: h.sizes.put(key, footprint) }
   pure def logSize(log: StorageLog): int = compact(log.length()) + log.foldl(0, (n, e) =>
     n + 4 + 1 + compact(e._2.length()) + e._2.foldl(0, (m, r) => m + match r {
-      | KVWrite(_) => 34 | _ => 2
+      | KVWrite(_) => 34
     }))
   pure def saveLog(h: Host, log: StorageLog): Host = {
     val footprint = cost(5, logSize(log))
@@ -55,7 +55,7 @@ module storage_inputs {
       })
       // Any failed bucket/endpoint write removes this invocation's new buckets.
       if (written.failed or not(fits(written.host, 1, cost(1, 20))))
-        appendLog(credited, slot, List(QueueWrite))
+        credited
       else { ...write(written.host, 1, cost(1, 20)), state: admitted }
     }
   }
@@ -74,7 +74,7 @@ module storage_inputs {
           val headed = if (headFits) { ...pruned, state: prefix.state, free: pruned.free - delta }
             else { ...pruned, failed: pruned.failed.append(index) }
           val done = ok.upwardMessages.foldl({ host: headed,
-            errors: if (headFits) List() else List(HeadWrite) }, (a, msg) => match msg {
+            errors: List() }, (a, msg) => match msg {
               | SetKV(kv) => {
                 val key = 100 + kv.key[0]
                 val footprint = cost(5 + kv.key.length(), kv.value.length())

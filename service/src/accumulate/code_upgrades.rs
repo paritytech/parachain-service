@@ -6,9 +6,7 @@
 //! superseded (§5.2).
 
 use crate::state::{
-	log::{AccumulateLog, InsufficientBalanceReason},
-	para_info::Parachains,
-	preimage_registry::PreimageRegistry,
+	log::AccumulateLog, para_info::Parachains, preimage_registry::PreimageRegistry,
 };
 use alloc::vec::Vec;
 use parachain_service_core::types::{ParaId, Timeslot, ValidationCodeHash, ValidationCodeRef};
@@ -49,11 +47,7 @@ pub fn announce_code_upgrade(
 	// the parachain forgets it. No jamForget is issued.
 	let mut pi = pi;
 	pi.announced_upgrade = Some(new_ref);
-	if Parachains::set(para_id, &pi).is_err() {
-		logs.push(AccumulateLog::InsufficientStateBalance {
-			reason: InsufficientBalanceReason::ParaInfo,
-		});
-	}
+	let _ = Parachains::set(para_id, &pi);
 }
 
 /// §5.2 `applyCodeUpgrade`: switch `validation_code` to the announced code.
@@ -80,9 +74,5 @@ pub fn apply_code_upgrade(
 	let mut pi = pi;
 	pi.validation_code = Some(new_ref);
 	pi.announced_upgrade = None;
-	if Parachains::set(para_id, &pi).is_err() {
-		logs.push(AccumulateLog::InsufficientStateBalance {
-			reason: InsufficientBalanceReason::ParaInfo,
-		});
-	}
+	let _ = Parachains::set(para_id, &pi);
 }

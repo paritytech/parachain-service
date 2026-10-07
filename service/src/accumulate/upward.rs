@@ -134,7 +134,7 @@ pub fn apply(
 		},
 
 		UpwardMessage::ParachainSetHead { para_id, new_head } => {
-			management::set_head(para_id, new_head, heads, logs)
+			management::set_head(para_id, new_head, heads)
 		},
 
 		UpwardMessage::ParachainSetValidationCode { para_id, new_validation_code } => {

@@ -57,8 +57,9 @@ pub fn read<V: Decode>(tag: Tag, key: &impl Encode) -> Option<V> {
 /// Per the §6.1 write-time invariant every growth is pre-checked against
 /// `total_state_balance`, so a JAM-level balance failure here means the private
 /// headroom accounting diverged from the real service balance.
-/// The failure is surfaced rather than panicked: the accumulate growth paths
-/// log `AccumulateLog::InsufficientStateBalance` and continue.
+/// The failure is surfaced rather than panicked. Solicit and KV growth paths
+/// can log `AccumulateLog::InsufficientStateBalance`; baseline-covered writes
+/// retain their failure handling without emitting a parachain log.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StorageFull;
 

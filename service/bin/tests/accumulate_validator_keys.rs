@@ -238,3 +238,19 @@ fn designate_with_correct_privilege_works() {
 	assert!(staged(&storage).is_empty(), "staging buffer cleared");
 	assert!(ah_accumulate_logs(&storage).is_empty(), "no DesignateRejected entry");
 }
+
+#[test]
+fn storage_rejection_works() {
+	let mut storage = ah_storage();
+	let mut account = storage.service(SVC).unwrap();
+	// Enough for the old failure log, but not a 336-byte validator key.
+	account.balance = account.threshold() + 100;
+	storage.set_service(SVC, &account);
+	storage.commit();
+	let msg = UpwardMessage::SetValidatorKeys { keys: keys(1, 1), is_last: false };
+	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-genesis", vec![msg], 0);
+	let (_, storage, mutations) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+	assert!(staged(&storage).is_empty());
+	assert!(ah_accumulate_logs(&storage).is_empty());
+	assert!(mutations.keys.is_none());
+}

@@ -19,11 +19,8 @@ use parachain_service_core::types::{
 
 /// Why a state-balance reservation failed (spec §3.1, §6.1).
 ///
-/// The first two variants are produced by the headroom pre-checks on
-/// solicit/preimage and `kv_set` growth. The remaining variants name
-/// baseline-covered writes, which have no §6.1 pre-check, so they are only
-/// ever produced by a backstop write failure (private headroom ≠ real JAM balance).
-/// They are a Rust extension to the current design; see DIVERGENCE.md M-8.
+/// Covers solicit/preimage and `kv_set` growth. Baseline-covered writes have
+/// no per-write allowance check and do not emit this log on host failure.
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub enum InsufficientBalanceReason {
 	/// A `solicit` of the preimage with `hash` and `len`.
@@ -31,12 +28,6 @@ pub enum InsufficientBalanceReason {
 	/// A `kv_set(key, value)` write. Only the hash of `key` is recorded so an
 	/// arbitrarily large user key cannot inflate `parachain_log`.
 	SetKV { key_hash: Hash },
-	/// A `staged_validator_keys` append.
-	StagedValidatorKeys,
-	/// An `incoming_transfers` or `incoming_transfer_buckets` write.
-	IncomingTransfer,
-	/// A `ParaInfo` write: head, registration, forced code or announced upgrade.
-	ParaInfo,
 }
 
 /// Why a JAM `transfer` replaying a `TransferOut` failed (spec §5.1 step 6).

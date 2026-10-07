@@ -3,7 +3,7 @@
 use crate::{
 	constants::{MAX_INCOMING_TRANSFERS, MAX_TRANSFERS_PER_BUCKET},
 	state::{
-		log::{AccumulateLog, InsufficientBalanceReason, TransferError},
+		log::{AccumulateLog, TransferError},
 		transfers::{
 			IncomingTransferBuckets, IncomingTransfers, QueuedTransfer, TransferBuckets,
 			TransferQueue,
@@ -29,11 +29,9 @@ use parachain_service_core::{
 /// the growing bucket each time — measured at 55x the `Ga` budget for 1024
 /// same-slot transfers (D-8); the resulting state is identical.
 ///
-/// Returns the `InsufficientStateBalance` entries for bucket/queue writes that
-/// hit the §6.1 backstop; the caller routes them to Asset Hub's
-/// parachain log.
-pub fn record_incoming(records: &[&TransferRecord]) -> Vec<AccumulateLog> {
-	let mut logs = Vec::new();
+/// A host write failure rolls back this invocation's new buckets without a
+/// parachain log entry; baseline writes have no insufficient-allowance reason.
+pub fn record_incoming(records: &[&TransferRecord]) {
 	let queue = TransferQueue::get();
 	let mut queued = queue.map_or(0, |q| q.count);
 	let old_count = queued;
@@ -72,13 +70,8 @@ pub fn record_incoming(records: &[&TransferRecord]) -> Vec<AccumulateLog> {
 			},
 		}
 	}
-	let Some((first_new, _)) = filled.first() else { return logs };
+	let Some((first_new, _)) = filled.first() else { return };
 	let last_new = next_id - 1;
-	let mut reject = || {
-		logs.push(AccumulateLog::InsufficientStateBalance {
-			reason: InsufficientBalanceReason::IncomingTransfer,
-		});
-	};
 
 	// The endpoints are advanced only once every bucket landed, so a backstop
 	// failure never leaves them naming a bucket that was not written.
@@ -88,8 +81,7 @@ pub fn record_incoming(records: &[&TransferRecord]) -> Vec<AccumulateLog> {
 			for (written, _) in &filled[..index] {
 				TransferBuckets::remove(*written);
 			}
-			reject();
-			return logs;
+			return;
 		}
 	}
 	let endpoints = IncomingTransferBuckets {
@@ -101,13 +93,11 @@ pub fn record_incoming(records: &[&TransferRecord]) -> Vec<AccumulateLog> {
 		for (id, _) in &filled {
 			TransferBuckets::remove(*id);
 		}
-		reject();
-		return logs;
+		return;
 	}
 	// §5.1: unreserved entries are charged to Asset Hub as they arrive, priced
 	// per worst-case bucket rather than by `amount`.
 	reattribute_transfer_queue(old_count as u64, queued as u64);
-	logs
 }
 
 /// §5.1 `clean_up_buckets_up_to(bucket_id)`: remove whole buckets from

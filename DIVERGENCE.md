@@ -109,21 +109,14 @@ Each enum's variant order is its wire ABI. Against the design doc's listing:
 Quint `85eb47d5e4` also aligns `MerkleTree` with Rust and the design (`Node = 0`,
 `Leaf = 1`); the replay codex now uses those discriminants for abstract hashes.
 
-`InsufficientBalanceReason`: Quint `85eb47d5e4` removes `StagedValidatorKeys`,
-`IncomingTransfer`, and `ParaInfo` from the design, leaving only `Solicit` and `SetKV`,
-as in the model. Rust retains the three appended variants for actual JAM `StorageFull`
-failures on baseline-covered writes. These are not allowance pre-checks: §6.1 says such
-a host failure indicates a bookkeeping bug, but does not specify replacement recovery
-or logging. Dropping these variants would remove existing failure diagnostics. The
-replay-only storage-budget extension continues to exercise the head and queue failures;
-ordinary model traces never emit these reasons.
+`InsufficientBalanceReason` now agrees with the design and model: only `Solicit` and
+`SetKV` remain after Quint `85eb47d5e4`. Rust no longer logs insufficient allowance
+for baseline-covered validator keys, incoming queues, or ParaInfo writes. Actual
+JAM `StorageFull` still leaves failed writes unapplied; queue failures roll back
+this invocation's new buckets. The replay-only storage-budget model exercises this
+host-failure recovery, which the pinned model does not represent.
 
-Retaining the appended Rust variants preserves the existing wire encoding and failure
-handling. A log decoder built strictly from the current design will not recognize the
-three backstop reasons; the replay adapter handles them through its storage-budget extension.
-
-Fix: drop the dead `InvalidCodeHash`; agree on the baseline-write failure log vocabulary
-with the design before removing Rust's backstop variants.
+Fix: drop the dead `InvalidCodeHash`.
 
 ## M-9: `AssignCore`'s empty-queue documentation — resolved
 

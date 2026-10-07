@@ -6,7 +6,7 @@ use crate::{
 	hashing::blake2_256,
 	head_commitment::HeadTracker,
 	state::{
-		log::{truncate_auth_trace, AccumulateLog, InsufficientBalanceReason, ParachainLogs},
+		log::{truncate_auth_trace, AccumulateLog, ParachainLogs},
 		para_info::Parachains,
 	},
 	work_digest::ParachainWorkDigest,
@@ -109,14 +109,9 @@ fn apply(
 			let mut pi = Parachains::get(para_id).expect("checked live above; qed");
 			heads.touch(para_id);
 			pi.head_data = head_data;
-			// A head overwrite can grow the `ParaInfo` entry; a backstop write
-			// failure (§6.1 invariant) logs the rejection and the
-			// rest of the candidate's effects still apply.
-			if Parachains::set(para_id, &pi).is_err() {
-				logs.push(AccumulateLog::InsufficientStateBalance {
-					reason: InsufficientBalanceReason::ParaInfo,
-				});
-			}
+			// Baseline-covered head writes have no allowance-failure log.
+			// If the host rejects it, retain the old head and continue the messages.
+			let _ = Parachains::set(para_id, &pi);
 
 			// Step 6: replay the upward messages in order.
 			for message in upward_messages.into_iter() {
