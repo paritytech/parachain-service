@@ -102,13 +102,22 @@ pub fn transition(
 		if accepted && !super::storage_budget::failed_head(current, index)? {
 			replayed.insert(p, head);
 		}
-		for message in field(ok, "upwardMessages")?.as_array().ok_or("messages must be a list")? {
+		for (message_index, message) in field(ok, "upwardMessages")?
+			.as_array()
+			.ok_or("messages must be a list")?
+			.iter()
+			.enumerate()
+		{
 			let (tag, payload) = variant(message)?;
 			if tag == "ParachainSetHead" {
 				let target = para_id(field(payload, "paraId")?, codex)?;
 				let head = Codex::head(integer(field(payload, "newHead")?)?)?;
 				claims.push((target, head.clone()));
-				if accepted && !deregistering.contains(&target) && replayed.contains_key(&target) {
+				if accepted &&
+					!deregistering.contains(&target) &&
+					replayed.contains_key(&target) &&
+					!super::storage_budget::failed_message(current, index, message_index)?
+				{
 					replayed.insert(target, head);
 				}
 			}

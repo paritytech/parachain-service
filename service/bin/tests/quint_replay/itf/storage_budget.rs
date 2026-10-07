@@ -20,7 +20,11 @@ const FIELDS: [&str; 5] = [
 pub fn normalize(document: &Value) -> Result<Cow<'_, Value>, String> {
 	let states = field(document, "states")?.as_array().ok_or("missing states")?;
 	let profile = states.first().is_some_and(|s| s.get(FIELDS[0]).is_some());
+	let messages = states.first().is_some_and(|s| s.get("replayFailedMessages").is_some());
 	for state in states {
+		if state.get("replayFailedMessages").is_some() != messages || (messages && !profile) {
+			return Err("failed messages require storage metadata in every frame".into());
+		}
 		if FIELDS.iter().any(|key| state.get(key).is_some() != profile) {
 			return Err("storage budget traces require every storage field in every frame".into());
 		}
@@ -43,6 +47,26 @@ pub fn normalize(document: &Value) -> Result<Cow<'_, Value>, String> {
 				return Err("invalid failed head index".into());
 			}
 		}
+		if let Some(failures) = state.get("replayFailedMessages") {
+			let mut seen = std::collections::BTreeSet::new();
+			for failure in failures.as_array().ok_or("expected failed messages")? {
+				let pair = tuple(failure)?;
+				if pair.len() != 2 {
+					return Err("invalid failed message pair".into());
+				}
+				let report = bounded_integer::<usize>(&pair[0], "failed message report")?;
+				let message = bounded_integer::<usize>(&pair[1], "failed message index")?;
+				let messages = reports
+					.get(report)
+					.and_then(|r| r.pointer("/result/value/value/upwardMessages"))
+					.and_then(Value::as_array)
+					.ok_or("invalid failed message report")?;
+				if message >= messages.len() || !seen.insert((report, message)) {
+					return Err("invalid failed message index".into());
+				}
+			}
+		}
+
 		let mut logs = Vec::new();
 		for entry in field(state, "replayStorageLogs")?.as_array().ok_or("expected storage logs")? {
 			let pair = tuple(entry)?;
@@ -99,6 +123,24 @@ pub fn failed_head(frame: &Value, index: usize) -> Result<bool, String> {
 	let Some(indices) = frame.get("replayFailedHeads") else { return Ok(false) };
 	for value in indices.as_array().ok_or("expected failed heads")? {
 		if bounded_integer::<usize>(value, "failed head index")? == index {
+			return Ok(true);
+		}
+	}
+	Ok(false)
+}
+
+/// Explicit Quint host-write failures, used only to qualify transition claims.
+/// Full state and footprint comparisons independently check their consequences.
+pub fn failed_message(frame: &Value, report: usize, message: usize) -> Result<bool, String> {
+	let Some(failures) = frame.get("replayFailedMessages") else { return Ok(false) };
+	for failure in failures.as_array().ok_or("expected failed messages")? {
+		let pair = tuple(failure)?;
+		if pair.len() != 2 {
+			return Err("invalid failed message pair".into());
+		}
+		if bounded_integer::<usize>(&pair[0], "failed message report")? == report &&
+			bounded_integer::<usize>(&pair[1], "failed message index")? == message
+		{
 			return Ok(true);
 		}
 	}

@@ -1,5 +1,6 @@
 // Replay extension for the pinned host's storage deposit backstop. Restricted
-// to heads, one-byte KV keys, and small incoming batches. No host call is mocked.
+// to heads, KV, incoming batches, validator staging and selected metadata writes.
+// No host call is mocked.
 module storage_inputs {
   import types.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/types"
   import messages.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/messages"
@@ -10,6 +11,10 @@ module storage_inputs {
   import state_balance.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state_balance"
   import head_commitment.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/head_commitment"
   import transfer_inputs.* from "./transfer_inputs"
+  import host_sizes.* from "./host_sizes"
+  import management.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/management"
+  import validator_keys.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/validator_keys"
+  import validator_key_inputs.* from "./validator_key_inputs"
   type StorageReason = KVWrite(int)
   type StorageLog = List[(Timeslot, List[StorageReason])]
   var replayStorageBudget: int
@@ -17,8 +22,9 @@ module storage_inputs {
   var replayStorageLogs: StorageLog
   var replayStorageSizes: int -> int
   var replayFailedHeads: List[int]
+  var replayFailedMessages: List[(int, int)]
   type Host = { state: ParachainServiceState, free: int, logs: StorageLog,
-    sizes: int -> int, failed: List[int] }
+    sizes: int -> int, failed: List[int], failedMessages: List[(int, int)] }
 
   // SCALE lengths and JAM deposit parameters, independently of Rust encoders.
   pure def compact(n: int): int = if (n < 64) 1 else if (n < 16384) 2 else 4
@@ -60,6 +66,46 @@ module storage_inputs {
     }
   }
 
+  // Model operations supply the proposed state. The independent host footprint
+  // decides whether a single metadata write commits; failures have no log.
+  pure def metadata(h: Host, msg: UpwardMessage, reportIndex: int, messageIndex: int): Host = {
+    // Forced code first acquires its reference. Restrict generated budgets to
+    // fund that acquisition, then independently reject the final ParaInfo write.
+    // The reference and its charge must survive that final-write failure.
+    val acquired = match msg {
+      | ParachainSetValidationCode(p) => if (h.state.isLive(p.paraId))
+          h.state.addReferencer(p.paraId, p.newValidationCode.hash.asPreimage(), p.newValidationCode.len).state
+          else h.state
+      | _ => h.state
+    }
+    val base = { ...h, state: acquired, free: h.free - hostCost(acquired) + hostCost(h.state) }
+    val proposed = match msg {
+      | ParachainSetStateBalance(p) => parachainSetStateBalance(h.state, p.paraId, p.newTotal).state
+      | ParachainSetHead(p) => parachainSetHead(h.state, p.paraId, p.newHead).state
+      | ParachainSetValidationCode(p) => parachainSetValidationCode(acquired,
+          p.paraId, p.newValidationCode.hash, p.newValidationCode.len, 0).state
+      | SetValidatorKeys(p) => applySetValidatorKeys(h.state, p.keys, p.isLast).state
+      | _ => h.state
+    }
+    val delta = match msg {
+      | SetValidatorKeys(p) => {
+        val footprint = if (p.isLast) 0 else cost(1,
+          compact(proposed.stagedValidatorKeys.length()) + 336 * proposed.stagedValidatorKeys.length())
+        footprint - oldCost(h, 2)
+      }
+      | _ => hostCost(proposed) - hostCost(base.state)
+    }
+    if (delta > base.free) { ...base, failedMessages: h.failedMessages.append((reportIndex, messageIndex)) }
+    else {
+      val sizes = match msg {
+        | SetValidatorKeys(p) => h.sizes.put(2, if (p.isLast) 0 else cost(1,
+            compact(proposed.stagedValidatorKeys.length()) + 336 * proposed.stagedValidatorKeys.length()))
+        | _ => h.sizes
+      }
+      { ...base, state: proposed, free: base.free - delta, sizes: sizes }
+    }
+  }
+
   pure def report(h: Host, wr: WorkResult, index: int, slot: int): Host = match wr.result {
     | WorkErr => h
     | WorkOk(digest) => match digest {
@@ -67,14 +113,14 @@ module storage_inputs {
       | Ok(ok) => {
         val prefix = accumulateOkPrefix(h.state, ok, FixedCodeLen, slot)
         if (prefix.rejected) h else {
-          val pruned = if (h.logs == List()) h else
+          val pruned = if (ok.paraId != AssetHubParaId or h.logs == List()) h else
             saveLog(h, h.logs.select(e => e._1 >= ok.lookupAnchor))
           val delta = headBytes(ok.headData) - headBytes(h.state.paraInfo(ok.paraId).headData)
           val headFits = delta <= pruned.free
           val headed = if (headFits) { ...pruned, state: prefix.state, free: pruned.free - delta }
             else { ...pruned, failed: pruned.failed.append(index) }
-          val done = ok.upwardMessages.foldl({ host: headed,
-            errors: List() }, (a, msg) => match msg {
+          val done = range(0, ok.upwardMessages.length()).foldl({ host: headed,
+            errors: List() }, (a, m) => match ok.upwardMessages[m] {
               | SetKV(kv) => {
                 val key = 100 + kv.key[0]
                 val footprint = cost(5 + kv.key.length(), kv.value.length())
@@ -83,7 +129,7 @@ module storage_inputs {
                   { ...a, errors: a.errors.append(KVWrite(kv.key[0])) }
                 else { ...a, host: { ...write(a.host, key, footprint), state: applied.state } }
               }
-              | _ => a
+              | _ => { ...a, host: metadata(a.host, ok.upwardMessages[m], index, m) }
             })
           appendLog(done.host, slot, done.errors)
         }
@@ -97,9 +143,9 @@ module storage_inputs {
       upwardMessages: if (len == 0) List() else List(SetKV({ key: List(key),
         value: range(0, len).foldl(List(), (a, _) => a.append(42)) })) })), authTrace: 0
   }
-  action storageInit = all { init, noTransfers,
+  action storageInit = all { init, noTransfers, noDesignation,
     replayStorageBudget' = 0, replayStorageFree' = 0, replayStorageLogs' = List(),
-    replayStorageSizes' = Map(), replayFailedHeads' = List() }
+    replayStorageSizes' = Map(), replayFailedHeads' = List(), replayFailedMessages' = List() }
 
   action storageBlock(budget: int, count: int, amount: int, len: int, newHead: int, chain: bool): bool = {
     val parent = svc.paraInfo(AssetHubParaId).headData
@@ -107,8 +153,12 @@ module storage_inputs {
       storageWork(if (chain) newHead else parent, newHead + 1, 10, 1, now))
     val incoming = range(0, count).foldl(List(), (a, i) => a.append({
       source: MkServiceId(7), amount: amount, toSupervisorBalance: false, memo: i }))
+    storageInvocation(budget, packages, incoming)
+  }
+
+  action storageInvocation(budget: int, packages: List[WorkResult], incoming: List[IncomingTransfer]): bool = {
     val start: Host = { state: svc, free: budget, logs: replayStorageLogs,
-      sizes: replayStorageSizes, failed: List() }
+      sizes: replayStorageSizes, failed: List(), failedMessages: List() }
     val arrived = arrivals(start, incoming, now + 1)
     val out = range(0, packages.length()).foldl(arrived,
       (a, i) => report(a, packages[i], i, now + 1))
@@ -120,7 +170,8 @@ module storage_inputs {
       foreignServices' = foreignServices, logPrunedBelow' = logPrunedBelow,
       replayIncoming' = incoming, replayStorageBudget' = budget,
       replayStorageFree' = out.free, replayStorageLogs' = out.logs,
-      replayStorageSizes' = out.sizes, replayFailedHeads' = out.failed
+      replayStorageSizes' = out.sizes, replayFailedHeads' = out.failed,
+      replayFailedMessages' = out.failedMessages, noDesignation
     }
   }
 }

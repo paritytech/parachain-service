@@ -1,5 +1,6 @@
 module storage {
   import storage_inputs.* from "./storage_inputs"
+  import storage_metadata_inputs.* from "./storage_metadata_inputs"
   run head_rejection_works = storageInit.then(storageBlock(7, 0, 0, 0, 1, false))
     .then(storageBlock(1000, 0, 0, 1, 2, true))
   run kv_rollback_works = storageInit.then(storageBlock(100, 0, 0, 256, 1, true))
@@ -19,4 +20,30 @@ module storage {
   run head_partial_effects_works = storageInit.then(storageBlock(1000, 0, 0, 256, 1, true))
     .then(storageBlock(0, 0, 0, 256, 0, false))
     .then(storageBlock(7, 0, 0, 1, 3, false))
+  run registration_rejection_works = storageInit
+    .then(metadataBlock(60, 1073741823, 0))
+    .then(metadataBlock(61, 1073741823, 0))
+  run metadata_growth_works = storageInit
+    .then(metadataBlock(1000, 1073741823, 0))
+    .then(metadataBlock(0, 1073741824, 1))
+    .then(metadataBlock(1, 1073741824, 1))
+    .then(metadataBlock(8, 1073741824, 1))
+    .then(metadataBlock(0, 1073741823, 0))
+  run staging_rejection_works = storageInit
+    .then(stagingBlock(381, 1, false))
+    .then(stagingBlock(382, 1, false))
+    .then(stagingBlock(335, 1, false))
+    .then(stagingBlock(336, 1, false))
+    .then(stagingBlock(0, 0, true))
+    .then(stagingBlock(382, 1, false))
+  run staging_compact_boundary_works = storageInit
+    .then(stagingBlock(22000, 31, false))
+    .then(stagingBlock(22000, 31, false))
+    .then(stagingBlock(336, 1, false))
+    .then(stagingBlock(336, 1, false))
+    .then(stagingBlock(337, 1, false))
+  run forced_code_partial_effects_works = storageInit
+    .then(forcedCodeBlock(35))
+    .then(forcedCodeBlock(0))
+    .then(forcedCodeBlock(36))
 }
