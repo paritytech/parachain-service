@@ -58,9 +58,9 @@ JAM balances, installed code lengths, and upgrade gas-setting mismatches are rej
   The fixture wrapper evaluates `accumulateBlock` with an empty incoming JAM set
   to expose that effect, then carries the prior set forward when no call occurs.
   The host exposes only the final successful designation, so intermediate calls
-  overwritten in a block remain unobservable. The model assumes this service
-  holds the designation privilege; unprivileged-host rejection remains covered
-  by the direct Rust tests. The fuzz input pool includes key updates and records the same effect.
+  overwritten in a block remain unobservable. The `designation` profile extends
+  the model with explicit `replayCanDesignate` inputs and covers privilege rejection
+  and restoration. The general fuzz input pool includes privileged key updates.
   Unexpected provide or eject effects fail; creation and transfers use the explicit oracles below.
 - Assignment messages and initial pending queues are supported. Authorizer integers
   map to a u32 little-endian prefix padded to 32 bytes. Assignment service IDs swap

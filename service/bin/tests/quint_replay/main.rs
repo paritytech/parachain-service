@@ -25,6 +25,7 @@ mod services;
 mod refine_errors;
 mod upgrades;
 mod validator_keys;
+mod designation;
 
 #[test]
 fn minimal_replay_works() {

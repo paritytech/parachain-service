@@ -32,6 +32,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 	let document = super::storage_budget::normalize(document)?;
 	let states = document.get("states").and_then(Value::as_array).ok_or("missing states")?;
 	super::host_budget::validate(states)?;
+	super::validator_keys::validate(states)?;
 	super::services::validate(states)?;
 	let mut created_accounts = Default::default();
 	let first = states.first().ok_or("trace has no states")?;
@@ -105,6 +106,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 				continue;
 			},
 			FrameKind::Block => {
+				super::validator_keys::privileges(&pair[1], &mut privileges)?;
 				super::storage_budget::prepare(&mut storage, &pair[1])?;
 				host_offset = super::host_budget::prepare(&mut storage, &pair[1])?;
 				let results = field(&pair[1], "lastStepWorkResults")?

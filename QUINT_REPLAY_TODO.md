@@ -39,9 +39,9 @@ See [QUINT_REPLAY.md](QUINT_REPLAY.md) and the
 - [x] Cover deferred self-payments. The `self_payment` profile debits immediately
   and delivers retained payments after the invocation, checking ordered spending,
   refusals, checkpoint rollback, later credit, and subsequent invocations.
-- [ ] TODO: Generate validator designation privilege rejection. Replay currently
-  assumes designation privilege; direct Rust tests cover rejection. Compare
-  logs, staged keys, and final designation effects across later invocations.
+- [x] Generate validator designation privilege rejection. The `designation`
+  profile varies host privilege between invocations and compares rejection logs,
+  staged keys, aborts, invalid inputs, and restored designation effects.
 - [ ] TODO: Re-enable `solicit_implies_registry` and restore its mutation-test
   coverage. The pinned model now tracks successful preimage operations in order;
   audit the historical fixtures before enabling the check globally. See the

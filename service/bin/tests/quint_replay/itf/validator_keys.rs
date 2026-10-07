@@ -20,6 +20,32 @@ pub fn keys(value: &Value) -> Result<Vec<ValidatorKey>, String> {
 		.collect()
 }
 
+/// Privilege is an invocation input, independent of the expected designation.
+/// Legacy traces omit the field and retain the mock's default privilege.
+pub fn validate(states: &[Value]) -> Result<(), String> {
+	let enabled = states.first().is_some_and(|s| s.get("replayCanDesignate").is_some());
+	for state in states {
+		if state.get("replayCanDesignate").is_some() != enabled {
+			return Err("replayCanDesignate must be present in every frame".into());
+		}
+		if let Some(value) = state.get("replayCanDesignate") {
+			boolean(value)?;
+		}
+	}
+	Ok(())
+}
+
+pub fn privileges(
+	frame: &Value,
+	privileges: &mut jam_std_common::Privileges,
+) -> Result<(), String> {
+	if let Some(value) = frame.get("replayCanDesignate") {
+		privileges.designate =
+			if boolean(value)? { parachain_service_bin::mock::MOCK_SERVICE_ID } else { 99 };
+	}
+	Ok(())
+}
+
 pub fn compare(
 	previous: &Value,
 	current: &Value,

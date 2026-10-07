@@ -19,7 +19,7 @@ Configuration:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `QUINT_FUZZ_PROFILE` | `fuzz` | `fuzz` for general inputs; `storage` for metadata/KV/queue failures; `code_storage` for code acquisition/announcement failures; `outgoing_boundary` for exact spendable-balance limits; `self_payment` for deferred self-credit |
+| `QUINT_FUZZ_PROFILE` | `fuzz` | `fuzz` for general inputs; `storage` for metadata/KV/queue failures; `code_storage` for code acquisition/announcement failures; `outgoing_boundary` for exact spendable-balance limits; `self_payment` for deferred self-credit; `designation` for privilege changes |
 | `QUINT_FUZZ_TRACES` | `100` | Total traces across workers; `0` runs until failure/interruption |
 | `QUINT_FUZZ_STEPS` | `15` | Transitions per trace, 1–10000 |
 | `QUINT_FUZZ_WORKERS` | `1` | Independent Rust workers and generator processes |
@@ -401,3 +401,19 @@ refusal, ordered self/foreign payments, checkpoint retention, a self-payment
 inside the rolled-back report, and later ordinary spending. Mutation tests reject
 early credit and lost scheduler delivery. This models scheduler balance delivery;
 it does not also synthesize a destination Accumulate invocation or queue entry.
+
+## Designation privilege rejection
+
+The `designation` profile supplies a boolean `replayCanDesignate` for each work
+invocation. The Rust adapter changes only the host's designation privilege before
+executing it. Traces using this field must include it in every frame; legacy
+traces retain the mock default.
+
+`designation_inputs.qnt` preserves the pin's staging and length checks, replacing
+a would-be successful designation with `DesignateRejected` when privilege is
+absent. The final chunk still clears staged keys. The generated profile mixes
+partial chunks, empty aborts, valid and invalid lengths, repeated-key Refine
+errors, denied finalization, and restored privilege across 200 transitions.
+Replay compares logs, staged storage, and the final designation effect each time.
+Deterministic fixtures include a denied full 1023-key set followed by recovery;
+mutation tests reject altered privilege inputs and missing privilege metadata.

@@ -33,6 +33,7 @@ fn generator(seed: u64, stride: u64, count: u64, steps: u64) -> Command {
 fn generator_profile(profile: &str, seed: u64, stride: u64, count: u64, steps: u64) -> Command {
 	let input = match profile {
 		"fuzz" => "service/bin/tests/fixtures/quint/fuzz.qnt",
+		"designation" => "service/bin/tests/fixtures/quint/designation_fuzz.qnt",
 		"self_payment" => "service/bin/tests/fixtures/quint/self_payment_fuzz.qnt",
 		"outgoing_boundary" => "service/bin/tests/fixtures/quint/outgoing_boundary_fuzz.qnt",
 		"storage" => "service/bin/tests/fixtures/quint/storage_fuzz.qnt",
@@ -878,5 +879,37 @@ fn self_payment_generated_works() {
 	assert!(
 		retained && refused && ordered && resumed,
 		"self-payment coverage: retained={retained}, refused={refused}, ordered={ordered}, resumed={resumed}"
+	);
+}
+
+#[test]
+#[ignore = "requires Quint 0.32.0"]
+fn designation_privilege_generated_works() {
+	let stream = generator_profile("designation", 1, 1, 10, 20)
+		.output()
+		.expect("designation generator");
+	assert!(stream.status.success());
+	let mut rejected = false;
+	let mut staged = false;
+	let mut resumed = false;
+	for line in stream.stdout.split(|b| *b == b'\n').filter(|line| !line.is_empty()) {
+		let envelope: Value = serde_json::from_slice(line).unwrap();
+		for pair in envelope["trace"]["states"].as_array().unwrap().windows(2) {
+			let s = &pair[1];
+			let denied = s["replayCanDesignate"] == false;
+			rejected |=
+				denied && s["svc"]["parachainLog"].to_string().contains("DesignateRejected");
+			staged |= denied && !s["svc"]["stagedValidatorKeys"].as_array().unwrap().is_empty();
+			resumed |= pair[0]["replayCanDesignate"] == false &&
+				!denied && !s["replayDesignate"].as_array().unwrap().is_empty();
+		}
+		if let Err(error) = replay::document_trace(&envelope["trace"]) {
+			let path = preserve(&envelope, &error).unwrap();
+			panic!("{error}; {}", path.display());
+		}
+	}
+	assert!(
+		rejected && staged && resumed,
+		"missing privilege rejection, partial staging, or restoration"
 	);
 }
