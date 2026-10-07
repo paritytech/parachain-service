@@ -39,7 +39,7 @@ pub(super) fn check(
 	}
 }
 
-fn read<T: Decode>(storage: &Storage, key: &[u8]) -> Result<Option<T>, String> {
+pub(super) fn read<T: Decode>(storage: &Storage, key: &[u8]) -> Result<Option<T>, String> {
 	storage
 		.service_key(MOCK_SERVICE_ID, key)
 		.map(|raw| {

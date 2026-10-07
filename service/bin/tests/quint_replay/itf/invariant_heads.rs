@@ -1,6 +1,7 @@
 //! Transition predicates use before/after Rust heads, never model svc heads.
 use super::{
 	codex::Codex,
+	invariant_codes::Eligibility,
 	invariants::{check, heads},
 	replay::*,
 };
@@ -8,7 +9,7 @@ use jam_node::vm::Storage;
 use jam_types::Hash;
 use parachain_service_core::types::{HeadData, ParaId};
 use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use tiny_keccak::{Hasher, Keccak};
 
 fn keccak(bytes: &[u8]) -> Hash {
@@ -52,7 +53,7 @@ pub fn commitment(
 
 pub fn transition(
 	before: &BTreeMap<ParaId, HeadData>,
-	deregistering: &BTreeSet<ParaId>,
+	eligibility: &Eligibility,
 	storage: &Storage,
 	current: &Value,
 	yielded: Option<Hash>,
@@ -98,7 +99,10 @@ pub fn transition(
 				.ok_or("parent head missing")?,
 		)?)?;
 		// A retained ParaInfo is not necessarily eligible for more work (§6.4).
-		let accepted = !deregistering.contains(&p) && replayed.get(&p) == Some(&parent);
+		let code = codex.code_hash(integer(field(field(ok, "validationCode")?, "vchBytes")?)?)?;
+		let accepted = !eligibility.deregistering.contains(&p) &&
+			eligibility.code(index, p) == Some(code) &&
+			replayed.get(&p) == Some(&parent);
 		if accepted && !super::storage_budget::failed_head(current, index)? {
 			replayed.insert(p, head);
 		}
@@ -114,7 +118,7 @@ pub fn transition(
 				let head = Codex::head(integer(field(payload, "newHead")?)?)?;
 				claims.push((target, head.clone()));
 				if accepted &&
-					!deregistering.contains(&target) &&
+					!eligibility.deregistering.contains(&target) &&
 					replayed.contains_key(&target) &&
 					!super::storage_budget::failed_message(current, index, message_index)?
 				{
@@ -147,7 +151,7 @@ pub fn unchanged(
 ) -> Result<(), String> {
 	transition(
 		before,
-		&BTreeSet::new(),
+		&Eligibility::default(),
 		storage,
 		&serde_json::json!({"lastStepWorkResults": []}),
 		None,

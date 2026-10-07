@@ -80,7 +80,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 	for (index, pair) in states.windows(2).enumerate() {
 		let frame = index + 1;
 		let before_heads = super::invariants::heads(&storage, &codex)?;
-		let before_deregistering = super::invariants::deregistering(&storage, &codex)?;
+		let mut eligibility = super::invariant_codes::Eligibility::snapshot(&storage, &codex)?;
 		let mut output = None;
 		let mut host_offset = None;
 		let kind = classify(&pair[0], &pair[1])?;
@@ -158,6 +158,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 				// transfers before processing any work, regardless of operand position.
 				items.extend(incoming_items(&mut storage, &pair[1])?);
 				let slot = bounded_integer::<u32>(field(&pair[1], "now")?, "now")?;
+				eligibility.prefixes(&storage, &items, &pair[1], &privileges, &codex)?;
 				let (outcome, next, mutations) = accumulate_block_recovery(
 					storage,
 					items,
@@ -199,7 +200,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 			}
 			if let Err(error) = super::invariant_heads::transition(
 				&before_heads,
-				&before_deregistering,
+				&eligibility,
 				&storage,
 				&super::gas::effective(&pair[1])?,
 				yielded,
@@ -249,7 +250,7 @@ fn incoming_items(storage: &mut Storage, frame: &Value) -> Result<Vec<Accumulate
 	Ok(items)
 }
 
-fn work_item(value: &Value, codex: &mut Codex) -> Result<AccumulateItem, String> {
+pub(super) fn work_item(value: &Value, codex: &mut Codex) -> Result<AccumulateItem, String> {
 	let auth_trace = Codex::auth_trace(integer(field(value, "authTrace")?)?)?;
 	let (tag, value) = variant(field(value, "result")?)?;
 	match tag {
@@ -526,7 +527,7 @@ fn accumulate_block(
 	accumulate_block_recovery(storage, items, slot, privileges, None, None)
 }
 
-fn accumulate_block_recovery(
+pub(super) fn accumulate_block_recovery(
 	storage: Storage,
 	items: Vec<AccumulateItem>,
 	slot: u32,

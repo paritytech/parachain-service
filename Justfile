@@ -92,6 +92,17 @@ quint-fuzz-deploy server *args:
 	ansible-playbook -i "$quint_fuzz_server," ansible/quint-fuzz.yml \
 		-e quint_fuzz_target=all "$@"
 
+# Download a named trace from ~/quint-fuzz-failures (accepts an SSH alias or user@host).
+[positional-arguments]
+quint-fuzz-download server trace destination="target/quint-fuzz":
+	#!/usr/bin/env sh
+	set -eu
+	case "$2" in
+		""|.*|*[!a-zA-Z0-9._-]*) echo "Trace must be a filename, e.g. failure-1758951-4156089522.json." >&2; exit 2 ;;
+	esac
+	mkdir -p -- "$3"
+	scp -- "$1:quint-fuzz-failures/$2" "$3/"
+
 # Set transitions per trace (1–10000) and restart the remote campaign.
 [positional-arguments]
 quint-fuzz-steps server steps:

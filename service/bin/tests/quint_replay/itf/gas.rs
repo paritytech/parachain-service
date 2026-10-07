@@ -39,7 +39,7 @@ pub fn apply(frame: &Value, items: &mut [AccumulateItem]) -> Result<(), String> 
 }
 
 // Independently decode the specification budget for transition predicates.
-fn cost(result: &Value) -> Result<u64, String> {
+pub(super) fn cost(result: &Value) -> Result<u64, String> {
 	let (tag, digest) = variant(field(result, "result")?)?;
 	if tag == "WorkErr" {
 		return Ok(0);

@@ -1,5 +1,5 @@
 //! Corrupt only Rust storage: model equality is deliberately not called here.
-use super::{codex::Codex, invariants::*, seed};
+use super::{codex::Codex, invariant_codes::Eligibility, invariants::*, seed};
 use crate::common::{fresh_storage, get_state, set_state};
 use jam_node::vm::{StateMutations, Storage};
 use parachain_service::{
@@ -273,26 +273,112 @@ fn heads_errors() {
 	use super::invariant_heads::{commitment, transition};
 	let (mut storage, mut codex, mut frame) = seeded();
 	let before = heads(&storage, &codex).unwrap();
-	transition(&before, &Default::default(), &storage, &frame, None, &mut codex, 0).unwrap();
-	let error =
-		transition(&before, &Default::default(), &storage, &frame, Some([0; 32]), &mut codex, 8)
-			.unwrap_err();
+	let eligibility = Eligibility::snapshot(&storage, &codex).unwrap();
+	transition(&before, &eligibility, &storage, &frame, None, &mut codex, 0).unwrap();
+	let error = transition(&before, &eligibility, &storage, &frame, Some([0; 32]), &mut codex, 8)
+		.unwrap_err();
 	assert!(error.contains("head_commitment_matches_changed_heads"), "{error}");
 	info_change(&mut storage, |i| i.head_data = Codex::head(1).unwrap());
 	let after = heads(&storage, &codex).unwrap();
 	let root = commitment(&before, &after);
-	let error = transition(&before, &Default::default(), &storage, &frame, root, &mut codex, 8)
-		.unwrap_err();
+	let error =
+		transition(&before, &eligibility, &storage, &frame, root, &mut codex, 8).unwrap_err();
 	assert!(error.contains("head_state_matches_outcomes"), "{error}");
 	let trace: Value =
 		serde_json::from_str(include_str!("../../fixtures/quint/minimal_replay.itf.json")).unwrap();
 	frame["lastStepWorkResults"] = trace["states"][1]["lastStepWorkResults"].clone();
-	transition(&before, &Default::default(), &storage, &frame, root, &mut codex, 8).unwrap();
+	transition(&before, &eligibility, &storage, &frame, root, &mut codex, 8).unwrap();
 	frame["lastStepWorkResults"][0]["result"]["value"]["value"]["parentHeadHash"] =
 		json!({"headBytes":{"#bigint":"99"}});
-	let error = transition(&before, &Default::default(), &storage, &frame, root, &mut codex, 8)
-		.unwrap_err();
+	let error =
+		transition(&before, &eligibility, &storage, &frame, root, &mut codex, 8).unwrap_err();
 	assert!(error.contains("parent_head_continuity"), "{error}");
+}
+
+#[test]
+fn inactive_code_heads_works() {
+	use super::invariant_heads::{commitment, transition};
+	for announced in [false, true] {
+		let (mut storage, mut codex, mut frame) = seeded();
+		let other = codex.validation_code(777, 65536).unwrap();
+		if announced {
+			info_change(&mut storage, |info| info.announced_upgrade = Some(other));
+		}
+		let before = heads(&storage, &codex).unwrap();
+		let eligibility = Eligibility::snapshot(&storage, &codex).unwrap();
+		let trace: Value =
+			serde_json::from_str(include_str!("../../fixtures/quint/minimal_replay.itf.json"))
+				.unwrap();
+		frame["lastStepWorkResults"] = trace["states"][1]["lastStepWorkResults"].clone();
+		let ok = &mut frame["lastStepWorkResults"][0]["result"]["value"]["value"];
+		ok["validationCode"] = json!({"vchBytes":{"#bigint":"777"}});
+		ok["upwardMessages"] = json!([{"tag":"ParachainSetHead", "value": {
+			"paraId":{"tag":"MkParaId", "value":{"#bigint":"2"}}, "newHead":{"#bigint":"99"}
+		}}]);
+		transition(&before, &eligibility, &storage, &frame, None, &mut codex, 15).unwrap();
+		// Neither the candidate nor its messages may change a head with inactive code.
+		for (para, head) in [(1, 1), (2, 99)] {
+			let mut bad = storage.clone();
+			let key = storage_key(Tag::Parachains, &Codex::para_id(para).unwrap());
+			let mut info: ParaInfo = get_state(&bad, &key).unwrap();
+			info.head_data = Codex::head(head).unwrap();
+			set_state(&mut bad, &key, &info);
+			let root = commitment(&before, &heads(&bad, &codex).unwrap());
+			let error =
+				transition(&before, &eligibility, &bad, &frame, root, &mut codex, 15).unwrap_err();
+			assert!(error.contains("parent_head_continuity"), "{error}");
+		}
+	}
+}
+
+#[test]
+fn same_invocation_code_change_works() {
+	use super::{invariant_heads, replay};
+	let (storage, mut codex, mut frame) = seeded();
+	let before = heads(&storage, &codex).unwrap();
+	let mut eligibility = Eligibility::snapshot(&storage, &codex).unwrap();
+	let trace: Value =
+		serde_json::from_str(include_str!("../../fixtures/quint/minimal_replay.itf.json")).unwrap();
+	let mut first = trace["states"][1]["lastStepWorkResults"][0].clone();
+	first["result"]["value"]["value"]["upwardMessages"] = json!([{
+		"tag":"ParachainSetValidationCode", "value": {
+			"paraId":{"tag":"MkParaId", "value":{"#bigint":"1"}},
+			"newValidationCode":{"hash":{"vchBytes":{"#bigint":"2"}}, "len":{"#bigint":"65536"}}
+		}
+	}]);
+	let mut second = trace["states"][1]["lastStepWorkResults"][0].clone();
+	second["result"]["value"]["value"]["validationCode"] = json!({"vchBytes":{"#bigint":"2"}});
+	second["result"]["value"]["value"]["parentHeadHash"] = json!({"headBytes":{"#bigint":"1"}});
+	second["result"]["value"]["value"]["headData"] = json!({"#bigint":"2"});
+	let mut stale = second.clone();
+	stale["result"]["value"]["value"]["validationCode"] = json!({"vchBytes":{"#bigint":"1"}});
+	stale["result"]["value"]["value"]["parentHeadHash"] = json!({"headBytes":{"#bigint":"2"}});
+	stale["result"]["value"]["value"]["headData"] = json!({"#bigint":"3"});
+	frame["lastStepWorkResults"] = json!([first, second, stale]);
+	let items = frame["lastStepWorkResults"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.map(|result| replay::work_item(result, &mut codex).unwrap())
+		.collect::<Vec<_>>();
+	let privileges = super::assignments::initial_privileges(storage.clone());
+	eligibility.prefixes(&storage, &items, &frame, &privileges, &codex).unwrap();
+	let (outcome, after, _) =
+		replay::accumulate_block_recovery(storage, items, 0, privileges, None, None).unwrap();
+	assert_eq!(
+		heads(&after, &codex).unwrap()[&Codex::para_id(1).unwrap()],
+		Codex::head(2).unwrap()
+	);
+	invariant_heads::transition(
+		&before,
+		&eligibility,
+		&after,
+		&frame,
+		outcome.yielded,
+		&mut codex,
+		1,
+	)
+	.unwrap();
 }
 
 #[test]
@@ -343,6 +429,7 @@ fn deregistering_heads_works() {
 		info.is_deregistering = true;
 		set_state(&mut storage, &key, &info);
 		let before = heads(&storage, &codex).unwrap();
+		let eligibility = Eligibility::snapshot(&storage, &codex).unwrap();
 		let frozen = deregistering(&storage, &codex).unwrap();
 		let trace: Value =
 			serde_json::from_str(include_str!("../../fixtures/quint/minimal_replay.itf.json"))
@@ -358,7 +445,7 @@ fn deregistering_heads_works() {
 			info_change(&mut storage, |i| i.head_data = Codex::head(1).unwrap());
 		}
 		let root = commitment(&before, &heads(&storage, &codex).unwrap());
-		transition(&before, &frozen, &storage, &frame, root, &mut codex, 8).unwrap();
+		transition(&before, &eligibility, &storage, &frame, root, &mut codex, 8).unwrap();
 
 		// Matching a claimed head must not conceal an illegal write while frozen.
 		info.head_data =
@@ -366,7 +453,7 @@ fn deregistering_heads_works() {
 		set_state(&mut storage, &key, &info);
 		let root = commitment(&before, &heads(&storage, &codex).unwrap());
 		let error =
-			transition(&before, &frozen, &storage, &frame, root, &mut codex, 8).unwrap_err();
+			transition(&before, &eligibility, &storage, &frame, root, &mut codex, 8).unwrap_err();
 		assert!(error.contains("parent_head_continuity"), "{error}");
 	}
 }

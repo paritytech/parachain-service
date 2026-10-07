@@ -27,6 +27,7 @@ mod outgoing;
 
 mod service_upgrade;
 
+mod invariant_codes;
 mod invariant_heads;
 #[cfg(test)]
 mod invariant_tests;
