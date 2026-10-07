@@ -17,6 +17,7 @@ mod log_pruning;
 mod mixed;
 mod outgoing;
 mod outgoing_boundaries;
+mod self_payments;
 mod service_upgrades;
 mod service_preimages;
 mod service_management;

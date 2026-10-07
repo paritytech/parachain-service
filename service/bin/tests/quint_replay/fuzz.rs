@@ -33,6 +33,7 @@ fn generator(seed: u64, stride: u64, count: u64, steps: u64) -> Command {
 fn generator_profile(profile: &str, seed: u64, stride: u64, count: u64, steps: u64) -> Command {
 	let input = match profile {
 		"fuzz" => "service/bin/tests/fixtures/quint/fuzz.qnt",
+		"self_payment" => "service/bin/tests/fixtures/quint/self_payment_fuzz.qnt",
 		"outgoing_boundary" => "service/bin/tests/fixtures/quint/outgoing_boundary_fuzz.qnt",
 		"storage" => "service/bin/tests/fixtures/quint/storage_fuzz.qnt",
 		"code_storage" => "service/bin/tests/fixtures/quint/code_storage_fuzz.qnt",
@@ -49,6 +50,8 @@ fn generator_profile(profile: &str, seed: u64, stride: u64, count: u64, steps: u
 	]);
 	if profile == "outgoing_boundary" {
 		command.arg("outgoing_boundary_fuzz");
+	} else if profile == "self_payment" {
+		command.arg("self_payment_fuzz");
 	}
 	command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::inherit());
 	command
@@ -842,4 +845,38 @@ fn outgoing_boundary_generated_works() {
 	}
 	assert_eq!(boundaries, ["below", "exact", "above"].into());
 	assert!(recovered && resumed, "missing checkpoint recovery or ordinary resumption");
+}
+
+#[test]
+#[ignore = "requires Quint 0.32.0"]
+fn self_payment_generated_works() {
+	let stream = generator_profile("self_payment", 1, 1, 10, 15)
+		.output()
+		.expect("self-payment generator");
+	assert!(stream.status.success());
+	let mut retained = false;
+	let mut refused = false;
+	let mut ordered = false;
+	let mut resumed = false;
+	for line in stream.stdout.split(|b| *b == b'\n').filter(|line| !line.is_empty()) {
+		let envelope: Value = serde_json::from_slice(line).unwrap();
+		for pair in envelope["trace"]["states"].as_array().unwrap().windows(2) {
+			let s = &pair[1];
+			let active = s["replayHostBudget"]["#bigint"] != "-1";
+			let effects = s["replayTransfers"].as_array().unwrap();
+			let self_payment = effects.iter().any(|t| t["dest"]["value"]["#bigint"] == "1");
+			retained |= active && self_payment && s["replayInterrupt"]["#bigint"] == "2";
+			refused |= active && !self_payment;
+			ordered |= active && self_payment && effects.len() == 2;
+			resumed |= pair[0]["replayHostBudget"]["#bigint"] != "-1" && !active;
+		}
+		if let Err(error) = replay::document_trace(&envelope["trace"]) {
+			let path = preserve(&envelope, &error).unwrap();
+			panic!("{error}; {}", path.display());
+		}
+	}
+	assert!(
+		retained && refused && ordered && resumed,
+		"self-payment coverage: retained={retained}, refused={refused}, ordered={ordered}, resumed={resumed}"
+	);
 }

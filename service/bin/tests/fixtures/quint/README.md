@@ -111,8 +111,8 @@ JAM balances, installed code lengths, and upgrade gas-setting mismatches are rej
   The generated domain covers small deferred payments to foreign services,
   zero payments (including an empty source supervisor balance), definite
   overdrafts, and host-compatible refusals. It excludes successful supervision
-  operations, nonzero supervisor credits, and deferred self-payments (the model credits
-  them immediately, whereas JAM credits them after the sender invocation).
+  operations and nonzero supervisor credits. A separate `self_payment` profile
+  models deferred self-credit after the sender invocation.
   Unsupported outcomes and mismatches fail explicitly.
 - Service upgrades reserve abstract hashes 9001 and 9002 for executable service
   blobs of exactly 262144 bytes. The codex changes and pads only opaque JAM

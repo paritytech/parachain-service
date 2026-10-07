@@ -31,14 +31,15 @@ module host_invocation {
         // Substitute only the threshold input to the pinned transfer oracle.
         // hostPrefix supplies actual free balance from independent footprint
         // deltas; account/code overhead cancels against the injected allowance.
-        // Supervised sources and deferred self-credit need separate semantics.
+        // Deferred self-credit is delivered only after the invocation.
         val supported = t.source.optionGetOr(ParachainServiceId) == ParachainServiceId
-          and t.dest != ParachainServiceId and t.deferred != None
+          and t.deferred != None
           and not(t.sourceSupervisorBalance) and not(t.destSupervisorBalance)
         val balance = serviceThreshold(h.acc.state) + h.free
         val state = { ...h.acc.state, jamAccount: { ...h.acc.state.jamAccount, balance: balance } }
         val out = applyUpwardMessage({ ...h.acc, state: state }, caller, FixedCodeLen, slot, anchor, message)
-        val debit = balance - out.state.jamAccount.balance
+        val debit = if (t.dest == ParachainServiceId and out.logs == h.acc.logs) t.amount
+          else balance - out.state.jamAccount.balance
         val restored = { ...out, state: { ...out.state,
           jamAccount: { ...h.acc.state.jamAccount, balance: h.acc.state.jamAccount.balance - debit } } }
         val nextHost = moved(h, restored)
@@ -162,7 +163,11 @@ module host_invocation {
     val due = accumulateBlock(svc, slot, List(), solicitedSet, FixedCodeLen, List(), foreignServices)
     all {
       out.safe,
-      svc' = out.state, foreignServices' = out.foreign, prevSvc' = svc, now' = slot,
+      // Scheduler delivery is outside guest execution and checkpoint rollback.
+      // Only the retained prefix's emitted records receive this later credit.
+      svc' = { ...out.state, jamAccount: out.state.jamAccount.credit(
+        out.transfers.foldl(0, (n, t) => n + (if (t.dest == ParachainServiceId) t.amount else 0)), false) },
+      foreignServices' = out.foreign, prevSvc' = svc, now' = slot,
       solicitedSet' = out.solicited, jamStagingSet' = jamStagingSet,
       lastStepWorkResults' = packages, lastStepAssigns' = due.assigns,
       lastHeadRoot' = if (interrupt < 0) headCommitment(svc, out.state) else None,

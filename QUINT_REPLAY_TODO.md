@@ -36,8 +36,9 @@ See [QUINT_REPLAY.md](QUINT_REPLAY.md) and the
   profile substitutes independently tracked host free balance into the pinned
   transfer oracle, sampling below, at, and above spendable balance, including
   checkpoint recovery and subsequent invocations.
-- [ ] TODO: Cover deferred self-payments. Model scheduler delivery after the
-  invocation explicitly; the pinned model currently credits self immediately.
+- [x] Cover deferred self-payments. The `self_payment` profile debits immediately
+  and delivers retained payments after the invocation, checking ordered spending,
+  refusals, checkpoint rollback, later credit, and subsequent invocations.
 - [ ] TODO: Generate validator designation privilege rejection. Replay currently
   assumes designation privilege; direct Rust tests cover rejection. Compare
   logs, staged keys, and final designation effects across later invocations.

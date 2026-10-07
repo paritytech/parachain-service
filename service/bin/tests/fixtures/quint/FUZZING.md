@@ -19,7 +19,7 @@ Configuration:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `QUINT_FUZZ_PROFILE` | `fuzz` | `fuzz` for general inputs; `storage` for metadata/KV/queue failures; `code_storage` for code acquisition/announcement failures; `outgoing_boundary` for exact spendable-balance limits |
+| `QUINT_FUZZ_PROFILE` | `fuzz` | `fuzz` for general inputs; `storage` for metadata/KV/queue failures; `code_storage` for code acquisition/announcement failures; `outgoing_boundary` for exact spendable-balance limits; `self_payment` for deferred self-credit |
 | `QUINT_FUZZ_TRACES` | `100` | Total traces across workers; `0` runs until failure/interruption |
 | `QUINT_FUZZ_STEPS` | `15` | Transitions per trace, 1–10000 |
 | `QUINT_FUZZ_WORKERS` | `1` | Independent Rust workers and generator processes |
@@ -375,8 +375,8 @@ The compatibility oracle in `host_invocation.qnt` substitutes
 `serviceThreshold(state) + free` as the pinned transfer function's account balance,
 then restores the original balance minus the accepted debit. This cancels the
 model's conservative threshold approximation without selecting outcomes from
-Rust execution. Only own-source deferred transfers to other services with regular
-balance selectors are supported by this extension.
+Rust execution. Only own-source deferred transfers with regular balance selectors are supported
+by this extension.
 
 Ordered effects, account debits/credits, logs, final free balance, checkpoint
 recovery, and later invocations are compared. Absolute account and installed-code
@@ -386,3 +386,18 @@ its existing broad transfer authorization and gas checks.
 payments after gas exhaustion, and ordinary resumption across 150 transitions.
 The stream adapter accepts an optional sixth argument selecting the main module
 (default `fuzz`); this profile uses `outgoing_boundary_fuzz`.
+
+## Deferred self-payments
+
+The `self_payment` profile uses the same host-budget oracle but debits successful
+self-payments immediately and credits only retained transfer records after the
+invocation ends. This explicitly overrides the pin's immediate self-credit.
+A second payment within the invocation must use the remaining uncredited balance.
+The Rust adapter already delivers compared outgoing records after execution;
+its free-balance check runs before delivery and its account comparison afterward.
+
+Deterministic fixtures and 150 generated transitions exercise exact exhaustion,
+refusal, ordered self/foreign payments, checkpoint retention, a self-payment
+inside the rolled-back report, and later ordinary spending. Mutation tests reject
+early credit and lost scheduler delivery. This models scheduler balance delivery;
+it does not also synthesize a destination Accumulate invocation or queue entry.
