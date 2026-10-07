@@ -42,11 +42,11 @@ See [QUINT_REPLAY.md](QUINT_REPLAY.md) and the
 - [x] Generate validator designation privilege rejection. The `designation`
   profile varies host privilege between invocations and compares rejection logs,
   staged keys, aborts, invalid inputs, and restored designation effects.
-- [ ] TODO: Re-enable `solicit_implies_registry` and restore its mutation-test
-  coverage. The pinned model now tracks successful preimage operations in order;
-  audit the historical fixtures before enabling the check globally. See the
-  existing reference to issue #54 in
-  [invariants.rs](service/bin/tests/quint_replay/itf/invariants.rs).
+- [x] Re-enable `solicit_implies_registry` and restore mutation-test coverage.
+  Historical fixtures were audited; cleanup/re-registration exposed implicit
+  reference releases missing from the pinned ghost history. The replay wrapper
+  now records those releases in order, including cleanup within one package.
+  Missing ghost state and missing/wrong registry references are rejected.
 
 ## Blocked on host capabilities
 

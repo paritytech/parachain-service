@@ -363,7 +363,7 @@ currently panics in production: `replayHostTrap` requires a real PVM `Trap` and
 checkpoint recovery, without injecting a malformed work digest. The independent
 oracle restores the report-entry state and free balance. Later invocations retry
 normally. This covers the existing panic behavior; it does not change production
-error handling or re-enable `solicit_implies_registry`.
+error handling. `solicit_implies_registry` is checked on every replay frame.
 
 ## Outgoing spendable-balance boundaries
 
@@ -417,3 +417,18 @@ errors, denied finalization, and restored privilege across 200 transitions.
 Replay compares logs, staged storage, and the final designation effect each time.
 Deterministic fixtures include a denied full 1023-key set followed by recovery;
 mutation tests reject altered privilege inputs and missing privilege metadata.
+
+## Solicitation history invariant
+
+All profiles enforce `solicit_implies_registry` against decoded Rust storage.
+The pinned model records only successful explicit preimage operations, in order.
+`preimage_history.qnt` supplements those operations with implicit reference
+releases from cleanup and code changes, derived solely from Quint transitions.
+The wrapper applies these at each message and candidate prefix, so cleanup and
+re-registration within one package cannot revive old solicitation history.
+
+The historical fixture audit found stale history in `lifecycle/cleanup_retry`;
+that fixture is regenerated with the compatibility wrapper. A separate
+`cleanup_reregister` regression covers removal and recreation within one package.
+Mutation tests reject nonexistent registry entries, wrong referencers, and absent
+`solicitedSet` metadata. No expected history is repaired from actual Rust storage.

@@ -46,4 +46,8 @@ flags from pre-invocation storage: candidates from already deregistering paracha
 and forced head updates targeting them are ignored. The pinned Quint predicate
 omits this guard. The cleanup-retry fixture and fuzz seed `3123773523` cover the
 correction; mutation tests still reject illegal head changes while deregistering.
-`solicit_implies_registry` remains disabled pending issue #54.
+`solicit_implies_registry` is enabled. The pin records successful explicit
+solicit/forget operations; the replay wrapper additionally records implicit
+reference releases during cleanup and code changes, preventing stale history
+from reappearing when a parachain is re-registered. Mutation tests cover missing
+entries, wrong referencers, and missing ghost metadata.

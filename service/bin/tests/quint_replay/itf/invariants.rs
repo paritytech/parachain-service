@@ -302,9 +302,7 @@ pub fn state_at(
 			)?;
 		}
 	}
-	// FIXME: Re-enable solicit_implies_registry once Quint records only successful
-	// solicitations: https://github.com/paritytech/parachain-service/issues/54
-	#[cfg(any())]
+	// The pinned oracle records successful preimage operations in message order.
 	{
 		let solicited = field(current, "solicitedSet")?;
 		for triple in set_values(solicited)? {

@@ -16,12 +16,14 @@ module host_invocation {
   import host_metadata.* from "./host_metadata"
   import service_inputs.* from "./service_inputs"
   import host_sizes.* from "./host_sizes"
+  import preimage_history.* from "./preimage_history"
   type HostAcc = { acc: AccumulateOutcome, free: int, safe: bool,
     rejects: int, minGas: Option[int], creations: List[CreationEffect], transfers: List[TransferOutArgs] }
   pure def moved(h: HostAcc, acc: AccumulateOutcome): HostAcc = {
     val delta = hostCost(acc.state) - hostCost(h.acc.state)
       + h.acc.state.jamAccount.balance - acc.state.jamAccount.balance
-    { ...h, acc: acc, free: h.free - delta, safe: h.safe and delta <= h.free }
+    { ...h, acc: { ...acc, preimageOps: acc.preimageOps.concat(releasedReferences(h.acc.state, acc.state)) },
+      free: h.free - delta, safe: h.safe and delta <= h.free }
   }
   pure def limitedMessage(h: HostAcc, caller: ParaId, slot: int, anchor: int,
     message: UpwardMessage): HostAcc = {
@@ -113,7 +115,8 @@ module host_invocation {
           val start: HostAcc = { free: free - (if (headFits) headCost else 0), safe: h.safe,
             rejects: h.rejects + (if (headFits) 0 else 1), minGas: h.minGas, creations: h.creations, transfers: h.transfers,
             acc: { state: if (headFits) headed else base, foreign: h.foreign,
-              jamDesignate: List(), jamAssigns: List(), preimageOps: List(), logs: List() } }
+              jamDesignate: List(), jamAssigns: List(),
+              preimageOps: releasedReferences(h.state, if (headFits) headed else base), logs: List() } }
           val out = ok.upwardMessages.foldl(start, (a, m) => limitedMessage(a, ok.paraId, slot, ok.lookupAnchor, m))
           val logged = out.acc.state.appendAccumulateLogs(ok.paraId, slot, out.acc.logs)
           val logDelta = hostCost(logged) - hostCost(out.acc.state)

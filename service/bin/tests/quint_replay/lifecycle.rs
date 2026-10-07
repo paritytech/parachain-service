@@ -57,3 +57,11 @@ fn cleanup_operand_errors() {
 	let error = replay::document_trace(&trace).unwrap_err();
 	assert!(error.contains("registered set differs"), "{error}");
 }
+
+#[test]
+fn cleanup_reregister_works() {
+	replay::trace(include_str!("../fixtures/quint/lifecycle/cleanup_reregister_works.itf.json"))
+		.expect(
+			"cleanup must retire solicitation history before the same para is registered again",
+		);
+}

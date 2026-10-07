@@ -1,4 +1,4 @@
-// Lifecycle input vocabulary; all outcomes are evaluated by the pinned model.
+// Lifecycle inputs use pinned transitions plus replay solicitation-history compatibility.
 module lifecycle_inputs {
   import types.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/types"
   import messages.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/messages"
@@ -8,6 +8,8 @@ module lifecycle_inputs {
   import refine.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/refine"
   import accumulate.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/accumulate"
   import state_balance.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state_balance"
+  import service_inputs.replayAll from "./service_inputs"
+  import head_commitment.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/head_commitment"
   pure val lifecycleParas = Set(MkParaId(3), MkParaId(4))
   pure def fund(p: ParaId, amount: int): UpwardMessage =
     ParachainSetStateBalance({ paraId: p, newTotal: amount })
@@ -28,13 +30,15 @@ module lifecycle_inputs {
       items: List({ validationCode: { hash: { vchBytes: h }, len: FixedCodeLen } }) }
     val calls = List(SetParentHeadHash(headHash(parent)), SetHead(parent + 1)).concat(sends(msgs))
     val wr = { result: refine(svc, pkg, false, calls, now)[0], authTrace: 0 }
-    val out = accumulateBlock(svc, now + gap, jamStagingSet, solicitedSet,
-      FixedCodeLen, List(wr), foreignServices)
+    val due = accumulateBlock(svc, now + gap, jamStagingSet, solicitedSet,
+      FixedCodeLen, List(), foreignServices)
+    val out = replayAll(due.state, solicitedSet, jamStagingSet, FixedCodeLen,
+      now + gap, List(wr), due.foreign)
     all {
       svc' = out.state, now' = now + gap, prevSvc' = svc,
-      jamStagingSet' = out.staging, solicitedSet' = out.solicited,
-      lastStepWorkResults' = out.results, lastStepAssigns' = out.assigns,
-      lastHeadRoot' = out.headRoot, foreignServices' = out.foreign,
+      jamStagingSet' = out.jamDesignate, solicitedSet' = out.solicited,
+      lastStepWorkResults' = List(wr), lastStepAssigns' = due.assigns.concat(out.jamAssigns),
+      lastHeadRoot' = headCommitment(svc, out.state), foreignServices' = out.foreign,
       logPrunedBelow' = out.logPruned.foldl(logPrunedBelow, (m, pair) => m.put(pair._1, pair._2))
     }
   }

@@ -5,17 +5,17 @@ use jam_node::vm::{StateMutations, Storage};
 use parachain_service::{
 	constants::*,
 	state::{
+		Tag,
 		assigns::PendingAssign,
 		log::LogEntry,
 		para_info::ParaInfo,
 		preimage_registry::PreimageEntry,
 		storage_key,
 		transfers::{IncomingTransferBuckets, QueuedTransfer},
-		Tag,
 	},
 };
 use parachain_service_bin::mock::MOCK_SERVICE_ID;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 fn seeded() -> (Storage, Codex, Value) {
 	let trace: Value =
@@ -253,7 +253,9 @@ fn host_effects_errors() {
 }
 #[test]
 fn catalogue_works() {
-	let model = include_str!("../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/invariants.qnt");
+	let model = include_str!(
+		"../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/invariants.qnt"
+	);
 	let names: Vec<_> = model
 		.lines()
 		.filter_map(|line| line.trim().strip_prefix("val "))
@@ -382,7 +384,6 @@ fn same_invocation_code_change_works() {
 }
 
 #[test]
-#[ignore = "solicit_implies_registry disabled pending https://github.com/paritytech/parachain-service/issues/54"]
 fn solicited_ghost_errors() {
 	rejects("solicit_implies_registry", |_, _, f| {
 		f["solicitedSet"] = json!({"#set": [{"#tup": [
@@ -393,9 +394,29 @@ fn solicited_ghost_errors() {
 }
 
 #[test]
+fn solicited_referencer_errors() {
+	// The entry exists for Coretime, but does not grant Asset Hub a reference.
+	rejects("solicit_implies_registry", |_, _, f| {
+		f["solicitedSet"] = json!({"#set": [{"#tup": [
+			{"tag":"MkParaId", "value":{"#bigint":"2"}},
+			{"hashBytes":{"#bigint":"1"}}, {"#bigint":"65536"}
+		]}]});
+	});
+}
+
+#[test]
+fn solicited_reference_works() {
+	let (s, mut c, mut f) = seeded();
+	f["solicitedSet"] = json!({"#set": [{"#tup": [
+		{"tag":"MkParaId", "value":{"#bigint":"1"}},
+		{"hashBytes":{"#bigint":"1"}}, {"#bigint":"65536"}
+	]}]});
+	state(&s, &f, &mut c, 0).unwrap();
+}
+
+#[test]
 fn missing_ghost_errors() {
-	// FIXME: Restore solicitedSet coverage when issue #54 is fixed.
-	for name in ["logPrunedBelow", "foreignServices"] {
+	for name in ["solicitedSet", "logPrunedBelow", "foreignServices"] {
 		let (s, mut c, mut f) = seeded();
 		f.as_object_mut().unwrap().remove(name);
 		assert!(state(&s, &f, &mut c, 0).unwrap_err().contains(name));

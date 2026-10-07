@@ -69,4 +69,8 @@ module lifecycle {
     .then(core(List(code(p, 778), code(p, 778), setHead(p, 9))))
     .then(expectThat(svc.paraInfo(p).announcedUpgrade == None))
     .then(lifecycleWork(p, 778, List(), 1))
+  run cleanup_reregister_works = init.then(registered)
+    .then(work(List(Solicit({ target: Parachain(p), hash: { hashBytes: 777 }, len: FixedCodeLen }))))
+    .then(core(List(ParachainCleanUp(p), fund(p, InitialParaBalance), setHead(p, 42), code(p, 778))))
+    .then(lifecycleWork(p, 778, List(), 1))
 }

@@ -8,6 +8,8 @@ module service_inputs {
   import foreign_services.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/foreign_services"
   import accumulate.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/accumulate"
 
+  import preimage_history.* from "./preimage_history"
+
   type CreationEffect = { service: ServiceId, args: CreateServiceArgs }
   var replayCreations: List[CreationEffect]
   action noCreations = replayCreations' = List()
@@ -46,7 +48,7 @@ module service_inputs {
     RemoveServiceStorage({ service: id, key: List(0, 255, 1) })
   pure def serviceSupervisor(id: ServiceId, successor: ServiceId): UpwardMessage =
     SetServiceSupervisor({ service: id, newSupervisor: successor })
-  pure def replayApply(acc: AccumulateOutcome, caller: ParaId, codeLen: int,
+  pure def replayApplyBase(acc: AccumulateOutcome, caller: ParaId, codeLen: int,
     slot: int, anchor: int, msg: UpwardMessage): AccumulateOutcome = match msg {
     // The pin looks only in foreignServices, which excludes this service.
     // The host knows self exists, but still exposes no supervision capability.
@@ -87,6 +89,12 @@ module service_inputs {
     | _ => applyUpwardMessage(acc, caller, codeLen, slot, anchor, msg)
   }
 
+  pure def replayApply(acc: AccumulateOutcome, caller: ParaId, codeLen: int,
+    slot: int, anchor: int, msg: UpwardMessage): AccumulateOutcome = {
+    val out = replayApplyBase(acc, caller, codeLen, slot, anchor, msg)
+    { ...out, preimageOps: out.preimageOps.concat(releasedReferences(acc.state, out.state)) }
+  }
+
   pure def replayPackage(state: ParachainServiceState, wr: WorkResult,
     solicited: Set[(ParaId, Hash, int)], designate: List[ValidatorKey], codeLen: int,
     slot: int, foreign: ForeignServices): PerPackageOutcome = {
@@ -97,7 +105,7 @@ module service_inputs {
         val pre = accumulateOkPrefix(state, ok, codeLen, slot)
         if (pre.rejected) plain else {
           val base: AccumulateOutcome = { state: pre.state, foreign: foreign,
-            jamDesignate: designate, preimageOps: List(),
+            jamDesignate: designate, preimageOps: releasedReferences(state, pre.state),
             jamAssigns: List(), logs: pre.logs }
           val out = ok.upwardMessages.foldl(base, (a, m) => replayApply(a, ok.paraId, codeLen, slot, ok.lookupAnchor, m))
           { ...plain, state: out.state.appendAccumulateLogs(ok.paraId, slot, out.logs),
