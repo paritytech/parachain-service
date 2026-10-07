@@ -32,9 +32,10 @@ See [QUINT_REPLAY.md](QUINT_REPLAY.md) and the
 
 ## Priority 2: boundaries and oracle coverage
 
-- [ ] TODO: Cover threshold-adjacent outgoing spending. First define an explicit
-  compatibility oracle for the model/host threshold difference, then sample
-  below, at, and above the actual spendable balance.
+- [x] Cover threshold-adjacent outgoing spending. The `outgoing_boundary`
+  profile substitutes independently tracked host free balance into the pinned
+  transfer oracle, sampling below, at, and above spendable balance, including
+  checkpoint recovery and subsequent invocations.
 - [ ] TODO: Cover deferred self-payments. Model scheduler delivery after the
   invocation explicitly; the pinned model currently credits self immediately.
 - [ ] TODO: Generate validator designation privilege rejection. Replay currently

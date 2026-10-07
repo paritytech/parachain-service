@@ -19,7 +19,7 @@ Configuration:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `QUINT_FUZZ_PROFILE` | `fuzz` | `fuzz` for general inputs; `storage` for metadata/KV/queue failures; `code_storage` for code acquisition/announcement failures |
+| `QUINT_FUZZ_PROFILE` | `fuzz` | `fuzz` for general inputs; `storage` for metadata/KV/queue failures; `code_storage` for code acquisition/announcement failures; `outgoing_boundary` for exact spendable-balance limits |
 | `QUINT_FUZZ_TRACES` | `100` | Total traces across workers; `0` runs until failure/interruption |
 | `QUINT_FUZZ_STEPS` | `15` | Transitions per trace, 1–10000 |
 | `QUINT_FUZZ_WORKERS` | `1` | Independent Rust workers and generator processes |
@@ -364,3 +364,25 @@ checkpoint recovery, without injecting a malformed work digest. The independent
 oracle restores the report-entry state and free balance. Later invocations retry
 normally. This covers the existing panic behavior; it does not change production
 error handling or re-enable `solicit_implies_registry`.
+
+## Outgoing spendable-balance boundaries
+
+The `outgoing_boundary` profile mixes ordinary outgoing invocations with amounts
+one unit below, exactly at, and one unit above the real host spendable balance.
+It uses `replayHostBudget` to inject starting free balance; the independent
+`host_sizes.qnt` arithmetic accounts for intervening head and log storage changes.
+The compatibility oracle in `host_invocation.qnt` substitutes
+`serviceThreshold(state) + free` as the pinned transfer function's account balance,
+then restores the original balance minus the accepted debit. This cancels the
+model's conservative threshold approximation without selecting outcomes from
+Rust execution. Only own-source deferred transfers to other services with regular
+balance selectors are supported by this extension.
+
+Ordered effects, account debits/credits, logs, final free balance, checkpoint
+recovery, and later invocations are compared. Absolute account and installed-code
+overhead cancel against the initial host threshold. The ordinary profile keeps
+its existing broad transfer authorization and gas checks.
+`fuzz::outgoing_boundary_generated_works` checks all three boundaries, retained
+payments after gas exhaustion, and ordinary resumption across 150 transitions.
+The stream adapter accepts an optional sixth argument selecting the main module
+(default `fuzz`); this profile uses `outgoing_boundary_fuzz`.

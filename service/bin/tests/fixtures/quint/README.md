@@ -111,8 +111,7 @@ JAM balances, installed code lengths, and upgrade gas-setting mismatches are rej
   The generated domain covers small deferred payments to foreign services,
   zero payments (including an empty source supervisor balance), definite
   overdrafts, and host-compatible refusals. It excludes successful supervision
-  operations, nonzero supervisor credits, threshold-adjacent spends (the model
-  overestimates the threshold), and deferred self-payments (the model credits
+  operations, nonzero supervisor credits, and deferred self-payments (the model credits
   them immediately, whereas JAM credits them after the sender invocation).
   Unsupported outcomes and mismatches fail explicitly.
 - Service upgrades reserve abstract hashes 9001 and 9002 for executable service
@@ -205,3 +204,7 @@ all reports' state and host effects while expecting `NotEnoughGas` with no head
 commitment. Tests sample the final tail, bracket head reads, and resume after
 repeated failures. Storage is persisted before the checkpoint in this runtime;
 there are no final-tail writes. See the fuzzing guide for calibration details.
+
+The `outgoing_boundaries` fixtures and `outgoing_boundary` generated profile cover
+threshold-adjacent spends using an explicit host-budget compatibility oracle;
+see the [fuzzing guide](FUZZING.md#outgoing-spendable-balance-boundaries).

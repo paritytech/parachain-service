@@ -31,12 +31,12 @@ async function main() {
   const { newTraceRecorder } = api('runtime/trace');
   const { newRng } = api('rng');
   const { toItf } = api('itf');
-  const [input, firstSeed, strideText, countText, stepsText] = process.argv.slice(2);
+  const [input, firstSeed, strideText, countText, stepsText, mainModule = 'fuzz'] = process.argv.slice(2);
   const stride = BigInt(strideText);
   const count = Number(countText), steps = Number(stepsText);
   if (stride < 1n || !Number.isSafeInteger(count) || count < 0 ||
       !Number.isSafeInteger(steps) || steps < 1) throw new Error('invalid stream limits');
-  const args = { input, main: 'fuzz', verbosity: 0 };
+  const args = { input, main: mainModule, verbosity: 0 };
   const loaded = unwrap(await cli.load(args));
   const parsed = unwrap(await cli.parse(loaded));
   const typed = unwrap(await cli.typecheck(parsed));

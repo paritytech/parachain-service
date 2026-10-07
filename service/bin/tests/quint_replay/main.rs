@@ -16,6 +16,7 @@ mod lifecycle;
 mod log_pruning;
 mod mixed;
 mod outgoing;
+mod outgoing_boundaries;
 mod service_upgrades;
 mod service_preimages;
 mod service_management;

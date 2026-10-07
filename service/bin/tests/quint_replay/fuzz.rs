@@ -33,6 +33,7 @@ fn generator(seed: u64, stride: u64, count: u64, steps: u64) -> Command {
 fn generator_profile(profile: &str, seed: u64, stride: u64, count: u64, steps: u64) -> Command {
 	let input = match profile {
 		"fuzz" => "service/bin/tests/fixtures/quint/fuzz.qnt",
+		"outgoing_boundary" => "service/bin/tests/fixtures/quint/outgoing_boundary_fuzz.qnt",
 		"storage" => "service/bin/tests/fixtures/quint/storage_fuzz.qnt",
 		"code_storage" => "service/bin/tests/fixtures/quint/code_storage_fuzz.qnt",
 		_ => panic!("unknown QUINT_FUZZ_PROFILE: {profile}"),
@@ -46,6 +47,9 @@ fn generator_profile(profile: &str, seed: u64, stride: u64, count: u64, steps: u
 		&count.to_string(),
 		&steps.to_string(),
 	]);
+	if profile == "outgoing_boundary" {
+		command.arg("outgoing_boundary_fuzz");
+	}
 	command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::inherit());
 	command
 }
@@ -801,4 +805,41 @@ fn mixed_head_queue_generated_works() {
 	assert!(queue_recovery, "missing failed queue write with gas recovery");
 	assert!(capacity, "missing arrivals beyond reserved queue capacity");
 	assert!(resumed, "missing ordinary invocation after a mixed host budget");
+}
+
+#[test]
+#[ignore = "requires Quint 0.32.0"]
+fn outgoing_boundary_generated_works() {
+	let stream = generator_profile("outgoing_boundary", 1, 1, 10, 15)
+		.output()
+		.expect("outgoing boundary generator");
+	assert!(stream.status.success());
+	let mut boundaries = std::collections::BTreeSet::new();
+	let mut recovered = false;
+	let mut resumed = false;
+	for line in stream.stdout.split(|b| *b == b'\n').filter(|line| !line.is_empty()) {
+		let envelope: Value = serde_json::from_slice(line).unwrap();
+		for pair in envelope["trace"]["states"].as_array().unwrap().windows(2) {
+			let s = &pair[1];
+			let active = s["replayHostBudget"]["#bigint"] != "-1";
+			if active {
+				let effects = s["replayTransfers"].as_array().unwrap();
+				if effects.is_empty() {
+					boundaries.insert("above");
+				} else if replay::integer(&s["replayHostFree"]).unwrap() == 0 {
+					boundaries.insert("exact");
+				} else {
+					boundaries.insert("below");
+				}
+				recovered |= s["replayInterrupt"]["#bigint"] == "2" && !effects.is_empty();
+			}
+			resumed |= pair[0]["replayHostBudget"]["#bigint"] != "-1" && !active;
+		}
+		if let Err(error) = replay::document_trace(&envelope["trace"]) {
+			let path = preserve(&envelope, &error).unwrap();
+			panic!("{error}; {}", path.display());
+		}
+	}
+	assert_eq!(boundaries, ["below", "exact", "above"].into());
+	assert!(recovered && resumed, "missing checkpoint recovery or ordinary resumption");
 }

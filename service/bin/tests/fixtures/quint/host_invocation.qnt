@@ -17,7 +17,7 @@ module host_invocation {
   import service_inputs.* from "./service_inputs"
   import host_sizes.* from "./host_sizes"
   type HostAcc = { acc: AccumulateOutcome, free: int, safe: bool,
-    rejects: int, minGas: Option[int], creations: List[CreationEffect] }
+    rejects: int, minGas: Option[int], creations: List[CreationEffect], transfers: List[TransferOutArgs] }
   pure def moved(h: HostAcc, acc: AccumulateOutcome): HostAcc = {
     val delta = hostCost(acc.state) - hostCost(h.acc.state)
       + h.acc.state.jamAccount.balance - acc.state.jamAccount.balance
@@ -27,6 +27,24 @@ module host_invocation {
     message: UpwardMessage): HostAcc = {
     val applied = applyUpwardMessage(h.acc, caller, FixedCodeLen, slot, anchor, message)
     match message {
+      | TransferOut(t) => {
+        // Substitute only the threshold input to the pinned transfer oracle.
+        // hostPrefix supplies actual free balance from independent footprint
+        // deltas; account/code overhead cancels against the injected allowance.
+        // Supervised sources and deferred self-credit need separate semantics.
+        val supported = t.source.optionGetOr(ParachainServiceId) == ParachainServiceId
+          and t.dest != ParachainServiceId and t.deferred != None
+          and not(t.sourceSupervisorBalance) and not(t.destSupervisorBalance)
+        val balance = serviceThreshold(h.acc.state) + h.free
+        val state = { ...h.acc.state, jamAccount: { ...h.acc.state.jamAccount, balance: balance } }
+        val out = applyUpwardMessage({ ...h.acc, state: state }, caller, FixedCodeLen, slot, anchor, message)
+        val debit = balance - out.state.jamAccount.balance
+        val restored = { ...out, state: { ...out.state,
+          jamAccount: { ...h.acc.state.jamAccount, balance: h.acc.state.jamAccount.balance - debit } } }
+        val nextHost = moved(h, restored)
+        { ...nextHost, safe: nextHost.safe and supported,
+          transfers: if (out.logs == h.acc.logs) h.transfers.append(t) else h.transfers }
+      }
       | CreateService(c) => {
         val cost = BaseDeposit + 2 * ItemDeposit + PreimageRequestOverhead + c.len
         val out = if (cost > h.free)
@@ -68,14 +86,13 @@ module host_invocation {
       }
       | RequestCodeUpgrade(_) => moved(h, applied)
       | CleanUpBucketsUpTo(_) => moved(h, applied)
-      // These actions use only zero-amount transfers to force real pool exhaustion.
-      // They are excluded from the completed prefix by replayInterrupt.
+      // Other backstop sites require their own compatibility oracle.
       | _ => { ...h, safe: false }
     }
   }
   type HostPackage = { state: ParachainServiceState, foreign: ForeignServices,
     free: int, safe: bool, rejects: int, minGas: Option[int], creations: List[CreationEffect],
-    failedHeads: List[int], solicited: Set[(ParaId, Hash, int)], pruned: List[(ParaId, Timeslot)] }
+    transfers: List[TransferOutArgs], failedHeads: List[int], solicited: Set[(ParaId, Hash, int)], pruned: List[(ParaId, Timeslot)] }
   pure def limitedPackage(h: HostPackage, wr: WorkResult, slot: int, index: int): HostPackage = match wr.result {
     | WorkErr => h
     | WorkOk(digest) => match digest {
@@ -93,7 +110,7 @@ module host_invocation {
           val headCost = hostCost(headed) - hostCost(base)
           val headFits = headCost <= free
           val start: HostAcc = { free: free - (if (headFits) headCost else 0), safe: h.safe,
-            rejects: h.rejects + (if (headFits) 0 else 1), minGas: h.minGas, creations: h.creations,
+            rejects: h.rejects + (if (headFits) 0 else 1), minGas: h.minGas, creations: h.creations, transfers: h.transfers,
             acc: { state: if (headFits) headed else base, foreign: h.foreign,
               jamDesignate: List(), jamAssigns: List(), preimageOps: List(), logs: List() } }
           val out = ok.upwardMessages.foldl(start, (a, m) => limitedMessage(a, ok.paraId, slot, ok.lookupAnchor, m))
@@ -103,7 +120,7 @@ module host_invocation {
           { ...h, state: if (logFits) logged else out.acc.state, foreign: out.acc.foreign,
             free: out.free - (if (logFits) logDelta else 0), safe: out.safe,
             failedHeads: if (headFits) h.failedHeads else h.failedHeads.append(index),
-            rejects: out.rejects, minGas: out.minGas, creations: out.creations,
+            rejects: out.rejects, minGas: out.minGas, creations: out.creations, transfers: out.transfers,
             solicited: applyPreimageOps(h.solicited, out.acc.preimageOps), pruned: h.pruned.append((ok.paraId, ok.lookupAnchor)) }
         }
       }
@@ -134,7 +151,7 @@ module host_invocation {
     val free = available - hostCost(arrived) + hostCost(credited)
     val start: HostPackage = { state: arrived, foreign: due.foreign, free: free, safe: available >= 0,
       rejects: if (queueFits) 0 else 1, minGas: None, creations: List(),
-      failedHeads: List(), solicited: solicitedSet, pruned: List() }
+      transfers: List(), failedHeads: List(), solicited: solicitedSet, pruned: List() }
     range(0, packages.length()).foldl(start, (a, i) =>
       if (limits[i] < reportGas(packages[i])) a else limitedPackage(a, packages[i], slot, i))
   }
@@ -151,7 +168,7 @@ module host_invocation {
       lastHeadRoot' = if (interrupt < 0) headCommitment(svc, out.state) else None,
       logPrunedBelow' = out.pruned.foldl(logPrunedBelow, (m, pair) => m.put(pair._1, pair._2)),
       replayIncoming' = incoming, replayGasLimits' = limits, replayInterrupt' = interrupt, replayPanic' = false,
-      replayDesignate' = List(), replayTransfers' = List(), replayCreations' = out.creations,
+      replayDesignate' = List(), replayTransfers' = out.transfers, replayCreations' = out.creations,
       replayMinAccGas' = out.minGas.optionGetOr(replayMinAccGas),
       replayHostFailedHeads' = out.failedHeads, replayHostBudget' = allowance, replayHostFree' = out.free, replayHostRejects' = out.rejects
     }
