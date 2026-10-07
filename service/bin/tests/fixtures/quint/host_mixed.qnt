@@ -27,6 +27,19 @@ module host_mixed {
   action supplied(hash: int, len: int): bool = all {
     provide({ hashBytes: hash }, len), noGas, noTransfers, noDesignation, noOutgoing, keepUpgradeGas
   }
+  run head_queue_rejection_works = replayInit
+    .then(hostBlockAt(0, 1, 4, true, remove81, remove82))
+    .then(hostBlockAt(187, 1, 4, false, remove81, remove82))
+    .then(hostBlockAt(188, 1, 4, true, remove81, remove82))
+    .then(hostBlockAt(253, 1, 4, true, remove81, remove82))
+    .then(normal(AssetHubParaId, List(storeKV(81, 1))))
+  run queue_capacity_recovery_works = replayInit
+    .then(hostBlockTransfers(2000000, 1024, 0, 4, false, remove81, remove82))
+    .then(hostBlockTransfers(0, 3, 1, 4, true, remove81, remove82))
+    .then(hostBlockTransfers(0, 3, 300, 4, true, remove81, remove82))
+    .then(normal(AssetHubParaId, List(CleanUpBucketsUpTo(10000))))
+    .then(hostBlockTransfers(0, 3, 0, 4, true, remove81, remove82))
+    .then(normal(AssetHubParaId, List(storeKV(81, 1))))
   run gas_rejection_works = replayInit
     .then(hostBlockAt(1000, 2, 1, false, remove81, remove82))
     .then(hostBlockAt(1000, 2, 2, false, remove81, remove82))

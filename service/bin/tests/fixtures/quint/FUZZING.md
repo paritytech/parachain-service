@@ -251,12 +251,18 @@ injected balance offset. It retains real incoming credits, all storage changes,
 and other host effects. This permits subsequent ordinary actions and installed
 service-code replay without resetting service state.
 
-The mixed action samples allowances of 1000, 2000, 4096, and 5000 and 4 KiB KV
-writes. Its other message types must fit their modeled budget; unsupported
-backstop sites disable that generated action rather than assuming success.
-Head and incoming-queue write rejection remain covered by the isolated `storage`
-profile below. Arbitrary low-balance handling for every upward message is not
-modeled by the mixed action.
+The mixed action samples allowances from zero through 5000, including head
+and queue deposit boundaries, and 4 KiB KV writes. Its other message types must
+fit their modeled budget; unsupported backstop sites disable that generated
+action rather than assuming success.
+Head and incoming-queue write rejection also participate in mixed actions.
+Failed head writes preserve the old head while messages execute; failed queue
+writes remove all fresh buckets while retaining incoming JAM credits. Arbitrary
+low-balance handling for every upward message is not modeled by the mixed action.
+Early generated invocations may include 1025 arrivals,
+with zero, small, or self-funding amounts, exercising reserved-capacity boundaries.
+`fuzz::mixed_head_queue_generated_works` requires head and queue rejection together
+with real gas recovery, capacity-spanning batches, and subsequent ordinary actions.
 
 `host_mixed.qnt` has deterministic cross-feature cases, including successful
 code/service upgrades before exhaustion and a failed KV write followed by a

@@ -80,10 +80,22 @@ pub fn effective(frame: &Value) -> Result<Value, String> {
 	let end =
 		if before_checkpoint(frame)? { 0 } else { interrupted(frame)?.unwrap_or(results.len()) };
 	let mut applied = Vec::new();
+	let mut failed_heads = Vec::new();
 	for (i, result) in results.iter().enumerate().take(end) {
 		if limits[i] >= cost(result)? {
+			if let Some(heads) = frame.get("replayHostFailedHeads") {
+				for head in heads.as_array().ok_or("expected failed host heads")? {
+					if bounded_integer::<usize>(head, "failed host head")? == i {
+						failed_heads
+							.push(serde_json::json!({"#bigint": applied.len().to_string()}));
+					}
+				}
+			}
 			applied.push(result.clone());
 		}
+	}
+	if frame.get("replayHostFailedHeads").is_some() {
+		effective["replayHostFailedHeads"] = Value::Array(failed_heads);
 	}
 	effective["lastStepWorkResults"] = Value::Array(applied);
 	Ok(effective)

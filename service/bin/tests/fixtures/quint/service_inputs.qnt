@@ -97,11 +97,12 @@ module service_inputs {
         val pre = accumulateOkPrefix(state, ok, codeLen, slot)
         if (pre.rejected) plain else {
           val base: AccumulateOutcome = { state: pre.state, foreign: foreign,
-            jamDesignate: designate, jamSolicit: pre.jamSolicit, jamForget: pre.jamForget,
+            jamDesignate: designate, preimageOps: List(),
             jamAssigns: List(), logs: pre.logs }
           val out = ok.upwardMessages.foldl(base, (a, m) => replayApply(a, ok.paraId, codeLen, slot, ok.lookupAnchor, m))
           { ...plain, state: out.state.appendAccumulateLogs(ok.paraId, slot, out.logs),
-            foreign: out.foreign, jamDesignate: out.jamDesignate, jamAssigns: out.jamAssigns }
+            foreign: out.foreign, solicited: applyPreimageOps(solicited, out.preimageOps),
+            jamDesignate: out.jamDesignate, jamAssigns: out.jamAssigns }
         }
       }
       | _ => plain

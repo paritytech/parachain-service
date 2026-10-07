@@ -25,10 +25,10 @@ See [QUINT_REPLAY.md](QUINT_REPLAY.md) and the
   reference acquisition. The `code_storage` profile checks charge rollback and registry
   rejection, real JAM solicit failure with checkpoint recovery, final metadata
   rejection, exact boundaries, shared references, and retries.
-- [ ] TODO: Mix head and incoming-queue write failures with general campaign
-  actions and gas recovery. These failures currently have a separate storage
-  profile, which excludes other upward messages, gas interruptions, and arrivals
-  above reserved queue capacity.
+- [x] Mix head and incoming-queue write failures with general campaign actions
+  and gas recovery. Mixed host budgets retain incoming credits on rejection,
+  continue messages after failed heads, and cover queue-capacity boundaries,
+  cleanup, later invocations, and explicit failed-head mutation checks.
 
 ## Priority 2: boundaries and oracle coverage
 
@@ -40,8 +40,9 @@ See [QUINT_REPLAY.md](QUINT_REPLAY.md) and the
 - [ ] TODO: Generate validator designation privilege rejection. Replay currently
   assumes designation privilege; direct Rust tests cover rejection. Compare
   logs, staged keys, and final designation effects across later invocations.
-- [ ] TODO: Re-enable `solicit_implies_registry` once the model tracks only
-  successful solicitations; restore its mutation-test coverage too. See the
+- [ ] TODO: Re-enable `solicit_implies_registry` and restore its mutation-test
+  coverage. The pinned model now tracks successful preimage operations in order;
+  audit the historical fixtures before enabling the check globally. See the
   existing reference to issue #54 in
   [invariants.rs](service/bin/tests/quint_replay/itf/invariants.rs).
 

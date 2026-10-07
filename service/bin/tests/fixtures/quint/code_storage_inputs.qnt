@@ -84,7 +84,7 @@ module code_storage_inputs {
       solicitedSet' = solicitedSet, jamStagingSet' = jamStagingSet,
       foreignServices' = foreignServices, logPrunedBelow' = logPrunedBelow,
       noTransfers, noDesignation,
-      replayHostBudget' = allowance, replayHostFree' = out.free,
+      replayHostFailedHeads' = List(), replayHostBudget' = allowance, replayHostFree' = out.free,
       replayHostRejects' = if (applied.failure == "") 0 else 1,
       replayGasLimits' = List(UnlimitedGas), replayInterrupt' = if (applied.trap) 0 else -1,
       replayPanic' = false, replayHostTrap' = applied.trap,

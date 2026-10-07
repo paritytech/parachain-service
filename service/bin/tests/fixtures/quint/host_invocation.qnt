@@ -75,30 +75,36 @@ module host_invocation {
   }
   type HostPackage = { state: ParachainServiceState, foreign: ForeignServices,
     free: int, safe: bool, rejects: int, minGas: Option[int], creations: List[CreationEffect],
-    solicited: Set[(ParaId, Hash, int)], pruned: List[(ParaId, Timeslot)] }
-  pure def limitedPackage(h: HostPackage, wr: WorkResult, slot: int): HostPackage = match wr.result {
+    failedHeads: List[int], solicited: Set[(ParaId, Hash, int)], pruned: List[(ParaId, Timeslot)] }
+  pure def limitedPackage(h: HostPackage, wr: WorkResult, slot: int, index: int): HostPackage = match wr.result {
     | WorkErr => h
     | WorkOk(digest) => match digest {
       | Err(_) => { ...h, safe: false }
       | Ok(ok) => {
         val prefix = accumulateOkPrefix(h.state, ok, FixedCodeLen, slot)
         if (prefix.rejected) h else {
-          val delta = hostCost(prefix.state) - hostCost(h.state)
-          val start: HostAcc = { free: h.free - delta, safe: h.safe and delta <= h.free,
-            rejects: h.rejects, minGas: h.minGas, creations: h.creations, acc: { state: prefix.state, foreign: h.foreign,
-              jamDesignate: List(), jamAssigns: List(), jamSolicit: Set(), jamForget: Set(), logs: List() } }
+          // Log pruning precedes the independent head write. Either write can
+          // fail, and a refused head does not suppress the upward messages.
+          val pruned = { ...h.state, parachainLog: prefix.state.parachainLog }
+          val pruneCost = hostCost(pruned) - hostCost(h.state)
+          val base = if (pruneCost <= h.free) pruned else h.state
+          val free = h.free - hostCost(base) + hostCost(h.state)
+          val headed = { ...base, parachains: prefix.state.parachains }
+          val headCost = hostCost(headed) - hostCost(base)
+          val headFits = headCost <= free
+          val start: HostAcc = { free: free - (if (headFits) headCost else 0), safe: h.safe,
+            rejects: h.rejects + (if (headFits) 0 else 1), minGas: h.minGas, creations: h.creations,
+            acc: { state: if (headFits) headed else base, foreign: h.foreign,
+              jamDesignate: List(), jamAssigns: List(), preimageOps: List(), logs: List() } }
           val out = ok.upwardMessages.foldl(start, (a, m) => limitedMessage(a, ok.paraId, slot, ok.lookupAnchor, m))
           val logged = out.acc.state.appendAccumulateLogs(ok.paraId, slot, out.acc.logs)
           val logDelta = hostCost(logged) - hostCost(out.acc.state)
           val logFits = logDelta <= out.free
           { ...h, state: if (logFits) logged else out.acc.state, foreign: out.acc.foreign,
             free: out.free - (if (logFits) logDelta else 0), safe: out.safe,
+            failedHeads: if (headFits) h.failedHeads else h.failedHeads.append(index),
             rejects: out.rejects, minGas: out.minGas, creations: out.creations,
-            solicited: ok.upwardMessages.foldl(h.solicited, (a, m) => match m {
-              | Forget(p) => match p.target {
-                | Parachain(target) => a.exclude(Set((target, p.hash, p.len))) | _ => a
-              } | _ => a
-            }), pruned: h.pruned.append((ok.paraId, ok.lookupAnchor)) }
+            solicited: applyPreimageOps(h.solicited, out.acc.preimageOps), pruned: h.pruned.append((ok.paraId, ok.lookupAnchor)) }
         }
       }
     }
@@ -110,12 +116,27 @@ module host_invocation {
   def hostPrefix(packages: List[WorkResult], slot: int, incoming: List[IncomingTransfer],
     limits: List[int], allowance: int): HostPackage = {
     val due = accumulateBlock(svc, slot, List(), solicitedSet, FixedCodeLen, List(), foreignServices)
-    val arrived = applyIncomingTransfers(due.state, incoming)
-    val free = allowance + incoming.foldl(0, (n, t) => n + t.amount) - hostCost(arrived) + hostCost(svc)
-    val start: HostPackage = { state: arrived, foreign: due.foreign, free: free, safe: free >= 0,
-      rejects: 0, minGas: None, creations: List(), solicited: solicitedSet, pruned: List() }
+    val proposed = applyIncomingTransfers(due.state, incoming)
+    val credited = { ...due.state, jamAccount: proposed.jamAccount }
+    val available = allowance + incoming.foldl(0, (n, t) => n + t.amount)
+      - hostCost(due.state) + hostCost(svc)
+    // Fresh bucket writes only grow; endpoint persistence follows them. Any
+    // rejection removes all fresh buckets, retaining JAM's incoming credits.
+    val queued = { ...credited, incomingTransfers: proposed.incomingTransfers,
+      incomingTransferBuckets: proposed.incomingTransferBuckets }
+    val queueCost = hostCost(queued) - hostCost(credited)
+    val queueFits = queueCost <= available
+    val queueState = if (queueFits) queued else credited
+    val queueFree = available - (if (queueFits) queueCost else 0)
+    // Beyond reserved capacity, reattribution is a separate ParaInfo write.
+    val chargeCost = hostCost(proposed) - hostCost(queued)
+    val arrived = if (queueFits and chargeCost <= queueFree) proposed else queueState
+    val free = available - hostCost(arrived) + hostCost(credited)
+    val start: HostPackage = { state: arrived, foreign: due.foreign, free: free, safe: available >= 0,
+      rejects: if (queueFits) 0 else 1, minGas: None, creations: List(),
+      failedHeads: List(), solicited: solicitedSet, pruned: List() }
     range(0, packages.length()).foldl(start, (a, i) =>
-      if (limits[i] < reportGas(packages[i])) a else limitedPackage(a, packages[i], slot))
+      if (limits[i] < reportGas(packages[i])) a else limitedPackage(a, packages[i], slot, i))
   }
   action hostInvocation(packages: List[WorkResult], slot: int, incoming: List[IncomingTransfer],
     limits: List[int], allowance: int, interrupt: int): bool = {
@@ -132,7 +153,7 @@ module host_invocation {
       replayIncoming' = incoming, replayGasLimits' = limits, replayInterrupt' = interrupt, replayPanic' = false,
       replayDesignate' = List(), replayTransfers' = List(), replayCreations' = out.creations,
       replayMinAccGas' = out.minGas.optionGetOr(replayMinAccGas),
-      replayHostBudget' = allowance, replayHostFree' = out.free, replayHostRejects' = out.rejects
+      replayHostFailedHeads' = out.failedHeads, replayHostBudget' = allowance, replayHostFree' = out.free, replayHostRejects' = out.rejects
     }
   }
 }

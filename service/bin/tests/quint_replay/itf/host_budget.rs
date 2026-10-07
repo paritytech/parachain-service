@@ -17,6 +17,17 @@ pub fn validate(states: &[Value]) -> Result<(), String> {
 		if !enabled {
 			continue;
 		}
+		if let Some(heads) = state.get("replayHostFailedHeads") {
+			let reports =
+				field(state, "lastStepWorkResults")?.as_array().ok_or("expected reports")?;
+			let mut seen = std::collections::BTreeSet::new();
+			for value in heads.as_array().ok_or("expected failed host heads")? {
+				let index = bounded_integer::<usize>(value, "failed host head")?;
+				if index >= reports.len() || !seen.insert(index) {
+					return Err("invalid failed host head".into());
+				}
+			}
+		}
 		let budget = integer(field(state, "replayHostBudget")?)?;
 		let free = integer(field(state, "replayHostFree")?)?;
 		let rejects =

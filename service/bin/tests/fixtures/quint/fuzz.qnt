@@ -305,6 +305,9 @@ module fuzz {
     upgrade({ hashBytes: 9001 }, 123456, 789))
 
   action hostBlockAt(allowance: int, count: int, gasMode: int, stop: bool,
+    first: UpwardMessage, second: UpwardMessage): bool =
+    hostBlockTransfers(allowance, count, 0, gasMode, stop, first, second)
+  action hostBlockTransfers(allowance: int, count: int, amount: int, gasMode: int, stop: bool,
     first: UpwardMessage, second: UpwardMessage): bool = {
     val para = AssetHubParaId
     val parent = svc.paraInfo(para).headData
@@ -314,7 +317,7 @@ module fuzz {
     // Both competing and chained work stay observable when the first gas gate
     // rejects. Build the second report against the actual modeled prefix.
     val incoming = range(0, count).foldl(List(), (a, i) => a.append({
-      source: MkServiceId(7), amount: 0, toSupervisorBalance: false, memo: i }))
+      source: MkServiceId(7), amount: amount, toSupervisorBalance: false, memo: i }))
     val limit1 = budget(wr1, gasMode)
     val prefix = hostPrefix(List(wr1), now + 1, incoming, List(limit1), allowance)
     val wr2 = replayWork(prefix.state, para, prefix.state.paraInfo(para).headData,
@@ -329,13 +332,14 @@ module fuzz {
       if (stop) limits.append(UnlimitedGas) else limits, allowance, if (stop) 2 else -1)
   }
   action hostBlock = {
-    nondet allowance = oneOf(Set(1000, 2000, 4096, 5000))
-    nondet count = oneOf(Set(0, 1, 2, 3))
+    nondet allowance = oneOf(Set(0, 7, 8, 187, 188, 252, 253, 1000, 2000, 4096, 5000))
+    nondet count = oneOf(if (now < 3) Set(0, 1, 2, 3, 1025) else Set(0, 1, 2, 3))
+    nondet amount = oneOf(Set(0, 1, IncomingTransferEntryFootprint))
     nondet gasMode = oneOf(Set(1, 2, 4))
     nondet stop = oneOf(Set(false, true))
     nondet first = oneOf(hostMessages(svc))
     nondet second = oneOf(hostMessages(svc))
-    hostBlockAt(allowance, count, gasMode, stop, first, second)
+    hostBlockTransfers(allowance, count, amount, gasMode, stop, first, second)
   }
 
   action preCheckpointBlock = {

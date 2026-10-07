@@ -63,8 +63,7 @@ module outgoing_inputs {
             val pre = accumulateOkPrefix(a.state, ok, FixedCodeLen, slot)
             if (pre.rejected) noEffects else {
               val base: AccumulateOutcome = { state: pre.state, foreign: a.foreign,
-                jamDesignate: a.staging, jamSolicit: pre.jamSolicit,
-                jamForget: pre.jamForget, jamAssigns: List(), logs: pre.logs }
+                jamDesignate: a.staging, preimageOps: List(), jamAssigns: List(), logs: pre.logs }
               val messages = ok.upwardMessages.foldl({ acc: base, effects: noEffects }, (m, msg) => {
                 val applied = replayApply(m.acc, ok.paraId, FixedCodeLen, slot, ok.lookupAnchor, msg)
                 // applyUpwardMessage appends a log for every refused transfer or

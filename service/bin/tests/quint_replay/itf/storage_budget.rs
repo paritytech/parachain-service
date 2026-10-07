@@ -4,7 +4,7 @@ use std::borrow::Cow;
 
 use jam_node::vm::Storage;
 use parachain_service_bin::mock::MOCK_SERVICE_ID;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::replay::*;
 
@@ -120,7 +120,11 @@ pub fn compare(storage: &Storage, frame: &Value, index: usize) -> Result<(), Str
 }
 
 pub fn failed_head(frame: &Value, index: usize) -> Result<bool, String> {
-	let Some(indices) = frame.get("replayFailedHeads") else { return Ok(false) };
+	let Some(indices) =
+		frame.get("replayFailedHeads").or_else(|| frame.get("replayHostFailedHeads"))
+	else {
+		return Ok(false);
+	};
 	for value in indices.as_array().ok_or("expected failed heads")? {
 		if bounded_integer::<usize>(value, "failed head index")? == index {
 			return Ok(true);

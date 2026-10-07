@@ -70,9 +70,33 @@ fn cleanup_bucket_range_errors() {
 		"../fixtures/quint/host_mixed/queue_cleanup_works.itf.json"
 	))
 	.unwrap();
-	let message = &mut trace["states"][1]["lastStepWorkResults"][0]["result"]["value"]["value"]
-		["upwardMessages"][1];
+	let message = &mut trace["states"][1]["lastStepWorkResults"][0]["result"]["value"]["value"]["upwardMessages"]
+		[1];
 	assert_eq!(message["tag"], "CleanUpBucketsUpTo");
 	message["value"] = serde_json::json!({"#bigint":"-1"});
 	assert!(replay::document_trace(&trace).unwrap_err().contains("cleanup bucket out of"));
+}
+
+#[test]
+fn head_queue_rejection_works() {
+	replay::trace(include_str!("../fixtures/quint/host_mixed/head_queue_rejection_works.itf.json"))
+		.unwrap();
+}
+
+#[test]
+fn queue_capacity_recovery_works() {
+	replay::trace(include_str!(
+		"../fixtures/quint/host_mixed/queue_capacity_recovery_works.itf.json"
+	))
+	.unwrap();
+}
+
+#[test]
+fn failed_head_oracle_errors() {
+	let mut trace: serde_json::Value = serde_json::from_str(include_str!(
+		"../fixtures/quint/host_mixed/head_queue_rejection_works.itf.json"
+	))
+	.unwrap();
+	trace["states"][1]["replayHostFailedHeads"] = serde_json::json!([]);
+	assert!(replay::document_trace(&trace).unwrap_err().contains("parent_head_continuity"));
 }

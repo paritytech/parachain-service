@@ -409,8 +409,8 @@ fn storage_generated_works() {
 				let pair = failure["#tup"].as_array().unwrap();
 				let report = super::itf::replay::integer(&pair[0]).unwrap() as usize;
 				let message = super::itf::replay::integer(&pair[1]).unwrap() as usize;
-				let msg = &frame["lastStepWorkResults"][report]["result"]["value"]["value"]
-					["upwardMessages"][message];
+				let msg = &frame["lastStepWorkResults"][report]["result"]["value"]["value"]["upwardMessages"]
+					[message];
 				let tag = msg["tag"].as_str().unwrap();
 				let kind = if tag == "ParachainSetStateBalance" {
 					let target = &msg["value"]["paraId"];
@@ -419,11 +419,7 @@ fn storage_generated_works() {
 						.unwrap()
 						.iter()
 						.any(|entry| &entry[0] == target);
-					if exists {
-						"balance"
-					} else {
-						"registration"
-					}
+					if exists { "balance" } else { "registration" }
 				} else {
 					tag
 				};
@@ -501,8 +497,10 @@ fn host_budget_generated_works() {
 			panic!("{error}; {}", path.display());
 		}
 	}
-	assert!(recovered && arrivals && skipped && resumed,
-  "host-budget coverage: recovered={recovered}, arrivals={arrivals}, skipped={skipped}, resumed={resumed}");
+	assert!(
+		recovered && arrivals && skipped && resumed,
+		"host-budget coverage: recovered={recovered}, arrivals={arrivals}, skipped={skipped}, resumed={resumed}"
+	);
 }
 
 #[test]
@@ -539,8 +537,10 @@ fn services_generated_works() {
 			panic!("{error}; {}", path.display());
 		}
 	}
-	assert!(created && interrupted_creation && refusals.len() == 5,
-		"service coverage: created={created}, checkpoint={interrupted_creation}, refusals={refusals:?}");
+	assert!(
+		created && interrupted_creation && refusals.len() == 5,
+		"service coverage: created={created}, checkpoint={interrupted_creation}, refusals={refusals:?}"
+	);
 }
 
 #[test]
@@ -633,8 +633,10 @@ fn panic_recovery_generated_works() {
 			panic!("{error}; {}", path.display());
 		}
 	}
-	assert!(stops.is_superset(&[0, 1, 2].into()) && retained_creation && zero_gas && resumed,
-        "panic coverage: stops={stops:?}, creation={retained_creation}, zero_gas={zero_gas}, resumed={resumed}");
+	assert!(
+		stops.is_superset(&[0, 1, 2].into()) && retained_creation && zero_gas && resumed,
+		"panic coverage: stops={stops:?}, creation={retained_creation}, zero_gas={zero_gas}, resumed={resumed}"
+	);
 }
 
 #[test]
@@ -686,7 +688,9 @@ fn pre_checkpoint_generated_works() {
 				credits |= incoming.iter().any(|t| t["amount"]["#bigint"] != "0");
 				let slot = replay::integer(&pair[1]["now"]).unwrap();
 				due |= pair[0]["svc"]["pendingAssignCores"]["#map"]
-					.as_array().unwrap().iter()
+					.as_array()
+					.unwrap()
+					.iter()
 					.any(|entry| replay::integer(&entry[1]).unwrap() <= slot);
 			}
 			resumed |= pair[0]["replayInterrupt"]["#bigint"] == "-2" &&
@@ -715,14 +719,17 @@ fn final_checkpoint_generated_works() {
 		let seed = envelope["seed"].as_str().unwrap().parse().unwrap();
 		super::instruction_gas::sample(&mut envelope["trace"], seed);
 		for pair in envelope["trace"]["states"].as_array().unwrap().windows(2) {
-			let final_checkpoint = |state: &Value| replay::integer(&state["replayInterrupt"]).unwrap() ==
-				state["lastStepWorkResults"].as_array().unwrap().len() as i128;
+			let final_checkpoint = |state: &Value| {
+				replay::integer(&state["replayInterrupt"]).unwrap() ==
+					state["lastStepWorkResults"].as_array().unwrap().len() as i128
+			};
 			if final_checkpoint(&pair[1]) {
 				failures += 1;
 				transfers |= !pair[1]["replayTransfers"].as_array().unwrap().is_empty();
 				creations |= !pair[1]["replayCreations"].as_array().unwrap().is_empty();
 			}
-			resumed |= final_checkpoint(&pair[0]) && pair[1]["replayInterrupt"]["#bigint"] == "-1" &&
+			resumed |= final_checkpoint(&pair[0]) &&
+				pair[1]["replayInterrupt"]["#bigint"] == "-1" &&
 				!pair[1]["lastStepWorkResults"].as_array().unwrap().is_empty();
 		}
 		if let Err(error) = replay::document_trace(&envelope["trace"]) {
@@ -730,8 +737,10 @@ fn final_checkpoint_generated_works() {
 			panic!("{error}; {}", path.display());
 		}
 	}
-	assert!(failures > 0 && transfers && creations && resumed,
-		"final-checkpoint coverage: failures={failures}, transfers={transfers}, creations={creations}, resumed={resumed}");
+	assert!(
+		failures > 0 && transfers && creations && resumed,
+		"final-checkpoint coverage: failures={failures}, transfers={transfers}, creations={creations}, resumed={resumed}"
+	);
 }
 
 #[test]
@@ -758,4 +767,38 @@ fn code_storage_generated_works() {
 	for site in ["registry", "solicit", "forced-metadata", "announcement"] {
 		assert!(failures.contains(site), "missing {site} rejection");
 	}
+}
+
+#[test]
+#[ignore = "requires Quint 0.32.0"]
+fn mixed_head_queue_generated_works() {
+	let mut head_recovery = false;
+	let mut queue_recovery = false;
+	let mut capacity = false;
+	let mut resumed = false;
+	for seed in [12, 21, 60] {
+		let stream = generator(seed, 1, 1, 15).output().expect("mixed queue generator");
+		assert!(stream.status.success());
+		let envelope: Value = serde_json::from_slice(&stream.stdout).unwrap();
+		for pair in envelope["trace"]["states"].as_array().unwrap().windows(2) {
+			let s = &pair[1];
+			let active = s["replayHostBudget"]["#bigint"] != "-1";
+			let recovery = s["replayInterrupt"]["#bigint"] != "-1";
+			head_recovery |=
+				active && recovery && !s["replayHostFailedHeads"].as_array().unwrap().is_empty();
+			queue_recovery |= active &&
+				recovery && !s["replayIncoming"].as_array().unwrap().is_empty() &&
+				s["svc"]["incomingTransfers"] == s["prevSvc"]["incomingTransfers"];
+			capacity |= active && s["replayIncoming"].as_array().unwrap().len() > 1024;
+			resumed |= pair[0]["replayHostBudget"]["#bigint"] != "-1" && !active;
+		}
+		if let Err(error) = replay::document_trace(&envelope["trace"]) {
+			let path = preserve(&envelope, &error).unwrap();
+			panic!("{error}; {}", path.display());
+		}
+	}
+	assert!(head_recovery, "missing failed head write with gas recovery");
+	assert!(queue_recovery, "missing failed queue write with gas recovery");
+	assert!(capacity, "missing arrivals beyond reserved queue capacity");
+	assert!(resumed, "missing ordinary invocation after a mixed host budget");
 }
