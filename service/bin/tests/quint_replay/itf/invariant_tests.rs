@@ -457,3 +457,21 @@ fn deregistering_heads_works() {
 		assert!(error.contains("parent_head_continuity"), "{error}");
 	}
 }
+
+#[test]
+fn assignment_rollback_watermark_works() {
+	let (mut storage, mut codex, mut frame) = seeded();
+	set_state(&mut storage, &storage_key(Tag::PendingAssignCores, &()), &vec![(1u16, 10u32)]);
+	set_state(
+		&mut storage,
+		&storage_key(Tag::PendingAssigns, &1u16),
+		&PendingAssign { queue: vec![[0; 32]], assigner: None },
+	);
+	frame["now"] = json!({"#bigint": "20"});
+	state_at(&storage, &frame, &mut codex, 42, 5).unwrap();
+	assert!(
+		state_at(&storage, &frame, &mut codex, 42, 10)
+			.unwrap_err()
+			.contains("pending_authorizer_apply_at_future")
+	);
+}

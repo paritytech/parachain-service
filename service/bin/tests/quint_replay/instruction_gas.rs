@@ -105,6 +105,11 @@ pub fn sample(trace: &mut Value, seed: u64) -> usize {
 	let mut count = 0;
 	for state in trace["states"].as_array_mut().unwrap() {
 		random = random.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+		if state["replayInterrupt"]["#bigint"] == "-2" {
+			state["replayGasSample"] = json!({"#bigint": ((random >> 33) % 1_000_001).to_string()});
+			count += 1;
+			continue;
+		}
 		if state["replayPanic"] != true || (random >> 32) % 2 == 0 {
 			continue;
 		}

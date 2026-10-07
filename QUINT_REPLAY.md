@@ -9,10 +9,12 @@ refusals. Creation checks include the
 new account and its code request. Upgrade checks
 verify installed code and gas settings; subsequent invocations execute that code.
 Quint supplies work results; Rust Refine is not executed. Recovery coverage
-includes sampled invocation gas cutoffs inside reports, transfer-induced
+includes sampled invocation gas cutoffs before the first checkpoint and inside reports, transfer-induced
 out-of-gas, and explicit malformed-digest faults that trigger real Accumulate
 panics in the PVM. Gas calibration observes host-call order; expected state and
-effects still come from Quint’s predetermined report prefix.
+effects still come from Quint’s predetermined recovery oracle. Before the first
+checkpoint, only incoming funds credited by JAM survive; due assignments and
+incoming-queue writes roll back. Later invocations retry from the recovered state.
 
 - [Fixture guide](service/bin/tests/fixtures/quint/README.md): regeneration,
   coverage, and adapter limitations.

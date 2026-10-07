@@ -116,15 +116,17 @@ The expected prefix is unchanged: that report contributes no model effects.
 Other panic frames still exercise the production decoder's trap path.
 
 Optional replay fields select the invocation gas pool independently of report
-budgets (omit all three for the mock's default pool):
+budgets (omit all three for the mock's default pool, except `replayInterrupt = -2`
+which defaults to a midpoint sample):
 
 | Field | Meaning |
 | --- | --- |
 | `replayInvocationGas` | Exact nonnegative gas limit, at most `i64::MAX`, as an ITF integer |
-| `replayGasSample` | ITF integer from 0 to 1000000, selecting a position within the interrupted report's gas interval |
-| `replayGasBoundary` | `before:write`, `after:write`, `before:new`, `after:new`, `before:transfer`, or `after:transfer`; uses the first matching host call in the interrupted report |
+| `replayGasSample` | ITF integer from 0 to 1000000, selecting a position within the interrupted phase's gas interval |
+| `replayGasBoundary` | `before:write`, `after:write`, `before:new`, `after:new`, `before:transfer`, `after:transfer`, `before:assign`, or `after:assign`; uses the first matching host call in the selected phase |
 
-Sampling and boundary selection require `replayInterrupt`, `WorkOk` reports
+Sampling and boundary selection require `replayInterrupt` (`-2` for pre-checkpoint,
+otherwise the interrupted report index), `WorkOk` reports
 with unlimited report budgets, and no panic injection. A discarded execution with the default gas pool
 records host-call attempts through the pinned host's trace logger. Gas-only
 binary searches locate the interval after the selected checkpoint completes and
@@ -145,9 +147,26 @@ both sides of write, creation, and transfer calls, followed by normal work.
 `fuzz::instruction_gas_generated_works` checks all three report positions and
 subsequent work in mixed generated traces. This samples gas at the interpreter's
 metering granularity; it does not exhaustively visit every instruction. Exhaustion
-before the first checkpoint and after the final report checkpoint is outside the
-sampled profile. Explicit gas limits that fail before any checkpoint are rejected
-because this profile's Quint oracle includes the always-accumulate phase.
+after the final report checkpoint remains outside the sampled profile.
+
+The general campaign also generates `preCheckpointBlock` frames, marked by
+`replayInterrupt = -2`. Their independent oracle in `invocation_inputs.qnt`
+retains only JAM's incoming balance credits: all guest storage writes, due
+assignments, logs, and queued incoming records roll back. The worker decorates
+these frames with random gas samples; raw Quint traces default to sample 500000.
+Calibration selects gas from zero through the last cutoff before the first
+checkpoint attempt, and the final run must have no guest snapshot. It never
+selects an oracle by inspecting recovered state. Explicit limits remain subject
+to the same failure and snapshot checks.
+
+`pre_checkpoint.qnt` covers due assignments, zero and nonzero incoming credits,
+repeated exhaustion, empty invocations, and successful retries. Tests sample five
+positions and both sides of assignment and incoming write calls. Mutation tests
+reject lost credits and retained queue/assignment effects. The generated
+`fuzz::pre_checkpoint_generated_works` regression checks mixed recovery and
+resumption across 20 seeds and 800 transitions. The pending-assignment timing
+invariant uses the last completed always-accumulate slot, including across
+external provision steps following rollback; other state checks remain active.
 
 | Area | Sampled inputs |
 | --- | --- |

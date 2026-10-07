@@ -8,7 +8,7 @@ module gas_inputs {
   import accumulate.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/accumulate"
   import host_metadata.* from "./host_metadata"
   var replayGasLimits: List[int]
-  // -1 means normal completion; otherwise this report interrupts the invocation.
+  // -2 fails before the first checkpoint; -1 completes; >= 0 interrupts that report.
   var replayInterrupt: int
   // Inject an undecodable work digest at replayInterrupt to trigger a real PVM trap.
   var replayPanic: bool

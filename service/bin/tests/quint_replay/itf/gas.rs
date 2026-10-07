@@ -3,11 +3,15 @@ use super::replay::*;
 use jam_types::AccumulateItem;
 use serde_json::Value;
 
+pub fn before_checkpoint(frame: &Value) -> Result<bool, String> {
+	Ok(frame.get("replayInterrupt").map(integer).transpose()? == Some(-2))
+}
+
 pub fn interrupted(frame: &Value) -> Result<Option<usize>, String> {
 	match frame.get("replayInterrupt") {
 		None => Ok(None),
 		Some(value) => match integer(value)? {
-			-1 => Ok(None),
+			-2 | -1 => Ok(None),
 			n => Ok(Some(usize::try_from(n).map_err(|_| "invalid replayInterrupt")?)),
 		},
 	}
@@ -72,7 +76,8 @@ pub fn effective(frame: &Value) -> Result<Value, String> {
 		.as_array()
 		.ok_or("work results must be a list")?;
 	let limits = limits(frame, results.len())?;
-	let end = interrupted(frame)?.unwrap_or(results.len());
+	let end =
+		if before_checkpoint(frame)? { 0 } else { interrupted(frame)?.unwrap_or(results.len()) };
 	let mut applied = Vec::new();
 	for (i, result) in results.iter().enumerate().take(end) {
 		if limits[i] >= cost(result)? {

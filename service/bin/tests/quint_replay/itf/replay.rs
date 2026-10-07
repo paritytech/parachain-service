@@ -35,7 +35,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 	super::services::validate(states)?;
 	let mut created_accounts = Default::default();
 	let first = states.first().ok_or("trace has no states")?;
-	if super::instruction_gas::enabled(first) {
+	if super::instruction_gas::enabled(first) || super::gas::before_checkpoint(first)? {
 		return Err("initial frame cannot specify invocation gas".into());
 	}
 	let gas_profile = first.get("replayGasLimits").is_some();
@@ -76,6 +76,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 	super::outgoing::compare(first, &jam_node::vm::StateMutations::new(0), 0)?;
 	super::outgoing::balances(&storage, first, 0)?;
 	let mut privileges = super::assignments::initial_privileges(storage.clone());
+	let mut settled_slot = bounded_integer::<u32>(field(first, "now")?, "now")?;
 
 	for (index, pair) in states.windows(2).enumerate() {
 		let frame = index + 1;
@@ -84,14 +85,15 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 		let mut output = None;
 		let mut host_offset = None;
 		let kind = classify(&pair[0], &pair[1])?;
-		if super::instruction_gas::enabled(&pair[1]) &&
+		if (super::instruction_gas::enabled(&pair[1]) || super::gas::before_checkpoint(&pair[1])?) &&
 			!matches!(kind, FrameKind::Block | FrameKind::IncomingTransfer)
 		{
 			return Err("invocation gas requires an invocation frame".into());
 		}
 		match kind {
 			FrameKind::Noop => {
-				if let Err(error) = super::invariants::state(&storage, &pair[1], &mut codex, frame)
+				if let Err(error) =
+					super::invariants::state_at(&storage, &pair[1], &mut codex, frame, settled_slot)
 				{
 					invariant_errors.push(error);
 				}
@@ -188,10 +190,17 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 				storage = next;
 			},
 		}
+		if matches!(kind, FrameKind::Block | FrameKind::IncomingTransfer) &&
+			!super::gas::before_checkpoint(&pair[1])?
+		{
+			settled_slot = bounded_integer(field(&pair[1], "now")?, "now")?;
+		}
 		super::host_budget::finish(&mut storage, &pair[1], host_offset, frame)?;
 		compare::state(&storage, &pair[1], &mut codex, frame)?;
 		super::storage_budget::compare(&storage, &pair[1], frame)?;
-		if let Err(error) = super::invariants::state(&storage, &pair[1], &mut codex, frame) {
+		if let Err(error) =
+			super::invariants::state_at(&storage, &pair[1], &mut codex, frame, settled_slot)
+		{
 			invariant_errors.push(error);
 		}
 		if let Some((yielded, mutations)) = output {
@@ -555,10 +564,17 @@ pub(super) fn accumulate_block_recovery(
 		if !result.as_ref().is_err_and(|error| format!("{error:?}") == expected) {
 			return Err(format!("expected checkpoint {expected}, got {result:?}"));
 		}
-		if context.snapshot.is_none() {
+		let before_checkpoint =
+			frame.map(super::gas::before_checkpoint).transpose()?.unwrap_or(false);
+		if before_checkpoint && context.snapshot.is_some() {
+			return Err("expected exhaustion before the first checkpoint".into());
+		}
+		if !before_checkpoint && context.snapshot.is_none() {
 			return Err(format!("{expected} before any checkpoint"));
 		}
 		// Match JAM's nonfatal failure path, including host effects.
+		// incoming_items committed the scheduler's prior credits, so the
+		// no-snapshot rollback preserves them while discarding guest writes.
 		context.revert_changes();
 		context.mutations.yielded
 	} else {

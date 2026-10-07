@@ -67,4 +67,21 @@ module invocation_inputs {
         (m, pair) => m.put(pair._1, pair._2))
     }
   }
+  // Failure before the service's first checkpoint rolls back every guest
+  // mutation, including due assigns and queue writes. JAM's prior credits stay.
+  action preCheckpointInvocation(packages: List[WorkResult], slot: Timeslot,
+    incoming: List[IncomingTransfer]): bool = all {
+    noHostBudget,
+    svc' = { ...svc, jamAccount: incoming.foldl(svc.jamAccount,
+      (account, t) => account.credit(t.amount, t.toSupervisorBalance)) },
+    foreignServices' = foreignServices, prevSvc' = svc, now' = slot,
+    solicitedSet' = solicitedSet, jamStagingSet' = jamStagingSet,
+    logPrunedBelow' = logPrunedBelow,
+    lastStepWorkResults' = packages, lastStepAssigns' = List(), lastHeadRoot' = None,
+    replayIncoming' = incoming, replayInterrupt' = -2, replayPanic' = false,
+    replayGasLimits' = packages.foldl(List(), (limits, _) => limits.append(UnlimitedGas)),
+    replayDesignate' = List(), replayTransfers' = List(), replayCreations' = List(),
+    keepUpgradeGas
+  }
+
 }

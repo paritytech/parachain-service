@@ -335,7 +335,19 @@ module fuzz {
     hostBlockAt(allowance, count, gasMode, stop, first, second)
   }
 
+  action preCheckpointBlock = {
+    nondet count = oneOf(Set(0, 1, 3))
+    nondet amount = oneOf(Set(0, 1, 1000))
+    nondet reports = oneOf(Set(false, true))
+    val wr = replayWork(svc, AssetHubParaId, svc.paraInfo(AssetHubParaId).headData,
+      activeCodeCandidate(svc, AssetHubParaId), 0, now, 0, List())
+    preCheckpointInvocation(if (reports) List(wr) else List(), now + 1,
+      range(0, count).foldl(List(), (list, i) => list.append({
+        source: MkServiceId(7), amount: amount, toSupervisorBalance: false, memo: i })))
+  }
+
   action replayStep = any {
+    preCheckpointBlock,
     servicesBlock,
     hostBlock,
     checkpointBlock,

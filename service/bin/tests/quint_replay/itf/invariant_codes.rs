@@ -62,7 +62,11 @@ impl Eligibility {
 		let results =
 			field(frame, "lastStepWorkResults")?.as_array().ok_or("expected work results")?;
 		let limits = gas::limits(frame, results.len())?;
-		let end = gas::interrupted(frame)?.unwrap_or(results.len());
+		let end = if gas::before_checkpoint(frame)? {
+			0
+		} else {
+			gas::interrupted(frame)?.unwrap_or(results.len())
+		};
 		let mut changed = false;
 		let mut effective_index = 0;
 		for (index, result) in results.iter().enumerate().take(end) {

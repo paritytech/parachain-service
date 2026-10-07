@@ -86,6 +86,19 @@ pub fn state(
 	frame: usize,
 ) -> Result<(), String> {
 	let now = bounded_integer::<u32>(field(current, "now")?, "now")?;
+	state_at(storage, current, codex, frame, now)
+}
+
+/// Due assignments must be in the future relative to the last completed
+/// always-accumulate phase. Rollback (and later external provision) cannot
+/// advance this watermark; all other state predicates still run normally.
+pub fn state_at(
+	storage: &Storage,
+	current: &Value,
+	codex: &mut Codex,
+	frame: usize,
+	now: u32,
+) -> Result<(), String> {
 	let mut paras = BTreeMap::new();
 	for p in codex.paras() {
 		if let Some(info) = read::<ParaInfo>(storage, &storage_key(Tag::Parachains, &p))? {

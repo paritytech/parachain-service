@@ -290,7 +290,7 @@ fn stream_matches_cli_works() {
 fn validator_keys_generated_works() {
 	// A pinned seed that reaches a successful designation through replayStep,
 	// guarding against accidentally removing keys or their effect from fuzzing.
-	let stream = generator(418927, 1, 1, 50).output().expect("stream generator");
+	let stream = generator(5236461, 1, 1, 50).output().expect("stream generator");
 	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
 	let envelope: Value = serde_json::from_slice(&stream.stdout).expect("stream envelope");
 	let trace = &envelope["trace"];
@@ -324,7 +324,7 @@ fn outgoing_generated_works() {
 #[test]
 #[ignore = "checks generated service-upgrade coverage; requires Node and Quint 0.32.0"]
 fn service_upgrade_generated_works() {
-	let stream = generator(8, 1, 1, 50).output().expect("stream generator");
+	let stream = generator(523656, 1, 1, 50).output().expect("stream generator");
 	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
 	let envelope: Value = serde_json::from_slice(&stream.stdout).expect("stream envelope");
 	let trace = &envelope["trace"];
@@ -358,7 +358,7 @@ fn mixed_generated_works() {
 #[test]
 #[ignore = "checks gas and checkpoint coverage; requires Node and Quint 0.32.0"]
 fn gas_generated_works() {
-	let stream = generator(1, 1, 10, 30).output().expect("stream generator");
+	let stream = generator(1, 1, 20, 30).output().expect("stream generator");
 	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
 	let mut stops = std::collections::BTreeSet::new();
 	let mut rejected = false;
@@ -511,7 +511,7 @@ fn services_generated_works() {
 	let mut interrupted_creation = false;
 	let mut refusals = std::collections::BTreeSet::new();
 	// Fixed seeds reach creation recovery and all five reachable refusal classes.
-	for seed in [523656, 837843, 4608087] {
+	for seed in [31, 3665526] {
 		let stream = generator(seed, 1, 1, 50).output().expect("service generator");
 		assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
 		let line = String::from_utf8(stream.stdout).unwrap();
@@ -545,7 +545,7 @@ fn services_generated_works() {
 #[test]
 #[ignore = "checks service preimage refusals in default replay fuzzing; requires Node and Quint 0.32.0"]
 fn service_preimages_generated_works() {
-	let stream = generator(11, 104729, 3, 50).output().expect("service preimage generator");
+	let stream = generator(2, 6, 2, 50).output().expect("service preimage generator");
 	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
 	let mut refusals = std::collections::BTreeSet::new();
 	for line in stream.stdout.split(|b| *b == b'\n').filter(|line| !line.is_empty()) {
@@ -575,8 +575,8 @@ fn service_preimages_generated_works() {
 #[ignore = "checks service management refusals in default replay fuzzing; requires Node and Quint 0.32.0"]
 fn service_management_generated_works() {
 	let mut refusals = std::collections::BTreeSet::new();
-	// This seed reaches both store errors and all three handoff errors.
-	for seed in [523656] {
+	// These seeds reach both store errors and all three handoff errors.
+	for seed in [31, 5] {
 		let stream = generator(seed, 1, 1, 50).output().expect("service management generator");
 		assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
 		for line in stream.stdout.split(|b| *b == b'\n').filter(|line| !line.is_empty()) {
@@ -639,7 +639,7 @@ fn panic_recovery_generated_works() {
 #[test]
 #[ignore = "checks sampled instruction gas in mixed traces; requires Node and Quint 0.32.0"]
 fn instruction_gas_generated_works() {
-	let stream = generator(1, 1, 10, 30).output().expect("instruction gas generator");
+	let stream = generator(11, 104729, 12, 30).output().expect("instruction gas generator");
 	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
 	let mut stops = std::collections::BTreeSet::new();
 	let mut resumed = false;
@@ -663,5 +663,42 @@ fn instruction_gas_generated_works() {
 	assert!(
 		stops.is_superset(&[0, 1, 2].into()) && resumed,
 		"instruction gas coverage: reports={stops:?}, resumed={resumed}"
+	);
+}
+
+#[test]
+#[ignore = "checks pre-checkpoint gas recovery in mixed traces; requires Node and Quint 0.32.0"]
+fn pre_checkpoint_generated_works() {
+	let stream = generator(1, 1, 20, 40).output().expect("pre-checkpoint generator");
+	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
+	let (mut failures, mut credits, mut empty, mut due, mut resumed) =
+		(0, false, false, false, false);
+	for line in stream.stdout.split(|b| *b == b'\n').filter(|line| !line.is_empty()) {
+		let mut envelope: Value = serde_json::from_slice(line).unwrap();
+		let seed = envelope["seed"].as_str().unwrap().parse().unwrap();
+		super::instruction_gas::sample(&mut envelope["trace"], seed);
+		for pair in envelope["trace"]["states"].as_array().unwrap().windows(2) {
+			if pair[1]["replayInterrupt"]["#bigint"] == "-2" {
+				failures += 1;
+				let incoming = pair[1]["replayIncoming"].as_array().unwrap();
+				empty |= incoming.is_empty();
+				credits |= incoming.iter().any(|t| t["amount"]["#bigint"] != "0");
+				let slot = replay::integer(&pair[1]["now"]).unwrap();
+				due |= pair[0]["svc"]["pendingAssignCores"]["#map"]
+					.as_array().unwrap().iter()
+					.any(|entry| replay::integer(&entry[1]).unwrap() <= slot);
+			}
+			resumed |= pair[0]["replayInterrupt"]["#bigint"] == "-2" &&
+				pair[1]["replayInterrupt"]["#bigint"] == "-1" &&
+				!pair[1]["lastStepWorkResults"].as_array().unwrap().is_empty();
+		}
+		if let Err(error) = replay::document_trace(&envelope["trace"]) {
+			let path = preserve(&envelope, &error).unwrap();
+			panic!("{error}; {}", path.display());
+		}
+	}
+	assert!(
+		failures > 0 && credits && empty && due && resumed,
+		"pre-checkpoint coverage: failures={failures}, credits={credits}, empty={empty}, due={due}, resumed={resumed}"
 	);
 }

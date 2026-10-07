@@ -1,7 +1,7 @@
 //! Locate instruction cutoffs using host-call order, never recovered state.
 //!
-//! Quint has already chosen the report prefix. A successful, discarded run and
-//! gas-only probes locate that report's interval in the unchanged production VM.
+//! Quint has already chosen the recovery phase and report prefix. A successful,
+//! discarded run and gas-only probes locate its interval in the production VM.
 //! The final run must still match every Quint state/effect assertion.
 use std::{cell::RefCell, sync::OnceLock};
 
@@ -125,7 +125,8 @@ pub fn limit(
 	if [absolute, sample, boundary].iter().filter(|v| v.is_some()).count() > 1 {
 		return Err("choose one invocation gas limit, sample, or boundary".into());
 	}
-	if absolute.is_none() && sample.is_none() && boundary.is_none() {
+	let before_checkpoint = gas::before_checkpoint(frame)?;
+	if !before_checkpoint && absolute.is_none() && sample.is_none() && boundary.is_none() {
 		return Ok(context.gas);
 	}
 	if frame.get("replayPanic") == Some(&Value::Bool(true)) {
@@ -138,8 +139,11 @@ pub fn limit(
 		}
 		return Ok(limit);
 	}
-	let stop =
-		gas::interrupted(frame)?.ok_or("instruction gas sampling requires replayInterrupt")?;
+	let stop = if before_checkpoint {
+		0
+	} else {
+		gas::interrupted(frame)?.ok_or("instruction gas sampling requires replayInterrupt")?
+	};
 	let results = field(frame, "lastStepWorkResults")?.as_array().ok_or("missing work results")?;
 	let limits = gas::limits(frame, results.len())?;
 	// Sampling currently supports valid, admitted reports. Rejected reports
@@ -165,18 +169,18 @@ pub fn limit(
 			checkpoints.len()
 		));
 	}
-	let start = checkpoints[stop] + 1;
-	let end = checkpoints[stop + 1];
+	let start = if before_checkpoint { 0 } else { checkpoints[stop] + 1 };
+	let end = if before_checkpoint { checkpoints[0] } else { checkpoints[stop + 1] };
 	let index = if let Some(boundary) = boundary {
 		let name = boundary.as_str().ok_or("gas boundary must be a string")?;
 		let (side, call) =
 			name.split_once(':').ok_or("gas boundary must be before:call or after:call")?;
-		if !matches!(call, "write" | "new" | "transfer") {
+		if !matches!(call, "write" | "new" | "transfer" | "assign") {
 			return Err("unsupported gas boundary call".into());
 		}
 		let index = (start..end)
 			.find(|&i| events[i] == call)
-			.ok_or("gas boundary call absent from report")?;
+			.ok_or("gas boundary call absent from selected phase")?;
 		match side {
 			"before" => Some((index, false)),
 			"after" if index + 1 < end => Some((index + 1, true)),
@@ -187,26 +191,40 @@ pub fn limit(
 	};
 	let limit = if let Some((index, after)) = index {
 		let threshold = threshold(engine, context, &events, index, used)?;
-		if after { threshold } else { threshold.checked_sub(1).ok_or("empty gas boundary")? }
+		if after {
+			threshold
+		} else {
+			threshold.checked_sub(1).ok_or("empty gas boundary")?
+		}
 	} else {
-		let sample = bounded_integer::<u32>(sample.unwrap(), "gas sample")?;
+		let sample = sample
+			.map(|v| bounded_integer::<u32>(v, "gas sample"))
+			.transpose()?
+			.unwrap_or(500_000);
 		if sample > 1_000_000 {
 			return Err("gas sample must be between 0 and 1000000".into());
 		}
-		let lo = threshold(engine, context, &events, start, used)?;
+		let lo =
+			if before_checkpoint { 0 } else { threshold(engine, context, &events, start, used)? };
 		let hi = threshold(engine, context, &events, end, used)?
 			.checked_sub(1)
-			.ok_or("empty report gas interval")?;
+			.ok_or("empty phase gas interval")?;
 		if lo > hi {
-			return Err("empty report gas interval".into());
+			return Err("empty phase gas interval".into());
 		}
 		lo + ((u128::from(hi - lo) * u128::from(sample)) / 1_000_000) as u64
 	};
 	// This validation depends only on execution order. Never accept a different
 	// checkpoint because its recovered state happens to match the oracle.
 	let (actual, _, completed) = probe(engine, context, limit)?;
-	if completed || actual.len() <= start || actual.len() > end || !events.starts_with(&actual) {
-		return Err(format!("gas {limit} did not interrupt the predetermined report {stop}"));
+	if completed ||
+		(!before_checkpoint && actual.len() <= start) ||
+		actual.len() > end ||
+		!events.starts_with(&actual)
+	{
+		return Err(format!(
+			"gas {limit} did not interrupt the predetermined phase (before_checkpoint={before_checkpoint}, report={stop})"
+		));
 	}
 	Ok(limit)
 }

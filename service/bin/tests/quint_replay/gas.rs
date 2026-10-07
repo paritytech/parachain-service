@@ -61,7 +61,7 @@ fn invalid_metadata_errors() {
 		("replayGasLimits", json!([{"#bigint":"1"}]), "length"),
 		("replayGasLimits", json!([{"#bigint":"-1"}, {"#bigint":"0"}, {"#bigint":"0"}]), "range"),
 		("replayInterrupt", json!({"#bigint":"3"}), "outside"),
-		("replayInterrupt", json!({"#bigint":"-2"}), "invalid"),
+		("replayInterrupt", json!({"#bigint":"-3"}), "invalid"),
 		("replayInterrupt", json!({"#bigint":"-1"}), "out of gas"),
 	] {
 		let mut bad = trace.clone();

@@ -7,10 +7,10 @@ See [QUINT_REPLAY.md](QUINT_REPLAY.md) and the
 
 ## Priority 1: recovery and storage failures
 
-- [ ] TODO: Fuzz invocation gas exhaustion before the first checkpoint, including
-  due assignments and incoming-transfer processing. Extend the Quint recovery
-  oracle to predict this phase's rollback and retained effects independently of
-  PVM execution. Check subsequent invocations from recovered state.
+- [x] Fuzz invocation gas exhaustion before the first checkpoint, including due
+  assignments and incoming-transfer processing. The independent Quint oracle
+  retains scheduler credits and rolls back guest state and effects. Deterministic
+  boundaries and mixed campaigns check subsequent invocations from recovered state.
 - [ ] TODO: Fuzz exhaustion after the final report checkpoint, including final
   persistence and commitment handling. Check checkpoint-retained effects and the
   invocation outcome.

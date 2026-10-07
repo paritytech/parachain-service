@@ -5,6 +5,12 @@ use serde_json::Value;
 
 pub fn expected(frame: &Value) -> Result<Option<&'static str>, String> {
 	let panic = frame.get("replayPanic").map(boolean).transpose()?.unwrap_or(false);
+	if gas::before_checkpoint(frame)? {
+		if panic {
+			return Err("pre-checkpoint gas and panic injection cannot be combined".into());
+		}
+		return Ok(Some("NotEnoughGas"));
+	}
 	match (gas::interrupted(frame)?, panic) {
 		(None, false) => Ok(None),
 		(None, true) => Err("replayPanic requires replayInterrupt".into()),
