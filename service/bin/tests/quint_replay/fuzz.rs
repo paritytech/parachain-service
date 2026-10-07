@@ -390,11 +390,12 @@ fn gas_generated_works() {
 #[test]
 #[ignore = "requires Quint 0.32.0"]
 fn storage_generated_works() {
-	let stream = generator_profile("storage", 1, 1, 10, 30).output().expect("storage generator");
+	let stream = generator_profile("storage", 1, 1, 30, 50).output().expect("storage generator");
 	assert!(stream.status.success());
 	let mut reasons = std::collections::BTreeSet::new();
 	let mut failed_heads = false;
 	let mut failed_queue = false;
+	let mut rejected_writes = std::collections::BTreeSet::new();
 	for line in String::from_utf8(stream.stdout).unwrap().lines() {
 		let envelope: Value = serde_json::from_str(line).unwrap();
 		for frame in envelope["trace"]["states"].as_array().unwrap() {
@@ -403,6 +404,30 @@ fn storage_generated_works() {
 			// Nonempty arrivals with no queue change therefore indicate a host rejection.
 			failed_queue |= !frame["replayIncoming"].as_array().unwrap().is_empty() &&
 				frame["svc"]["incomingTransfers"] == frame["prevSvc"]["incomingTransfers"];
+			for failure in frame["replayFailedMessages"].as_array().unwrap() {
+				let pair = failure["#tup"].as_array().unwrap();
+				let report = super::itf::replay::integer(&pair[0]).unwrap() as usize;
+				let message = super::itf::replay::integer(&pair[1]).unwrap() as usize;
+				let msg = &frame["lastStepWorkResults"][report]["result"]["value"]["value"]
+					["upwardMessages"][message];
+				let tag = msg["tag"].as_str().unwrap();
+				let kind = if tag == "ParachainSetStateBalance" {
+					let target = &msg["value"]["paraId"];
+					let exists = frame["prevSvc"]["parachains"]["#map"]
+						.as_array()
+						.unwrap()
+						.iter()
+						.any(|entry| &entry[0] == target);
+					if exists {
+						"balance"
+					} else {
+						"registration"
+					}
+				} else {
+					tag
+				};
+				rejected_writes.insert(kind.to_owned());
+			}
 			for entry in frame["replayStorageLogs"].as_array().unwrap() {
 				for reason in entry["#tup"][1].as_array().unwrap() {
 					reasons.insert(reason["tag"].as_str().unwrap().to_owned());
@@ -414,6 +439,20 @@ fn storage_generated_works() {
 			panic!("{error}; {}", path.display());
 		}
 	}
+	assert_eq!(
+		rejected_writes,
+		[
+			"balance",
+			"registration",
+			"ParachainSetHead",
+			"SetValidatorKeys",
+			"ParachainSetValidationCode"
+		]
+		.into_iter()
+		.map(str::to_owned)
+		.collect(),
+		"metadata rejection coverage"
+	);
 	assert!(failed_heads, "campaign must reject a head write");
 	assert!(failed_queue, "campaign must reject a queue write");
 	assert_eq!(reasons, std::collections::BTreeSet::from(["KVWrite".to_owned()]));
