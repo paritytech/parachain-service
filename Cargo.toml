@@ -121,6 +121,12 @@ debug = false
 debug-assertions = false
 overflow-checks = false
 
+# Production optimizations with correctness checks retained for fuzzing.
+[profile.production-fuzz]
+inherits = "production"
+debug-assertions = true
+overflow-checks = true
+
 # Authorizer blobs have a hard 64 kB ceiling (`C_maxauthcodesize`) and 50 M gas for one call;
 # service blobs have 4 MB and gas that is actually under pressure. So they are optimised for
 # different things, and each authorizer crate names this profile in its own
