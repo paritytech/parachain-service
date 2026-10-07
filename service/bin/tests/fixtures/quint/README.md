@@ -164,7 +164,9 @@ out-of-gas. See [FUZZING.md](FUZZING.md) for the replay-only gas model and limit
 
 `storage.qnt` provides host backstop fixtures: head and KV rejection, incoming
 bucket and endpoint failures, cleanup of earlier buckets, credit and write
-boundaries, and recovery on later reports/invocations. `storage_inputs.qnt`
+boundaries, and recovery on later reports/invocations. Metadata fixtures add
+registration, compact-encoded balance growth, forced head/code writes, validator
+staging boundaries, retained reference charges, abort refunds, and retries. `storage_inputs.qnt`
 is a replay-only extension for the host deposit check. Failed head and queue
 writes emit no parachain log; KV failures retain the spec's `SetKV` reason. `storage_fuzz.qnt` samples these inputs through
 the regular streaming replay harness; see [FUZZING.md](FUZZING.md).

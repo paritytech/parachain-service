@@ -234,7 +234,9 @@ Run `QUINT_FUZZ_PROFILE=storage just quint-fuzz` (or set that variable on the
 campaign command above). This uses `storage_fuzz.qnt` and the same streaming
 workers, PVM replay, failure artifacts, and invariant checks. The ignored
 `fuzz::storage_generated_works` regression asserts rejection coverage across
-10 seeds and 300 transitions.
+30 seeds and 1500 transitions, requiring registration, balance growth, forced
+head/code updates, and validator staging rejections as well as head/KV/queue
+failures.
 
 Before each invocation, an explicit environment input sets the actual JAM
 balance to the current host threshold plus a sampled allowance. Incoming
@@ -252,9 +254,22 @@ competing or chained parents, empty/eight-byte heads, and KV values of 1, 63,
 KV charge rollback, bucket/endpoint rejection and cleanup, log write rejection,
 and subsequent reports and invocations. Deterministic fixtures also reject a
 second incoming bucket after the first was written. Storage/domain invariants
-remain enabled; leaked buckets are failures. The profile currently excludes
-other upward messages, gas interruptions, and transfers above the reserved
-queue capacity.
+remain enabled; leaked buckets are failures.
+
+The same profile also samples `storage_metadata_inputs.qnt` actions for registration,
+state-balance updates across a SCALE compact-encoding boundary, forced heads,
+forced validation code, and validator staging/aborts. Quint supplies the proposed
+state; independent SCALE/JAM footprint arithmetic decides whether the host write
+fits. Failed metadata writes produce no allowance log. Forced-code inputs fund
+the reference acquisition but can reject the final metadata write, checking that
+the reference and charge survive. Deterministic traces pin exact deposit boundaries,
+retention of nonempty staging, the 63-to-64-key compact-length transition, partial
+message effects, refunds, and successful retries. Failure metadata qualifies the
+head-transition invariant; full state and free-balance comparisons still apply.
+
+The profile excludes other upward messages, nonempty validator finalization,
+failures during forced-code reference acquisition, gas interruptions, and
+transfers above reserved queue capacity.
 
 ## Creation, ejection, and service preimages
 
