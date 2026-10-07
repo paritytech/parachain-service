@@ -21,9 +21,10 @@ See [QUINT_REPLAY.md](QUINT_REPLAY.md) and the
   validation code now have deterministic and generated replay coverage. Checks
   include retained state, partial effects, no removed allowance reasons, exact
   deposit boundaries, refunds, and retries.
-- [ ] TODO: Extend storage-failure coverage to code announcements and failure
-  sites during forced-code reference acquisition. The forced-code profile
-  currently funds acquisition and tests rejection of the final metadata write.
+- [x] Extend storage-failure coverage to code announcements and forced-code
+  reference acquisition. The `code_storage` profile checks charge rollback and registry
+  rejection, real JAM solicit failure with checkpoint recovery, final metadata
+  rejection, exact boundaries, shared references, and retries.
 - [ ] TODO: Mix head and incoming-queue write failures with general campaign
   actions and gas recovery. These failures currently have a separate storage
   profile, which excludes other upward messages, gas interruptions, and arrivals

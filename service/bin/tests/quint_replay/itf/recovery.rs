@@ -5,6 +5,13 @@ use serde_json::Value;
 
 pub fn expected(frame: &Value) -> Result<Option<&'static str>, String> {
 	let panic = frame.get("replayPanic").map(boolean).transpose()?.unwrap_or(false);
+	let host_trap = frame.get("replayHostTrap").map(boolean).transpose()?.unwrap_or(false);
+	if host_trap {
+		if panic || gas::before_checkpoint(frame)? || gas::interrupted(frame)?.is_none() {
+			return Err("host trap requires an interrupted report without fault injection".into());
+		}
+		return Ok(Some("Trap"));
+	}
 	if gas::before_checkpoint(frame)? {
 		if panic {
 			return Err("pre-checkpoint gas and panic injection cannot be combined".into());
@@ -20,7 +27,8 @@ pub fn expected(frame: &Value) -> Result<Option<&'static str>, String> {
 }
 
 pub fn inject(frame: &Value, items: &mut [AccumulateItem]) -> Result<(), String> {
-	if expected(frame)? != Some("Trap") {
+	expected(frame)?;
+	if !frame.get("replayPanic").map(boolean).transpose()?.unwrap_or(false) {
 		return Ok(());
 	}
 	let index = gas::interrupted(frame)?.ok_or("missing panic report")?;

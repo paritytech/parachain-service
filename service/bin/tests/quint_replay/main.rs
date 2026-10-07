@@ -1,6 +1,7 @@
 mod assignments;
 mod balances;
 mod blocks;
+mod code_storage;
 #[path = "../common/mod.rs"]
 mod common;
 mod fuzz;

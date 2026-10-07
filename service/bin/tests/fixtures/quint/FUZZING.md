@@ -19,7 +19,7 @@ Configuration:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `QUINT_FUZZ_PROFILE` | `fuzz` | `fuzz` for general inputs; `storage` for host storage-budget failures |
+| `QUINT_FUZZ_PROFILE` | `fuzz` | `fuzz` for general inputs; `storage` for metadata/KV/queue failures; `code_storage` for code acquisition/announcement failures |
 | `QUINT_FUZZ_TRACES` | `100` | Total traces across workers; `0` runs until failure/interruption |
 | `QUINT_FUZZ_STEPS` | `15` | Transitions per trace, 1–10000 |
 | `QUINT_FUZZ_WORKERS` | `1` | Independent Rust workers and generator processes |
@@ -341,3 +341,20 @@ including self, unknown, seeded, and created services.
 `fuzz::service_management_generated_works` requires both store refusal classes
 and all three handoff refusal classes. No refused operation may change foreign
 storage, requests, or the model's supervisor links.
+
+## Code storage failures
+
+`QUINT_FUZZ_PROFILE=code_storage just quint-fuzz` samples forced-code acquisition,
+registration, solicit, provision, and announcements against independent SCALE/JAM
+footprint arithmetic in `code_storage_inputs.qnt`. The generated regression
+`fuzz::code_storage_generated_works` requires registry, JAM solicitation,
+forced metadata, and announcement failure sites across 30 seeds and 1500 steps.
+Deterministic traces pin exact boundaries, shared-reference growth, idempotence,
+retained references after metadata rejection, and successful retries.
+
+A failed registry write rolls back the parachain charge. A rejected JAM solicit
+currently panics in production: `replayHostTrap` requires a real PVM `Trap` and
+checkpoint recovery, without injecting a malformed work digest. The independent
+oracle restores the report-entry state and free balance. Later invocations retry
+normally. This covers the existing panic behavior; it does not change production
+error handling or re-enable `solicit_implies_registry`.

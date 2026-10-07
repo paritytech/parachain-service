@@ -34,6 +34,7 @@ fn generator_profile(profile: &str, seed: u64, stride: u64, count: u64, steps: u
 	let input = match profile {
 		"fuzz" => "service/bin/tests/fixtures/quint/fuzz.qnt",
 		"storage" => "service/bin/tests/fixtures/quint/storage_fuzz.qnt",
+		"code_storage" => "service/bin/tests/fixtures/quint/code_storage_fuzz.qnt",
 		_ => panic!("unknown QUINT_FUZZ_PROFILE: {profile}"),
 	};
 	let mut command = Command::new("node");
@@ -731,4 +732,30 @@ fn final_checkpoint_generated_works() {
 	}
 	assert!(failures > 0 && transfers && creations && resumed,
 		"final-checkpoint coverage: failures={failures}, transfers={transfers}, creations={creations}, resumed={resumed}");
+}
+
+#[test]
+#[ignore = "requires Quint 0.32.0"]
+fn code_storage_generated_works() {
+	let stream = generator_profile("code_storage", 1, 1, 30, 50)
+		.output()
+		.expect("code storage generator");
+	assert!(stream.status.success());
+	let mut failures = std::collections::BTreeSet::new();
+	for line in String::from_utf8(stream.stdout).unwrap().lines() {
+		let envelope: Value = serde_json::from_str(line).unwrap();
+		for frame in envelope["trace"]["states"].as_array().unwrap() {
+			let label = frame["replayCodeFailure"].as_str().unwrap();
+			if !label.is_empty() {
+				failures.insert(label.to_owned());
+			}
+		}
+		if let Err(error) = replay::document_trace(&envelope["trace"]) {
+			let path = preserve(&envelope, &error).unwrap();
+			panic!("{error}; {}", path.display());
+		}
+	}
+	for site in ["registry", "solicit", "forced-metadata", "announcement"] {
+		assert!(failures.contains(site), "missing {site} rejection");
+	}
 }
