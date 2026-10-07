@@ -199,3 +199,9 @@ is derived from the PVM probes. The default Rust fuzz worker also decorates mixe
 traces with deterministic gas samples; raw Node/Quint output remains unchanged.
 See [invocation gas cutoffs](FUZZING.md#invocation-gas-cutoffs) for metadata,
 calibration, and limits.
+
+Final-checkpoint exhaustion fixtures live in `final_checkpoint/`. They preserve
+all reports' state and host effects while expecting `NotEnoughGas` with no head
+commitment. Tests sample the final tail, bracket head reads, and resume after
+repeated failures. Storage is persisted before the checkpoint in this runtime;
+there are no final-tail writes. See the fuzzing guide for calibration details.

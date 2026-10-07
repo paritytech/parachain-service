@@ -7,6 +7,7 @@ pub fn before_checkpoint(frame: &Value) -> Result<bool, String> {
 	Ok(frame.get("replayInterrupt").map(integer).transpose()? == Some(-2))
 }
 
+// The report count itself selects exhaustion after the final checkpoint.
 pub fn interrupted(frame: &Value) -> Result<Option<usize>, String> {
 	match frame.get("replayInterrupt") {
 		None => Ok(None),
@@ -26,7 +27,7 @@ pub fn limits(frame: &Value, count: usize) -> Result<Vec<u64>, String> {
 	if limits.len() != count {
 		return Err("replayGasLimits length must match work results".into());
 	}
-	if interrupted(frame)?.is_some_and(|index| index >= count) {
+	if interrupted(frame)?.is_some_and(|index| index > count) {
 		return Err("replayInterrupt is outside work results".into());
 	}
 	limits.iter().map(|v| bounded_integer(v, "report gas")).collect()

@@ -11,9 +11,11 @@ See [QUINT_REPLAY.md](QUINT_REPLAY.md) and the
   assignments and incoming-transfer processing. The independent Quint oracle
   retains scheduler credits and rolls back guest state and effects. Deterministic
   boundaries and mixed campaigns check subsequent invocations from recovered state.
-- [ ] TODO: Fuzz exhaustion after the final report checkpoint, including final
-  persistence and commitment handling. Check checkpoint-retained effects and the
-  invocation outcome.
+- [x] Fuzz exhaustion after the final report checkpoint. Deterministic boundaries
+  and mixed campaigns verify retained persisted state and effects, head-commitment
+  handling, `NotEnoughGas` without a commitment, and subsequent invocations.
+  The current runtime persists writes before checkpointing; its final tail has
+  head reads and commitment computation, with no further storage writes.
 - [x] Broaden the storage profile beyond KV writes: staged validator keys,
   registration, compact-encoded state-balance growth, forced heads, and forced
   validation code now have deterministic and generated replay coverage. Checks

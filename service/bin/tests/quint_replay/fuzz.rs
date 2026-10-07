@@ -702,3 +702,33 @@ fn pre_checkpoint_generated_works() {
 		"pre-checkpoint coverage: failures={failures}, credits={credits}, empty={empty}, due={due}, resumed={resumed}"
 	);
 }
+
+#[test]
+#[ignore = "checks final-checkpoint recovery in mixed traces; requires Node and Quint 0.32.0"]
+fn final_checkpoint_generated_works() {
+	let stream = generator(1, 1, 20, 40).output().expect("final-checkpoint generator");
+	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
+	let (mut failures, mut transfers, mut creations, mut resumed) = (0, false, false, false);
+	for line in stream.stdout.split(|b| *b == b'\n').filter(|line| !line.is_empty()) {
+		let mut envelope: Value = serde_json::from_slice(line).unwrap();
+		let seed = envelope["seed"].as_str().unwrap().parse().unwrap();
+		super::instruction_gas::sample(&mut envelope["trace"], seed);
+		for pair in envelope["trace"]["states"].as_array().unwrap().windows(2) {
+			let final_checkpoint = |state: &Value| replay::integer(&state["replayInterrupt"]).unwrap() ==
+				state["lastStepWorkResults"].as_array().unwrap().len() as i128;
+			if final_checkpoint(&pair[1]) {
+				failures += 1;
+				transfers |= !pair[1]["replayTransfers"].as_array().unwrap().is_empty();
+				creations |= !pair[1]["replayCreations"].as_array().unwrap().is_empty();
+			}
+			resumed |= final_checkpoint(&pair[0]) && pair[1]["replayInterrupt"]["#bigint"] == "-1" &&
+				!pair[1]["lastStepWorkResults"].as_array().unwrap().is_empty();
+		}
+		if let Err(error) = replay::document_trace(&envelope["trace"]) {
+			let path = preserve(&envelope, &error).unwrap();
+			panic!("{error}; {}", path.display());
+		}
+	}
+	assert!(failures > 0 && transfers && creations && resumed,
+		"final-checkpoint coverage: failures={failures}, transfers={transfers}, creations={creations}, resumed={resumed}");
+}

@@ -255,6 +255,7 @@ module fuzz {
   }
   // Malformed output is a replay fault, not an output valid Refine can emit.
   // Completed reports exercise storage, creation, logs and deferred host effects.
+  // stop == 3 retains all reports and exhausts the final tail instead of trapping.
   action panicBlockAt(stop: int, faultGas: int): bool = {
     val para = AssetHubParaId
     val parent = svc.paraInfo(para).headData
@@ -265,8 +266,10 @@ module fuzz {
         serviceForget(MkServiceId(99)), TransferOut(transfer(0, 1, i, 100))))))
     interruptedInvocation(packages, now + 1,
       List({ source: MkServiceId(7), amount: 1000, toSupervisorBalance: false, memo: 0 }),
-      range(0, 3).foldl(List(), (acc, i) => acc.append(if (i == stop) faultGas else UnlimitedGas)), stop, true)
+      range(0, 3).foldl(List(), (acc, i) => acc.append(if (i == stop) faultGas else UnlimitedGas)), stop, stop < 3)
   }
+  // All report writes and effects are checkpointed; commitment handling is interrupted.
+  action finalCheckpointBlock = panicBlockAt(3, UnlimitedGas)
   action panicBlock = {
     nondet stop = oneOf(Set(0, 1, 2))
     nondet faultGas = oneOf(Set(0, UnlimitedGas))
@@ -348,6 +351,7 @@ module fuzz {
 
   action replayStep = any {
     preCheckpointBlock,
+    finalCheckpointBlock,
     servicesBlock,
     hostBlock,
     checkpointBlock,

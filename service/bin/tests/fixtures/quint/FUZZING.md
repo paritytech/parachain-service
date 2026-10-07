@@ -116,17 +116,17 @@ The expected prefix is unchanged: that report contributes no model effects.
 Other panic frames still exercise the production decoder's trap path.
 
 Optional replay fields select the invocation gas pool independently of report
-budgets (omit all three for the mock's default pool, except `replayInterrupt = -2`
-which defaults to a midpoint sample):
+budgets (omit all three for the mock's default pool, except `replayInterrupt = -2` or the report count,
+which default to a midpoint sample):
 
 | Field | Meaning |
 | --- | --- |
 | `replayInvocationGas` | Exact nonnegative gas limit, at most `i64::MAX`, as an ITF integer |
 | `replayGasSample` | ITF integer from 0 to 1000000, selecting a position within the interrupted phase's gas interval |
-| `replayGasBoundary` | `before:write`, `after:write`, `before:new`, `after:new`, `before:transfer`, `after:transfer`, `before:assign`, or `after:assign`; uses the first matching host call in the selected phase |
+| `replayGasBoundary` | `before:write`, `after:write`, `before:new`, `after:new`, `before:transfer`, `after:transfer`, `before:assign`, `after:assign`, `before:read`, or `after:read`; uses the first matching host call in the selected phase |
 
 Sampling and boundary selection require `replayInterrupt` (`-2` for pre-checkpoint,
-otherwise the interrupted report index), `WorkOk` reports
+the report count for final-checkpoint exhaustion, otherwise the interrupted report index), `WorkOk` reports
 with unlimited report budgets, and no panic injection. A discarded execution with the default gas pool
 records host-call attempts through the pinned host's trace logger. Gas-only
 binary searches locate the interval after the selected checkpoint completes and
@@ -146,8 +146,26 @@ Deterministic tests cover five positions in each of three report intervals and
 both sides of write, creation, and transfer calls, followed by normal work.
 `fuzz::instruction_gas_generated_works` checks all three report positions and
 subsequent work in mixed generated traces. This samples gas at the interpreter's
-metering granularity; it does not exhaustively visit every instruction. Exhaustion
-after the final report checkpoint remains outside the sampled profile.
+metering granularity; it does not exhaustively visit every instruction.
+
+The general campaign also generates `finalCheckpointBlock`: all three reports
+are applied by the Quint oracle, but `lastHeadRoot` is `None`. The worker samples
+exhaustion between completion of the final checkpoint and successful VM return.
+The lower bound is the gas needed to attempt the checkpoint plus the pinned
+host's fixed `CHECKPOINT` charge; this host call snapshots immediately after that
+charge. The upper bound is one gas unit below the minimum successful invocation.
+This also covers tails with no host calls (empty reports or unchanged heads).
+No recovered state is used to calibrate either bound.
+
+The service currently persists writes before checkpointing; its final tail reads
+heads, computes the commitment, and returns it, without another storage write or
+yield host call. `final_checkpoint.qnt` and the Rust tests check five tail
+positions, both sides of a head read, repeated failures, empty invocations, due
+assignments, and subsequent work. Mutation tests reject lost heads, transfers,
+creations, assignments, the wrong checkpoint, and a successful invocation where
+`NotEnoughGas` was expected. All checkpointed storage and effects survive;
+no commitment is returned on exhaustion. `fuzz::final_checkpoint_generated_works`
+requires retained transfers/creations and resumption in mixed generated traces.
 
 The general campaign also generates `preCheckpointBlock` frames, marked by
 `replayInterrupt = -2`. Their independent oracle in `invocation_inputs.qnt`

@@ -60,7 +60,7 @@ fn invalid_metadata_errors() {
 	for (field, value, expected) in [
 		("replayGasLimits", json!([{"#bigint":"1"}]), "length"),
 		("replayGasLimits", json!([{"#bigint":"-1"}, {"#bigint":"0"}, {"#bigint":"0"}]), "range"),
-		("replayInterrupt", json!({"#bigint":"3"}), "outside"),
+		("replayInterrupt", json!({"#bigint":"4"}), "outside"),
 		("replayInterrupt", json!({"#bigint":"-3"}), "invalid"),
 		("replayInterrupt", json!({"#bigint":"-1"}), "out of gas"),
 	] {
