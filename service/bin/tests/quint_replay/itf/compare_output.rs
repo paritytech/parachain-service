@@ -38,8 +38,10 @@ fn commitment(
 			continue;
 		}
 		let data = Codex::head(head)?;
-		let abstract_hash =
-			(i128::from(para) * 257 + head).checked_mul(2).ok_or("abstract leaf overflow")?;
+		let abstract_hash = (i128::from(para) * 257 + head)
+			.checked_mul(2)
+			.and_then(|v| v.checked_add(1))
+			.ok_or("abstract leaf overflow")?;
 		// SCALE Leaf discriminant=1, para=u32 LE, head=Keccak(raw HeadData).
 		let mut leaf = vec![1];
 		leaf.extend_from_slice(&para.to_le_bytes());
@@ -58,7 +60,6 @@ fn commitment(
 				.checked_mul(257)
 				.and_then(|v| v.checked_add(pair[1].0))
 				.and_then(|v| v.checked_mul(2))
-				.and_then(|v| v.checked_add(1))
 				.ok_or("abstract node overflow")?;
 			// SCALE Node discriminant=0 followed by its two fixed-width hashes.
 			let mut node = vec![0];

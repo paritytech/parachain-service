@@ -52,7 +52,7 @@ pub fn record_incoming(records: &[&TransferRecord]) -> Vec<AccumulateLog> {
 		}
 		queued += 1;
 		let transfer = QueuedTransfer {
-			from: record.source,
+			source: record.source,
 			amount: record.amount,
 			// FIXME: the vendored JAM TransferRecord has no destination-balance selector.
 			// Its transfers only credit the regular balance; preserve the real flag once

@@ -64,7 +64,7 @@ pub fn normalize(document: &Value) -> Result<Cow<'_, Value>, String> {
 				};
 				events.push(json!({"tag":"InsufficientStateBalance", "value":reason}));
 			}
-			logs.push(json!({"#tup":[pair[0], {"tag":"AccumulateLogEntry", "value":events}]}));
+			logs.push(json!({"#tup":[pair[0], {"tag":"Accumulate", "value":events}]}));
 		}
 		state["svc"]["parachainLog"] = json!({"#map":[[
 			{"tag":"MkParaId", "value":{"#bigint":"2"}}, logs

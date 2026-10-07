@@ -44,7 +44,7 @@ fn record_works() {
 	assert_eq!(queue, IncomingTransferBuckets { first_bucket: 0, last_bucket: 0, count: 1 });
 	let bucket = transfer_bucket(&storage, 0).expect("bucket created");
 	assert_eq!(bucket.len(), 1);
-	assert_eq!(bucket[0].from, 9);
+	assert_eq!(bucket[0].source, 9);
 	assert_eq!(bucket[0].amount, 1_000_000);
 }
 
@@ -69,8 +69,8 @@ fn consecutive_invocations_open_contiguous_ids_works() {
 
 	let queue = transfer_queue(&storage).unwrap();
 	assert_eq!(queue, IncomingTransferBuckets { first_bucket: 0, last_bucket: 1, count: 2 });
-	assert_eq!(transfer_bucket(&storage, 0).unwrap()[0].from, 9);
-	assert_eq!(transfer_bucket(&storage, 1).unwrap()[0].from, 10);
+	assert_eq!(transfer_bucket(&storage, 0).unwrap()[0].source, 9);
+	assert_eq!(transfer_bucket(&storage, 1).unwrap()[0].source, 10);
 }
 
 #[test]
@@ -190,7 +190,7 @@ fn queue_storage(count: u32) -> jam_node::vm::Storage {
 		let mut bucket = IncomingTransfers::new();
 		bucket
 			.try_push(QueuedTransfer {
-				from: 0,
+				source: 0,
 				amount: 0,
 				to_supervisor_balance: false,
 				memo: [0; 128],

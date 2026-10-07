@@ -100,7 +100,7 @@ fn parachain_logs(
 				.map_err(|_| "parachainLog timeslot out of range")?;
 			let (tag, value) = variant(&pair[1])?;
 			let entry = match tag {
-				"RefineLogEntry" => {
+				"Refine" => {
 					let error = refine_log(field(value, "error")?)?;
 					let trace = Codex::auth_trace(integer(field(value, "authTrace")?)?)?;
 					let auth_trace: StoredAuthTrace = trace.0.try_into().map_err(|_| {
@@ -108,10 +108,10 @@ fn parachain_logs(
 					})?;
 					LogEntry::Refine { error, auth_trace }
 				},
-				"AccumulateLogEntry" => LogEntry::Accumulate {
+				"Accumulate" => LogEntry::Accumulate {
 					entries: value
 						.as_array()
-						.ok_or("AccumulateLogEntry must be a list")?
+						.ok_or("Accumulate must be a list")?
 						.iter()
 						.map(|event| super::accumulate_log::accumulate_log(event, codex))
 						.collect::<Result<Vec<_>, _>>()?,

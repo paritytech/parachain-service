@@ -38,5 +38,5 @@ fn stale_parent_candidate_rejected_works() {
 #[test]
 fn refine_error_replay_works() {
 	itf::replay::trace(include_str!("../fixtures/quint/refine_error_replay.itf.json"))
-		.expect("a logged RefineLogEntry and a gray-paper work error should both replay");
+		.expect("a logged Refine and a gray-paper work error should both replay");
 }

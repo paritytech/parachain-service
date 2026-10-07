@@ -13,7 +13,7 @@ use parachain_service_core::types::{Balance, BucketId, Memo, ServiceId};
 
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub struct QueuedTransfer {
-	pub from: ServiceId,
+	pub source: ServiceId,
 	#[codec(compact)]
 	pub amount: Balance,
 	/// Whether JAM credited the supervisor balance instead of the regular balance.
@@ -86,7 +86,7 @@ mod tests {
 	fn transfer_balance_selector_works() {
 		for to_supervisor_balance in [false, true] {
 			let transfer = QueuedTransfer {
-				from: 42,
+				source: 42,
 				amount: u64::MAX,
 				to_supervisor_balance,
 				memo: [7; 128],

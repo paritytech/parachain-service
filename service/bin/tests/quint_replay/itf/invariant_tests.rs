@@ -188,7 +188,7 @@ fn logs_errors() {
 #[test]
 fn transfers_errors() {
 	let transfer =
-		QueuedTransfer { from: 7, amount: 0, to_supervisor_balance: false, memo: [0; 128] };
+		QueuedTransfer { source: 7, amount: 0, to_supervisor_balance: false, memo: [0; 128] };
 	for (name, count, len) in [
 		("incoming_transfer_count_consistent", 2, 1),
 		("incoming_transfer_bucket_bounded", 0, 0),

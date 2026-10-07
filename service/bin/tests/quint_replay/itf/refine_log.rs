@@ -10,7 +10,7 @@ use super::replay::{integer, variant};
 /// The Rust service can only ever log refine errors it can produce itself, so
 /// variants the model uses for package-level failures that the Rust `refine`
 /// panics on (§4.1 step 1, §4.2) are rejected: they surface to Accumulate as a
-/// gray-paper work error, not as a logged `RefineLogEntry`.
+/// gray-paper work error, not as a logged `Refine`.
 pub fn refine_log(value: &Value) -> Result<RefineLog, String> {
 	let (tag, value) = variant(value)?;
 	match tag {
@@ -36,17 +36,17 @@ pub fn refine_log(value: &Value) -> Result<RefineLog, String> {
 		// `is_authorized` runs before Refine and rejects an undecodable config
 		// (`UndecodableAuthConfig`) and a config naming a different number of
 		// paras than items (`InvalidWorkItemCount`), so these can never reach
-		// Refine as a logged `RefineLogEntry`. A multi-item package — which
+		// Refine as a logged `Refine`. A multi-item package — which
 		// Refine's single-item restriction (§3.2) panics on — never yields a
-		// logged `RefineLogEntry` either.
+		// logged `Refine` either.
 		"MalformedAuthorizerConfig" | "AuthConfigMismatch" => Err(format!(
 			"{tag} is rejected by `is_authorized` before Refine runs, so it never surfaces as a \
-			 logged RefineLogEntry"
+			 logged Refine"
 		)),
 		"InvalidItemCount" => Err(format!(
 			"InvalidItemCount is a package-level Refine failure; the Rust service panics on it \
 			 (§3.2 single-item restriction), so it surfaces as a gray-paper work error, not a \
-			 logged RefineLogEntry"
+			 logged Refine"
 		)),
 		other => Err(format!("unsupported RefineLog variant {other}")),
 	}

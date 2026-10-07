@@ -14,7 +14,7 @@ use super::replay::*;
 use crate::common::get_state;
 
 fn transfer(value: &Value) -> Result<QueuedTransfer, String> {
-	let (tag, source) = variant(field(value, "from")?)?;
+	let (tag, source) = variant(field(value, "source")?)?;
 	if tag != "MkServiceId" {
 		return Err("expected incoming MkServiceId".into());
 	}
@@ -26,7 +26,7 @@ fn transfer(value: &Value) -> Result<QueuedTransfer, String> {
 		return Err("supervisor-balance incoming transfers are unsupported by the JAM host".into());
 	}
 	Ok(QueuedTransfer {
-		from: bounded_integer::<u32>(source, "incoming source")?,
+		source: bounded_integer::<u32>(source, "incoming source")?,
 		amount: bounded_integer::<u64>(field(value, "amount")?, "incoming amount")?,
 		to_supervisor_balance: false,
 		memo,
@@ -41,7 +41,7 @@ pub fn operands(frame: &Value) -> Result<Vec<AccumulateItem>, String> {
 		.map(|value| {
 			let t = transfer(value)?;
 			Ok(AccumulateItem::Transfer(TransferRecord {
-				source: t.from,
+				source: t.source,
 				destination: MOCK_SERVICE_ID,
 				amount: t.amount,
 				memo: Memo(t.memo),
