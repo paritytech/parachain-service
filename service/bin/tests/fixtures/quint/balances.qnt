@@ -17,7 +17,7 @@ module balances {
   pure def total(para: ParaId, amount: int): UpwardMessage =
     ParachainSetStateBalance({ paraId: para, newTotal: amount })
   pure def transfer(amount: int, memo: int): IncomingTransfer =
-    { from: MkServiceId(7), amount: amount, toSupervisorBalance: false, memo: memo }
+    { source: MkServiceId(7), amount: amount, toSupervisorBalance: false, memo: memo }
   pure def batch(n: int, amount: int): List[IncomingTransfer] =
     range(0, n).foldl(List(), (acc, i) => acc.append(transfer(amount, i)))
 

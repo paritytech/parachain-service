@@ -30,7 +30,7 @@ module upgrades {
     s: ParachainServiceState, para: ParaId, entry: AccumulateLog
   ): bool =
     s.paraLog(para).foldl(false, (found, e) => found or match e._2 {
-      | AccumulateLogEntry(events) =>
+      | Accumulate(events) =>
         events.foldl(false, (seen, event) => seen or event == entry)
       | _ => false
     })

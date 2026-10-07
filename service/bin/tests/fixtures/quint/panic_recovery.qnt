@@ -24,7 +24,7 @@ module panic_recovery {
   import fuzz.* from "./fuzz"
 
   pure def arrival(amount: int, memo: int): IncomingTransfer = {
-    from: MkServiceId(7), amount: amount, toSupervisorBalance: false, memo: memo
+    source: MkServiceId(7), amount: amount, toSupervisorBalance: false, memo: memo
   }
   def hubWork(mode: int, msgs: List[UpwardMessage]): WorkResult =
     replayWork(svc, AssetHubParaId, svc.paraInfo(AssetHubParaId).headData,

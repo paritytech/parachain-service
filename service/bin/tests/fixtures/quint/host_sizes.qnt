@@ -40,10 +40,10 @@ module host_sizes {
     | _ => 0
   }
   pure def entryBytes(entry: LogEntry): int = 1 + match entry {
-    | RefineLogEntry(p) => 1 + (match p.error {
+    | Refine(p) => 1 + (match p.error {
       | Opaque(n) => scaleCompact(n) + n | _ => 0
     }) + scaleCompact(p.authTrace) + p.authTrace
-    | AccumulateLogEntry(logs) => scaleCompact(logs.length()) + logs.foldl(0, (n, l) => n + accBytes(l))
+    | Accumulate(logs) => scaleCompact(logs.length()) + logs.foldl(0, (n, l) => n + accBytes(l))
   }
   pure def logBytes(log: List[(Timeslot, LogEntry)]): int =
     scaleCompact(log.length()) + log.foldl(0, (n, e) => n + 4 + entryBytes(e._2))

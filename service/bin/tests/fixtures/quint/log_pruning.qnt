@@ -62,7 +62,7 @@ module log_pruning {
       .then(expectThat(all {
         svc.paraInfo(CoretimeParaId).headData == 1,
         svc.parachainLog.get(CoretimeParaId) == List(
-          (2, RefineLogEntry({ error: Opaque(42), authTrace: 0 })))
+          (2, Refine({ error: Opaque(42), authTrace: 0 })))
       }))
 
   // Forgetting provided preimages succeeds by unrequesting them and recording
@@ -84,8 +84,8 @@ module log_pruning {
         Forget({ target: Parachain(CoretimeParaId), hash: second, len: len }))))
       .then(expectThat(all {
         svc.parachainLog.get(CoretimeParaId) == List(
-          (3, AccumulateLogEntry(List(ForgetAgainAt({ hash: first, len: len, due: 3 + ExpungePeriod })))),
-          (4, AccumulateLogEntry(List(ForgetAgainAt({ hash: second, len: len, due: 4 + ExpungePeriod }))))),
+          (3, Accumulate(List(ForgetAgainAt({ hash: first, len: len, due: 3 + ExpungePeriod })))),
+          (4, Accumulate(List(ForgetAgainAt({ hash: second, len: len, due: 4 + ExpungePeriod }))))),
         svc.preimageStatus.get((first, len)) == Unrequested(3),
         svc.preimageStatus.get((second, len)) == Unrequested(4)
       }))
@@ -93,7 +93,7 @@ module log_pruning {
       .then(expectThat(all {
         svc.paraInfo(CoretimeParaId).headData == 4,
         svc.parachainLog.get(CoretimeParaId) == List(
-          (4, AccumulateLogEntry(List(ForgetAgainAt({ hash: second, len: len, due: 4 + ExpungePeriod }))))),
+          (4, Accumulate(List(ForgetAgainAt({ hash: second, len: len, due: 4 + ExpungePeriod }))))),
         svc.preimageRegistry == prevSvc.preimageRegistry,
         svc.preimageStatus == prevSvc.preimageStatus,
         svc.paraInfo(CoretimeParaId).usedStateBalance == prevSvc.paraInfo(CoretimeParaId).usedStateBalance

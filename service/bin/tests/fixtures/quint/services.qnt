@@ -28,7 +28,7 @@ module services {
     val packages = range(0, 3).foldl(List(), (list, i) => list.append(work(
       List(create(None), TransferOut(transfer(0, 1, i, if (i == stop) ExhaustPoolGas else 100))), parent + i)))
     budgetedInvocation(packages, now + 1,
-      List({ from: MkServiceId(7), amount: 1000, toSupervisorBalance: false, memo: 0 }),
+      List({ source: MkServiceId(7), amount: 1000, toSupervisorBalance: false, memo: 0 }),
       List(UnlimitedGas, UnlimitedGas, UnlimitedGas), stop)
   }
   run host_balance_works = replayInit

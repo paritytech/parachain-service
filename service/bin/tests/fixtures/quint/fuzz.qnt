@@ -161,7 +161,7 @@ module fuzz {
       IncomingTransferEntryFootprint, IncomingTransferEntryFootprint + 1, 10000))
     nondet count = oneOf(Set(0, 1, 2, 3))
     val arrivals = range(0, count).foldl(List(), (acc, i) => acc.append({
-      from: sender, amount: amount, toSupervisorBalance: false, memo: i
+      source: sender, amount: amount, toSupervisorBalance: false, memo: i
     }))
     nondet gas1 = oneOf(0.to(4))
     nondet gas2 = oneOf(0.to(4))
@@ -180,7 +180,7 @@ module fuzz {
     nondet memo = oneOf(Set(0, 1, 255))
     nondet count = oneOf(Set(1, 2, 3))
     val transfers = range(0, count).foldl(List(), (acc, i) => acc.append({
-      from: sender, amount: amount, toSupervisorBalance: false, memo: memo + i
+      source: sender, amount: amount, toSupervisorBalance: false, memo: memo + i
     }))
     recordIncoming(transfers)
   }
@@ -220,7 +220,7 @@ module fuzz {
     val wr = replayWork(svc, caller, svc.paraInfo(caller).headData,
       activeCodeCandidate(svc, caller), mode, now, 0, List(first, second))
     budgetedInvocation(List(wr), now + 1,
-      range(0, count).foldl(List(), (list, i) => list.append({ from: MkServiceId(7), amount: 1000, toSupervisorBalance: false, memo: i })), List(budget(wr, gasMode)), -1)
+      range(0, count).foldl(List(), (list, i) => list.append({ source: MkServiceId(7), amount: 1000, toSupervisorBalance: false, memo: i })), List(budget(wr, gasMode)), -1)
   }
 
   // Advance preparation as well as attempts, so success stays reachable even
@@ -250,7 +250,7 @@ module fuzz {
       List(SetKV({ key: List(71), value: List(i + 1) }),
         TransferOut(transfer(0, 1, i, if (i == stop) ExhaustPoolGas else 100))))))
     budgetedInvocation(packages, now + 1,
-      List({ from: MkServiceId(7), amount: 1000, toSupervisorBalance: false, memo: 0 }),
+      List({ source: MkServiceId(7), amount: 1000, toSupervisorBalance: false, memo: 0 }),
       packages.foldl(List(), (acc, _) => acc.append(UnlimitedGas)), stop)
   }
   // Malformed output is a replay fault, not an output valid Refine can emit.
@@ -264,7 +264,7 @@ module fuzz {
         CreateService(createArgs(Some(MkServiceId(42 + i)), 90 + i)),
         serviceForget(MkServiceId(99)), TransferOut(transfer(0, 1, i, 100))))))
     interruptedInvocation(packages, now + 1,
-      List({ from: MkServiceId(7), amount: 1000, toSupervisorBalance: false, memo: 0 }),
+      List({ source: MkServiceId(7), amount: 1000, toSupervisorBalance: false, memo: 0 }),
       range(0, 3).foldl(List(), (acc, i) => acc.append(if (i == stop) faultGas else UnlimitedGas)), stop, true)
   }
   action panicBlock = {
@@ -311,7 +311,7 @@ module fuzz {
     // Both competing and chained work stay observable when the first gas gate
     // rejects. Build the second report against the actual modeled prefix.
     val incoming = range(0, count).foldl(List(), (a, i) => a.append({
-      from: MkServiceId(7), amount: 0, toSupervisorBalance: false, memo: i }))
+      source: MkServiceId(7), amount: 0, toSupervisorBalance: false, memo: i }))
     val limit1 = budget(wr1, gasMode)
     val prefix = hostPrefix(List(wr1), now + 1, incoming, List(limit1), allowance)
     val wr2 = replayWork(prefix.state, para, prefix.state.paraInfo(para).headData,

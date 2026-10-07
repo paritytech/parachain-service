@@ -106,7 +106,7 @@ module storage_inputs {
     val packages = List(storageWork(parent, newHead, 9, len, now),
       storageWork(if (chain) newHead else parent, newHead + 1, 10, 1, now))
     val incoming = range(0, count).foldl(List(), (a, i) => a.append({
-      from: MkServiceId(7), amount: amount, toSupervisorBalance: false, memo: i }))
+      source: MkServiceId(7), amount: amount, toSupervisorBalance: false, memo: i }))
     val start: Host = { state: svc, free: budget, logs: replayStorageLogs,
       sizes: replayStorageSizes, failed: List() }
     val arrived = arrivals(start, incoming, now + 1)

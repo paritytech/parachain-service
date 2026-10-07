@@ -67,7 +67,7 @@ module kv {
       .then(expectThat(all {
         svc.keyValueStorage == prevSvc.keyValueStorage,
         svc.paraInfo(CoretimeParaId).usedStateBalance == prevSvc.paraInfo(CoretimeParaId).usedStateBalance,
-        svc.paraLog(CoretimeParaId).nth(svc.paraLog(CoretimeParaId).length() - 1)._2 == AccumulateLogEntry(List(
+        svc.paraLog(CoretimeParaId).nth(svc.paraLog(CoretimeParaId).length() - 1)._2 == Accumulate(List(
           InsufficientStateBalance(FromSetKV({ keyHash: listHash(key) })),
           InsufficientStateBalance(FromSetKV({ keyHash: listHash(other) }))))
       }))
