@@ -16,7 +16,7 @@ pub mod aura;
 pub mod is_authorized;
 
 /// Run authorization with the signature scheme selected by the verifier program.
-pub fn authorize<S: aura::SignatureScheme>(core: CoreIndex) -> AuthTrace {
+pub fn authorize<S: aura::SignatureVerifier>(core: CoreIndex) -> AuthTrace {
 	match is_authorized::is_authorized::<S>(core) {
 		Ok(r) => r,
 		Err(e) => {

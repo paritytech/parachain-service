@@ -33,4 +33,4 @@ pub use authorization::{authorize, AuthTrace, AuthorizationError, CollatorKey, C
 pub use config::{expected_collator_index, AuthConfig, ConfigError};
 pub use merkle::build_collator_tree;
 pub use signing::{signable_work_package_hash, WORK_PACKAGE_SIGN_CTX};
-pub use token::{AuthToken, SignatureScheme, TokenError};
+pub use token::{AuthToken, SignatureVerifier, TokenError};

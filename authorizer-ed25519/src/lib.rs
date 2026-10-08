@@ -8,7 +8,7 @@
 //! and the other chains carrying the 2022 Shell hotfix.
 
 use jam_types::{AuthTrace, CoreIndex};
-use parachain_authorizer::aura::{CollatorKey, CollatorSignature, SignatureScheme};
+use parachain_authorizer::aura::{CollatorKey, CollatorSignature, SignatureVerifier};
 
 /// Bump the PVM guest stack for `curve25519-dalek`'s serial-64 `verify_strict`
 /// (its Straus double-scalar tables exceed polkavm's default 8 KiB stack).
@@ -28,7 +28,7 @@ pub const MANIFEST_DIR: &str = env!("CARGO_MANIFEST_DIR");
 /// ed25519 collator signatures, as `sp_core::ed25519` produces them.
 pub struct Ed25519;
 
-impl SignatureScheme for Ed25519 {
+impl SignatureVerifier for Ed25519 {
 	/// Uses `verify_strict` (not `verify`) to reject cofactored/non-canonical signatures and
 	/// low-order public keys — required for deterministic validator agreement across
 	/// implementations.

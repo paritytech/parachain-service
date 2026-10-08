@@ -1,4 +1,4 @@
-use super::aura::{self, AuthConfig, AuthToken, SignatureScheme};
+use super::aura::{self, AuthConfig, AuthToken, SignatureVerifier};
 use codec::{DecodeAll, Encode};
 use jam_pvm_common::is_authorized::{auth_token, refine_context, work_package};
 use jam_types::{AuthTrace, CoreIndex, Slot, WorkPackage};
@@ -14,7 +14,7 @@ pub enum AuthorizationError {
 	BadAuthorization(aura::AuthorizationError),
 }
 
-pub fn is_authorized<S: SignatureScheme>(
+pub fn is_authorized<S: SignatureVerifier>(
 	_core: CoreIndex,
 ) -> Result<AuthTrace, AuthorizationError> {
 	let package = work_package();
@@ -39,7 +39,7 @@ pub fn is_authorized<S: SignatureScheme>(
 }
 
 /// Validate a package without host calls, using the supplied config, token, and slot.
-pub fn authorize<S: SignatureScheme>(
+pub fn authorize<S: SignatureVerifier>(
 	config: &AuthConfig,
 	token: &AuthToken,
 	package: &WorkPackage,

@@ -22,7 +22,7 @@ use jam_types::{Slot, WorkPackage};
 
 use crate::{
 	config::{expected_collator_index, AuthConfig, ConfigError},
-	token::{AuthToken, SignatureScheme, TokenError},
+	token::{AuthToken, SignatureVerifier, TokenError},
 };
 
 /// AURA configuration or token validation failed.
@@ -33,7 +33,7 @@ pub enum AuthorizationError {
 }
 
 /// Select the slot's collator and validate its token.
-pub fn authorize<S: SignatureScheme>(
+pub fn authorize<S: SignatureVerifier>(
 	config: &AuthConfig,
 	token: &AuthToken,
 	package: &WorkPackage,

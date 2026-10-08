@@ -44,7 +44,7 @@ pub struct AuthToken {
 /// Signature verification for Collator keys.
 ///
 /// The authorizer code hash selects the scheme; keys and signatures have the same wire format.
-pub trait SignatureScheme {
+pub trait SignatureVerifier {
 	/// Whether `signature` is `key`'s signature over `payload`.
 	fn verify(key: &CollatorKey, signature: &CollatorSignature, payload: &[u8]) -> bool;
 }
@@ -94,7 +94,7 @@ impl AuthToken {
 	}
 
 	/// Verify the signature over [`signable_work_package_hash`] using `S`.
-	pub fn check_signature<S: SignatureScheme>(
+	pub fn check_signature<S: SignatureVerifier>(
 		&self,
 		work_package_hash: H256,
 	) -> Result<(), TokenError> {
@@ -106,7 +106,7 @@ impl AuthToken {
 	/// Validate the token and produce the trace carrying the author key.
 	///
 	/// Runs the token checks for the slot-selected `collator_index`.
-	pub fn try_into_trace<S: SignatureScheme>(
+	pub fn try_into_trace<S: SignatureVerifier>(
 		&self,
 		config: &AuthConfig,
 		wp: &WorkPackage,

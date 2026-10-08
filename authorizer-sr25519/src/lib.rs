@@ -12,7 +12,7 @@
 //! `authorizer-sr25519-experiment/README.md` has both measurements.
 
 use jam_types::{AuthTrace, CoreIndex};
-use parachain_authorizer::aura::{CollatorKey, CollatorSignature, SignatureScheme};
+use parachain_authorizer::aura::{CollatorKey, CollatorSignature, SignatureVerifier};
 
 /// Bump the PVM guest stack for `curve25519-dalek`'s serial-64 double-scalar multiplication
 /// (its Straus tables exceed polkavm's default 8 KiB stack).
@@ -41,7 +41,7 @@ const SIGNING_CONTEXT: &[u8] = b"substrate";
 /// sr25519 collator signatures, as `sp_core::sr25519` produces them.
 pub struct Sr25519;
 
-impl SignatureScheme for Sr25519 {
+impl SignatureVerifier for Sr25519 {
 	/// There is no `verify_strict` equivalent here and none is needed: ristretto is a prime-order
 	/// group with a canonical encoding, so `PublicKey::from_bytes` already rejects what
 	/// `verify_strict` exists to reject.
