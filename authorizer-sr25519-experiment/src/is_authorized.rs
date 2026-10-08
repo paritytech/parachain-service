@@ -11,7 +11,7 @@ pub enum AuthorizationError {
 	/// A work item targets a service other than the configured Parachain
 	/// Service — para-specific coretime must not authorize other JAM work
 	/// (SPEC_GAPS #7).
-	WrongTargetService,
+	InvalidWorkItemService,
 	/// `collator_set_size == 0` — no collator could ever be selected.
 	ZeroCollatorSetSize,
 	/// `slot_duration == 0` — the round-robin index would divide by zero.
@@ -34,7 +34,7 @@ pub fn is_authorized(_core: CoreIndex) -> Result<AuthTrace, AuthorizationError> 
 		return Err(AuthorizationError::InvalidWorkItemCount);
 	}
 	if package.items.iter().any(|item| item.service != config.parachain_service) {
-		return Err(AuthorizationError::WrongTargetService);
+		return Err(AuthorizationError::InvalidWorkItemService);
 	}
 	if config.collator_set_size == 0 {
 		return Err(AuthorizationError::ZeroCollatorSetSize);

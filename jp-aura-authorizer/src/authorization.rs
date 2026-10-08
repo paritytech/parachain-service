@@ -21,7 +21,8 @@ use codec::{Decode, Encode, MaxEncodedLen};
 use jam_types::{Slot, WorkPackage};
 
 use crate::{
-	expected_collator_index, AuthConfig, AuthToken, ConfigError, SignatureScheme, TokenError,
+	config::{expected_collator_index, AuthConfig, ConfigError},
+	token::{AuthToken, SignatureScheme, TokenError},
 };
 
 /// AURA configuration or token validation failed.

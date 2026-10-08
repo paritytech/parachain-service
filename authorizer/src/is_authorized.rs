@@ -10,7 +10,7 @@ pub enum AuthorizationError {
 	/// Number of work items does not match the number of para IDs.
 	InvalidWorkItemCount,
 	/// A work item does not target the Parachain Service.
-	WrongTargetService,
+	InvalidWorkItemService,
 	BadAuthorization(aura::AuthorizationError),
 }
 
@@ -48,7 +48,7 @@ pub fn authorize<S: SignatureScheme>(
 	// Deliberately outside the sudo bypass: para-specific coretime must not be spent on other
 	// JAM work whatever a package carries (SPEC_GAPS #7).
 	if package.items.iter().any(|item| item.service != config.parachain_service) {
-		return Err(AuthorizationError::WrongTargetService);
+		return Err(AuthorizationError::InvalidWorkItemService);
 	}
 
 	// Permit control commands on parked cores. FIXME: remove the development bypass; see SUDO_KEY.

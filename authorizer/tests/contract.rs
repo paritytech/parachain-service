@@ -372,7 +372,7 @@ fn a_sudo_token_reaches_a_parked_core_unsigned_works() {
 		foreign.items[0].service = PARACHAIN_SERVICE_ID + 1;
 		assert!(matches!(
 			authorize_under(scheme, &parked, &forged, &foreign),
-			Err(AuthorizationError::WrongTargetService)
+			Err(AuthorizationError::InvalidWorkItemService)
 		));
 	}
 }

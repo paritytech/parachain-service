@@ -19,7 +19,7 @@ use alloc::vec::Vec;
 use primitive_types::H256;
 use sp_crypto_hashing::blake2_256;
 
-use crate::CollatorKey;
+use crate::authorization::CollatorKey;
 
 /// Number of sibling hashes in a collator membership proof.
 ///
@@ -43,7 +43,7 @@ pub(crate) fn join(left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
 
 /// Build a zero-padded Merkle tree and return its root and one proof per key, in input order.
 ///
-/// See [`crate::AuthToken::check_proof`] for the proof format.
+/// See [`crate::token::AuthToken::check_proof`] for the proof format.
 ///
 /// # Panics
 ///

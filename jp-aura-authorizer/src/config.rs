@@ -18,16 +18,15 @@
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use jam_types::{ServiceId, Slot};
+use polkadot_parachain_primitives::primitives::Id as ParaId;
 use primitive_types::H256;
-
-use crate::ParaId;
 
 /// The AURA authorizer config embedded in every work package.
 ///
 /// Describes the collator set authorized to author work items, and the AURA slot-to-collator
 /// mapping used to check which collator is expected to author a given work package.
 ///
-/// The field layout is consensus critical: the Parachain Service's Refine relies on it.
+/// The encoding is consensus critical since the Parachain Service's Refine relies on it.
 #[derive(Debug, Encode, Decode)]
 pub struct AuthConfig {
 	/// Authoritative `ParaId` for each work item, in item order.
@@ -55,9 +54,7 @@ pub struct AuthConfig {
 /// AURA configuration cannot select a collator.
 #[derive(Debug)]
 pub enum ConfigError {
-	/// `collator_set_size == 0` — no collator could ever be selected.
 	ZeroCollatorSetSize,
-	/// `slot_duration == 0` — the round-robin index would divide by zero.
 	ZeroSlotDuration,
 }
 
@@ -65,9 +62,8 @@ pub enum ConfigError {
 ///
 /// Computed as `(slot / slot_duration) mod collator_set_size`.
 pub fn expected_collator_index(slot: Slot, config: &AuthConfig) -> Result<u32, ConfigError> {
-	if config.collator_set_size == 0 {
-		return Err(ConfigError::ZeroCollatorSetSize);
-	}
 	let round = slot.checked_div(config.slot_duration).ok_or(ConfigError::ZeroSlotDuration)?;
-	Ok(round % config.collator_set_size)
+	round
+		.checked_rem(config.collator_set_size)
+		.ok_or(ConfigError::ZeroCollatorSetSize)
 }

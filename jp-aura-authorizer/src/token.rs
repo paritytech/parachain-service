@@ -21,27 +21,27 @@ use jam_types::WorkPackage;
 use primitive_types::H256;
 
 use crate::{
+	authorization::{AuthTrace, CollatorKey, CollatorSignature},
+	config::AuthConfig,
 	merkle::{collator_leaf_hash, join, proof_depth},
-	signable_work_package_hash, AuthConfig, AuthTrace, CollatorKey, CollatorSignature,
+	signing::signable_work_package_hash,
 };
 
 #[derive(Clone, Debug, Encode, Decode)]
 pub struct AuthToken {
-	/// Proof of collator membership for `key`.
+	/// Merkle proof for `key` to be at the correct index in  [`AuthConfig::collator_set_root`].
 	///
-	/// Places `key` at the slot-selected leaf index in the tree committed to by `collator_set_root`.
+	/// The leaf index is determined by the round-robin logic for the slot.
 	pub proof: Vec<H256>,
 
 	/// Key of the collator that authored the work package.
-	///
-	/// For local development, this may be the development authorizer sentinel.
 	pub key: CollatorKey,
 
 	/// Signature by the `key` over [`signable_work_package_hash`].
 	pub signature: CollatorSignature,
 }
 
-/// Signature verification supplied by the verifier program.
+/// Signature verification for Collator keys.
 ///
 /// The authorizer code hash selects the scheme; keys and signatures have the same wire format.
 pub trait SignatureScheme {
