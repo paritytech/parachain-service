@@ -6,7 +6,7 @@ use codec::Encode;
 use common::*;
 use jam_types::{AccumulateItem, Memo as JamMemo, TransferRecord};
 use parachain_service::{
-	constants::CORE_COUNT,
+	constants::{CORE_COUNT, REPORT_BASE_GAS, UPWARD_MESSAGE_GAS},
 	state::{
 		assigns::{PendingAssign, PendingAssignCores},
 		storage_key, Tag,
@@ -43,40 +43,80 @@ fn report(name: &str, gas: u64, elapsed: std::time::Duration, digest_len: usize)
 
 /// Pinned gas measurements for the benchmarks below.
 ///
-/// Re-baselined 2026-09-09 after PS's vendored polkajam moved to the merged gp-v0.8.0 HEAD
-/// (`2c34621b`, polkavm-linker 0.36): the polkavm 0.30→0.36 interpreter gas model charges
-/// roughly 3.5–12.6× what the 0.30 model charged for the same guest code, so every pin below
-/// moves to the value the new model measures.
+/// Re-baselined 2026-10-08 after the companion pin update, SDK primitive reuse,
+/// and SDK hashing reuse. These are measured PVM costs, not production budgets.
 mod gas {
 	/// 1024-solicit digest — the heaviest reachable digest replay.
-	pub const MAX_SOLICITS: u64 = 64_246_958;
+	pub const MAX_SOLICITS: u64 = 65_473_486;
 	/// 1024 KV writes filling the report's elective-data limit.
-	pub const MAX_KV_WRITES: u64 = 49_200_957;
+	pub const MAX_KV_WRITES: u64 = 53_471_066;
 	/// 332 outbound transfers to a friendly destination.
-	pub const MAX_TRANSFER_OUTS: u64 = 5_421_808;
+	pub const MAX_TRANSFER_OUTS: u64 = 4_912_634;
 	/// 332 outbound transfers to a destination demanding `HIGH_TRANSFER_GAS`.
-	pub const MAX_GAS_TRANSFER_OUTS: u64 = 5_387_843;
+	pub const MAX_GAS_TRANSFER_OUTS: u64 = 4_912_634;
 	/// Gas for 1024 incoming transfers recorded in one bucket write.
-	pub const MAX_INCOMING_TRANSFERS: u64 = 8_655_792;
+	pub const MAX_INCOMING_TRANSFERS: u64 = 7_555_964;
 	/// Due `assign` flush for all 341 cores in one block.
-	pub const ALL_DUE_ASSIGNS: u64 = 58_603_328;
+	pub const ALL_DUE_ASSIGNS: u64 = 54_821_304;
 	/// Marginal cost of a realistic destination's memo handler, per transfer.
-	pub const DEST_HANDLER_PER_TRANSFER: u64 = 20_691;
+	pub const DEST_HANDLER_PER_TRANSFER: u64 = 19_602;
 	/// Gas for one Ed25519 authorization.
-	pub const IS_AUTHORIZED_ED25519: u64 = 4_391_698;
+	pub const IS_AUTHORIZED_ED25519: u64 = 4_004_134;
 }
 
-/// Checks the pinned gas measurements against their budgets.
+/// A report admitted by the gas gate must leave 20% execution headroom.
+/// The 1024-message stress benchmarks below intentionally bypass that gate's
+/// network limit via `work_item`; their costs are not single-report budgets.
 #[test]
-fn worst_case_margin_works() {
-	let ga = jam_types::max_accumulate_gas();
-	let budget = ga - ga / 5;
-	assert!(gas::MAX_SOLICITS <= budget);
-	assert!(gas::MAX_KV_WRITES <= budget);
-	assert!(gas::MAX_TRANSFER_OUTS <= budget);
-	assert!(gas::MAX_GAS_TRANSFER_OUTS <= budget);
-	assert!(gas::MAX_INCOMING_TRANSFERS <= budget);
-	assert!(gas::ALL_DUE_ASSIGNS <= ga);
+fn report_gas_margin_works() {
+	let limit = jam_types::max_accumulate_gas();
+	let budget = limit - limit / 5;
+	let count = ((limit - REPORT_BASE_GAS) / UPWARD_MESSAGE_GAS) as u32;
+	assert!(count > 0 && count <= MAX_UMPS);
+
+	let solicits = (0..count)
+		.map(|i| UpwardMessage::Solicit {
+			target: Target::Parachain(PARA),
+			hash: distinct_hash(i),
+			len: 100.into(),
+		})
+		.collect();
+	let kv_writes = (0..count)
+		.map(|i| UpwardMessage::SetKV {
+			key: i.to_le_bytes().to_vec(),
+			value: vec![0xAB; if i == count - 1 { 33_715 } else { 8 }],
+		})
+		.collect();
+
+	for (name, messages) in [("solicits", solicits), ("kv_writes", kv_writes)] {
+		let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
+		let mut digest = ok_digest(PARA, CODE, b"genesis", b"head-1", messages, 0);
+		if name == "kv_writes" {
+			let extra = MAX_REPORT_ELECTIVE_DATA - digest.encode().len();
+			if let parachain_service::work_digest::ParachainWorkDigest::Ok {
+				upward_messages, ..
+			} = &mut digest
+			{
+				if let Some(UpwardMessage::SetKV { value, .. }) = upward_messages.last_mut() {
+					value.resize(value.len() + extra, 0xAB);
+				}
+			}
+			assert_eq!(digest.encode().len(), MAX_REPORT_ELECTIVE_DATA);
+		}
+		let (outcome, storage, _) =
+			accumulate_block(storage, vec![work_item_with_gas(&digest, limit)], NOW);
+		assert_eq!(
+			&para_info(&storage, PARA).unwrap().head_data[..],
+			b"head-1",
+			"{name}: report must be applied, not rejected by the gas gate"
+		);
+		assert!(para_log(&storage, PARA).is_empty(), "{name}: all messages must succeed");
+		assert!(
+			outcome.gas_used <= budget,
+			"{name}: {} gas exceeds the {budget} gas execution budget",
+			outcome.gas_used
+		);
+	}
 }
 
 /// Benchmarks a maximum-size digest of validation-code solicitations.
