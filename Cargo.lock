@@ -1201,6 +1201,9 @@ dependencies = [
 name = "cumulus-aura-authorizer"
 version = "0.1.0"
 dependencies = [
+ "binary-merkle-tree",
+ "hash-db",
+ "hash256-std-hasher",
  "jam-types 0.1.28",
  "parity-scale-codec",
  "polkadot-parachain-primitives",
