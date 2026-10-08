@@ -11,19 +11,19 @@ use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Decode, Encode};
 
 /// A JAM timeslot (`jam_types::Slot`).
-pub type Timeslot = u32;
+pub use jam_types::Slot as Timeslot;
 /// A 32-byte hash, layout-compatible with `jam_types::Hash`.
 pub type Hash = [u8; 32];
 /// A JAM service identifier (`jam_types::ServiceId`).
-pub type ServiceId = u32;
+pub use jam_types::ServiceId;
 /// A JAM core index (`jam_types::CoreIndex`).
-pub type CoreIndex = u16;
+pub use jam_types::CoreIndex;
 /// Key of one `incoming_transfers` bucket: a `u64` the service allocates by
 /// incrementing, deliberately unrelated to the arrival timeslot (spec §3.1).
 pub type BucketId = u64;
 /// A JAM balance. The design doc says `Compact<u128>`, but JAM's `Balance` is `u64`
 /// (see DECISIONS.md D-3); wire encodings use `Compact<u64>`.
-pub type Balance = u64;
+pub use jam_types::Balance;
 /// An authorizer hash (`H(code_hash ⌢ config)`), layout-compatible with
 /// `jam_types::AuthorizerHash`.
 pub type AuthorizerHash = [u8; 32];
