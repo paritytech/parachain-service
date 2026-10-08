@@ -8,14 +8,15 @@ use jam_types::{
 };
 use parachain_authorizer::{
 	aura::{
-		build_collator_tree, signable_work_package_hash, AuthConfig, AuthToken, AuthTrace,
-		CollatorKey, CollatorSignature, SUDO_KEY,
+		build_collator_tree, signable_work_package_hash, AuthConfig, AuthToken, CollatorKey,
+		CollatorSignature, SUDO_KEY,
 	},
 	is_authorized::{authorize, AuthorizationError},
 };
 use parachain_authorizer_ed25519::Ed25519;
 use parachain_authorizer_sr25519::Sr25519;
 use parachain_service_core::{
+	authorization::DevelopmentAuthTrace,
 	types::ParaId,
 	upward_message::{UpwardMessage, UpwardMessages},
 	PARACHAIN_SERVICE_ID,
@@ -179,7 +180,7 @@ fn authorize_under(
 	config: &AuthConfig,
 	token: &AuthToken,
 	package: &WorkPackage,
-) -> Result<AuthTrace, AuthorizationError> {
+) -> Result<DevelopmentAuthTrace, AuthorizationError> {
 	let slot = package.context.lookup_anchor_slot;
 	match scheme {
 		Scheme::Ed25519 => authorize::<Ed25519>(config, token, package, slot),
@@ -364,7 +365,7 @@ fn a_sudo_token_reaches_a_parked_core_unsigned_works() {
 			trace.sudo,
 			"{scheme:?}: the trace must tell refine to read the payload as control"
 		);
-		assert_eq!(trace.author_key, SUDO_KEY);
+		assert_eq!(trace.aura.author_key, SUDO_KEY);
 
 		// The hole is exactly this wide: the target-service check still applies, so a parked
 		// core's coretime cannot be spent on some other JAM service.

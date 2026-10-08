@@ -61,9 +61,5 @@ fn scale_wire_vectors_works() {
 	expected.extend_from_slice(&[8; 32]);
 	expected.extend_from_slice(&[9; 64]);
 	assert_eq!(token.encode(), expected);
-	for sudo in [false, true] {
-		let mut expected = vec![8; 32];
-		expected.push(u8::from(sudo));
-		assert_eq!(AuthTrace { author_key: [8; 32], sudo }.encode(), expected);
-	}
+	assert_eq!(AuthTrace { author_key: [8; 32] }.encode(), vec![8; 32]);
 }

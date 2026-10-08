@@ -13,6 +13,7 @@ publish = false
 workspace = true
 
 [dependencies]
+parachain-service-core = { workspace = true }
 jam-types = { workspace = true }
 jp-aura-authorizer = { workspace = true }
 jam-pvm-common = { workspace = true, features = ["authorizer", "logging"] }
@@ -26,7 +27,6 @@ sp-io = { workspace = true, features = ["disable_allocator", "disable_panic_hand
 # The scheme crates depend on this library; Cargo permits this cycle for tests.
 [dev-dependencies]
 primitive-types = { workspace = true }
-parachain-service-core = { workspace = true }
 parachain-authorizer-ed25519 = { workspace = true }
 parachain-authorizer-sr25519 = { workspace = true }
 parachain-service = { workspace = true, features = ["std", "test-utils"] }
@@ -40,6 +40,7 @@ std = [
 	"jam-pvm-common/std",
 	"jam-types/std",
 	"jp-aura-authorizer/std",
+	"parachain-service-core/std",
 	"parachain-service/std",
 	"primitive-types/std",
 	"sp-core/std",

@@ -125,6 +125,6 @@ impl AuthToken {
 		self.check_proof(config, collator_index)?;
 		self.check_signature::<S>(wp_hash)?;
 
-		Ok(AuthTrace { author_key: self.key, sudo: false })
+		Ok(AuthTrace { author_key: self.key })
 	}
 }

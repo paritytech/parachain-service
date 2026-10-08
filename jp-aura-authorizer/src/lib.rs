@@ -57,12 +57,8 @@ pub fn authorize<S: token::SignatureVerifier>(
 		.map_err(AuthorizationError::BadToken)
 }
 
-/// What Is-Authorized hands to Refine and Accumulate for every work item in the package.
+/// The collator authenticated by AURA for the work package.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, MaxEncodedLen)]
 pub struct AuthTrace {
 	pub author_key: token::CollatorKey,
-	/// Marks development control packages.
-	///
-	/// Refine interprets these as commands rather than blocks.
-	pub sudo: bool,
 }

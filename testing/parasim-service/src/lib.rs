@@ -31,13 +31,11 @@ use jam_types::{
 	AuthQueue, AuthorizerHash, CoreIndex, Hash, ServiceId, Slot, WorkOutput, WorkPackageHash,
 	WorkPayload,
 };
-use parachain_service_core::StateProof;
 use parachain_service_core::{
-	// Renamed: `jam_types::AuthTrace` is the opaque blob JAM carries an authorization output in;
-	// this is what our own authorizer puts inside it.
-	authorization::AuthTrace as ControlTrace,
+	authorization::DevelopmentAuthTrace,
 	types::{CoreIndex as ParaCoreIndex, HeadData, ParaId, Timeslot},
 	upward_message::{UpwardMessage, UpwardMessages},
+	StateProof,
 };
 
 use buffer::{BufferedCandidate, HeadStore, Outcome, ReorderBuffer, StoredHead};
@@ -193,7 +191,7 @@ fn control_messages(payload: &[u8]) -> Result<UpwardMessages, ParasimRefineError
 /// it. A trace that does not decode is not an error: the null authorizer every core starts out
 /// with returns an empty one, and a package riding such a core simply has no privilege.
 fn sudo() -> bool {
-	ControlTrace::decode_all(&mut &jam_pvm_common::refine::auth_trace().0[..])
+	DevelopmentAuthTrace::decode_all(&mut &jam_pvm_common::refine::auth_trace().0[..])
 		.is_ok_and(|trace| trace.sudo)
 }
 

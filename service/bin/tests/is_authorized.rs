@@ -163,9 +163,11 @@ fn ed25519_known_answer_vector_works() {
 	eprintln!("ed25519_known_answer_vector_works: gas_used={}", outcome.gas_used);
 
 	use codec::DecodeAll;
-	let trace = parachain_authorizer::aura::AuthTrace::decode_all(&mut &outcome.auth_trace.0[..])
-		.expect("auth trace must decode");
-	assert_eq!(trace.author_key, expected_vk, "author key must match RFC 8032 verifying key");
+	let trace = parachain_service_core::authorization::DevelopmentAuthTrace::decode_all(
+		&mut &outcome.auth_trace.0[..],
+	)
+	.expect("auth trace must decode");
+	assert_eq!(trace.aura.author_key, expected_vk, "author key must match RFC 8032 verifying key");
 
 	let _ = MOCK_SERVICE_ID;
 }
