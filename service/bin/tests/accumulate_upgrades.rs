@@ -3,6 +3,7 @@
 //! §5.2 has two phases and no deadline: an `Announcement` arms a code that a
 //! later `Apply` activates; the announcement stands until applied or superseded.
 
+use parachain_service_core::types::validation_code_hash_bytes;
 mod common;
 
 use common::*;
@@ -60,7 +61,7 @@ fn forget_msg(code: &[u8]) -> UpwardMessage {
 	let reference = code_ref(code);
 	UpwardMessage::Forget {
 		target: Target::Parachain(PARA),
-		hash: reference.hash.0,
+		hash: validation_code_hash_bytes(&reference.hash),
 		len: reference.len.into(),
 	}
 }
@@ -79,7 +80,7 @@ fn solicit_and_provide(
 	let reference = code_ref(code);
 	let msg = UpwardMessage::Solicit {
 		target: Target::Parachain(PARA),
-		hash: reference.hash.0,
+		hash: validation_code_hash_bytes(&reference.hash),
 		len: reference.len.into(),
 	};
 	let digest = ok_digest(PARA, CODE, parent, next, vec![msg], 0);
@@ -164,7 +165,7 @@ fn announcement_unavailable_errors() {
 	let new_ref = code_ref(NEW_CODE);
 	let msg = UpwardMessage::Solicit {
 		target: Target::Parachain(PARA),
-		hash: new_ref.hash.0,
+		hash: validation_code_hash_bytes(&new_ref.hash),
 		len: new_ref.len.into(),
 	};
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg], 0);
@@ -180,7 +181,7 @@ fn announcement_unavailable_errors() {
 	assert_eq!(
 		accumulate_logs(&storage, PARA),
 		vec![AccumulateLog::CodeUpgradeNotAvailable {
-			hash: new_ref.hash.0,
+			hash: validation_code_hash_bytes(&new_ref.hash),
 			len: new_ref.len.into()
 		}]
 	);
@@ -198,7 +199,7 @@ fn announcement_of_other_paras_code_errors() {
 	let new_ref = code_ref(NEW_CODE);
 	let msg = UpwardMessage::Solicit {
 		target: Target::Parachain(OTHER),
-		hash: new_ref.hash.0,
+		hash: validation_code_hash_bytes(&new_ref.hash),
 		len: new_ref.len.into(),
 	};
 	let digest = ok_digest(OTHER, b"para-2000-code", b"genesis-2", b"head-2-1", vec![msg], 0);
@@ -215,7 +216,7 @@ fn announcement_of_other_paras_code_errors() {
 	assert_eq!(
 		accumulate_logs(&storage, PARA),
 		vec![AccumulateLog::CodeUpgradeNotAvailable {
-			hash: new_ref.hash.0,
+			hash: validation_code_hash_bytes(&new_ref.hash),
 			len: new_ref.len.into()
 		}]
 	);
@@ -235,7 +236,7 @@ fn apply_without_announcement_errors() {
 	assert_eq!(
 		accumulate_logs(&storage, PARA),
 		vec![AccumulateLog::CodeUpgradeNotAnnounced {
-			hash: new_ref.hash.0,
+			hash: validation_code_hash_bytes(&new_ref.hash),
 			len: new_ref.len.into()
 		}]
 	);
@@ -261,7 +262,7 @@ fn apply_mismatched_announcement_errors() {
 	assert_eq!(
 		accumulate_logs(&storage, PARA),
 		vec![AccumulateLog::CodeUpgradeNotAnnounced {
-			hash: third_ref.hash.0,
+			hash: validation_code_hash_bytes(&third_ref.hash),
 			len: third_ref.len.into()
 		}]
 	);
@@ -329,7 +330,10 @@ fn forget_announced_refused_then_supersede_works() {
 	assert_eq!(info.used_state_balance, used_announced);
 	assert_eq!(
 		accumulate_logs(&storage, PARA),
-		vec![AccumulateLog::CanNotRemoveCode { hash: new_ref.hash.0, len: new_ref.len.into() }]
+		vec![AccumulateLog::CanNotRemoveCode {
+			hash: validation_code_hash_bytes(&new_ref.hash),
+			len: new_ref.len.into()
+		}]
 	);
 
 	// Supersede with THIRD, displacing NEW; the forget now releases it (two-step,
@@ -380,7 +384,7 @@ fn insufficient_balance_preserves_announcement_works() {
 	// The second solicit cannot be afforded: rejected and logged.
 	let msg = UpwardMessage::Solicit {
 		target: Target::Parachain(PARA),
-		hash: third_ref.hash.0,
+		hash: validation_code_hash_bytes(&third_ref.hash),
 		len: third_ref.len.into(),
 	};
 	let digest = ok_digest(PARA, CODE, b"head-2", b"head-3", vec![msg], 0);
@@ -390,7 +394,7 @@ fn insufficient_balance_preserves_announcement_works() {
 		accumulate_logs(&storage, PARA),
 		vec![AccumulateLog::InsufficientStateBalance {
 			reason: InsufficientBalanceReason::Solicit {
-				hash: third_ref.hash.0,
+				hash: validation_code_hash_bytes(&third_ref.hash),
 				len: third_ref.len.into()
 			}
 		}]
@@ -407,12 +411,12 @@ fn insufficient_balance_preserves_announcement_works() {
 		vec![
 			AccumulateLog::InsufficientStateBalance {
 				reason: InsufficientBalanceReason::Solicit {
-					hash: third_ref.hash.0,
+					hash: validation_code_hash_bytes(&third_ref.hash),
 					len: third_ref.len.into()
 				}
 			},
 			AccumulateLog::CodeUpgradeNotAvailable {
-				hash: third_ref.hash.0,
+				hash: validation_code_hash_bytes(&third_ref.hash),
 				len: third_ref.len.into()
 			},
 		]
@@ -507,7 +511,11 @@ const NEW_SERVICE_CODE: &[u8] = b"the-new-parachain-service-code";
 fn reference(storage: &mut jam_node::vm::Storage, para: ParaId, code: &[u8]) {
 	let code = code_ref(code);
 	let entry = PreimageEntry { referencers: [para].into_iter().collect() };
-	set_state(storage, &storage_key(Tag::PreimageRegistry, &(code.hash.0, code.len)), &entry);
+	set_state(
+		storage,
+		&storage_key(Tag::PreimageRegistry, &(validation_code_hash_bytes(&code.hash), code.len)),
+		&entry,
+	);
 }
 
 /// Asset Hub with `NEW_SERVICE_CODE` provided and referenced by `referencer`, then

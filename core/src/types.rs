@@ -62,8 +62,12 @@ pub const CORETIME_PARA_ID: ParaId = ParaId::new(1);
 pub const ASSET_HUB_PARA_ID: ParaId = ParaId::new(2);
 
 /// Hash of a parachain's validation code (PVF) preimage.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]
-pub struct ValidationCodeHash(pub Hash);
+pub use polkadot_parachain_primitives::primitives::ValidationCodeHash;
+
+/// Convert an SDK validation-code hash to the raw bytes used by JAM APIs.
+pub fn validation_code_hash_bytes(hash: &ValidationCodeHash) -> Hash {
+	hash.as_ref().try_into().expect("validation code hashes are 32 bytes")
+}
 
 /// A validation code reference: its hash plus its byte length.
 ///
@@ -78,6 +82,6 @@ pub struct ValidationCodeRef {
 impl ValidationCodeRef {
 	/// Does the `(hash, len)` pair of a `solicit`/`forget` name this validation code?
 	pub fn is(&self, hash: &Hash, len: u32) -> bool {
-		self.hash.0 == *hash && self.len == len
+		validation_code_hash_bytes(&self.hash) == *hash && self.len == len
 	}
 }

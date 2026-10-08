@@ -1,5 +1,6 @@
 //! Unit tests for the chain-spec builder.
 
+use parachain_service_core::types::validation_code_hash_bytes;
 use std::collections::{BTreeMap, BTreeSet};
 
 use codec::{Decode, Encode};
@@ -102,7 +103,10 @@ fn validation_code_is_hosted_once_with_registry_entry() {
 	let entry: PreimageEntry = decode(
 		service
 			.storage
-			.get(&storage_key(Tag::PreimageRegistry, &(code_ref(CODE).hash.0, CODE.len() as u32)))
+			.get(&storage_key(
+				Tag::PreimageRegistry,
+				&(validation_code_hash_bytes(&code_ref(CODE).hash), CODE.len() as u32),
+			))
 			.expect("registry entry; qed"),
 	);
 	assert_eq!(entry.referencers, BTreeSet::from([ParaId::new(3)]));
@@ -121,7 +125,10 @@ fn shared_validation_code_is_hosted_once_and_referenced_by_both() {
 	let entry: PreimageEntry = decode(
 		service
 			.storage
-			.get(&storage_key(Tag::PreimageRegistry, &(code_ref(CODE).hash.0, CODE.len() as u32)))
+			.get(&storage_key(
+				Tag::PreimageRegistry,
+				&(validation_code_hash_bytes(&code_ref(CODE).hash), CODE.len() as u32),
+			))
 			.expect("registry entry; qed"),
 	);
 	assert_eq!(entry.referencers, BTreeSet::from([ParaId::new(100), ParaId::new(200)]));
@@ -197,7 +204,7 @@ const POLKAVM_BLOB_LEN: usize = 7_014_285;
 /// as the candidate's `ParachainCandidate.validation_code` (`:948-959`). The genesis
 /// builder hashes the same blob with `parachain_service::work_digest::validation_code_hash`
 /// and records `ValidationCodeRef { hash, len }` in the para's `ParaInfo`. If the two
-/// disagree, refine's `historical_lookup(&validation_code.0)` misses and every candidate is
+/// disagree, refine's historical code lookup misses and every candidate is
 /// refused with `RefineLog::ValidationCodeLookupFailed` — silently, on chain.
 ///
 /// The collator side is rebuilt from blake2b-256 via `blake2b_simd`, the exact primitive
@@ -214,7 +221,11 @@ fn validation_code_hash_matches_collator_derivation() {
 
 	let collator: [u8; 32] = blake2b(&blob);
 	let builder = validation_code_hash(&blob);
-	assert_eq!(builder.0, collator, "collator and genesis must derive the same code hash");
+	assert_eq!(
+		validation_code_hash_bytes(&builder),
+		collator,
+		"collator and genesis must derive the same code hash"
+	);
 
 	// The preimage registry is keyed by `(hash, len)` (§6.1): a wrong length misses just as
 	// silently as a wrong hash.

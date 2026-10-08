@@ -18,7 +18,7 @@ use crate::{
 use alloc::vec::Vec;
 use jam_types::Slot;
 use parachain_service_core::types::{
-	Balance, HeadData, ParaId, ValidationCodeRef, ASSET_HUB_PARA_ID,
+	validation_code_hash_bytes, Balance, HeadData, ParaId, ValidationCodeRef, ASSET_HUB_PARA_ID,
 };
 
 /// §6.1 — the sole creator of `ParaInfo`. On an unused ParaId, creates the entry
@@ -115,7 +115,9 @@ pub fn set_validation_code(
 
 	// Acquire the new referencer (no charge if already solicited); reject the
 	// whole call if there is no headroom.
-	if let Err(log) = add_referencer(para_id, &new_code.hash.0, new_code.len) {
+	if let Err(log) =
+		add_referencer(para_id, &validation_code_hash_bytes(&new_code.hash), new_code.len)
+	{
 		logs.push(log);
 		return;
 	}
@@ -149,7 +151,12 @@ pub fn clean_up(
 
 	let mut retained = false;
 	for code_ref in [pi.validation_code, pi.announced_upgrade].into_iter().flatten() {
-		let out = remove_referencer(para_id, &code_ref.hash.0, code_ref.len, now);
+		let out = remove_referencer(
+			para_id,
+			&validation_code_hash_bytes(&code_ref.hash),
+			code_ref.len,
+			now,
+		);
 		retained |= out.retained;
 		logs.extend(out.log);
 	}

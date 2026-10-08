@@ -3,6 +3,8 @@
 
 #![allow(dead_code)]
 
+use parachain_service_core::types::validation_code_hash_bytes;
+
 use codec::{Decode, Encode};
 use executor::pj::{self, AccumulateOutcome};
 use jam_node::vm::Storage;
@@ -117,7 +119,10 @@ pub fn para_log(storage: &Storage, para: ParaId) -> ParachainLog {
 }
 
 pub fn registry_entry(storage: &Storage, code: ValidationCodeRef) -> Option<PreimageEntry> {
-	get_state(storage, &storage_key(Tag::PreimageRegistry, &(code.hash.0, code.len)))
+	get_state(
+		storage,
+		&storage_key(Tag::PreimageRegistry, &(validation_code_hash_bytes(&code.hash), code.len)),
+	)
 }
 
 pub fn kv_value(storage: &Storage, para: ParaId, key: &[u8]) -> Option<Vec<u8>> {
@@ -135,7 +140,7 @@ pub fn transfer_bucket(storage: &Storage, id: BucketId) -> Option<IncomingTransf
 // --- Seeding ----------------------------------------------------------------
 
 pub fn code_ref(code: &[u8]) -> ValidationCodeRef {
-	ValidationCodeRef { hash: ValidationCodeHash(hash_raw(code)), len: code.len() as u32 }
+	ValidationCodeRef { hash: ValidationCodeHash::from(hash_raw(code)), len: code.len() as u32 }
 }
 
 /// Register `para` with `head` and an active, provided validation `code`, as a
@@ -194,12 +199,16 @@ fn seed_para_inner(
 	};
 	set_state(storage, &storage_key(Tag::Parachains, &para), &info);
 	let entry = PreimageEntry { referencers: [para].into_iter().collect() };
-	set_state(storage, &storage_key(Tag::PreimageRegistry, &(cref.hash.0, cref.len)), &entry);
+	set_state(
+		storage,
+		&storage_key(Tag::PreimageRegistry, &(validation_code_hash_bytes(&cref.hash), cref.len)),
+		&entry,
+	);
 	if provided {
 		provide_preimage(storage, code);
 	} else {
 		storage
-			.solicit(0, SVC, cref.hash.0, cref.len)
+			.solicit(0, SVC, validation_code_hash_bytes(&cref.hash), cref.len)
 			.expect("preimage should fit in storage");
 		storage.commit();
 	}

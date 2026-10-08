@@ -129,5 +129,5 @@ impl ParachainWorkDigest {
 /// Hash a validation-code blob into its [`ValidationCodeHash`].
 #[cfg(feature = "std")]
 pub fn validation_code_hash(code: &[u8]) -> ValidationCodeHash {
-	ValidationCodeHash(hash_raw(code))
+	ValidationCodeHash::from(hash_raw(code))
 }

@@ -1,5 +1,6 @@
 //! The parachain service's genesis description.
 
+use parachain_service_core::types::validation_code_hash_bytes;
 use std::collections::{BTreeMap, BTreeSet};
 
 use codec::Encode;
@@ -111,7 +112,10 @@ impl ParachainServiceSpec {
 				let cref =
 					ValidationCodeRef { hash: validation_code_hash(code), len: code.len() as u32 };
 				host(&mut preimages, &mut hosted, code);
-				registry.entry((cref.hash.0, cref.len)).or_default().insert(para.id);
+				registry
+					.entry((validation_code_hash_bytes(&cref.hash), cref.len))
+					.or_default()
+					.insert(para.id);
 				cref
 			});
 			// An authorizer's verifier blob is a preimage too — a work package can

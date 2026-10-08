@@ -1,6 +1,7 @@
 //! Coretime-chain management flows: registration (§6.2), forced updates (§6.3),
 //! state-balance authority (§6.1), and clean-up (§6.4).
 
+use parachain_service_core::types::validation_code_hash_bytes;
 mod common;
 
 use common::*;
@@ -199,7 +200,7 @@ fn forced_set_validation_code_leaves_announced_works() {
 	// The para solicits and provides an upgrade candidate, then announces it.
 	let msg = UpwardMessage::Solicit {
 		target: parachain_service_core::upward_message::Target::Parachain(NEW_PARA),
-		hash: ann_ref.hash.0,
+		hash: validation_code_hash_bytes(&ann_ref.hash),
 		len: ann_ref.len.into(),
 	};
 	let digest = ok_digest(NEW_PARA, NEW_CODE, b"para-genesis", b"head-1", vec![msg], 0);
@@ -343,12 +344,12 @@ fn deregistering_updates_works() {
 			},
 			UpwardMessage::Solicit {
 				target: parachain_service_core::upward_message::Target::Parachain(NEW_PARA),
-				hash: extra.hash.0,
+				hash: validation_code_hash_bytes(&extra.hash),
 				len: extra.len.into(),
 			},
 			UpwardMessage::Solicit {
 				target: parachain_service_core::upward_message::Target::Parachain(NEW_PARA),
-				hash: code_ref(NEW_CODE).hash.0,
+				hash: validation_code_hash_bytes(&code_ref(NEW_CODE).hash),
 				len: code_ref(NEW_CODE).len.into(),
 			},
 		],

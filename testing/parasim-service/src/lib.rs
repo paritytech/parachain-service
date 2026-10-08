@@ -611,7 +611,9 @@ mod tests {
 	/// A parachain block's payload, which is what travels on the ordinary lane.
 	fn block_payload() -> Vec<u8> {
 		parachain_service_core::candidate::ParachainCandidate {
-			validation_code: parachain_service_core::types::ValidationCodeHash([3u8; HASH_LEN]),
+			validation_code: parachain_service_core::types::ValidationCodeHash::from(
+				[3u8; HASH_LEN],
+			),
 		}
 		.encode()
 	}

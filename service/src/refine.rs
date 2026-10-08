@@ -9,7 +9,7 @@ use codec::{Decode, DecodeAll};
 use jam_pvm_common::refine::{self, auth_trace, lookup as historical_lookup};
 use jam_types::{CoreIndex, ServiceId, WorkPackageHash, WorkPayload};
 use parachain_authorizer::aura;
-use parachain_service_core::types::ParaId;
+use parachain_service_core::types::{validation_code_hash_bytes, ParaId};
 
 pub use parachain_service_core::candidate::ParachainCandidate;
 
@@ -53,7 +53,7 @@ pub fn refine(
 	};
 
 	let validation_code = candidate.validation_code;
-	let Some(code) = historical_lookup(&validation_code.0) else {
+	let Some(code) = historical_lookup(&validation_code_hash_bytes(&validation_code)) else {
 		return ParachainWorkDigest::Err {
 			para_id,
 			validation_code,

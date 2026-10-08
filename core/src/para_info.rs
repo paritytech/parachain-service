@@ -83,7 +83,9 @@ pub struct ParaInfo {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::types::{HeadData, ParaId, ValidationCodeHash, ValidationCodeRef};
+	use crate::types::{
+		validation_code_hash_bytes, HeadData, ParaId, ValidationCodeHash, ValidationCodeRef,
+	};
 	use alloc::vec;
 	use codec::{Decode, Encode};
 
@@ -130,13 +132,14 @@ mod tests {
 			0x22, 0x22, 0x22, 0x02, 0x00, 0x00, 0x00, 0x28, 0x14, 0x01,
 		];
 		let info = ParaInfo::decode(&mut &bytes[..]).expect("well-formed fixture; qed");
+		assert_eq!(info.encode(), bytes);
 		let expected_head = HeadData::try_from(vec![0xca, 0xfe]).expect("2 bytes < 4 KiB; qed");
 		assert_eq!(info.head_data, expected_head);
 		let vc = info.validation_code.expect("Some in fixture; qed");
-		assert_eq!(vc.hash.0, [0x11u8; 32]);
+		assert_eq!(validation_code_hash_bytes(&vc.hash), [0x11u8; 32]);
 		assert_eq!(vc.len, 1);
 		let announced = info.announced_upgrade.expect("Some in fixture; qed");
-		assert_eq!(announced.hash.0, [0x22u8; 32]);
+		assert_eq!(validation_code_hash_bytes(&announced.hash), [0x22u8; 32]);
 		assert_eq!(announced.len, 2);
 		assert_eq!(info.total_state_balance, 10);
 		assert_eq!(info.used_state_balance, 5);
@@ -146,8 +149,9 @@ mod tests {
 	/// Encodes then decodes with both `Some` variants to prove `Encode`/`Decode` are consistent.
 	#[test]
 	fn round_trips_with_both_some_variants() {
-		let code_ref_a = ValidationCodeRef { hash: ValidationCodeHash([0xab; 32]), len: 512 };
-		let code_ref_b = ValidationCodeRef { hash: ValidationCodeHash([0xcd; 32]), len: 1024 };
+		let code_ref_a = ValidationCodeRef { hash: ValidationCodeHash::from([0xab; 32]), len: 512 };
+		let code_ref_b =
+			ValidationCodeRef { hash: ValidationCodeHash::from([0xcd; 32]), len: 1024 };
 		let head_data: HeadData =
 			HeadData::try_from(vec![0xde, 0xad, 0xbe, 0xef]).expect("4 bytes < 4 KiB; qed");
 		let original = ParaInfo {

@@ -153,7 +153,7 @@ fn legacy_pov_payload_errors() {
 fn unavailable_code_errors() {
 	// §4.1 step 4: the failure names the candidate's code, so Accumulate can check
 	// it against the active code (§5.1 step 2).
-	let validation_code = ValidationCodeHash([7; 32]);
+	let validation_code = ValidationCodeHash::from([7; 32]);
 	let payload = ParachainCandidate { validation_code }.encode();
 
 	let outcome = refine_item(payload, Vec::new(), vec![ParaId::new(0)]);

@@ -2,6 +2,7 @@
 //! The codex supplies key preimages (JAM hashes keys), never expected values.
 //! Ghost solicit/pruning history comes from the trace. Host limitations are
 //! explicit: supervisor balances/links are not represented by this JAM revision.
+use parachain_service_core::types::validation_code_hash_bytes;
 use std::collections::{BTreeMap, BTreeSet};
 
 use codec::{Decode, Encode};
@@ -184,7 +185,7 @@ pub fn state_at(
 			if let Some(code) = code {
 				check(
 					registry
-						.get(&(code.hash.0, code.len))
+						.get(&(validation_code_hash_bytes(&code.hash), code.len))
 						.is_some_and(|e| e.referencers.contains(p)),
 					name,
 					frame,

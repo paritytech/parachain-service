@@ -379,7 +379,7 @@ fn build_package(
 	let authorizer =
 		if parked { args.aura.parked_authorizer() } else { args.aura.authorizer(args.para) };
 	let payload =
-		ParachainCandidate { validation_code: ValidationCodeHash([0u8; HASH_LEN]) }.encode();
+		ParachainCandidate { validation_code: ValidationCodeHash::from([0u8; HASH_LEN]) }.encode();
 	let mut item = anchor.item(args.service, payload);
 	item.extrinsics = vec![ExtrinsicSpec {
 		hash: ExtrinsicHash(jam_std_common::hash_raw(pov)),

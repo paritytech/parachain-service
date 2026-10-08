@@ -1,6 +1,7 @@
 //! Preimage solicit/forget lifecycle via upward messages (§6.1), including the
 //! §5.2 refusal to forget a para's active or announced validation code.
 
+use parachain_service_core::types::validation_code_hash_bytes;
 mod common;
 
 use common::*;
@@ -356,7 +357,7 @@ fn solicit_active_code_is_noop_works() {
 
 	let msg = UpwardMessage::Solicit {
 		target: Target::Parachain(PARA),
-		hash: cref.hash.0,
+		hash: validation_code_hash_bytes(&cref.hash),
 		len: cref.len.into(),
 	};
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg], 0);
@@ -376,7 +377,7 @@ fn solicit_announced_code_is_noop_works() {
 	let new_ref = code_ref(NEW_CODE);
 	let solicit = UpwardMessage::Solicit {
 		target: Target::Parachain(PARA),
-		hash: new_ref.hash.0,
+		hash: validation_code_hash_bytes(&new_ref.hash),
 		len: new_ref.len.into(),
 	};
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
@@ -413,7 +414,7 @@ fn forget_active_code_refused_works() {
 
 	let forget = UpwardMessage::Forget {
 		target: Target::Parachain(PARA),
-		hash: cref.hash.0,
+		hash: validation_code_hash_bytes(&cref.hash),
 		len: cref.len.into(),
 	};
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![forget], 0);
@@ -424,7 +425,10 @@ fn forget_active_code_refused_works() {
 	assert!(registry_entry(&storage, cref).is_some_and(|e| e.referencers.contains(&PARA)));
 	assert_eq!(
 		accumulate_logs(&storage, PARA),
-		vec![AccumulateLog::CanNotRemoveCode { hash: cref.hash.0, len: cref.len.into() }]
+		vec![AccumulateLog::CanNotRemoveCode {
+			hash: validation_code_hash_bytes(&cref.hash),
+			len: cref.len.into()
+		}]
 	);
 }
 
@@ -437,7 +441,7 @@ fn forget_announced_code_refused_works() {
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let msg = UpwardMessage::Solicit {
 		target: Target::Parachain(PARA),
-		hash: new_ref.hash.0,
+		hash: validation_code_hash_bytes(&new_ref.hash),
 		len: new_ref.len.into(),
 	};
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg], 0);
@@ -456,7 +460,7 @@ fn forget_announced_code_refused_works() {
 
 	let forget = UpwardMessage::Forget {
 		target: Target::Parachain(PARA),
-		hash: new_ref.hash.0,
+		hash: validation_code_hash_bytes(&new_ref.hash),
 		len: new_ref.len.into(),
 	};
 	let digest = ok_digest(PARA, CODE, b"head-2", b"head-3", vec![forget], 0);
@@ -468,7 +472,10 @@ fn forget_announced_code_refused_works() {
 	assert!(registry_entry(&storage, new_ref).is_some_and(|e| e.referencers.contains(&PARA)));
 	assert_eq!(
 		accumulate_logs(&storage, PARA),
-		vec![AccumulateLog::CanNotRemoveCode { hash: new_ref.hash.0, len: new_ref.len.into() }]
+		vec![AccumulateLog::CanNotRemoveCode {
+			hash: validation_code_hash_bytes(&new_ref.hash),
+			len: new_ref.len.into()
+		}]
 	);
 }
 
@@ -492,12 +499,16 @@ fn forget_running_service_code_works() {
 			for reference in [own, own_other_len, other] {
 				set_state(
 					s,
-					&storage_key(Tag::PreimageRegistry, &(reference.hash.0, reference.len)),
+					&storage_key(
+						Tag::PreimageRegistry,
+						&(validation_code_hash_bytes(&reference.hash), reference.len),
+					),
 					&PreimageEntry { referencers: [ASSET_HUB_PARA_ID].into_iter().collect() },
 				);
 			}
 			for reference in [own_other_len, other] {
-				s.solicit(0, SVC, reference.hash.0, reference.len).unwrap();
+				s.solicit(0, SVC, validation_code_hash_bytes(&reference.hash), reference.len)
+					.unwrap();
 			}
 			let mut info = para_info(s, ASSET_HUB_PARA_ID).unwrap();
 			info.used_state_balance += preimage_footprint(own.len) +
@@ -508,7 +519,7 @@ fn forget_running_service_code_works() {
 		let before = para_info(&storage, ASSET_HUB_PARA_ID).unwrap().used_state_balance;
 		let forget = |reference: ValidationCodeRef| UpwardMessage::Forget {
 			target: Target::Parachain(ASSET_HUB_PARA_ID),
-			hash: reference.hash.0,
+			hash: validation_code_hash_bytes(&reference.hash),
 			len: reference.len.into(),
 		};
 		let digest = ok_digest(
@@ -529,7 +540,10 @@ fn forget_running_service_code_works() {
 		);
 		assert_eq!(
 			accumulate_logs(&storage, origin),
-			vec![AccumulateLog::CanNotRemoveCode { hash: own.hash.0, len: own.len.into() }]
+			vec![AccumulateLog::CanNotRemoveCode {
+				hash: validation_code_hash_bytes(&own.hash),
+				len: own.len.into()
+			}]
 		);
 	}
 }

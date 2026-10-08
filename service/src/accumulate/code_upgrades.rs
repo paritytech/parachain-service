@@ -9,7 +9,9 @@ use crate::state::{
 	log::AccumulateLog, para_info::Parachains, preimage_registry::PreimageRegistry,
 };
 use alloc::vec::Vec;
-use parachain_service_core::types::{ParaId, Timeslot, ValidationCodeHash, ValidationCodeRef};
+use parachain_service_core::types::{
+	validation_code_hash_bytes, ParaId, Timeslot, ValidationCodeHash, ValidationCodeRef,
+};
 
 /// §5.2 `announceCodeUpgrade`: declare the code a later `Apply` may switch to.
 /// Replayed from a `RequestCodeUpgrade` upward message during Accumulate.
@@ -33,10 +35,16 @@ pub fn announce_code_upgrade(
 
 	// The code must be referenced by this para AND available for lookup at the
 	// work report's lookup anchor.
-	let referenced = PreimageRegistry::has_referencer(&new_hash.0, code_len, para_id);
-	if !referenced || !PreimageRegistry::is_available_at(&new_hash.0, code_len, lookup_anchor) {
+	let referenced =
+		PreimageRegistry::has_referencer(&validation_code_hash_bytes(&new_hash), code_len, para_id);
+	if !referenced ||
+		!PreimageRegistry::is_available_at(
+			&validation_code_hash_bytes(&new_hash),
+			code_len,
+			lookup_anchor,
+		) {
 		logs.push(AccumulateLog::CodeUpgradeNotAvailable {
-			hash: new_hash.0,
+			hash: validation_code_hash_bytes(&new_hash),
 			len: code_len.into(),
 		});
 		return;
@@ -62,7 +70,7 @@ pub fn apply_code_upgrade(
 
 	if pi.announced_upgrade != Some(new_ref) {
 		logs.push(AccumulateLog::CodeUpgradeNotAnnounced {
-			hash: new_hash.0,
+			hash: validation_code_hash_bytes(&new_hash),
 			len: code_len.into(),
 		});
 		return;

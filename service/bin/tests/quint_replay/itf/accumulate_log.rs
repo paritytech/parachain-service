@@ -23,7 +23,7 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 				codex.preimages().into_iter().find(|(known, _, _)| *known == value).ok_or_else(
 					|| format!("invalid code hash {value} has no established length"),
 				)?;
-			Ok(AccumulateLog::InvalidCodeHash { hash: ValidationCodeHash(hash) })
+			Ok(AccumulateLog::InvalidCodeHash { hash: ValidationCodeHash::from(hash) })
 		},
 		"InsufficientStateBalance" => {
 			let (reason, payload) = variant(value)?;

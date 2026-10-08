@@ -389,7 +389,7 @@ mod host {
 			},
 			MockAction::RequestCodeUpgrade { hash, len, phase } => {
 				UpwardMessage::RequestCodeUpgrade {
-					hash: ValidationCodeHash(*hash),
+					hash: ValidationCodeHash::from(*hash),
 					len: (*len).into(),
 					phase: *phase,
 				}
@@ -429,7 +429,7 @@ mod host {
 				UpwardMessage::ParachainSetValidationCode {
 					para_id: ParaId::new(*para_id),
 					new_validation_code: ValidationCodeRef {
-						hash: ValidationCodeHash(*hash),
+						hash: ValidationCodeHash::from(*hash),
 						len: *len,
 					},
 				}
