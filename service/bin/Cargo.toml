@@ -23,6 +23,7 @@ test-utils = [
 	"dep:jam-std-common",
 	"dep:jam-types",
 	"dep:parachain-authorizer",
+	"dep:parachain-service-core",
 	"dep:primitive-types",
 	"parachain-authorizer?/test-utils",
 	"parachain-service-bin/test-utils",
@@ -37,8 +38,9 @@ blake2b_simd = { workspace = true, optional = true }
 ed25519-dalek = { workspace = true, optional = true }
 executor = { workspace = true, optional = true }
 jam-node = { path = "../../vendor/polkajam/crates/node", default-features = false, features = ["hazmat"], optional = true }
-jam-std-common = { path = "../../vendor/polkajam/crates/jam-std-common", optional = true }
+jam-std-common = { workspace = true, optional = true }
 parachain-authorizer = { workspace = true, optional = true }
+parachain-service-core = { workspace = true, optional = true }
 codec = { workspace = true, optional = true }
 primitive-types = { workspace = true, optional = true }
 jam-types = { workspace = true, optional = true }

@@ -18,7 +18,7 @@ codec = { workspace = true }
 jam-chainspec = { workspace = true }
 jam-std-common = { workspace = true }
 jam-types = { workspace = true }
-jp-aura-authorizer = { workspace = true }
+cumulus-aura-authorizer = { workspace = true }
 parachain-service = { workspace = true, features = ["std"] }
 parachain-service-core = { workspace = true, features = ["std"] }
 thiserror = { workspace = true }

@@ -2,7 +2,7 @@
 
 use codec::{Decode, Encode, MaxEncodedLen};
 
-pub use jp_aura_authorizer::{AuthTrace, CollatorKey, CollatorSignature};
+pub use cumulus_aura_authorizer::{AuthTrace, CollatorKey, CollatorSignature};
 
 /// Local authorization output carrying the parasim development-control flag.
 ///
@@ -10,7 +10,7 @@ pub use jp_aura_authorizer::{AuthTrace, CollatorKey, CollatorSignature};
 /// preserving the existing local wire format.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, MaxEncodedLen)]
 pub struct DevelopmentAuthTrace {
-	pub aura: jp_aura_authorizer::AuthTrace,
+	pub aura: cumulus_aura_authorizer::AuthTrace,
 	/// The local adapter admitted a development control package through its sentinel bypass.
 	pub sudo: bool,
 }

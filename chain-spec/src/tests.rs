@@ -4,9 +4,9 @@ use parachain_service_core::types::validation_code_hash_bytes;
 use std::collections::{BTreeMap, BTreeSet};
 
 use codec::{Decode, Encode};
+use cumulus_aura_authorizer::AuthConfig;
 use jam_std_common::hash_raw;
 use jam_types::{AuthorizerHash, Balance};
-use jp_aura_authorizer::AuthConfig;
 use parachain_service::{
 	state::{para_info::ParaInfo, preimage_registry::PreimageEntry, storage_key, Tag},
 	state_balance::{baseline_for, preimage_footprint},

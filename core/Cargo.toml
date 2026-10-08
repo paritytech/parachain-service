@@ -13,7 +13,7 @@ publish = false
 workspace = true
 
 [dependencies]
-jp-aura-authorizer = { workspace = true }
+cumulus-aura-authorizer = { workspace = true }
 polkadot-parachain-primitives = { workspace = true }
 sp-crypto-hashing = { workspace = true }
 bounded-collections = { workspace = true }
@@ -26,6 +26,8 @@ num_enum = { workspace = true }
 polkavm-derive = { workspace = true }
 # JAM guests provide their own allocator and panic handler.
 sp-io = { workspace = true, features = ["disable_allocator", "disable_panic_handler"] }
+# Published parachain primitives pull a separate registry copy of sp-io.
+sp-io-published = { package = "sp-io", version = "48.0.0", default-features = false, features = ["disable_allocator", "disable_panic_handler"] }
 
 [dev-dependencies]
 jam-null-authorizer-bin = { workspace = true }
@@ -38,7 +40,7 @@ polkajam-trie = { workspace = true }
 [features]
 default = []
 std = [
-	"jp-aura-authorizer/std",
+	"cumulus-aura-authorizer/std",
 	"polkadot-parachain-primitives/std",
 	"sp-crypto-hashing/std",
 	"bounded-collections/std",

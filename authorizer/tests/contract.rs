@@ -303,6 +303,26 @@ fn a_token_does_not_carry_over_to_a_re_anchored_package_works() {
 	}
 }
 
+/// The local JAM adapter must sign context fields absent from published jam-types 0.1.28.
+#[test]
+fn newer_context_fields_errors() {
+	for scheme in [Scheme::Ed25519, Scheme::Sr25519] {
+		let signed = block(1, 0);
+		let collators = Collators::new(scheme, &["//Alice"]);
+		let config = collators.config(vec![ParaId::new(0)]);
+		let token = &collators.tokens(&signed)[0];
+		assert!(admits(scheme, &config, token, &signed));
+
+		let mut changed_slot = signed.clone();
+		changed_slot.context.anchor_slot += 1;
+		assert!(!admits(scheme, &config, token, &changed_slot));
+
+		let mut changed_root = signed.clone();
+		changed_root.context.lookup_anchor_state_root.0[0] ^= 1;
+		assert!(!admits(scheme, &config, token, &changed_root));
+	}
+}
+
 /// A core assignment now travels in a work item, so the package hash covers it: a signature
 /// cannot be lifted from an innocent package onto one that reassigns a core. Phase 6 bound the
 /// command into the signing payload by hand because it lived outside the hash; this is that

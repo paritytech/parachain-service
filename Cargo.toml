@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "authorizer",
-    "jp-aura-authorizer",
     "authorizer-ed25519",
     "authorizer-sr25519",
     "chain-spec",
@@ -34,16 +33,17 @@ license = "Apache-2.0"
 unexpected_cfgs = { level = "warn", check-cfg = [] }
 
 [workspace.dependencies]
-jp-aura-authorizer = { path = "jp-aura-authorizer", default-features = false }
-polkadot-parachain-primitives = { path = "vendor/polkadot-sdk-companion/polkadot/parachain", default-features = false }
+cumulus-aura-authorizer = { path = "vendor/polkadot-sdk-companion/cumulus/jam/aura-authorizer", default-features = false }
+polkadot-parachain-primitives = { version = "23.0.0", default-features = false }
 jam-types = { path = "vendor/polkajam/crates/jam-types", default-features = false }
 jam-codec = { version = "0.1.1", default-features = false, features = ["derive"] }
 jam-pvm-common = { path = "vendor/polkajam/crates/jam-pvm-common", default-features = false }
 jam-std-common = { path = "vendor/polkajam/crates/jam-std-common" }
-polkajam-trie = { package = "trie", path = "vendor/polkajam/crates/trie" }
 jam-null-authorizer-bin = { path = "vendor/polkajam/services/null-authorizer-bin" }
-cargo-jam-build = { path = "vendor/polkajam/crates/cargo-jam-build" }
 jam-bootstrap-service-common = { path = "vendor/polkajam/services/bootstrap-service/common", features = ["std"] }
+# Unpublished Polkajam crates remain vendored.
+polkajam-trie = { package = "trie", path = "vendor/polkajam/crates/trie" }
+cargo-jam-build = { path = "vendor/polkajam/crates/cargo-jam-build" }
 jam-chainspec = { path = "vendor/polkajam/crates/jam-chainspec" }
 sp-core = { path = "vendor/polkadot-sdk-companion/substrate/primitives/core", default-features = false }
 sp-keystore = { path = "vendor/polkadot-sdk-companion/substrate/primitives/keystore" }
@@ -104,9 +104,8 @@ tiny-keccak = { version = "2.0.2", default-features = false, features = ["keccak
 sp-crypto-hashing = { path = "vendor/polkadot-sdk-companion/substrate/primitives/crypto/hashing", default-features = false }
 sp-io = { path = "vendor/polkadot-sdk-companion/substrate/primitives/io", default-features = false }
 
-# `cumulus-jam-{,rpc-}interface` pull polkajam from git at polkadot-sdk's rev; everything else here
-# uses the vendored pin. Left unpatched that is two distinct `jam-std-common` crates, and types
-# crossing the interface traits would not unify. Redirect the git source onto the vendored copy.
+# The service uses the newer vendored Polkajam API; the standalone AURA crate
+# independently uses published jam-types 0.1.28.
 [patch."ssh://git@github.com/paritytech/polkajam.git"]
 jam-std-common = { path = "vendor/polkajam/crates/jam-std-common" }
 jam-types = { path = "vendor/polkajam/crates/jam-types" }

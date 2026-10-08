@@ -11,7 +11,7 @@
 //! [`ParachainServiceSpec::authorizer_hashes`] to fill the cores' queues.
 //!
 //! ```
-//! use jp_aura_authorizer::AuthConfig;
+//! use cumulus_aura_authorizer::AuthConfig;
 //! use parachain_chain_spec::{ParachainServiceSpec, ParachainSpec};
 //! use parachain_service_core::types::ParaId;
 //! use primitive_types::H256;
