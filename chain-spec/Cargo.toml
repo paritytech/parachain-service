@@ -24,5 +24,6 @@ parachain-service-core = { workspace = true, features = ["std"] }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+cargo-jam-build = { workspace = true }
 blake2b_simd = { workspace = true }
 primitive-types = { workspace = true }

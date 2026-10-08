@@ -6,7 +6,7 @@ use alloc::vec::Vec;
 
 use codec::{Decode, Encode};
 use jam_types::{Encode as JamEncode, ServiceId, Slot, WorkPackage};
-use parachain_service_core::types::ParaId;
+use parachain_service_core::{blake2_256, types::ParaId};
 use primitive_types::H256;
 
 // The service decodes the trace without linking this crate, so it lives in the shared interface
@@ -157,15 +157,9 @@ fn proof_depth(collator_set_size: u32) -> usize {
 	(u32::BITS - collator_set_size.saturating_sub(1).leading_zeros()) as usize
 }
 
-fn blake2b_32(input: &[u8]) -> [u8; 32] {
-	let mut out = [0u8; 32];
-	out.copy_from_slice(blake2b_simd::Params::new().hash_length(32).hash(input).as_bytes());
-	out
-}
-
 /// Hash of one collator-set leaf.
 fn collator_leaf_hash(key: &CollatorKey) -> [u8; 32] {
-	blake2b_32(key)
+	blake2_256(key)
 }
 
 /// Hash of an ordered pair of nodes.
@@ -173,7 +167,7 @@ fn join(left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
 	let mut input = [0u8; 64];
 	input[..32].copy_from_slice(left);
 	input[32..].copy_from_slice(right);
-	blake2b_32(&input)
+	blake2_256(&input)
 }
 
 /// Build the collator-set trie [`AuthToken::check_proof`] verifies against, returning its root
@@ -240,6 +234,5 @@ pub fn signable_work_package_hash(package: &WorkPackage) -> H256 {
 		&mut signable,
 	);
 
-	let hash = blake2b_simd::Params::new().hash_length(32).hash(&signable);
-	H256::from_slice(hash.as_bytes())
+	H256::from(blake2_256(&signable))
 }

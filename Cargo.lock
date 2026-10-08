@@ -3375,6 +3375,7 @@ name = "parachain-chain-spec"
 version = "0.1.0"
 dependencies = [
  "blake2b_simd",
+ "cargo-jam-build",
  "jam-chainspec",
  "jam-std-common",
  "jam-types",
