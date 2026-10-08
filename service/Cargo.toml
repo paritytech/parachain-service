@@ -24,15 +24,14 @@ jam-std-common = { workspace = true, optional = true }
 parachain-authorizer = { workspace = true }
 bounded-collections = { workspace = true }
 polkavm = { workspace = true }
-blake2b_simd = { workspace = true }
-tiny-keccak = { workspace = true }
+sp-crypto-hashing = { workspace = true }
 
 [features]
 test-utils = [
 	"parachain-authorizer/test-utils",
 ]
 std = [
-	"blake2b_simd/std",
+	"sp-crypto-hashing/std",
 	"bounded-collections/std",
 	"codec/std",
 	"dep:jam-std-common",

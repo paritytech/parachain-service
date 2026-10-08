@@ -8,8 +8,7 @@ license.workspace = true
 
 [dependencies]
 codec = { workspace = true }
-tiny-keccak = { workspace = true }
-blake2b_simd = { workspace = true }
+sp-crypto-hashing = { workspace = true }
 sp-io = { workspace = true }
 parachain-service-core = { workspace = true }
 
@@ -22,7 +21,7 @@ default = [
 	"std",
 ]
 std = [
-	"blake2b_simd/std",
+	"sp-crypto-hashing/std",
 	"codec/std",
 	"parachain-service-core/std",
 	"sp-io/std",

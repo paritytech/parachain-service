@@ -8,17 +8,13 @@
 
 extern crate alloc;
 
+use crate::blake2_256;
+
 pub use jam_types::{AuthConfig as AuthConfigBlob, Authorizer, AuthorizerHash, CodeHash};
 
 /// Compute the authorizer hash: `blake2b-256(code_hash ‖ config)`.
 pub fn authorizer_hash(authorizer: &Authorizer) -> AuthorizerHash {
-	authorizer.hash(blake2b_256)
-}
-
-fn blake2b_256(data: &[u8]) -> jam_types::Hash {
-	let mut hash = [0u8; 32];
-	hash.copy_from_slice(blake2b_simd::Params::new().hash_length(32).hash(data).as_bytes());
-	hash
+	authorizer.hash(blake2_256)
 }
 
 /// Code hash of polkajam's null authorizer (accepts anything). Dev/testnet genesis fills
@@ -70,7 +66,7 @@ mod tests {
 			config: AuthConfigBlob(alloc::vec![1, 2, 3]),
 		};
 		let concat: alloc::vec::Vec<u8> = [&[7u8; 32][..], &[1, 2, 3][..]].concat();
-		let expected = AuthorizerHash(blake2b_256(&concat));
+		let expected = AuthorizerHash(blake2_256(&concat));
 		assert_eq!(authorizer_hash(&authorizer), expected);
 	}
 }

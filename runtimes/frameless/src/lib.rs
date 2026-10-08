@@ -28,23 +28,8 @@ use sp_io as _;
 
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
-use tiny_keccak::{Hasher as _, Keccak};
-
-fn keccak256(input: &[u8]) -> [u8; 32] {
-	let mut out = [0u8; 32];
-	let mut hasher = Keccak::v256();
-	hasher.update(input);
-	hasher.finalize(&mut out);
-	out
-}
-
-/// blake2b-256 — the hash the Parachain Service applies to stored head data, so
-/// `set_parent_head_hash` must use it too (DECISIONS.md D-5). Distinct from this
-/// chain's *internal* keccak head hashing, which the service never sees.
-pub fn blake2_256(input: &[u8]) -> [u8; 32] {
-	let hash = blake2b_simd::Params::new().hash_length(32).hash(input);
-	hash.as_bytes().try_into().expect("hash_length(32) yields 32 bytes; qed")
-}
+pub use sp_crypto_hashing::blake2_256;
+use sp_crypto_hashing::keccak_256 as keccak256;
 
 /// Which parachain this is. Fixed at genesis and carried in [`State`]; a block cannot
 /// change it, since its start state must hash-match the parent head and

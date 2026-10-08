@@ -45,7 +45,4 @@ pub type ProofNode = [u8; 64];
 pub type Hash = [u8; 32];
 
 /// blake2b-256, JAM's standard hash (`jam_std_common::hash_raw`).
-pub fn blake2_256(data: &[u8]) -> Hash {
-	let hash = blake2b_simd::Params::new().hash_length(32).hash(data);
-	hash.as_bytes().try_into().expect("hash_length(32) yields 32 bytes; qed")
-}
+pub use sp_crypto_hashing::blake2_256;

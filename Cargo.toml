@@ -99,6 +99,7 @@ thiserror = "2.0"
 # (single SDK source).
 executor = { path = "tools/executor" }
 tiny-keccak = { version = "2.0.2", default-features = false, features = ["keccak"] }
+sp-crypto-hashing = { path = "vendor/polkadot-sdk-companion/substrate/primitives/crypto/hashing", default-features = false }
 sp-io = { path = "vendor/polkadot-sdk-companion/substrate/primitives/io", default-features = false }
 
 # `cumulus-jam-{,rpc-}interface` pull polkajam from git at polkadot-sdk's rev; everything else here

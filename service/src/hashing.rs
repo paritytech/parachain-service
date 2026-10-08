@@ -10,20 +10,4 @@
 //! leaf a commitment carries. They are deliberately different domains: a
 //! commitment leaf must never verify against a candidate's declared parent head.
 
-use jam_types::Hash;
-use tiny_keccak::{Hasher as _, Keccak};
-
-/// blake2b-256 of `data`, matching `jam_std_common::hash_raw`.
-pub fn blake2_256(data: &[u8]) -> Hash {
-	let hash = blake2b_simd::Params::new().hash_length(32).hash(data);
-	hash.as_bytes().try_into().expect("hash_length(32) yields 32 bytes; qed")
-}
-
-/// keccak-256 of `data`, as specified by Ethereum. §5.5 only.
-pub fn keccak_256(data: &[u8]) -> Hash {
-	let mut keccak = Keccak::v256();
-	keccak.update(data);
-	let mut out = Hash::default();
-	keccak.finalize(&mut out);
-	out
-}
+pub use sp_crypto_hashing::{blake2_256, keccak_256};
