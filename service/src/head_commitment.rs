@@ -104,7 +104,7 @@ impl HeadTracker {
 /// removed by `parachain_clean_up` — it has no ending value. A newly registered
 /// para counts as changed, since it had no prior head.
 fn changed_leaves(mut touched: Vec<(ParaId, Option<Hash>, Option<Hash>)>) -> Vec<Hash> {
-	touched.sort_unstable_by_key(|(para_id, _, _)| para_id.0);
+	touched.sort_unstable_by_key(|(para_id, _, _)| *para_id);
 	touched
 		.iter()
 		.filter_map(|(para_id, prior, current)| {
@@ -120,7 +120,7 @@ mod tests {
 	use super::*;
 
 	fn leaf(para_id: u32, head_hash: Hash) -> Hash {
-		MerkleTree::Leaf { para_id: ParaId(para_id), head_hash }.hash()
+		MerkleTree::Leaf { para_id: ParaId::new(para_id), head_hash }.hash()
 	}
 
 	fn node(left: Hash, right: Hash) -> Hash {
@@ -131,7 +131,10 @@ mod tests {
 	fn element_encoded_sizes_work() {
 		// §5.5 pins both widths; they are what makes the 4-octet `para_id` and the
 		// covered discriminant verifiable by an external checker.
-		assert_eq!(MerkleTree::Leaf { para_id: ParaId(7), head_hash: [1; 32] }.encode().len(), 37);
+		assert_eq!(
+			MerkleTree::Leaf { para_id: ParaId::new(7), head_hash: [1; 32] }.encode().len(),
+			37
+		);
 		assert_eq!(MerkleTree::Node([1; 32], [2; 32]).encode().len(), 65);
 	}
 
@@ -175,14 +178,14 @@ mod tests {
 	#[test]
 	fn unchanged_head_contributes_no_leaf_works() {
 		let h: Hash = [5; 32];
-		assert!(changed_leaves(alloc::vec![(ParaId(1), Some(h), Some(h))]).is_empty());
+		assert!(changed_leaves(alloc::vec![(ParaId::new(1), Some(h), Some(h))]).is_empty());
 	}
 
 	#[test]
 	fn newly_registered_para_contributes_leaf_works() {
 		let h: Hash = [5; 32];
 		assert_eq!(
-			changed_leaves(alloc::vec![(ParaId(1), None, Some(h))]),
+			changed_leaves(alloc::vec![(ParaId::new(1), None, Some(h))]),
 			alloc::vec![leaf(1, h)]
 		);
 	}
@@ -190,7 +193,7 @@ mod tests {
 	#[test]
 	fn removed_para_contributes_no_leaf_works() {
 		// `parachain_clean_up` leaves the para with no ending head value.
-		assert!(changed_leaves(alloc::vec![(ParaId(1), Some([5; 32]), None)]).is_empty());
+		assert!(changed_leaves(alloc::vec![(ParaId::new(1), Some([5; 32]), None)]).is_empty());
 	}
 
 	#[test]
@@ -199,9 +202,9 @@ mod tests {
 		let (h1, h4, h7): (Hash, Hash, Hash) = ([1; 32], [4; 32], [7; 32]);
 		assert_eq!(
 			changed_leaves(alloc::vec![
-				(ParaId(7), None, Some(h7)),
-				(ParaId(1), None, Some(h1)),
-				(ParaId(4), None, Some(h4)),
+				(ParaId::new(7), None, Some(h7)),
+				(ParaId::new(1), None, Some(h1)),
+				(ParaId::new(4), None, Some(h4)),
 			]),
 			alloc::vec![leaf(1, h1), leaf(4, h4), leaf(7, h7)]
 		);
@@ -211,8 +214,8 @@ mod tests {
 	fn single_changed_head_root_is_its_leaf_works() {
 		let h: Hash = [9; 32];
 		let leaves = changed_leaves(alloc::vec![
-			(ParaId(2), Some([1; 32]), Some(h)),
-			(ParaId(3), Some([2; 32]), Some([2; 32])),
+			(ParaId::new(2), Some([1; 32]), Some(h)),
+			(ParaId::new(3), Some([2; 32]), Some([2; 32])),
 		]);
 		assert_eq!(merkle_root(leaves), Some(leaf(2, h)));
 	}

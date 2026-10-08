@@ -162,7 +162,7 @@ fn names(credentials: &[Aura]) -> Vec<(AuthorizerHash, String)> {
 		names.push((aura.parked_hash(), format!("parked, {credential}")));
 		names.extend(
 			(0..LABELLED_PARAS)
-				.map(|para| (aura.hash(ParaId(para)), format!("para {para}, {credential}"))),
+				.map(|para| (aura.hash(ParaId::new(para)), format!("para {para}, {credential}"))),
 		);
 	}
 	names
@@ -227,8 +227,8 @@ mod tests {
 		let (sr, ed) = (&credentials[0], &credentials[1]);
 
 		assert_eq!(
-			describe(&[sr.hash(ParaId(3))], &names, None),
-			format!("{} (para 3, sr25519, alice,bob)", short(&sr.hash(ParaId(3))))
+			describe(&[sr.hash(ParaId::new(3))], &names, None),
+			format!("{} (para 3, sr25519, alice,bob)", short(&sr.hash(ParaId::new(3))))
 		);
 		assert_eq!(
 			describe(&[ed.parked_hash()], &names, None),
@@ -237,8 +237,8 @@ mod tests {
 		// A credential nobody offered names nothing, and neither does an arbitrary hash.
 		let unknown = aura("charlie", Scheme::Sr25519);
 		assert_eq!(
-			describe(&[unknown.hash(ParaId(0)), hash(9)], &names, None),
-			format!("{}, 0x0909…0909", short(&unknown.hash(ParaId(0))))
+			describe(&[unknown.hash(ParaId::new(0)), hash(9)], &names, None),
+			format!("{}, 0x0909…0909", short(&unknown.hash(ParaId::new(0))))
 		);
 	}
 

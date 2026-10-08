@@ -96,7 +96,7 @@ impl ParachainServiceSpec {
 		paras.sort_by_key(|p| p.id);
 		for pair in paras.windows(2) {
 			if pair[0].id == pair[1].id {
-				return Err(Error::DuplicateParaId(pair[0].id.0));
+				return Err(Error::DuplicateParaId(u32::from(pair[0].id)));
 			}
 		}
 
@@ -123,7 +123,7 @@ impl ParachainServiceSpec {
 
 			let head = para.head.clone().unwrap_or_default();
 			let head_data: HeadData = head.try_into().map_err(|head: Vec<u8>| {
-				Error::HeadDataTooLarge { para: para.id.0, len: head.len() }
+				Error::HeadDataTooLarge { para: u32::from(para.id), len: head.len() }
 			})?;
 
 			// A para without a validation code has no preimage footprint; one with

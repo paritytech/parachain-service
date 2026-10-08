@@ -10,7 +10,7 @@ use parachain_service::{
 use parachain_service_core::types::ParaId;
 
 const NOW: u32 = 100;
-const PARA: ParaId = ParaId(1000);
+const PARA: ParaId = ParaId::new(1000);
 const CODE: &[u8] = b"para-1000-code";
 
 #[test]
@@ -214,7 +214,7 @@ fn foreign_para_message_drops_candidate_works() {
 	// §4.3: naming a foreign para in `remove_kv` without Coretime rights drops
 	// the candidate silently.
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
-	let msg = UpwardMessage::RemoveKV { para_id: ParaId(2000), key: b"k".to_vec() };
+	let msg = UpwardMessage::RemoveKV { para_id: ParaId::new(2000), key: b"k".to_vec() };
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![msg], 0);
 
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);

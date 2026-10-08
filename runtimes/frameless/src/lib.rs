@@ -366,7 +366,7 @@ mod host {
 				UpwardMessage::SetKV { key: key.clone(), value: value.clone() }
 			},
 			MockAction::KVRemove { para_id, key } => {
-				UpwardMessage::RemoveKV { para_id: ParaId(*para_id), key: key.clone() }
+				UpwardMessage::RemoveKV { para_id: ParaId::new(*para_id), key: key.clone() }
 			},
 			MockAction::Solicit { target, hash, len } => {
 				UpwardMessage::Solicit { target: *target, hash: *hash, len: (*len).into() }
@@ -422,12 +422,12 @@ mod host {
 				}
 			},
 			MockAction::ParachainSetHead { para_id, head } => UpwardMessage::ParachainSetHead {
-				para_id: ParaId(*para_id),
+				para_id: ParaId::new(*para_id),
 				new_head: head.clone().try_into().expect("test heads fit 4 KiB; qed"),
 			},
 			MockAction::ParachainSetValidationCode { para_id, hash, len } => {
 				UpwardMessage::ParachainSetValidationCode {
-					para_id: ParaId(*para_id),
+					para_id: ParaId::new(*para_id),
 					new_validation_code: ValidationCodeRef {
 						hash: ValidationCodeHash(*hash),
 						len: *len,
@@ -435,11 +435,11 @@ mod host {
 				}
 			},
 			MockAction::ParachainCleanUp { para_id } => {
-				UpwardMessage::ParachainCleanUp(ParaId(*para_id))
+				UpwardMessage::ParachainCleanUp(ParaId::new(*para_id))
 			},
 			MockAction::ParachainSetStateBalance { para_id, total } => {
 				UpwardMessage::ParachainSetStateBalance {
-					para_id: ParaId(*para_id),
+					para_id: ParaId::new(*para_id),
 					new_total: (*total).into(),
 				}
 			},

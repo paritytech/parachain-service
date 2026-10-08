@@ -114,7 +114,7 @@ pub async fn assign(
 	core: CoreIndex,
 ) -> Result<(), String> {
 	let target = args.aura.hash(para);
-	tracing::info!("core {core} → para {} (authorizer 0x{})", para.0, hex(&target.0));
+	tracing::info!("core {core} → para {} (authorizer 0x{})", u32::from(para), hex(&target.0));
 	route(jam, args, core, target).await?;
 	cores::report(jam, core, target).await
 }
@@ -202,7 +202,7 @@ async fn control_package(
 		if parked {
 			"the parked authorizer".to_string()
 		} else {
-			format!("para {}'s authorizer", args.via_para.0)
+			format!("para {}'s authorizer", u32::from(args.via_para))
 		}
 	);
 
@@ -239,7 +239,7 @@ fn carrier_mismatch(args: &Args, core: CoreIndex, head: AuthorizerHash) -> Strin
 		 is running one with --via-core; if that para has its own collator set or curve, name \
 		 those too with --via-collators/--via-scheme.",
 		hex(&head.0),
-		args.via_para.0,
+		u32::from(args.via_para),
 		hex(&args.carrier.hash(args.via_para).0),
 		hex(&args.carrier.parked_hash().0),
 	)

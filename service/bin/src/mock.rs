@@ -37,7 +37,7 @@ pub fn collator_leaf_hash(key: &[u8; 32]) -> H256 {
 /// An authorizer config whose `ParaId` prefix authorizes `para_ids` packages,
 /// numbering the paras `0..n`.
 pub fn good_config(para_ids: usize) -> AuthConfig {
-	let ids = (0..para_ids).map(|i| ParaId(i as u32)).collect::<Vec<_>>();
+	let ids = (0..para_ids).map(|i| ParaId::new(i as u32)).collect::<Vec<_>>();
 	good_config_for(ids)
 }
 

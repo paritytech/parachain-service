@@ -19,7 +19,9 @@ fn keccak(bytes: &[u8]) -> Hash {
 fn heads(state: &Value, codex: &mut Codex) -> Result<BTreeMap<u32, i128>, String> {
 	map_entries(field(field(state, "svc")?, "parachains")?)?
 		.into_iter()
-		.map(|(para, info)| Ok((para_id(para, codex)?.0, integer(field(info, "headData")?)?)))
+		.map(|(para, info)| {
+			Ok((u32::from(para_id(para, codex)?), integer(field(info, "headData")?)?))
+		})
 		.collect()
 }
 

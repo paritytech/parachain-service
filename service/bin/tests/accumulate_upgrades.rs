@@ -23,7 +23,7 @@ use parachain_service_core::{
 };
 
 const NOW: u32 = 100;
-const PARA: ParaId = ParaId(1000);
+const PARA: ParaId = ParaId::new(1000);
 const CODE: &[u8] = b"para-1000-code";
 const NEW_CODE: &[u8] = b"para-1000-code-v2";
 const THIRD_CODE: &[u8] = b"para-1000-code-v3";
@@ -190,7 +190,7 @@ fn announcement_unavailable_errors() {
 fn announcement_of_other_paras_code_errors() {
 	// §5.2: a code another para paid for cannot be announced, even when it is
 	// available — the caller must be a referencer itself.
-	const OTHER: ParaId = ParaId(2000);
+	const OTHER: ParaId = ParaId::new(2000);
 	let storage = fresh_storage(|s| {
 		seed_para(s, PARA, b"genesis", CODE, RICH);
 		seed_para(s, OTHER, b"genesis-2", b"para-2000-code", RICH);

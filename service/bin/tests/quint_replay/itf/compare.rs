@@ -27,7 +27,7 @@ pub fn state(
 		let para = para_id(para_value, codex)?;
 		expected_paras.insert(para);
 		let actual: ParaInfo = get_state(storage, &storage_key(Tag::Parachains, &para))
-			.ok_or_else(|| format!("frame {frame}: para {} missing", para.0))?;
+			.ok_or_else(|| format!("frame {frame}: para {} missing", u32::from(para)))?;
 		let expected_validation = option_code_ref(value, "validationCode", codex)?;
 		let expected_announcement = option_code_ref(value, "announcedUpgrade", codex)?;
 		let checks = [
@@ -58,7 +58,7 @@ pub fn state(
 		if let Some((name, _)) = checks.into_iter().find(|(_, equal)| !equal) {
 			return Err(format!(
 				"frame {frame}: svc.parachains[{}].{name} differs; Rust={actual:?}",
-				para.0
+				u32::from(para)
 			));
 		}
 	}
@@ -67,7 +67,7 @@ pub fn state(
 		if present.is_some() != expected_paras.contains(&para) {
 			return Err(format!(
 				"frame {frame}: svc.parachains registered set differs at para {}",
-				para.0
+				u32::from(para)
 			));
 		}
 	}
@@ -121,7 +121,7 @@ fn parachain_logs(
 			log.push((slot, entry));
 		}
 		if expected.insert(para, log).is_some() {
-			return Err(format!("duplicate svc.parachainLog key for para {}", para.0));
+			return Err(format!("duplicate svc.parachainLog key for para {}", u32::from(para)));
 		}
 	}
 
@@ -133,7 +133,7 @@ fn parachain_logs(
 		if actual != expected {
 			return Err(format!(
 				"frame {frame}: svc.parachainLog[{}] differs; Quint={expected:?}; Rust={actual:?}",
-				para.0
+				u32::from(para)
 			));
 		}
 	}

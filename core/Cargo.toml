@@ -7,19 +7,13 @@ repository.workspace = true
 license.workspace = true
 publish = false
 
-# Shared support code for the `service`, `authorizer`, and PVF runtimes. Everything
-# both JAM programs (and the collator tooling) need lives here: wire types, storage
-# types and key derivation, the service-id constant, and the child-PVF host-function
-# wrappers. Subsumes the former `parachain-service-interface`, `jam-state-helpers`,
-# and the `cumulus` facade's `authorizer` module. Kept deliberately off the
-# `sp-runtime`/`sp-core` dependency tree so it stays buildable for PolkaVM
-# (riscv32/riscv64), which is why the codec/bounded-collections dependencies are
-# used rather than their Substrate re-exports.
+# Shared wire types, storage helpers, and PVM host wrappers.
 
 [lints]
 workspace = true
 
 [dependencies]
+polkadot-parachain-primitives = { workspace = true }
 blake2b_simd = { workspace = true }
 bounded-collections = { workspace = true }
 codec = { workspace = true }
@@ -29,6 +23,8 @@ num_enum = { workspace = true }
 
 [target.'cfg(any(target_arch = "riscv32", target_arch = "riscv64"))'.dependencies]
 polkavm-derive = { workspace = true }
+# JAM guests provide their own allocator and panic handler.
+sp-io = { workspace = true, features = ["disable_allocator", "disable_panic_handler"] }
 
 [dev-dependencies]
 jam-null-authorizer-bin = { workspace = true }
@@ -41,6 +37,7 @@ polkajam-trie = { workspace = true }
 [features]
 default = []
 std = [
+	"polkadot-parachain-primitives/std",
 	"blake2b_simd/std",
 	"bounded-collections/std",
 	"codec/std",

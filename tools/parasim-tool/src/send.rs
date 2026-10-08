@@ -143,7 +143,7 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 			 (or check --collators and --slot-duration)",
 			args.core,
 			hex(&head.0),
-			args.para.0,
+			u32::from(args.para),
 			hex(&args.aura.hash(args.para).0),
 		));
 	}
@@ -178,13 +178,13 @@ pub async fn run(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 	match &accumulated {
 		Some(head) => tracing::info!(
 			"para {} head is {} bytes at number {}",
-			args.para.0,
+			u32::from(args.para),
 			head.len(),
 			block_number(head)?
 		),
 		None => tracing::info!(
 			"para {} has no head yet; the chain starts at its first block",
-			args.para.0
+			u32::from(args.para)
 		),
 	}
 
@@ -329,7 +329,7 @@ fn v3_pov(header: &[u8], anchor_state_proof: &[u8]) -> Vec<u8> {
 	// An empty SchedulingProof, matching upstream's `Default`: JAM has no relay-chain scheduling,
 	// and upstream documents this as how to carry additional data without one.
 	compact(0, &mut pov); // header_chain: empty
-	pov.extend_from_slice(&header_bytes([0u8; HASH_LEN], 0, ParaId(0), 0));
+	pov.extend_from_slice(&header_bytes([0u8; HASH_LEN], 0, ParaId::new(0), 0));
 	pov.push(0); // signed_scheduling_info: None
 
 	// Vec<Option<AdditionalData>>: one slot, one entry.
@@ -354,7 +354,7 @@ fn header_bytes(parent_hash: [u8; HASH_LEN], number: u32, para: ParaId, nonce: u
 	let mut header = parent_hash.to_vec();
 	compact(number, &mut header);
 	let mut state_root = [0u8; HASH_LEN];
-	state_root[..4].copy_from_slice(&para.0.to_le_bytes());
+	state_root[..4].copy_from_slice(&u32::from(para).to_le_bytes());
 	header.extend_from_slice(&state_root);
 	let mut extrinsics_root = [0u8; HASH_LEN];
 	extrinsics_root[..4].copy_from_slice(&nonce.to_le_bytes());

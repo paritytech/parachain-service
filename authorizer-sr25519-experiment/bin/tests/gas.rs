@@ -104,7 +104,7 @@ macro_rules! auth {
 		let key: [u8; 32] = $public;
 		let (root, proofs) = aura::build_collator_tree(&[key]);
 		let config = aura::AuthConfig {
-			para_ids: vec![ParaId(0)],
+			para_ids: vec![ParaId::new(0)],
 			parachain_service: SERVICE_ID,
 			collator_set_root: root,
 			collator_set_size: 1,

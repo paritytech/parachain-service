@@ -19,7 +19,7 @@ use parachain_service_core::{
 };
 
 const NOW: u32 = 100;
-const PARA: ParaId = ParaId(1000);
+const PARA: ParaId = ParaId::new(1000);
 const CODE: &[u8] = b"para-1000-code";
 const AH_CODE: &[u8] = b"ah-code";
 const MAX_UMPS: u32 = MAX_UPWARD_MESSAGES_PER_DIGEST;
@@ -249,7 +249,7 @@ fn is_authorized_ed25519_gas_works() {
 	};
 
 	let items = work_items(1);
-	let (config, token, _) = make_auth(&authorizer(), vec![ParaId(0)], &items);
+	let (config, token, _) = make_auth(&authorizer(), vec![ParaId::new(0)], &items);
 	let (engine, package, storage) = is_authorized_args(&authorizer(), config, token, items);
 
 	let outcome = pj::is_authorized(&engine, &package, 0, &storage)

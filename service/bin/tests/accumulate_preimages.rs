@@ -15,7 +15,7 @@ use parachain_service_core::{
 };
 
 const NOW: u32 = 100;
-const PARA: ParaId = ParaId(1000);
+const PARA: ParaId = ParaId::new(1000);
 const CODE: &[u8] = b"para-1000-code";
 const BLOB: &[u8] = b"some-arbitrary-preimage-blob";
 
@@ -204,7 +204,7 @@ fn forget_before_due_works() {
 fn shared_referencer_leaves_works() {
 	// §6.1: a non-last referencer leaves immediately — refunded, no JAM forget,
 	// the other referencer keeps the preimage live.
-	const OTHER: ParaId = ParaId(2000);
+	const OTHER: ParaId = ParaId::new(2000);
 	let storage = fresh_storage(|s| {
 		seed_para(s, PARA, b"genesis", CODE, RICH);
 		seed_para(s, OTHER, b"genesis-2", b"para-2000-code", RICH);
@@ -246,7 +246,7 @@ fn shared_referencer_leaves_works() {
 	assert!(accumulate_logs(&storage, PARA).is_empty(), "immediate leave logs nothing");
 }
 
-const OTHER: ParaId = ParaId(2000);
+const OTHER: ParaId = ParaId::new(2000);
 const OTHER_CODE: &[u8] = b"para-2000-code";
 
 fn solicit(para: ParaId) -> UpwardMessage {

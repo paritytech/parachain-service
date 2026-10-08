@@ -592,8 +592,8 @@ mod tests {
 	/// the buffer's tag is the one thing in this service that is not the real layout.
 	#[test]
 	fn storage_keys_are_distinct_works() {
-		assert_eq!(para_head_key(ParaId(3)), vec![0x00, 3, 0, 0, 0]);
-		assert_eq!(buffer_key(ParaId(3)), vec![0xf0, 3, 0, 0, 0]);
+		assert_eq!(para_head_key(ParaId::new(3)), vec![0x00, 3, 0, 0, 0]);
+		assert_eq!(buffer_key(ParaId::new(3)), vec![0xf0, 3, 0, 0, 0]);
 	}
 
 	/// A control payload's messages: the assign every `assign-core`/`free-core` sends.

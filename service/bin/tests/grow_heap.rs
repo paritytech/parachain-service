@@ -146,7 +146,7 @@ fn grow(exe: &mut ExecutorState, handle: u64, pages: u64) -> u64 {
 #[test]
 fn grow_heap_to_target_pages_maps_and_returns_the_target() {
 	const HANDLE: u64 = 1;
-	let mut exe = ExecutorState::new(ParaId(0), heap(0x10_0000, 0x10_0000, 0x20_0000));
+	let mut exe = ExecutorState::new(ParaId::new(0), heap(0x10_0000, 0x10_0000, 0x20_0000));
 	assert_eq!(grow(&mut exe, HANDLE, 0x120), 0x120, "returns the requested page count");
 	assert_eq!(exe.heap().top, 0x12_0000, "the break is the page-aligned end");
 	assert_eq!(exe.heap().mapped_until, 0x12_0000, "mapping advanced to the new break");
@@ -162,7 +162,7 @@ fn grow_heap_to_target_pages_maps_and_returns_the_target() {
 #[test]
 fn grow_heap_at_or_below_current_pages_is_a_noop() {
 	const HANDLE: u64 = 2;
-	let mut exe = ExecutorState::new(ParaId(0), heap(0x10_0000, 0x10_4000, 0x20_0000));
+	let mut exe = ExecutorState::new(ParaId::new(0), heap(0x10_0000, 0x10_4000, 0x20_0000));
 	assert_eq!(grow(&mut exe, HANDLE, 0), 0x100, "0 is below the current top");
 	assert_eq!(grow(&mut exe, HANDLE, 0x100), 0x100, "equal to the current top");
 	assert_eq!(grow(&mut exe, HANDLE, 0x80), 0x100, "still below the current top");
@@ -177,7 +177,7 @@ fn grow_heap_at_or_below_current_pages_is_a_noop() {
 fn grow_heap_beyond_limit_is_refused_returning_current_pages() {
 	const HANDLE: u64 = 3;
 	// limit 0x10_5000 -> b = 0x105 pages (floor division, as in PolkaJam's host).
-	let mut exe = ExecutorState::new(ParaId(0), heap(0x10_0000, 0x10_4000, 0x10_5000));
+	let mut exe = ExecutorState::new(ParaId::new(0), heap(0x10_0000, 0x10_4000, 0x10_5000));
 	assert_eq!(grow(&mut exe, HANDLE, 0x106), 0x100, "returns the current top, < requested");
 	assert_eq!(exe.heap().top, 0x10_0000, "the break is unchanged on refusal");
 	assert_eq!(exe.heap().mapped_until, 0x10_4000, "no page mapped on refusal");
@@ -189,7 +189,7 @@ fn grow_heap_beyond_limit_is_refused_returning_current_pages() {
 #[test]
 fn grow_heap_huge_request_is_refused() {
 	const HANDLE: u64 = 4;
-	let mut exe = ExecutorState::new(ParaId(0), heap(0x10_0000, 0x10_4000, u64::MAX));
+	let mut exe = ExecutorState::new(ParaId::new(0), heap(0x10_0000, 0x10_4000, u64::MAX));
 	assert_eq!(grow(&mut exe, HANDLE, u64::MAX), 0x100, "refused: beyond the limit");
 	assert_eq!(exe.heap().top, 0x10_0000, "the break is unchanged");
 }
@@ -202,7 +202,7 @@ fn grow_heap_huge_request_is_refused() {
 fn log_hostcalls_100_and_204_share_the_abi() {
 	let target = b"panic_handler";
 	let text = b"Panic handler called!";
-	let mut exe = ExecutorState::new(ParaId(0), heap(0x10_0000, 0x10_4000, u64::MAX));
+	let mut exe = ExecutorState::new(ParaId::new(0), heap(0x10_0000, 0x10_4000, u64::MAX));
 
 	for index in [100u64, HostCall::Log as u64] {
 		let mut regs = [0u64; 13];

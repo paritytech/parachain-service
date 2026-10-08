@@ -60,11 +60,11 @@ impl Codex {
 	}
 
 	pub fn para_id(value: i128) -> Result<ParaId, String> {
-		Ok(ParaId(checked_u32(value, "ParaId")?))
+		Ok(ParaId::new(checked_u32(value, "ParaId")?))
 	}
 
 	pub fn para_int(value: ParaId) -> i128 {
-		value.0.into()
+		u32::from(value).into()
 	}
 
 	pub fn register_para(&mut self, value: i128) -> Result<ParaId, String> {

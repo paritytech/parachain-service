@@ -217,7 +217,7 @@ fn decode_output(bytes: &[u8]) -> Refined {
 fn matches_para(para: Option<u32>, refined: &Refined) -> bool {
 	match (para, refined) {
 		(None, _) => true,
-		(Some(wanted), Refined::Head(output)) => output.para_id.0 == wanted,
+		(Some(wanted), Refined::Head(output)) => u32::from(output.para_id) == wanted,
 		(Some(_), Refined::Foreign) => false,
 		(Some(_), Refined::Upward(_) | Refined::Rejected(_) | Refined::Unknown) => true,
 	}
@@ -278,7 +278,7 @@ mod tests {
 		// The whole feature rests on this: a rejected package is an `Ok` work output holding an
 		// error, so the two encodings must not be confusable in either direction.
 		let head = RefinedHead {
-			para_id: parachain_service_core::types::ParaId(7),
+			para_id: parachain_service_core::types::ParaId::new(7),
 			head_data: vec![1u8; 40].try_into().expect("40 bytes fit; qed"),
 			parent_head_hash: [2u8; 32],
 			number: 9,
@@ -336,7 +336,7 @@ mod tests {
 	#[test]
 	fn para_filter_keeps_unattributable_rows_works() {
 		let head = Refined::Head(RefinedHead {
-			para_id: parachain_service_core::types::ParaId(0),
+			para_id: parachain_service_core::types::ParaId::new(0),
 			head_data: Default::default(),
 			parent_head_hash: [0u8; 32],
 			number: 0,

@@ -137,7 +137,7 @@ impl Aura {
 	/// block sent to it. That is what makes assignment one-way — a core never goes back to the
 	/// null authorizer, which would leave it deaf to commands.
 	pub fn parked_config(&self) -> AuthConfig {
-		AuthConfig { para_ids: Vec::new(), ..self.config(ParaId(0)) }
+		AuthConfig { para_ids: Vec::new(), ..self.config(ParaId::new(0)) }
 	}
 
 	pub fn authorizer(&self, para: ParaId) -> Authorizer {
@@ -254,12 +254,12 @@ mod tests {
 	fn each_para_gets_its_own_authorizer_works() {
 		let aura = Aura::from_dev_names("alice,bob", Scheme::Sr25519, CodeHash::zero(), 5, 1)
 			.expect("dev names derive; qed");
-		assert_ne!(aura.hash(ParaId(0)), aura.hash(ParaId(1)));
-		assert_eq!(aura.hash(ParaId(0)), aura.hash(ParaId(0)));
+		assert_ne!(aura.hash(ParaId::new(0)), aura.hash(ParaId::new(1)));
+		assert_eq!(aura.hash(ParaId::new(0)), aura.hash(ParaId::new(0)));
 		// And a different collator set is a different core, even for the same para.
 		let alone = Aura::from_dev_names("alice", Scheme::Sr25519, CodeHash::zero(), 5, 1)
 			.expect("dev names derive; qed");
-		assert_ne!(aura.hash(ParaId(0)), alone.hash(ParaId(0)));
+		assert_ne!(aura.hash(ParaId::new(0)), alone.hash(ParaId::new(0)));
 	}
 
 	/// Parking is an assignment state of its own, not the absence of one: it must not collide
@@ -273,7 +273,7 @@ mod tests {
 		assert!(aura.parked_config().para_ids.is_empty());
 		assert_eq!(aura.parked_hash(), aura.parked_hash());
 		for para in 0..8 {
-			assert_ne!(aura.parked_hash(), aura.hash(ParaId(para)));
+			assert_ne!(aura.parked_hash(), aura.hash(ParaId::new(para)));
 		}
 		// The collator set is still committed to, so parking core A does not make it look like
 		// core B parked under a different set.
@@ -310,6 +310,6 @@ mod tests {
 			.expect("dev names derive; qed");
 		let sr = Aura::from_dev_names("alice", Scheme::Sr25519, CodeHash::zero(), 5, 1)
 			.expect("dev names derive; qed");
-		assert_ne!(ed.hash(ParaId(0)), sr.hash(ParaId(0)));
+		assert_ne!(ed.hash(ParaId::new(0)), sr.hash(ParaId::new(0)));
 	}
 }

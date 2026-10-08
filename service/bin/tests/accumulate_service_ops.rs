@@ -274,7 +274,7 @@ fn create_supervisor_balance_errors() {
 fn dropped_from_non_asset_hub_works() {
 	// §4.3: the accumulate-side re-check drops the whole candidate when a
 	// non-Asset-Hub para carries one of these, so its head never moves.
-	const PARA: ParaId = ParaId(1000);
+	const PARA: ParaId = ParaId::new(1000);
 	const CODE: &[u8] = b"para-1000-code";
 
 	for msg in all_ops(OTHER)

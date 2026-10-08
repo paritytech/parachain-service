@@ -15,7 +15,7 @@ fn keys(count: u32) -> Vec<CollatorKey> {
 fn config(keys: &[CollatorKey]) -> (AuthConfig, Vec<Vec<H256>>) {
 	let (collator_set_root, proofs) = build_collator_tree(keys);
 	let config = AuthConfig {
-		para_ids: vec![ParaId(0)],
+		para_ids: vec![ParaId::new(0)],
 		parachain_service: PARACHAIN_SERVICE_ID,
 		collator_set_root,
 		collator_set_size: keys.len() as u32,

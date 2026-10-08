@@ -29,7 +29,7 @@ pub fn commitment(
 		.filter(|(p, h)| before.get(p) != Some(h))
 		.map(|(p, h)| {
 			let mut leaf = vec![1];
-			leaf.extend_from_slice(&p.0.to_le_bytes());
+			leaf.extend_from_slice(&u32::from(*p).to_le_bytes());
 			leaf.extend_from_slice(&keccak(h));
 			keccak(&leaf)
 		})

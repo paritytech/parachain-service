@@ -15,5 +15,7 @@ jam-types = { workspace = true }
 jam-pvm-common = { workspace = true, features = ["service", "logging"] }
 polkavm-derive = { workspace = true }
 
+# SDK primitives use their runtime implementation inside PVM guests.
 [package.metadata.jam]
+default-rustflags = ["--cfg", "substrate_runtime"]
 type = "service"

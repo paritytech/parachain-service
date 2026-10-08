@@ -303,12 +303,12 @@ mod tests {
 		}
 		for other in [
 			UpwardMessage::Forget {
-				target: Target::Parachain(ParaId(7)),
+				target: Target::Parachain(ParaId::new(7)),
 				hash: [9; 32],
 				len: 1024.into(),
 			},
 			UpwardMessage::Solicit {
-				target: Target::Parachain(ParaId(7)),
+				target: Target::Parachain(ParaId::new(7)),
 				hash: [9; 32],
 				len: 1024.into(),
 			},

@@ -44,5 +44,7 @@ std = [
 	"polkavm/std",
 ]
 
+# SDK primitives use their runtime implementation inside PVM guests.
 [package.metadata.jam]
+default-rustflags = ["--cfg", "substrate_runtime"]
 type = "service"

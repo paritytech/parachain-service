@@ -370,7 +370,7 @@ async fn run(cli: Cli) -> Result<(), String> {
 			};
 			let args = keys::Args {
 				service: cli.service,
-				para: ParaId(key.para),
+				para: ParaId::new(key.para),
 				subject,
 				block: key.block,
 				watch: key.watch,
@@ -395,7 +395,7 @@ async fn run(cli: Cli) -> Result<(), String> {
 			control::grant(&jam, &control_args(&cli, None)?, core).await
 		},
 		Command::AssignCore { para, core, ref via } => {
-			control::assign(&jam, &control_args(&cli, Some(via))?, ParaId(para), core).await
+			control::assign(&jam, &control_args(&cli, Some(via))?, ParaId::new(para), core).await
 		},
 		Command::FreeCore { core, ref via } => {
 			control::free(&jam, &control_args(&cli, Some(via))?, core).await
@@ -403,7 +403,7 @@ async fn run(cli: Cli) -> Result<(), String> {
 		Command::Send { para, core, chain, tamper, tamper_at } => {
 			let args = send::Args {
 				service: cli.service,
-				para: ParaId(para),
+				para: ParaId::new(para),
 				core,
 				chain,
 				tamper,
@@ -433,6 +433,6 @@ fn control_args(cli: &Cli, via: Option<&Via>) -> Result<control::Args, String> {
 		aura: cli.aura.resolve(cli.service)?,
 		carrier,
 		via_core: via.and_then(|via| via.via_core),
-		via_para: ParaId(via.map_or(0, |via| via.via_para)),
+		via_para: ParaId::new(via.map_or(0, |via| via.via_para)),
 	})
 }

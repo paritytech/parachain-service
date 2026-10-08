@@ -215,7 +215,7 @@ fn admits(scheme: Scheme, config: &AuthConfig, token: &AuthToken, package: &Work
 fn a_keystore_token_passes_its_own_verifier_works() {
 	for scheme in [Scheme::Ed25519, Scheme::Sr25519] {
 		let collators = Collators::new(scheme, &["//Alice", "//Bob", "//Charlie"]);
-		let config = collators.config(vec![ParaId(0)]);
+		let config = collators.config(vec![ParaId::new(0)]);
 		// The round-robin picks the collator from the lookup-anchor slot, so walking the slot is
 		// what walks the set.
 		for index in 0..collators.keys.len() {
@@ -252,7 +252,7 @@ fn a_spec_shaped_token_passes_its_own_verifier_works() {
 		let token = AuthToken::decode_all(&mut &spec.encode()[..])
 			.expect("the guest decodes the spec's three fields and nothing more");
 		assert!(
-			admits(scheme, &collators.config(vec![ParaId(0)]), &token, &package),
+			admits(scheme, &collators.config(vec![ParaId::new(0)]), &token, &package),
 			"{scheme:?}: a spec-shaped token was rejected by its own verifier"
 		);
 	}
@@ -287,7 +287,7 @@ fn a_token_is_rejected_by_the_other_verifier_works() {
 	let ed = Collators::new(Scheme::Ed25519, &["//Alice"]);
 	assert!(!admits(
 		Scheme::Sr25519,
-		&ed.config(vec![ParaId(0)]),
+		&ed.config(vec![ParaId::new(0)]),
 		&ed.tokens(&package)[0],
 		&package
 	));
@@ -295,7 +295,7 @@ fn a_token_is_rejected_by_the_other_verifier_works() {
 	let sr = Collators::new(Scheme::Sr25519, &["//Alice"]);
 	assert!(!admits(
 		Scheme::Ed25519,
-		&sr.config(vec![ParaId(0)]),
+		&sr.config(vec![ParaId::new(0)]),
 		&sr.tokens(&package)[0],
 		&package
 	));
@@ -309,7 +309,7 @@ fn a_token_does_not_carry_over_to_a_re_anchored_package_works() {
 		let signed = block(1, 0);
 		let reanchored = block(2, 0);
 		let collators = Collators::new(scheme, &["//Alice"]);
-		let config = collators.config(vec![ParaId(0)]);
+		let config = collators.config(vec![ParaId::new(0)]);
 		let token = &collators.tokens(&signed)[0];
 
 		assert!(admits(scheme, &config, token, &signed), "{scheme:?}: rejected on its own package");
@@ -329,7 +329,7 @@ fn a_signature_does_not_carry_over_to_another_payload_works() {
 	for scheme in [Scheme::Ed25519, Scheme::Sr25519] {
 		let signed = block(1, 0);
 		let collators = Collators::new(scheme, &["//Alice"]);
-		let config = collators.config(vec![ParaId(0)]);
+		let config = collators.config(vec![ParaId::new(0)]);
 		let token = &collators.tokens(&signed)[0];
 
 		assert!(admits(scheme, &config, token, &signed), "{scheme:?}: rejected on its own package");
@@ -409,7 +409,7 @@ fn only_the_sentinel_key_opens_the_sudo_lane_works() {
 		// anything else in the token is looked at.
 		let mut dressed = collators.tokens(&control)[0].clone();
 		dressed.key = SUDO_KEY;
-		for config in [collators.config(Vec::new()), collators.config(vec![ParaId(0)])] {
+		for config in [collators.config(Vec::new()), collators.config(vec![ParaId::new(0)])] {
 			let trace = authorize_under(scheme, &config, &dressed, &control)
 				.expect("the sentinel decides, whatever else the token carries");
 			assert!(trace.sudo, "{scheme:?}: a dressed-up sentinel lost its privilege");
@@ -435,7 +435,12 @@ fn an_assigned_core_still_counts_items_works() {
 		let token = &collators.tokens(&package)[0];
 		// Two paras assigned, one item submitted.
 		assert!(matches!(
-			authorize_under(scheme, &collators.config(vec![ParaId(0), ParaId(1)]), token, &package),
+			authorize_under(
+				scheme,
+				&collators.config(vec![ParaId::new(0), ParaId::new(1)]),
+				token,
+				&package
+			),
 			Err(AuthorizationError::InvalidWorkItemCount)
 		));
 	}

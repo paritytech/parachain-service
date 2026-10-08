@@ -17,14 +17,14 @@
 //! use primitive_types::H256;
 //!
 //! let config = AuthConfig {
-//!     para_ids: vec![ParaId(2000)],
+//!     para_ids: vec![ParaId::new(2000)],
 //!     parachain_service: 1,
 //!     collator_set_root: H256::zero(),
 //!     collator_set_size: 1,
 //!     slot_duration: 6,
 //! };
 //! let spec = ParachainServiceSpec::new(1, b"service code").parachain(
-//!     ParachainSpec::new(ParaId(2000))
+//!     ParachainSpec::new(ParaId::new(2000))
 //!         .validation_code(b"verifier")
 //!         .authorizer(b"authorizer blob", &config),
 //! );

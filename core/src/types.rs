@@ -1,10 +1,4 @@
-//! Types shared between the parachain `service` and `authorizer` JAM programs.
-//!
-//! The two programs build into separate blobs and are peers — neither may depend
-//! on the other's crate. Types they both need (starting with [`ParaId`]) live here
-//! instead of being duplicated. This crate stays off the `sp-runtime`/`sp-core`
-//! tree so it keeps compiling for PolkaVM; Polkadot's own `ParaId`
-//! (`polkadot_parachain_primitives::Id`) is unusable here for that reason.
+//! Types shared by the service, authorizers, and collator tooling.
 //!
 //! NOTE: jam-types wrapper structs (`jam_types::AuthorizerHash`, `jam_types::Memo`,
 //! `jam_types::OpaqueValKeyset`) implement `jam_codec`'s traits, not the SCALE `codec`
@@ -14,7 +8,7 @@
 extern crate alloc;
 
 use bounded_collections::{BoundedVec, ConstU32};
-use codec::{Decode, Encode, MaxEncodedLen};
+use codec::{Decode, Encode};
 
 /// A JAM timeslot (`jam_types::Slot`).
 pub type Timeslot = u32;
@@ -50,23 +44,7 @@ pub const MAX_HEAD_DATA_SIZE: u32 = 4 * 1024;
 /// New head data produced by a parachain block. Spec §3.1.
 pub type HeadData = BoundedVec<u8, ConstU32<MAX_HEAD_DATA_SIZE>>;
 
-/// Unique identifier of a parachain.
-#[derive(
-	Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Encode, Decode, MaxEncodedLen,
-)]
-pub struct ParaId(pub u32);
-
-impl From<u32> for ParaId {
-	fn from(id: u32) -> Self {
-		ParaId(id)
-	}
-}
-
-impl From<ParaId> for u32 {
-	fn from(id: ParaId) -> Self {
-		id.0
-	}
-}
+pub use polkadot_parachain_primitives::primitives::Id as ParaId;
 
 /// The Coretime chain's `ParaId`. Owns parachain management (§6) and core
 /// assignment (§7).
@@ -74,14 +52,14 @@ impl From<ParaId> for u32 {
 /// Compile-time constant per DECISIONS.md D-2; matches the Quint model's
 /// `CoretimeParaId`. FIXME: production needs a bootstrap/governance story for
 /// migrating this identity.
-pub const CORETIME_PARA_ID: ParaId = ParaId(1);
+pub const CORETIME_PARA_ID: ParaId = ParaId::new(1);
 
 /// Asset Hub's `ParaId`. Owns validator-key updates (§5.3), service self-upgrade
 /// (§5.4), outbound transfers, and the incoming-transfer queue (§5.1).
 ///
 /// Compile-time constant per DECISIONS.md D-2; matches the Quint model's
 /// `AssetHubParaId`. FIXME: see [`CORETIME_PARA_ID`].
-pub const ASSET_HUB_PARA_ID: ParaId = ParaId(2);
+pub const ASSET_HUB_PARA_ID: ParaId = ParaId::new(2);
 
 /// Hash of a parachain's validation code (PVF) preimage.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]

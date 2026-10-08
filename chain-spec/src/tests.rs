@@ -64,7 +64,7 @@ fn para_info_entry(service: &crate::BuiltParachainService, para: ParaId) -> Para
 fn registered_para_layout() {
 	let service = ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE)
 		.parachain(
-			ParachainSpec::new(ParaId(3))
+			ParachainSpec::new(ParaId::new(3))
 				.head_data(HEAD)
 				.validation_code(CODE)
 				.state_balance(RICH),
@@ -77,16 +77,16 @@ fn registered_para_layout() {
 	assert_eq!(service.storage.len(), 2, "one para entry and one registry entry");
 
 	// `[0x00] ‖ SCALE(ParaId)`, and the value round-trips to the expected `ParaInfo`.
-	let key = storage_key(Tag::Parachains, &ParaId(3));
+	let key = storage_key(Tag::Parachains, &ParaId::new(3));
 	assert_eq!(key, vec![0x00, 3, 0, 0, 0]);
-	let info = para_info_entry(&service, ParaId(3));
+	let info = para_info_entry(&service, ParaId::new(3));
 	assert_eq!(info.head_data, HeadData::try_from(HEAD.to_vec()).expect("small head; qed"));
 	assert_eq!(info.validation_code, Some(code_ref(CODE)));
 	assert_eq!(info.announced_upgrade, None);
 	assert_eq!(info.total_state_balance, RICH);
 	assert_eq!(
 		info.used_state_balance,
-		baseline_for(ParaId(3)) + preimage_footprint(CODE.len() as u32)
+		baseline_for(ParaId::new(3)) + preimage_footprint(CODE.len() as u32)
 	);
 	assert!(!info.is_deregistering);
 }
@@ -94,7 +94,7 @@ fn registered_para_layout() {
 #[test]
 fn validation_code_is_hosted_once_with_registry_entry() {
 	let service = ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE)
-		.parachain(ParachainSpec::new(ParaId(3)).validation_code(CODE))
+		.parachain(ParachainSpec::new(ParaId::new(3)).validation_code(CODE))
 		.build()
 		.expect("a small spec builds; qed");
 
@@ -105,15 +105,15 @@ fn validation_code_is_hosted_once_with_registry_entry() {
 			.get(&storage_key(Tag::PreimageRegistry, &(code_ref(CODE).hash.0, CODE.len() as u32)))
 			.expect("registry entry; qed"),
 	);
-	assert_eq!(entry.referencers, BTreeSet::from([ParaId(3)]));
+	assert_eq!(entry.referencers, BTreeSet::from([ParaId::new(3)]));
 }
 
 #[test]
 fn shared_validation_code_is_hosted_once_and_referenced_by_both() {
 	let service = ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE)
 		// Out of order on purpose: output is ParaId-sorted.
-		.parachain(ParachainSpec::new(ParaId(200)).validation_code(CODE))
-		.parachain(ParachainSpec::new(ParaId(100)).validation_code(CODE))
+		.parachain(ParachainSpec::new(ParaId::new(200)).validation_code(CODE))
+		.parachain(ParachainSpec::new(ParaId::new(100)).validation_code(CODE))
 		.build()
 		.expect("a small spec builds; qed");
 
@@ -124,8 +124,8 @@ fn shared_validation_code_is_hosted_once_and_referenced_by_both() {
 			.get(&storage_key(Tag::PreimageRegistry, &(code_ref(CODE).hash.0, CODE.len() as u32)))
 			.expect("registry entry; qed"),
 	);
-	assert_eq!(entry.referencers, BTreeSet::from([ParaId(100), ParaId(200)]));
-	for para in [ParaId(100), ParaId(200)] {
+	assert_eq!(entry.referencers, BTreeSet::from([ParaId::new(100), ParaId::new(200)]));
+	for para in [ParaId::new(100), ParaId::new(200)] {
 		let info = para_info_entry(&service, para);
 		assert_eq!(info.validation_code, Some(code_ref(CODE)));
 	}
@@ -134,10 +134,10 @@ fn shared_validation_code_is_hosted_once_and_referenced_by_both() {
 #[test]
 fn shared_authorizer_blob_is_hosted_once() {
 	let verifier = b"authorizer blob".to_vec();
-	let config = realm_config(ParaId(7));
+	let config = realm_config(ParaId::new(7));
 	let service = ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE)
-		.parachain(ParachainSpec::new(ParaId(7)).authorizer(verifier.clone(), &config))
-		.parachain(ParachainSpec::new(ParaId(8)).authorizer(verifier.clone(), &config))
+		.parachain(ParachainSpec::new(ParaId::new(7)).authorizer(verifier.clone(), &config))
+		.parachain(ParachainSpec::new(ParaId::new(8)).authorizer(verifier.clone(), &config))
 		.build()
 		.expect("a small spec builds; qed");
 
@@ -147,9 +147,9 @@ fn shared_authorizer_blob_is_hosted_once() {
 #[test]
 fn authorizer_hashes_match_blake2b_concat() {
 	let verifier = b"verifier blob".to_vec();
-	let config = realm_config(ParaId(9));
+	let config = realm_config(ParaId::new(9));
 	let spec = ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE)
-		.parachain(ParachainSpec::new(ParaId(9)).authorizer(verifier.clone(), &config));
+		.parachain(ParachainSpec::new(ParaId::new(9)).authorizer(verifier.clone(), &config));
 
 	// Independent computation, rebuilt from the same raw parts the collator uses
 	// (SDK `nodes/jam/authorizer.rs:102,118-119`): the code hash through
@@ -158,7 +158,7 @@ fn authorizer_hashes_match_blake2b_concat() {
 	concat.extend_from_slice(&config.encode());
 
 	let hashes = spec.authorizer_hashes();
-	assert_eq!(hashes, BTreeMap::from([(ParaId(9), AuthorizerHash(blake2b(&concat)))]));
+	assert_eq!(hashes, BTreeMap::from([(ParaId::new(9), AuthorizerHash(blake2b(&concat)))]));
 }
 
 /// The two hash paths must be byte-identical, or a genesis-queued authorizer
@@ -226,14 +226,16 @@ fn validation_code_hash_matches_collator_derivation() {
 fn oversized_head_data_is_a_typed_error() {
 	let big = vec![0u8; MAX_HEAD_DATA_SIZE as usize + 1];
 	let err = ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE)
-		.parachain(ParachainSpec::new(ParaId(1)).head_data(big.clone()))
+		.parachain(ParachainSpec::new(ParaId::new(1)).head_data(big.clone()))
 		.build()
 		.expect_err("head over the bound must be rejected, not panicked");
 	assert!(matches!(err, Error::HeadDataTooLarge { para: 1, len } if len == big.len()));
 
 	// The bound itself fits.
 	ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE)
-		.parachain(ParachainSpec::new(ParaId(1)).head_data(vec![0u8; MAX_HEAD_DATA_SIZE as usize]))
+		.parachain(
+			ParachainSpec::new(ParaId::new(1)).head_data(vec![0u8; MAX_HEAD_DATA_SIZE as usize]),
+		)
 		.build()
 		.expect("exactly 4 KiB fits; qed");
 }
@@ -241,13 +243,13 @@ fn oversized_head_data_is_a_typed_error() {
 #[test]
 fn para_without_validation_code_has_none_and_no_registry_entry() {
 	let service = ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE)
-		.parachain(ParachainSpec::new(ParaId(9)).state_balance(RICH))
+		.parachain(ParachainSpec::new(ParaId::new(9)).state_balance(RICH))
 		.build()
 		.expect("a small spec builds; qed");
 
-	let info = para_info_entry(&service, ParaId(9));
+	let info = para_info_entry(&service, ParaId::new(9));
 	assert_eq!(info.validation_code, None);
-	assert_eq!(info.used_state_balance, baseline_for(ParaId(9)), "no preimage footprint");
+	assert_eq!(info.used_state_balance, baseline_for(ParaId::new(9)), "no preimage footprint");
 	assert!(service.preimages.is_empty(), "nothing to host");
 	assert!(
 		service.storage.keys().all(|k| k[0] != Tag::PreimageRegistry as u8),
@@ -258,7 +260,7 @@ fn para_without_validation_code_has_none_and_no_registry_entry() {
 #[test]
 fn extra_preimage_duplicate_of_validation_code_is_hosted_once() {
 	let service = ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE)
-		.parachain(ParachainSpec::new(ParaId(1)).validation_code(CODE))
+		.parachain(ParachainSpec::new(ParaId::new(1)).validation_code(CODE))
 		.preimage(CODE)
 		.build()
 		.expect("a small spec builds; qed");
@@ -271,14 +273,14 @@ fn build_is_deterministic_regardless_of_insertion_order() {
 	let mk = |order: [ParaId; 3]| {
 		let mut spec = ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE);
 		for id in order {
-			let code: &[u8] = if id.0 % 2 == 0 { CODE } else { CODE_2 };
+			let code: &[u8] = if u32::from(id) % 2 == 0 { CODE } else { CODE_2 };
 			spec = spec.parachain(ParachainSpec::new(id).validation_code(code).state_balance(RICH));
 		}
 		spec.build().expect("a small spec builds; qed")
 	};
 
-	let a = mk([ParaId(2), ParaId(1), ParaId(3)]);
-	let b = mk([ParaId(3), ParaId(1), ParaId(2)]);
+	let a = mk([ParaId::new(2), ParaId::new(1), ParaId::new(3)]);
+	let b = mk([ParaId::new(3), ParaId::new(1), ParaId::new(2)]);
 	assert_eq!(a.storage, b.storage);
 	assert_eq!(a.preimages, b.preimages);
 }
@@ -286,8 +288,8 @@ fn build_is_deterministic_regardless_of_insertion_order() {
 #[test]
 fn duplicate_para_id_is_an_error() {
 	let err = ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE)
-		.parachain(ParachainSpec::new(ParaId(1)))
-		.parachain(ParachainSpec::new(ParaId(1)))
+		.parachain(ParachainSpec::new(ParaId::new(1)))
+		.parachain(ParachainSpec::new(ParaId::new(1)))
 		.build()
 		.expect_err("a duplicated para id must be rejected, not silently collapsed");
 	assert!(matches!(err, Error::DuplicateParaId(1)));

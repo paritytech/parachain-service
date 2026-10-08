@@ -380,7 +380,7 @@ fn real_runtime_executes_as_child_pvf() {
 	});
 
 	let outcome =
-		std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(&parsed, ParaId(0))));
+		std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(&parsed, ParaId::new(0))));
 
 	with_vm(|vm| {
 		// The guest reads its PoV via fetch kind 4 (`OurExtrinsic(0)`) and declares its

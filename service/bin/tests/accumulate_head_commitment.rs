@@ -19,9 +19,9 @@ use parachain_service_core::{
 use tiny_keccak::{Hasher as _, Keccak};
 
 const NOW: u32 = 100;
-const PARA_A: ParaId = ParaId(1);
-const PARA_B: ParaId = ParaId(4);
-const PARA_C: ParaId = ParaId(7);
+const PARA_A: ParaId = ParaId::new(1);
+const PARA_B: ParaId = ParaId::new(4);
+const PARA_C: ParaId = ParaId::new(7);
 const CODE_A: &[u8] = b"code-a";
 const CODE_B: &[u8] = b"code-b";
 const CODE_C: &[u8] = b"code-c";

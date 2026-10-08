@@ -19,7 +19,7 @@ use parachain_service_core::types::ParaId;
 #[test]
 fn trivial_works() {
 	let items = work_items(1);
-	let (config, token, _) = make_auth(&authorizer(), vec![ParaId(0)], &items);
+	let (config, token, _) = make_auth(&authorizer(), vec![ParaId::new(0)], &items);
 	let (engine, package, storage) = is_authorized_args(&authorizer(), config, token, items);
 	pj::is_authorized(&engine, &package, 0, &storage)
 		.expect("is_authorized should run to completion (not trap)");
@@ -30,7 +30,7 @@ fn trivial_works() {
 #[test]
 fn two_work_items_works() {
 	let items = work_items(2);
-	let (config, token, _) = make_auth(&authorizer(), vec![ParaId(0), ParaId(1)], &items);
+	let (config, token, _) = make_auth(&authorizer(), vec![ParaId::new(0), ParaId::new(1)], &items);
 	let (engine, package, storage) = is_authorized_args(&authorizer(), config, token, items);
 	pj::is_authorized(&engine, &package, 0, &storage)
 		.expect("is_authorized should run to completion (not trap)");
@@ -94,7 +94,7 @@ fn small_order_key_errors() {
 	let small_order_key = [0u8; 32];
 	let (engine, package, storage) = make_single_collator_args_with_key(
 		&authorizer(),
-		vec![ParaId(0)],
+		vec![ParaId::new(0)],
 		work_items(1),
 		small_order_key,
 		[0u8; 64],
@@ -111,7 +111,7 @@ fn undecodable_collator_key_errors() {
 	let bad_key = [2u8; 32];
 	let (engine, package, storage) = make_single_collator_args_with_key(
 		&authorizer(),
-		vec![ParaId(0)],
+		vec![ParaId::new(0)],
 		work_items(1),
 		bad_key,
 		[0u8; 64],
@@ -127,8 +127,13 @@ fn undecodable_collator_key_errors() {
 #[test]
 fn proof_for_wrong_index_errors() {
 	let seeds = [[0x42u8; 32], [0x43u8; 32]];
-	let (engine, package, storage) =
-		make_wrong_collator_index_args(&authorizer(), vec![ParaId(0)], work_items(1), &seeds, 1);
+	let (engine, package, storage) = make_wrong_collator_index_args(
+		&authorizer(),
+		vec![ParaId::new(0)],
+		work_items(1),
+		&seeds,
+		1,
+	);
 	pj::is_authorized(&engine, &package, 0, &storage)
 		.expect_err("Merkle proof for index 1 must be rejected for expected index 0");
 }
@@ -151,7 +156,7 @@ fn ed25519_known_answer_vector_works() {
 
 	let items = work_items(1);
 	let (config, token, _) =
-		make_auth_with_seed(&authorizer(), vec![ParaId(0)], &items, rfc8032_seed);
+		make_auth_with_seed(&authorizer(), vec![ParaId::new(0)], &items, rfc8032_seed);
 	let (engine, package, storage) = is_authorized_args(&authorizer(), config, token, items);
 	let outcome = pj::is_authorized(&engine, &package, 0, &storage)
 		.expect("RFC 8032 §7.1 Test Vector 1 must pass is_authorized through the PVM");

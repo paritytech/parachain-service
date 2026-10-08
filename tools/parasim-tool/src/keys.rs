@@ -72,7 +72,11 @@ async fn watch(jam: &JamRpcInterface, args: &Args) -> Result<(), String> {
 			.await
 			.map_err(|e| format!("reading the entry: {e}"))?;
 		if previous.as_ref() != Some(&stored) {
-			tracing::info!("para {} changed at block 0x{}", args.para.0, hex(&*best.header_hash));
+			tracing::info!(
+				"para {} changed at block 0x{}",
+				u32::from(args.para),
+				hex(&*best.header_hash)
+			);
 			show(jam, args, best.header_hash).await?;
 			println!();
 			previous = Some(stored);
@@ -93,11 +97,14 @@ async fn show(jam: &JamRpcInterface, args: &Args, at: HeaderHash) -> Result<(), 
 
 	match (args.subject, stored) {
 		(Subject::Parahead, None) => {
-			println!("\nno entry: para {} has no head at this block", args.para.0);
+			println!("\nno entry: para {} has no head at this block", u32::from(args.para));
 			Ok(())
 		},
 		(Subject::Buffer, None) => {
-			println!("\nbuffer is empty: nothing parked for para {} at this block", args.para.0);
+			println!(
+				"\nbuffer is empty: nothing parked for para {} at this block",
+				u32::from(args.para)
+			);
 			Ok(())
 		},
 		(subject, Some(stored)) => {
@@ -275,7 +282,7 @@ fn print_location(at: HeaderHash, service: ServiceId, para: ParaId, service_loca
 	let state_key = parachain_service_core::service_value_state_key(service, service_local_key);
 	println!("block       0x{}", hex(&*at));
 	println!("service     {service}");
-	println!("para        {}", para.0);
+	println!("para        {}", u32::from(para));
 	println!(
 		"service key 0x{}  (this is what set_storage/serviceValue take)",
 		hex(service_local_key)

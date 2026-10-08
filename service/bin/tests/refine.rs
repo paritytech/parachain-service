@@ -83,7 +83,7 @@ fn genesis(config: Config) -> HeadData {
 #[test]
 fn trivial_works() {
 	let parent = genesis(Config::Coretime);
-	let outcome = run_block(Config::Coretime, &parent, 512, vec![ParaId(0)]);
+	let outcome = run_block(Config::Coretime, &parent, 512, vec![ParaId::new(0)]);
 
 	// The inner PVM decoded the PoV, executed the block, and declared the new
 	// head + parent hash through host calls (D-1).
@@ -105,7 +105,7 @@ fn send_upward_messages_works() {
 	let action = Config::Mock(vec![mock_action]);
 	let parent = genesis(action.clone());
 
-	let outcome = run_block(action.clone(), &parent, 512, vec![ParaId(0)]);
+	let outcome = run_block(action.clone(), &parent, 512, vec![ParaId::new(0)]);
 
 	let (_, head_data, upward_messages, _) = expect_ok(outcome);
 	assert_eq!(
@@ -127,7 +127,7 @@ fn report_error_works() {
 	let action = Config::Mock(vec![MockAction::ReportError(b"complaint".to_vec())]);
 	let parent = genesis(action.clone());
 
-	let outcome = run_block(action, &parent, 1, vec![ParaId(0)]);
+	let outcome = run_block(action, &parent, 1, vec![ParaId::new(0)]);
 
 	let log = expect_log(outcome);
 	assert_eq!(log, RefineLog::Opaque(b"complaint".to_vec().try_into().unwrap()));
@@ -144,7 +144,7 @@ fn legacy_pov_payload_errors() {
 		ValidationParams { parent_head: parent.encode(), block_data: block.encode() }.encode();
 	let pvf_hash = validation_code_hash(&parachain_service_bin::frameless_pvf());
 
-	let outcome = refine_item((pvf_hash, pov.clone()).encode(), pov, vec![ParaId(0)]);
+	let outcome = refine_item((pvf_hash, pov.clone()).encode(), pov, vec![ParaId::new(0)]);
 
 	expect_work_error(outcome);
 }
@@ -156,12 +156,12 @@ fn unavailable_code_errors() {
 	let validation_code = ValidationCodeHash([7; 32]);
 	let payload = ParachainCandidate { validation_code }.encode();
 
-	let outcome = refine_item(payload, Vec::new(), vec![ParaId(0)]);
+	let outcome = refine_item(payload, Vec::new(), vec![ParaId::new(0)]);
 
 	assert_eq!(
 		outcome.expect("Refine failed to return a ParachainWorkDigest").digest,
 		ParachainWorkDigest::Err {
-			para_id: ParaId(0),
+			para_id: ParaId::new(0),
 			validation_code,
 			error: RefineLog::ValidationCodeLookupFailed,
 		}
@@ -174,7 +174,7 @@ fn restricted_host_function_errors() {
 	let action = Config::Mock(vec![MockAction::TransferOut(transfer_out_args(42, 1))]);
 	let parent = genesis(action.clone());
 
-	let outcome = run_block(action, &parent, 1, vec![ParaId(0)]);
+	let outcome = run_block(action, &parent, 1, vec![ParaId::new(0)]);
 
 	assert_eq!(expect_log(outcome), RefineLog::RestrictedHostFunction);
 }
@@ -247,7 +247,7 @@ fn service_ops_restricted_to_asset_hub_errors() {
 		let config = Config::Mock(vec![action]);
 		let parent = genesis(config.clone());
 
-		let outcome = run_block(config, &parent, 1, vec![ParaId(0)]);
+		let outcome = run_block(config, &parent, 1, vec![ParaId::new(0)]);
 
 		assert_eq!(expect_log(outcome), RefineLog::RestrictedHostFunction);
 	}
@@ -274,17 +274,21 @@ fn own_para_target_from_any_chain_works() {
 	// call — only its `Service`-targeted form.
 	let cases = [
 		(
-			MockAction::Forget { target: Target::Parachain(ParaId(0)), hash: [9; 32], len: 8 },
+			MockAction::Forget { target: Target::Parachain(ParaId::new(0)), hash: [9; 32], len: 8 },
 			UpwardMessage::Forget {
-				target: Target::Parachain(ParaId(0)),
+				target: Target::Parachain(ParaId::new(0)),
 				hash: [9; 32],
 				len: 8.into(),
 			},
 		),
 		(
-			MockAction::Solicit { target: Target::Parachain(ParaId(0)), hash: [9; 32], len: 8 },
+			MockAction::Solicit {
+				target: Target::Parachain(ParaId::new(0)),
+				hash: [9; 32],
+				len: 8,
+			},
 			UpwardMessage::Solicit {
-				target: Target::Parachain(ParaId(0)),
+				target: Target::Parachain(ParaId::new(0)),
 				hash: [9; 32],
 				len: 8.into(),
 			},
@@ -295,7 +299,7 @@ fn own_para_target_from_any_chain_works() {
 		let config = Config::Mock(vec![action]);
 		let parent = genesis(config.clone());
 
-		let outcome = run_block(config, &parent, 1, vec![ParaId(0)]);
+		let outcome = run_block(config, &parent, 1, vec![ParaId::new(0)]);
 
 		let (_, _, upward_messages, _) = expect_ok(outcome);
 		assert_eq!(upward_messages.into_iter().next(), Some(expected));
@@ -370,13 +374,13 @@ fn first_failing_call_errors() {
 	let one_key = MockAction::SetValidatorKeys { keys: vec![0; 336], is_last: false };
 	let too_many_keys = MockAction::SetValidatorKeys { keys: vec![0; 31 * 336], is_last: true };
 	for (para, actions, expected) in [
-		(ParaId(0), vec![empty_assign.clone()], RefineLog::RestrictedHostFunction),
+		(ParaId::new(0), vec![empty_assign.clone()], RefineLog::RestrictedHostFunction),
 		(
-			ParaId(0),
+			ParaId::new(0),
 			vec![empty_assign.clone(), complaint.clone()],
 			RefineLog::RestrictedHostFunction,
 		),
-		(ParaId(0), vec![complaint, empty_assign], opaque),
+		(ParaId::new(0), vec![complaint, empty_assign], opaque),
 		(ASSET_HUB_PARA_ID, vec![one_key, too_many_keys], RefineLog::TooManyValidatorKeys),
 	] {
 		let action = Config::Mock(actions);
@@ -418,7 +422,7 @@ fn oversized_upward_messages_errors() {
 	let action = Config::Mock(vec![MockAction::KVSet(vec![0], vec![0; 40 * 1024 - 6])]);
 	let parent = genesis(action.clone());
 
-	let outcome = run_block(action, &parent, 1, vec![ParaId(0)]);
+	let outcome = run_block(action, &parent, 1, vec![ParaId::new(0)]);
 
 	assert_eq!(expect_log(outcome), RefineLog::UpwardMessagesTooLarge);
 }
@@ -429,7 +433,7 @@ fn upward_messages_at_size_budget_works() {
 	let action = Config::Mock(vec![MockAction::KVSet(vec![0], vec![0; 40 * 1024 - 7])]);
 	let parent = genesis(action.clone());
 
-	let outcome = run_block(action, &parent, 1, vec![ParaId(0)]);
+	let outcome = run_block(action, &parent, 1, vec![ParaId::new(0)]);
 
 	let (_, _, messages, _) = expect_ok(outcome);
 	assert_eq!(messages.len(), 1);
@@ -442,15 +446,12 @@ fn empty_kv_key_or_value_errors() {
 	for (action, expected) in [
 		(MockAction::KVSet(vec![], vec![0]), RefineLog::EmptyKVKeyOrValue),
 		(MockAction::KVSet(vec![0], vec![]), RefineLog::EmptyKVKeyOrValue),
-		(
-			MockAction::KVRemove { para_id: ParaId(0).0, key: vec![] },
-			RefineLog::EmptyKVKeyOrValue,
-		),
+		(MockAction::KVRemove { para_id: 0, key: vec![] }, RefineLog::EmptyKVKeyOrValue),
 	] {
 		let config = Config::Mock(vec![action]);
 		let parent = genesis(config.clone());
 
-		let outcome = run_block(config, &parent, 1, vec![ParaId(0)]);
+		let outcome = run_block(config, &parent, 1, vec![ParaId::new(0)]);
 
 		assert_eq!(expect_log(outcome), expected);
 	}
@@ -461,7 +462,7 @@ fn skip_head_declarations_errors() {
 	let action = Config::Mock(vec![MockAction::SkipHeadDeclarations]);
 	let parent = genesis(action.clone());
 
-	let outcome = run_block(action, &parent, 1, vec![ParaId(0)]);
+	let outcome = run_block(action, &parent, 1, vec![ParaId::new(0)]);
 
 	assert_eq!(expect_log(outcome), RefineLog::InvalidHeadDeclaration);
 }
@@ -471,7 +472,7 @@ fn duplicate_set_head_errors() {
 	let action = Config::Mock(vec![MockAction::DuplicateSetHead(b"bogus".to_vec())]);
 	let parent = genesis(action.clone());
 
-	let outcome = run_block(action, &parent, 1, vec![ParaId(0)]);
+	let outcome = run_block(action, &parent, 1, vec![ParaId::new(0)]);
 
 	assert_eq!(expect_log(outcome), RefineLog::InvalidHeadDeclaration);
 }

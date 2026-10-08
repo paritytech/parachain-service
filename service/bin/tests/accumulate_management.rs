@@ -15,7 +15,7 @@ use parachain_service_core::{
 
 const NOW: u32 = 100;
 const CT_CODE: &[u8] = b"coretime-code";
-const NEW_PARA: ParaId = ParaId(3000);
+const NEW_PARA: ParaId = ParaId::new(3000);
 const NEW_CODE: &[u8] = b"para-3000-code";
 
 /// A Coretime-chain candidate carrying `msgs`, enacting `new_head` on `parent`.

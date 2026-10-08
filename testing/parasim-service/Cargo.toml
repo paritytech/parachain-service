@@ -43,5 +43,7 @@ parachain-service-bin = { workspace = true, optional = true }
 [dev-dependencies]
 parachain-service-core = { workspace = true }
 
+# SDK primitives use their runtime implementation inside PVM guests.
 [package.metadata.jam]
+default-rustflags = ["--cfg", "substrate_runtime"]
 type = "service"
