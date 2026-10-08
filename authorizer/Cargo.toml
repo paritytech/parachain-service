@@ -16,7 +16,7 @@ workspace = true
 
 [dependencies]
 jam-types = { workspace = true }
-parachain-service-core = { workspace = true }
+jp-aura-authorizer = { workspace = true }
 jam-pvm-common = { workspace = true, features = ["authorizer", "logging"] }
 codec = { workspace = true }
 # `uninline_portable` keeps blake2b's compression function a real function instead of one fully
@@ -24,12 +24,16 @@ codec = { workspace = true }
 # few dozen bytes per call.
 # Retained to enable this feature on the SDK hashing implementation's dependency.
 blake2b_simd = { workspace = true, features = ["uninline_portable"] }
-primitive-types = { workspace = true }
+
+[target.'cfg(any(target_arch = "riscv32", target_arch = "riscv64"))'.dependencies]
+sp-io = { workspace = true, features = ["disable_allocator", "disable_panic_handler"] }
 
 # The cross-scheme contract tests live here, next to the core they are the drift alarm for: they
 # check that a token assembled the node's way passes the matching verifier and no other. Cargo
 # allows a dev-dependency cycle, which is what these two are.
 [dev-dependencies]
+primitive-types = { workspace = true }
+parachain-service-core = { workspace = true }
 parachain-authorizer = { path = ".", features = ["test-utils"] }
 parachain-authorizer-ed25519 = { workspace = true }
 parachain-authorizer-sr25519 = { workspace = true }
@@ -44,7 +48,7 @@ std = [
 	"jam-pvm-common/std",
 	"jam-types/std",
 	"parachain-authorizer/std",
-	"parachain-service-core/std",
+	"jp-aura-authorizer/std",
 	"parachain-service/std",
 	"primitive-types/std",
 	"sp-core/std",

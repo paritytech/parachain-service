@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "authorizer",
+    "jp-aura-authorizer",
     "authorizer-ed25519",
     "authorizer-sr25519",
     "chain-spec",
@@ -33,6 +34,7 @@ license = "Apache-2.0"
 unexpected_cfgs = { level = "warn", check-cfg = [] }
 
 [workspace.dependencies]
+jp-aura-authorizer = { path = "jp-aura-authorizer", default-features = false }
 polkadot-parachain-primitives = { path = "vendor/polkadot-sdk-companion/polkadot/parachain", default-features = false }
 jam-types = { path = "vendor/polkajam/crates/jam-types", default-features = false }
 jam-codec = { version = "0.1.1", default-features = false, features = ["derive"] }

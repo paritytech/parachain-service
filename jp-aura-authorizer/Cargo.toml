@@ -1,0 +1,28 @@
+[package]
+name = "jp-aura-authorizer"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+codec = { workspace = true, features = ["max-encoded-len"] }
+jam-types = { workspace = true }
+polkadot-parachain-primitives = { workspace = true }
+primitive-types = { workspace = true }
+sp-crypto-hashing = { workspace = true }
+
+[features]
+default = []
+std = [
+    "codec/std",
+    "jam-types/std",
+    "polkadot-parachain-primitives/std",
+    "primitive-types/std",
+    "sp-crypto-hashing/std",
+]

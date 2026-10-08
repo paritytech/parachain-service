@@ -2766,6 +2766,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "jp-aura-authorizer"
+version = "0.1.0"
+dependencies = [
+ "jam-types",
+ "parity-scale-codec",
+ "polkadot-parachain-primitives",
+ "primitive-types",
+ "sp-crypto-hashing",
+]
+
+[[package]]
 name = "js-sys"
 version = "0.3.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3337,6 +3348,7 @@ dependencies = [
  "blake2b_simd",
  "jam-pvm-common",
  "jam-types",
+ "jp-aura-authorizer",
  "parachain-authorizer",
  "parachain-authorizer-ed25519",
  "parachain-authorizer-sr25519",
@@ -3345,6 +3357,7 @@ dependencies = [
  "parity-scale-codec",
  "primitive-types",
  "sp-core",
+ "sp-io",
  "sp-keystore",
 ]
 
@@ -3379,7 +3392,7 @@ dependencies = [
  "jam-chainspec",
  "jam-std-common",
  "jam-types",
- "parachain-authorizer",
+ "jp-aura-authorizer",
  "parachain-service",
  "parachain-service-core",
  "parity-scale-codec",
@@ -3396,7 +3409,7 @@ dependencies = [
  "jam-pvm-common",
  "jam-std-common",
  "jam-types",
- "parachain-authorizer",
+ "jp-aura-authorizer",
  "parachain-service-core",
  "parity-scale-codec",
  "polkavm",
@@ -3439,6 +3452,7 @@ dependencies = [
  "jam-pvm-common",
  "jam-std-common",
  "jam-types",
+ "jp-aura-authorizer",
  "num_enum",
  "parity-scale-codec",
  "polkadot-parachain-primitives",

@@ -47,13 +47,13 @@ fn report(name: &str, gas: u64, elapsed: std::time::Duration, digest_len: usize)
 /// and SDK hashing reuse. These are measured PVM costs, not production budgets.
 mod gas {
 	/// 1024-solicit digest — the heaviest reachable digest replay.
-	pub const MAX_SOLICITS: u64 = 65_473_486;
+	pub const MAX_SOLICITS: u64 = 65_465_419;
 	/// 1024 KV writes filling the report's elective-data limit.
-	pub const MAX_KV_WRITES: u64 = 53_471_066;
+	pub const MAX_KV_WRITES: u64 = 53_462_999;
 	/// 332 outbound transfers to a friendly destination.
-	pub const MAX_TRANSFER_OUTS: u64 = 4_912_634;
+	pub const MAX_TRANSFER_OUTS: u64 = 4_904_567;
 	/// 332 outbound transfers to a destination demanding `HIGH_TRANSFER_GAS`.
-	pub const MAX_GAS_TRANSFER_OUTS: u64 = 4_912_634;
+	pub const MAX_GAS_TRANSFER_OUTS: u64 = 4_904_567;
 	/// Gas for 1024 incoming transfers recorded in one bucket write.
 	pub const MAX_INCOMING_TRANSFERS: u64 = 7_555_964;
 	/// Due `assign` flush for all 341 cores in one block.
@@ -61,7 +61,7 @@ mod gas {
 	/// Marginal cost of a realistic destination's memo handler, per transfer.
 	pub const DEST_HANDLER_PER_TRANSFER: u64 = 19_602;
 	/// Gas for one Ed25519 authorization.
-	pub const IS_AUTHORIZED_ED25519: u64 = 4_048_126;
+	pub const IS_AUTHORIZED_ED25519: u64 = 4_018_923;
 }
 
 /// A report admitted by the gas gate must leave 20% execution headroom.

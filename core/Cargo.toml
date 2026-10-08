@@ -13,6 +13,7 @@ publish = false
 workspace = true
 
 [dependencies]
+jp-aura-authorizer = { workspace = true }
 polkadot-parachain-primitives = { workspace = true }
 sp-crypto-hashing = { workspace = true }
 bounded-collections = { workspace = true }
@@ -37,6 +38,7 @@ polkajam-trie = { workspace = true }
 [features]
 default = []
 std = [
+	"jp-aura-authorizer/std",
 	"polkadot-parachain-primitives/std",
 	"sp-crypto-hashing/std",
 	"bounded-collections/std",

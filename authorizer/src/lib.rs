@@ -20,7 +20,7 @@ extern crate alloc;
 use alloc::format;
 
 use jam_types::{AuthTrace, CoreIndex};
-pub use parachain_service_core::types::ParaId;
+pub use jp_aura_authorizer::ParaId;
 
 pub mod aura;
 pub mod is_authorized;

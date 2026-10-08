@@ -21,14 +21,13 @@ jam-pvm-common = { workspace = true, features = ["service", "logging"] }
 codec = { workspace = true }
 polkavm-derive = { workspace = true }
 jam-std-common = { workspace = true, optional = true }
-parachain-authorizer = { workspace = true }
+jp-aura-authorizer = { workspace = true }
 bounded-collections = { workspace = true }
 polkavm = { workspace = true }
 sp-crypto-hashing = { workspace = true }
 
 [features]
 test-utils = [
-	"parachain-authorizer/test-utils",
 ]
 std = [
 	"sp-crypto-hashing/std",
@@ -38,7 +37,7 @@ std = [
 	"jam-codec/std",
 	"jam-pvm-common/std",
 	"jam-types/std",
-	"parachain-authorizer/std",
+	"jp-aura-authorizer/std",
 	"parachain-service-core/std",
 	"polkavm/std",
 ]

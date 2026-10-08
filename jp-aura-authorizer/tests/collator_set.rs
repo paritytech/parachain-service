@@ -4,8 +4,7 @@
 //! All of this is scheme-blind — the trie hashes raw key bytes. The signature half of the token
 //! is in `contract.rs`, where both schemes are exercised.
 
-use parachain_authorizer::aura::{build_collator_tree, AuthConfig, AuthToken, CollatorKey};
-use parachain_service_core::{types::ParaId, PARACHAIN_SERVICE_ID};
+use jp_aura_authorizer::{build_collator_tree, AuthConfig, AuthToken, CollatorKey, ParaId};
 use primitive_types::H256;
 
 fn keys(count: u32) -> Vec<CollatorKey> {
@@ -16,7 +15,7 @@ fn config(keys: &[CollatorKey]) -> (AuthConfig, Vec<Vec<H256>>) {
 	let (collator_set_root, proofs) = build_collator_tree(keys);
 	let config = AuthConfig {
 		para_ids: vec![ParaId::new(0)],
-		parachain_service: PARACHAIN_SERVICE_ID,
+		parachain_service: 1337,
 		collator_set_root,
 		collator_set_size: keys.len() as u32,
 		slot_duration: 1,

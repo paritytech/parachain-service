@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use codec::{Decode, Encode};
 use jam_std_common::hash_raw;
 use jam_types::{AuthorizerHash, Balance};
-use parachain_authorizer::aura::AuthConfig;
+use jp_aura_authorizer::AuthConfig;
 use parachain_service::{
 	state::{para_info::ParaInfo, preimage_registry::PreimageEntry, storage_key, Tag},
 	state_balance::{baseline_for, preimage_footprint},

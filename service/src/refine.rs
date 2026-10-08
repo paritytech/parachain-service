@@ -8,7 +8,7 @@ use alloc::vec::Vec;
 use codec::{Decode, DecodeAll};
 use jam_pvm_common::refine::{self, auth_trace, lookup as historical_lookup};
 use jam_types::{CoreIndex, ServiceId, WorkPackageHash, WorkPayload};
-use parachain_authorizer::aura;
+use jp_aura_authorizer as aura;
 use parachain_service_core::types::{validation_code_hash_bytes, ParaId};
 
 pub use parachain_service_core::candidate::ParachainCandidate;
