@@ -1,11 +1,29 @@
+// This file is part of Substrate.
+
+// Copyright (C) Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: Apache-2.0
+
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// 	http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 use alloc::vec::Vec;
 use primitive_types::H256;
 use sp_crypto_hashing::blake2_256;
 
 use crate::CollatorKey;
 
-/// Number of sibling hashes a proof carries for a set of `collator_set_size` collators:
-/// ⌈log₂(size)⌉, the depth of the zero-padded power-of-two tree.
+/// Number of sibling hashes in a collator membership proof.
+///
+/// This is ⌈log₂(collator_set_size)⌉, the depth of the zero-padded power-of-two tree.
 pub(crate) fn proof_depth(collator_set_size: u32) -> usize {
 	(u32::BITS - collator_set_size.saturating_sub(1).leading_zeros()) as usize
 }
@@ -24,6 +42,7 @@ pub(crate) fn join(left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
 }
 
 /// Build a zero-padded Merkle tree and return its root and one proof per key, in input order.
+///
 /// See [`crate::AuthToken::check_proof`] for the proof format.
 ///
 /// # Panics

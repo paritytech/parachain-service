@@ -1,3 +1,20 @@
+// This file is part of Substrate.
+
+// Copyright (C) Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: Apache-2.0
+
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+// 	http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use jam_types::WorkPackage;
@@ -10,12 +27,14 @@ use crate::{
 
 #[derive(Clone, Debug, Encode, Decode)]
 pub struct AuthToken {
-	/// Proof that the `key` is at the slot-selected leaf index in the collator
-	/// set tree committed to by `collator_set_root`.
+	/// Proof of collator membership for `key`.
+	///
+	/// Places `key` at the slot-selected leaf index in the tree committed to by `collator_set_root`.
 	pub proof: Vec<H256>,
 
-	/// Key of the collator that authored the work package, or the local development authorizer
-	/// sentinel.
+	/// Key of the collator that authored the work package.
+	///
+	/// For local development, this may be the development authorizer sentinel.
 	pub key: CollatorKey,
 
 	/// Signature by the `key` over [`signable_work_package_hash`].
@@ -84,8 +103,9 @@ impl AuthToken {
 			.ok_or(TokenError::BadCollatorSignature)
 	}
 
-	/// Run the §7.1 token checks for the slot-selected `collator_index` and
-	/// produce the trace carrying the author key.
+	/// Validate the token and produce the trace carrying the author key.
+	///
+	/// Runs the token checks for the slot-selected `collator_index`.
 	pub fn try_into_trace<S: SignatureScheme>(
 		&self,
 		config: &AuthConfig,
