@@ -52,13 +52,22 @@ pub struct AuthConfig {
 	pub slot_duration: u32,
 }
 
+/// AURA configuration cannot select a collator.
+#[derive(Debug)]
+pub enum ConfigError {
+	/// `collator_set_size == 0` — no collator could ever be selected.
+	ZeroCollatorSetSize,
+	/// `slot_duration == 0` — the round-robin index would divide by zero.
+	ZeroSlotDuration,
+}
+
 /// The round-robin collator index expected for `slot`.
 ///
 /// Computed as `(slot / slot_duration) mod collator_set_size`.
-///
-/// # Panics
-///
-/// Panics if `slot_duration` or `collator_set_size` are zero.
-pub fn expected_collator_index(slot: Slot, config: &AuthConfig) -> u32 {
-	((slot / config.slot_duration) % config.collator_set_size) as u32
+pub fn expected_collator_index(slot: Slot, config: &AuthConfig) -> Result<u32, ConfigError> {
+	if config.collator_set_size == 0 {
+		return Err(ConfigError::ZeroCollatorSetSize);
+	}
+	let round = slot.checked_div(config.slot_duration).ok_or(ConfigError::ZeroSlotDuration)?;
+	Ok(round % config.collator_set_size)
 }

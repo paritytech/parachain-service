@@ -29,8 +29,8 @@ mod token;
 
 pub use polkadot_parachain_primitives::primitives::Id as ParaId;
 
-pub use authorization::{AuthTrace, CollatorKey, CollatorSignature};
-pub use config::{expected_collator_index, AuthConfig};
+pub use authorization::{authorize, AuthTrace, AuthorizationError, CollatorKey, CollatorSignature};
+pub use config::{expected_collator_index, AuthConfig, ConfigError};
 pub use merkle::build_collator_tree;
 pub use signing::{signable_work_package_hash, WORK_PACKAGE_SIGN_CTX};
 pub use token::{AuthToken, SignatureScheme, TokenError};

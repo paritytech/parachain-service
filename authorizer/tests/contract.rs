@@ -427,3 +427,31 @@ fn an_assigned_core_still_counts_items_works() {
 		));
 	}
 }
+
+/// Invalid AURA configs are rejected through the adapter, before proof/signature checks.
+#[test]
+fn invalid_aura_config_errors() {
+	use parachain_authorizer::aura::{AuthorizationError as AuraError, ConfigError};
+
+	for scheme in [Scheme::Ed25519, Scheme::Sr25519] {
+		let collators = Collators::new(scheme, &["//Alice"]);
+		let package = block(1, 0);
+		let token = &collators.tokens(&package)[0];
+		let mut config = collators.config(vec![ParaId::new(0)]);
+		config.collator_set_size = 0;
+		assert!(matches!(
+			authorize_under(scheme, &config, token, &package),
+			Err(AuthorizationError::BadAuthorization(AuraError::BadConfig(
+				ConfigError::ZeroCollatorSetSize
+			)))
+		));
+		config.collator_set_size = 1;
+		config.slot_duration = 0;
+		assert!(matches!(
+			authorize_under(scheme, &config, token, &package),
+			Err(AuthorizationError::BadAuthorization(AuraError::BadConfig(
+				ConfigError::ZeroSlotDuration
+			)))
+		));
+	}
+}

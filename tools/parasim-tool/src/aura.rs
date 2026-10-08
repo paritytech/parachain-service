@@ -171,7 +171,9 @@ impl Aura {
 	pub fn token(&self, package: &WorkPackage) -> Result<Authorization, String> {
 		let config = AuthConfig::decode_all(&mut &package.authorizer.config[..])
 			.map_err(|e| format!("the package's own authorizer config does not decode: {e}"))?;
-		let index = expected_collator_index(package.context.lookup_anchor_slot, &config) as usize;
+		let index = expected_collator_index(package.context.lookup_anchor_slot, &config)
+			.map_err(|e| format!("the package's own AURA config is invalid: {e:?}"))?
+			as usize;
 		let pair = self
 			.pairs
 			.get(index)

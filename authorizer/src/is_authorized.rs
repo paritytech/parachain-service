@@ -7,15 +7,11 @@ use jam_types::{AuthTrace, CoreIndex, Slot, WorkPackage};
 pub enum AuthorizationError {
 	UndecodableAuthConfig,
 	UndecodableAuthToken,
+	/// Number of work items does not match the number of para IDs.
 	InvalidWorkItemCount,
-	/// A work item targets a service other than the configured Parachain
-	/// Service — para-specific coretime must not authorize other JAM work.
+	/// A work item does not target the Parachain Service.
 	WrongTargetService,
-	/// `collator_set_size == 0` — no collator could ever be selected.
-	ZeroCollatorSetSize,
-	/// `slot_duration == 0` — the round-robin index would divide by zero.
-	ZeroSlotDuration,
-	BadAuthToken(aura::TokenError),
+	BadAuthorization(aura::AuthorizationError),
 }
 
 pub fn is_authorized<S: SignatureScheme>(
@@ -63,15 +59,6 @@ pub fn authorize<S: SignatureScheme>(
 	if config.para_ids.len() != package.items.len() {
 		return Err(AuthorizationError::InvalidWorkItemCount);
 	}
-	if config.collator_set_size == 0 {
-		return Err(AuthorizationError::ZeroCollatorSetSize);
-	}
-	if config.slot_duration == 0 {
-		return Err(AuthorizationError::ZeroSlotDuration);
-	}
-
-	let collator_index = aura::expected_collator_index(lookup_anchor_slot, config);
-	token
-		.try_into_trace::<S>(config, package, collator_index)
-		.map_err(AuthorizationError::BadAuthToken)
+	aura::authorize::<S>(config, token, package, lookup_anchor_slot)
+		.map_err(AuthorizationError::BadAuthorization)
 }
