@@ -14,8 +14,8 @@ use jam_types::{
 	WorkPackage,
 };
 use parachain_authorizer::aura::{
-	build_collator_tree, expected_collator_index, signable_work_package_hash, AuthConfig,
-	AuthToken, CollatorKey, CollatorSignature, SUDO_KEY,
+	build_collator_tree, signable_work_package_hash, AuthConfig, AuthToken, CollatorKey,
+	CollatorSignature, SUDO_KEY,
 };
 use parachain_service_core::types::ParaId;
 use primitive_types::H256;
@@ -171,7 +171,8 @@ impl Aura {
 	pub fn token(&self, package: &WorkPackage) -> Result<Authorization, String> {
 		let config = AuthConfig::decode_all(&mut &package.authorizer.config[..])
 			.map_err(|e| format!("the package's own authorizer config does not decode: {e}"))?;
-		let index = expected_collator_index(package.context.lookup_anchor_slot, &config)
+		let index = config
+			.expected_collator_index(package.context.lookup_anchor_slot)
 			.map_err(|e| format!("the package's own AURA config is invalid: {e:?}"))?
 			as usize;
 		let pair = self

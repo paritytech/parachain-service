@@ -21,11 +21,19 @@ use jam_types::WorkPackage;
 use primitive_types::H256;
 
 use crate::{
-	authorization::{AuthTrace, CollatorKey, CollatorSignature},
 	config::AuthConfig,
 	merkle::{collator_leaf_hash, join, proof_depth},
 	signing::signable_work_package_hash,
+	AuthTrace,
 };
+
+/// Raw public key bytes for either supported signature scheme.
+pub type CollatorKey = [u8; 32];
+
+/// A collator's signature over an authorization token's signing payload.
+///
+/// Encoded as 64 raw bytes.
+pub type CollatorSignature = [u8; 64];
 
 #[derive(Clone, Debug, Encode, Decode)]
 pub struct AuthToken {

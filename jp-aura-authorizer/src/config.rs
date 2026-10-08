@@ -58,12 +58,14 @@ pub enum ConfigError {
 	ZeroSlotDuration,
 }
 
-/// The round-robin collator index expected for `slot`.
-///
-/// Computed as `(slot / slot_duration) mod collator_set_size`.
-pub fn expected_collator_index(slot: Slot, config: &AuthConfig) -> Result<u32, ConfigError> {
-	let round = slot.checked_div(config.slot_duration).ok_or(ConfigError::ZeroSlotDuration)?;
-	round
-		.checked_rem(config.collator_set_size)
-		.ok_or(ConfigError::ZeroCollatorSetSize)
+impl AuthConfig {
+	/// The round-robin collator index expected for `slot`.
+	///
+	/// Computed as `(slot / slot_duration) mod collator_set_size`.
+	pub fn expected_collator_index(&self, slot: Slot) -> Result<u32, ConfigError> {
+		let round = slot.checked_div(self.slot_duration).ok_or(ConfigError::ZeroSlotDuration)?;
+		round
+			.checked_rem(self.collator_set_size)
+			.ok_or(ConfigError::ZeroCollatorSetSize)
+	}
 }

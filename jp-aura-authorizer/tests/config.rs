@@ -18,7 +18,7 @@
 //! Slot selection and invalid AURA configuration.
 
 use jam_types::Slot;
-use jp_aura_authorizer::{expected_collator_index, AuthConfig, ConfigError};
+use jp_aura_authorizer::{AuthConfig, ConfigError};
 
 fn config(collator_set_size: u32, slot_duration: u32) -> AuthConfig {
 	AuthConfig {
@@ -34,16 +34,16 @@ fn config(collator_set_size: u32, slot_duration: u32) -> AuthConfig {
 fn round_robin_works() {
 	let config = config(3, 2);
 	for (slot, expected) in [(0, 0), (1, 0), (2, 1), (4, 2), (5, 2), (6, 0)] {
-		assert_eq!(expected_collator_index(slot, &config).unwrap(), expected);
+		assert_eq!(config.expected_collator_index(slot).unwrap(), expected);
 	}
-	assert_eq!(expected_collator_index(Slot::MAX, &config).unwrap(), (Slot::MAX / 2) % 3);
+	assert_eq!(config.expected_collator_index(Slot::MAX).unwrap(), (Slot::MAX / 2) % 3);
 }
 
 #[test]
 fn zero_collator_set_size_errors() {
 	for duration in [0, 1] {
 		assert!(matches!(
-			expected_collator_index(0, &config(0, duration)),
+			config(0, duration).expected_collator_index(0),
 			Err(ConfigError::ZeroCollatorSetSize)
 		));
 	}
@@ -51,8 +51,5 @@ fn zero_collator_set_size_errors() {
 
 #[test]
 fn zero_slot_duration_errors() {
-	assert!(matches!(
-		expected_collator_index(0, &config(1, 0)),
-		Err(ConfigError::ZeroSlotDuration)
-	));
+	assert!(matches!(config(1, 0).expected_collator_index(0), Err(ConfigError::ZeroSlotDuration)));
 }

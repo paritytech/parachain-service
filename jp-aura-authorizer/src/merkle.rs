@@ -19,7 +19,7 @@ use alloc::vec::Vec;
 use primitive_types::H256;
 use sp_crypto_hashing::blake2_256;
 
-use crate::authorization::CollatorKey;
+use crate::token::CollatorKey;
 
 /// Number of sibling hashes in a collator membership proof.
 ///
