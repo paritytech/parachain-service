@@ -1,17 +1,5 @@
-//! The contract between the node that assembles an authorization token and the guest that
-//! verifies it, for both schemes and across them.
-//!
-//! Both schemes live in one file because the interesting failures are the cross-scheme ones: a
-//! token checked under the wrong curve fails exactly the way a forged one does, with nothing in
-//! the error to say which it was. sr25519 is only correct at all if this repo and
-//! `sp_core::sr25519`'s hard-coded `b"substrate"` transcript context agree — nothing else would
-//! notice them drifting apart, and the symptom on a live network is every package silently
-//! failing to authorize.
-//!
-//! So the signing here goes through `Keystore`, never through a `Pair`: the keystore's choices
-//! are the ones the collator is stuck with, and they are what is under test. And the decision
-//! under test is `is_authorized::authorize` itself, not a re-implementation of it — a carve-out
-//! that only the tests know about would guard nothing.
+//! Keystore signing and guest verification for both schemes, including wrong-scheme rejection.
+//! sr25519 signatures must use the keystore's `substrate` transcript context.
 
 use codec::{DecodeAll as _, Encode};
 use jam_types::{
@@ -34,13 +22,7 @@ use parachain_service_core::{
 };
 use primitive_types::{H256, U256};
 
-/// The token exactly as the design spec writes it (§7.1: `AuthToken { proof, key, signature }`),
-/// declared here rather than reused so that the test encodes what the *spec* says while the guest
-/// decodes what the *crate* says.
-///
-/// This is the shape a collator built against the final design emits, knowing nothing of parasim's
-/// sudo lane. Keeping the two in step is the entire reason that lane rides a sentinel key instead
-/// of a field of its own — a fourth field would make every collator encode a flag forever.
+/// Independent token layout from design §7.1, to check wire compatibility.
 #[derive(Encode)]
 struct SpecToken {
 	proof: Vec<H256>,

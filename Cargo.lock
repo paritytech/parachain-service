@@ -3349,7 +3349,6 @@ dependencies = [
  "jam-pvm-common",
  "jam-types",
  "jp-aura-authorizer",
- "parachain-authorizer",
  "parachain-authorizer-ed25519",
  "parachain-authorizer-sr25519",
  "parachain-service",

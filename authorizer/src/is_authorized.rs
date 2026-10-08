@@ -42,11 +42,7 @@ pub fn is_authorized<S: SignatureScheme>(
 	Ok(AuthTrace(authorize::<S>(&config, &token, &package, slot)?.encode()))
 }
 
-/// The authorization decision itself, over everything [`is_authorized`] reads from the host.
-///
-/// Split out because it is the contract with whoever builds a token, and the cross-scheme
-/// contract tests can only run the *real* decision if it is reachable without a PVM host. Nothing
-/// here makes a host call.
+/// Validate a package without host calls, using the supplied config, token, and slot.
 pub fn authorize<S: SignatureScheme>(
 	config: &AuthConfig,
 	token: &AuthToken,
@@ -59,13 +55,7 @@ pub fn authorize<S: SignatureScheme>(
 		return Err(AuthorizationError::WrongTargetService);
 	}
 
-	// The sudo lane, which a token asks for by carrying `SUDO_KEY` instead of a collator's. A
-	// parked core's config names no para, so the item-count check below refuses every package
-	// sent to it — including the control package carrying the command that would un-park it. This
-	// is the way past that, and the trace says the package came through here so that Refine can
-	// tell a command it may execute from one it may not.
-	//
-	// FIXME: see [`aura::SUDO_KEY`]; it must not ship.
+	// Permit control commands on parked cores. FIXME: remove the development bypass; see SUDO_KEY.
 	if token.key == aura::SUDO_KEY {
 		return Ok(aura::AuthTrace { author_key: token.key, sudo: true });
 	}

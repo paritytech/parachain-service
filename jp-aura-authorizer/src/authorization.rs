@@ -2,11 +2,7 @@
 
 use codec::{Decode, Encode, MaxEncodedLen};
 
-/// A collator public key: the raw 32 bytes, whichever curve they are on.
-///
-/// Both aura schemes have the same shape here, which is what lets everything but the verifier
-/// itself stay scheme-blind. Which curve a core's collators sign on is settled by the authorizer
-/// blob its queue commits to.
+/// Raw public key bytes for either supported signature scheme.
 pub type CollatorKey = [u8; 32];
 
 /// A collator's signature over an authorization token's signing payload, raw 64 bytes.
@@ -16,11 +12,6 @@ pub type CollatorSignature = [u8; 64];
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, MaxEncodedLen)]
 pub struct AuthTrace {
 	pub author_key: CollatorKey,
-	/// Whether the package was admitted through the authorizer's `sudo` lane.
-	///
-	/// It is what tells the service's Refine to read the payload as control messages rather than
-	/// as a parachain block, so control cannot be smuggled in on the ordinary collator lane: the
-	/// trace is the only thing refine gets to see of the authorization, and only the authorizer
-	/// can set it.
+	/// Marks development control packages, which Refine interprets as commands rather than blocks.
 	pub sudo: bool,
 }

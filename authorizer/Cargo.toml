@@ -7,9 +7,7 @@ repository.workspace = true
 license.workspace = true
 publish = false
 
-# Plain `rlib` (the default): see the note in `service/Cargo.toml`. This crate is not a blob of
-# its own; `parachain-authorizer-{ed25519,sr25519}` are, and each declares itself one in its
-# `[package.metadata.jam]`.
+# The ed25519 and sr25519 crates provide the verifier blobs.
 
 [lints]
 workspace = true
@@ -19,25 +17,19 @@ jam-types = { workspace = true }
 jp-aura-authorizer = { workspace = true }
 jam-pvm-common = { workspace = true, features = ["authorizer", "logging"] }
 codec = { workspace = true }
-# `uninline_portable` keeps blake2b's compression function a real function instead of one fully
-# unrolled body. It is worth ~13 kB of the 64 kB authorizer ceiling, and the authorizer hashes a
-# few dozen bytes per call.
-# Retained to enable this feature on the SDK hashing implementation's dependency.
+# Enables smaller compression code in the SDK hashing dependency to fit the guest size limit.
 blake2b_simd = { workspace = true, features = ["uninline_portable"] }
 
 [target.'cfg(any(target_arch = "riscv32", target_arch = "riscv64"))'.dependencies]
 sp-io = { workspace = true, features = ["disable_allocator", "disable_panic_handler"] }
 
-# The cross-scheme contract tests live here, next to the core they are the drift alarm for: they
-# check that a token assembled the node's way passes the matching verifier and no other. Cargo
-# allows a dev-dependency cycle, which is what these two are.
+# The scheme crates depend on this library; Cargo permits this cycle for tests.
 [dev-dependencies]
 primitive-types = { workspace = true }
 parachain-service-core = { workspace = true }
-parachain-authorizer = { path = ".", features = ["test-utils"] }
 parachain-authorizer-ed25519 = { workspace = true }
 parachain-authorizer-sr25519 = { workspace = true }
-parachain-service = { workspace = true, features = ["std"] }
+parachain-service = { workspace = true, features = ["std", "test-utils"] }
 sp-core = { workspace = true, features = ["std"] }
 sp-keystore = { workspace = true }
 
@@ -47,13 +39,11 @@ std = [
 	"codec/std",
 	"jam-pvm-common/std",
 	"jam-types/std",
-	"parachain-authorizer/std",
 	"jp-aura-authorizer/std",
 	"parachain-service/std",
 	"primitive-types/std",
 	"sp-core/std",
 ]
 test-utils = [
-	"parachain-authorizer/test-utils",
 	"parachain-service/test-utils",
 ]

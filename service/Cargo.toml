@@ -27,8 +27,7 @@ polkavm = { workspace = true }
 sp-crypto-hashing = { workspace = true }
 
 [features]
-test-utils = [
-]
+test-utils = []
 std = [
 	"sp-crypto-hashing/std",
 	"bounded-collections/std",

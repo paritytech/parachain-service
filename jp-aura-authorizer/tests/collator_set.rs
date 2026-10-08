@@ -1,8 +1,4 @@
-//! The two halves of the collator set that only agree by construction: the trie the authorizer
-//! verifies proofs against, and the builder that produces those proofs.
-//!
-//! All of this is scheme-blind — the trie hashes raw key bytes. The signature half of the token
-//! is in `contract.rs`, where both schemes are exercised.
+//! Collator membership proofs, including padded trees and invalid membership.
 
 use jp_aura_authorizer::{build_collator_tree, AuthConfig, AuthToken, CollatorKey, ParaId};
 use primitive_types::H256;
@@ -27,11 +23,8 @@ fn token(key: CollatorKey, proof: Vec<H256>) -> AuthToken {
 	AuthToken { proof, key, signature: [0u8; 64] }
 }
 
-/// The builder is the verifier's inverse, so every proof it hands out must satisfy the
-/// verifier — at every set size, including the ones that pad the trie. A set of 3 pads to 4,
-/// which is where a leaf-ordering or padding mistake shows up.
 #[test]
-fn every_proof_the_builder_makes_verifies_works() {
+fn built_proofs_works() {
 	for size in 1..=5u32 {
 		let keys = keys(size);
 		let (config, proofs) = config(&keys);
@@ -45,11 +38,8 @@ fn every_proof_the_builder_makes_verifies_works() {
 	}
 }
 
-/// A proof only proves membership *at the index the round-robin named*. Accepting it at another
-/// index would let any collator in the set author in everybody else's slot, which is the whole
-/// point of the AURA schedule.
 #[test]
-fn a_proof_is_rejected_at_another_index_works() {
+fn wrong_index_errors() {
 	let keys = keys(4);
 	let (config, proofs) = config(&keys);
 	let token = token(keys[1], proofs[1].clone());
@@ -61,7 +51,7 @@ fn a_proof_is_rejected_at_another_index_works() {
 
 /// A key outside the set has no proof, and neither the root nor a borrowed proof can supply one.
 #[test]
-fn an_outsider_cannot_prove_membership_works() {
+fn nonmember_errors() {
 	let keys = keys(2);
 	let (config, proofs) = config(&keys);
 	let outsider = token([0xaa; 32], proofs[0].clone());
