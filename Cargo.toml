@@ -110,9 +110,11 @@ sp-io = { path = "vendor/polkadot-sdk-companion/substrate/primitives/io", defaul
 jam-std-common = { path = "vendor/polkajam/crates/jam-std-common" }
 jam-types = { path = "vendor/polkajam/crates/jam-types" }
 
-# Optimized host tests with runtime correctness checks retained.
+# Optimized host tests and fuzzing with runtime correctness checks retained.
 [profile.testnet]
 inherits = "release"
+lto = true
+codegen-units = 1
 debug-assertions = true
 overflow-checks = true
 
@@ -123,12 +125,6 @@ codegen-units = 1
 debug = false
 debug-assertions = false
 overflow-checks = false
-
-# Production optimizations with correctness checks retained for fuzzing.
-[profile.production-fuzz]
-inherits = "production"
-debug-assertions = true
-overflow-checks = true
 
 # Authorizer blobs have a hard 64 kB ceiling (`C_maxauthcodesize`) and 50 M gas for one call;
 # service blobs have 4 MB and gas that is actually under pressure. So they are optimised for

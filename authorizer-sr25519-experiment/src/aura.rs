@@ -180,7 +180,7 @@ fn join(left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
 /// other.
 ///
 /// Panics on an empty set: a collator set nobody is in authorizes nothing.
-pub fn build_collator_tree(keys: &[CollatorKey]) -> (H256, Vec<Vec<H256>>) {
+pub fn build_collator_proofs(keys: &[CollatorKey]) -> (H256, Vec<Vec<H256>>) {
 	assert!(!keys.is_empty(), "a collator set must have at least one collator");
 
 	let mut level: Vec<[u8; 32]> = keys.iter().map(collator_leaf_hash).collect();

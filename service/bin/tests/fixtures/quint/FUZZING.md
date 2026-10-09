@@ -33,8 +33,8 @@ runs until failure or interruption. Set `QUINT_FUZZ_STEPS=30` for longer traces.
 Each worker owns a Node process and a Rust thread, so choose worker counts to fit
 available CPU and memory.
 
-The recipe uses the `testnet` Cargo profile, with release optimizations, debug
-assertions, and overflow checks. Add `--profile testnet` to the Cargo commands
+The recipe uses the `testnet` Cargo profile, with release optimizations, LTO, a single
+codegen unit, debug assertions, and overflow checks. Add `--profile testnet` to the Cargo commands
 here for the same settings. The service blob uses its production build profile.
 Progress reports aggregate successful traces and transitions across workers at
 most every five seconds. Timing includes first-use blob compilation.

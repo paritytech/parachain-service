@@ -1,4 +1,4 @@
-//! Shared AURA protocol and the local development sentinel.
+//! AURA authorizer with SUDO key support for parasim testing.
 
 pub use cumulus_aura_authorizer::*;
 

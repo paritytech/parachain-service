@@ -22,12 +22,17 @@ moved forward one upstream commit at a time with the matching Rust change in the
 
 ## Full test run
 
+Use `--profile testnet` for the full test suite and fuzzing. It enables LTO and a single
+codegen unit while retaining debug assertions and overflow checks. Plain `cargo test` uses
+the debug test profile and is also supported. Guest blobs use their separately configured
+production profiles, which determine the pinned PVM gas measurements.
+
 Run from the repository root. This includes the opt-in replay/generated tests and doc tests:
 
 ```sh
 QUINT_REPLAY_TRACE="$PWD/service/bin/tests/fixtures/quint/minimal_replay.itf.json" \
 QUINT_FUZZ_PROFILE=fuzz QUINT_FUZZ_SEED=1 QUINT_FUZZ_TRACES=100 \
 QUINT_FUZZ_STEPS=15 QUINT_FUZZ_WORKERS=4 \
-cargo test --locked --profile production-fuzz --workspace --no-fail-fast -- \
+cargo test --locked --profile testnet --workspace --no-fail-fast -- \
   --include-ignored --test-threads=4
 ```

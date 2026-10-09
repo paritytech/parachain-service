@@ -8,8 +8,14 @@ JAM provides backing, availability, and approval checking without a relay-chain 
 
 ```sh
 git submodule update --init
-cargo test
+cargo test --locked --profile testnet --workspace
 ```
+
+Use `testnet` for optimized tests and fuzzing: it enables LTO and a single codegen unit
+with debug assertions and overflow checks. Plain `cargo test` also works for debug tests.
+Guest blobs use their separately configured production profiles; those profiles determine
+the pinned PVM gas measurements. See [the full test command](CLAUDE.md#full-test-run) to also
+run the opt-in replay/generated tests.
 
 Run `just --list` for build and maintenance recipes. For Quint equivalence testing:
 

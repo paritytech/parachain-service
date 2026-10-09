@@ -8,7 +8,7 @@ use jam_types::{
 };
 use parachain_authorizer::{
 	aura::{
-		build_collator_tree, signable_work_package_hash, AuthConfig, AuthToken, CollatorKey,
+		build_collator_proofs, signable_work_package_hash, AuthConfig, AuthToken, CollatorKey,
 		CollatorSignature, SUDO_KEY,
 	},
 	is_authorized::{authorize, AuthorizationError},
@@ -96,7 +96,7 @@ impl Collators {
 	/// The config a core running `para_ids` under this set is assigned. An empty list is a
 	/// *parked* core: same collator set, same authorizer code, no para.
 	fn config(&self, para_ids: Vec<ParaId>) -> AuthConfig {
-		let (collator_set_root, _) = build_collator_tree(&self.keys);
+		let (collator_set_root, _) = build_collator_proofs(&self.keys).expect("valid test collator set");
 		AuthConfig {
 			para_ids,
 			parachain_service: PARACHAIN_SERVICE_ID,
@@ -108,7 +108,7 @@ impl Collators {
 
 	/// One token per collator, each signing `package` as that collator would.
 	fn tokens(&self, package: &WorkPackage) -> Vec<AuthToken> {
-		let (_, proofs) = build_collator_tree(&self.keys);
+		let (_, proofs) = build_collator_proofs(&self.keys).expect("valid test collator set");
 		let payload = signable_work_package_hash(package);
 		(0..self.keys.len())
 			.map(|index| AuthToken {
@@ -224,7 +224,7 @@ fn a_spec_shaped_token_passes_its_own_verifier_works() {
 		// Two collators and slot 1, so the proof is a real sibling rather than an empty vec.
 		let collators = Collators::new(scheme, &["//Alice", "//Bob"]);
 		let package = block(1, 1);
-		let (_, proofs) = build_collator_tree(&collators.keys);
+		let (_, proofs) = build_collator_proofs(&collators.keys).expect("valid test collator set");
 		let payload = signable_work_package_hash(&package);
 		let spec = SpecToken {
 			proof: proofs[1].clone(),

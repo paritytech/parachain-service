@@ -102,7 +102,7 @@ macro_rules! auth {
 		use root::{aura, ParaId};
 		use $root as root;
 		let key: [u8; 32] = $public;
-		let (root, proofs) = aura::build_collator_tree(&[key]);
+		let (root, proofs) = aura::build_collator_proofs(&[key]);
 		let config = aura::AuthConfig {
 			para_ids: vec![ParaId::new(0)],
 			parachain_service: SERVICE_ID,

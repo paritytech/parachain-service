@@ -14,7 +14,7 @@ use jam_types::{
 	WorkPackage,
 };
 use parachain_authorizer::aura::{
-	build_collator_tree, signable_work_package_hash, AuthConfig, AuthToken, CollatorKey,
+	build_collator_proofs, signable_work_package_hash, AuthConfig, AuthToken, CollatorKey,
 	CollatorSignature, SUDO_KEY,
 };
 use parachain_service_core::types::ParaId;
@@ -114,7 +114,8 @@ impl Aura {
 			return Err("--collators names at least one collator".to_string());
 		}
 		let keys: Vec<CollatorKey> = pairs.iter().map(CollatorPair::public).collect();
-		let (root, proofs) = build_collator_tree(&keys);
+		let (root, proofs) = build_collator_proofs(&keys)
+			.map_err(|error| format!("invalid collator set: {error:?}"))?;
 		let collators = names.split(',').map(str::trim).collect::<Vec<_>>().join(",");
 		Ok(Self { code_hash, service, slot_duration, scheme, collators, pairs, root, proofs })
 	}
