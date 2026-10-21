@@ -96,7 +96,7 @@ impl Collators {
 		let (collator_set_root, _) =
 			build_collator_proof(&self.keys, 0).expect("valid test collator set");
 		AuthConfig {
-			para_ids,
+			para_ids: para_ids.into_iter().map(|id| u32::from(id).into()).collect(),
 			parachain_service: PARACHAIN_SERVICE_ID,
 			collator_set_root,
 			collator_set_size: core::num::NonZero::new(self.keys.len() as u32)

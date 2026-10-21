@@ -17,7 +17,7 @@
 //! use primitive_types::H256;
 //!
 //! let config = AuthConfig {
-//!     para_ids: vec![ParaId::new(2000)],
+//!     para_ids: vec![2000u32.into()],
 //!     parachain_service: 1,
 //!     collator_set_root: H256::zero(),
 //!     collator_set_size: core::num::NonZero::new(1).expect("nonzero configuration"),

@@ -12,7 +12,8 @@ use jam_types::{
 	ExtrinsicHash, ExtrinsicSpec, FixedVec, ProtocolParameters, RefineContext, ServiceId, WorkItem,
 	WorkPackage, WorkPayload,
 };
-use parachain_authorizer::{aura, aura::build_collator_proof, ParaId};
+use parachain_authorizer::{aura, aura::build_collator_proof};
+use parachain_service_core::types::ParaId;
 use primitive_types::H256;
 
 const SERVICE_ID: ServiceId = 0;
@@ -51,7 +52,7 @@ pub fn good_config_for(para_ids: Vec<ParaId>) -> AuthConfig {
 	let key_bytes: [u8; 32] = signing_key.verifying_key().to_bytes();
 	let (root, _) = build_collator_proof(&[key_bytes], 0).expect("valid test collator set");
 	let config = aura::AuthConfig {
-		para_ids,
+		para_ids: para_ids.into_iter().map(|id| u32::from(id).into()).collect(),
 		parachain_service: SERVICE_ID,
 		collator_set_root: root,
 		collator_set_size: core::num::NonZero::new(1).expect("nonzero configuration"),
@@ -103,7 +104,7 @@ pub fn make_auth_with_seed(
 	let (root, proof) = build_collator_proof(&[key_bytes], 0).expect("valid test collator set");
 
 	let config = aura::AuthConfig {
-		para_ids,
+		para_ids: para_ids.into_iter().map(|id| u32::from(id).into()).collect(),
 		parachain_service: SERVICE_ID,
 		collator_set_root: root,
 		collator_set_size: core::num::NonZero::new(1).expect("nonzero configuration"),
@@ -137,7 +138,7 @@ pub fn make_single_collator_args_with_key(
 ) -> (Engine, WorkPackage, Storage) {
 	let root = collator_leaf_hash(&key);
 	let config = aura::AuthConfig {
-		para_ids,
+		para_ids: para_ids.into_iter().map(|id| u32::from(id).into()).collect(),
 		parachain_service: SERVICE_ID,
 		collator_set_root: root,
 		collator_set_size: core::num::NonZero::new(1).expect("nonzero configuration"),
@@ -176,7 +177,7 @@ pub fn make_wrong_collator_index_args(
 	let key = keys[proof_for_collator];
 
 	let config = aura::AuthConfig {
-		para_ids,
+		para_ids: para_ids.into_iter().map(|id| u32::from(id).into()).collect(),
 		parachain_service: SERVICE_ID,
 		collator_set_root: root,
 		collator_set_size: core::num::NonZero::new(all_seeds.len() as u32)

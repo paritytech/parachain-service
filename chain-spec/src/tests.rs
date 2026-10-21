@@ -28,7 +28,7 @@ const RICH: Balance = 10_000_000;
 
 fn realm_config(para: ParaId) -> AuthConfig {
 	AuthConfig {
-		para_ids: vec![para],
+		para_ids: vec![u32::from(para).into()],
 		parachain_service: PARACHAIN_SERVICE_ID,
 		collator_set_root: H256::zero(),
 		collator_set_size: core::num::NonZero::new(1).expect("nonzero configuration"),

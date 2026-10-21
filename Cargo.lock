@@ -3176,6 +3176,7 @@ dependencies = [
  "polkadot-parachain-primitives",
  "polkavm-derive 0.36.0",
  "sp-crypto-hashing 0.1.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sp-io 30.0.0",
  "sp-io 48.0.0",
  "trie",
 ]

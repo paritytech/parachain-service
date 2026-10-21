@@ -25,6 +25,7 @@ num_enum = { workspace = true }
 [target.'cfg(any(target_arch = "riscv32", target_arch = "riscv64"))'.dependencies]
 polkavm-derive = { workspace = true }
 # JAM guests provide their own allocator and panic handler.
+sp-io = { workspace = true, features = ["disable_allocator", "disable_panic_handler"] }
 # Published parachain primitives pull a separate registry copy of sp-io.
 sp-io-published = { package = "sp-io", version = "48.0.0", default-features = false, features = ["disable_allocator", "disable_panic_handler"] }
 
