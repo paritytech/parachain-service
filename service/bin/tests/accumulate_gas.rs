@@ -62,8 +62,8 @@ mod gas {
 	/// Marginal cost of a realistic destination's memo handler, per transfer.
 	pub const DEST_HANDLER_PER_TRANSFER: u64 = 20_691;
 	/// Gas for one Ed25519 authorization.
-	// Rebuilt with cached collator-tree construction in the SDK AURA dependency.
-	pub const IS_AUTHORIZED_ED25519: u64 = 4_035_765;
+	// Rebuilt with the `authorize_block_ext` entry point in the same blob.
+	pub const IS_AUTHORIZED_ED25519: u64 = 3_995_935;
 }
 
 /// A report admitted by the gas gate must leave 20% execution headroom.

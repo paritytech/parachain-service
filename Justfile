@@ -195,8 +195,8 @@ build-authorizer-pvm:
 	set -eu
 
 	mkdir -p target
-	jam-pvm-build --module authorizer --output {{ AUTHORIZER_ED25519_BLOB }} authorizer-ed25519
-	jam-pvm-build --module authorizer --output {{ AUTHORIZER_SR25519_BLOB }} authorizer-sr25519
+	jam-pvm-build --module block-authorizer --output {{ AUTHORIZER_ED25519_BLOB }} authorizer-ed25519
+	jam-pvm-build --module block-authorizer --output {{ AUTHORIZER_SR25519_BLOB }} authorizer-sr25519
 
 	just check-blob-size {{ AUTHORIZER_ED25519_BLOB }}
 	just check-blob-size {{ AUTHORIZER_SR25519_BLOB }}

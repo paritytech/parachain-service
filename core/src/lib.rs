@@ -9,7 +9,10 @@
 extern crate alloc;
 
 pub mod authorization;
+#[cfg(feature = "authorize-block")]
+pub mod authorize_block;
 pub mod authorizer;
+pub mod block_authorization;
 pub mod candidate;
 pub mod constants;
 pub mod host_call;
@@ -35,7 +38,9 @@ pub use log::{
 };
 pub use para_info::{para_info_key, para_log_key, storage_key, ParaInfo, Tag};
 pub use proof::{verify, ProofError, StateProof};
-pub use state_key::{service_request_state_key, service_value_state_key};
+pub use state_key::{
+	service_preimage_state_key, service_request_state_key, service_value_state_key,
+};
 pub use upward_message::CodeUpgradePhase;
 
 /// The parachain service's JAM service ID. Network constant; must match genesis registration.

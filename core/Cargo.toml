@@ -21,6 +21,9 @@ codec = { workspace = true }
 jam-pvm-common = { workspace = true, features = ["service"] }
 jam-types = { workspace = true }
 num_enum = { workspace = true }
+# Running the authorizer on a block (`authorize-block`).
+polkavm = { workspace = true, optional = true }
+jam-program-blob-common = { workspace = true, optional = true, features = ["polkavm"] }
 
 [target.'cfg(any(target_arch = "riscv32", target_arch = "riscv64"))'.dependencies]
 polkavm-derive = { workspace = true }
@@ -38,7 +41,10 @@ polkajam-trie = { workspace = true }
 
 [features]
 default = []
+authorize-block = ["dep:jam-program-blob-common", "dep:polkavm"]
 std = [
+	"jam-program-blob-common?/std",
+	"polkavm?/std",
 	"cumulus-aura-authorizer/std",
 	"polkadot-parachain-primitives/std",
 	"sp-crypto-hashing/std",

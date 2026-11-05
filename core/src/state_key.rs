@@ -14,6 +14,9 @@ use crate::{blake2_256, StateKey};
 /// Marks a key as addressing a service's *storage*, as opposed to its metadata or preimages.
 const VALUE_PREFIX: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
 
+/// Marks a key as addressing one of a service's *preimages*.
+const PREIMAGE_PREFIX: [u8; 4] = [0xfe, 0xff, 0xff, 0xff];
+
 /// The state key of `service_id`'s storage entry under its own `key`.
 pub fn service_value_state_key(service_id: u32, key: &[u8]) -> StateKey {
 	let hash = blake2_256(&[VALUE_PREFIX.as_slice(), key].concat());
@@ -22,6 +25,20 @@ pub fn service_value_state_key(service_id: u32, key: &[u8]) -> StateKey {
 	let mut state_key = [0u8; 31];
 	// The first eight octets interleave the service id with the hash, so that the entries of one
 	// service are spread across the trie rather than sharing a common prefix.
+	state_key[..8]
+		.copy_from_slice(&[id[0], hash[0], id[1], hash[1], id[2], hash[2], id[3], hash[3]]);
+	state_key[8..].copy_from_slice(&hash[4..27]);
+	state_key
+}
+
+/// The state key of the preimage of `hash` held by `service_id`.
+///
+/// Mirrors the `ServiceKey::Preimage` arm of `jam-std-common`.
+pub fn service_preimage_state_key(service_id: u32, hash: &[u8; 32]) -> StateKey {
+	let hash = blake2_256(&[PREIMAGE_PREFIX.as_slice(), &hash[..]].concat());
+
+	let id = service_id.to_le_bytes();
+	let mut state_key = [0u8; 31];
 	state_key[..8]
 		.copy_from_slice(&[id[0], hash[0], id[1], hash[1], id[2], hash[2], id[3], hash[3]]);
 	state_key[8..].copy_from_slice(&hash[4..27]);
@@ -86,6 +103,13 @@ mod tests {
 				jam_std_common::ServiceKey::Request { id: *service_id, len: *len, hash: *hash }
 					.into();
 			assert_eq!(ours, *theirs, "service {service_id}, len {len}, hash {hash:02x?}");
+		}
+
+		for (service_id, hash) in [(0, [0x00; 32]), (1, [0xff; 32]), (0x0100_0001, [0xab; 32])] {
+			let ours = service_preimage_state_key(service_id, &hash);
+			let theirs: jam_std_common::StorageKey =
+				jam_std_common::ServiceKey::Preimage { id: service_id, hash }.into();
+			assert_eq!(ours, *theirs, "service {service_id}, hash {hash:02x?}");
 		}
 	}
 

@@ -7,6 +7,9 @@
 //! plus the PVM entry point. Pick it for a runtime whose `AuraId` is ed25519 — Asset Hub Polkadot
 //! and the other chains carrying the 2022 Shell hotfix.
 
+extern crate alloc;
+
+use alloc::vec::Vec;
 use jam_types::{AuthTrace, CoreIndex};
 use parachain_authorizer::aura::{CollatorKey, CollatorSignature, SignatureVerifier};
 
@@ -40,10 +43,16 @@ impl SignatureVerifier for Ed25519 {
 }
 
 pub struct ParachainAuthorizer;
-jam_pvm_common::declare_authorizer!(ParachainAuthorizer);
+jam_pvm_common::declare_authorizer!(ParachainAuthorizer, block = ParachainAuthorizer);
 
 impl jam_pvm_common::Authorizer for ParachainAuthorizer {
 	fn is_authorized(core: CoreIndex) -> AuthTrace {
 		parachain_authorizer::authorize::<Ed25519>(core)
+	}
+}
+
+impl jam_pvm_common::BlockAuthorizer for ParachainAuthorizer {
+	fn authorize_block(input: &[u8]) -> Vec<u8> {
+		parachain_authorizer::authorize_block::<Ed25519>(input)
 	}
 }
