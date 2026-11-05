@@ -1,5 +1,6 @@
 // Replay effects are evaluated by the pinned model, including same-set designation.
 module validator_keys_replay {
+  import host_call_inputs.* from "./host_call_inputs"
   import types.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/types"
   import messages.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/messages"
   import state.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state"
@@ -10,7 +11,7 @@ module validator_keys_replay {
   import state_balance.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state_balance"
   import support.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/tests/support"
   var replayDesignate: List[ValidatorKey]
-  action check(ok: bool): bool = all { expectThat(ok), replayDesignate' = replayDesignate }
+  action check(ok: bool): bool = all { expectThat(ok), keepHostCalls, replayDesignate' = replayDesignate }
   pure def keyList(n: int, start: int): List[ValidatorKey] =
     range(0, n).foldl(List(), (acc, i) => acc.append(start + i))
   pure def msg(n: int, start: int, last: bool): UpwardMessage =
@@ -21,7 +22,7 @@ module validator_keys_replay {
     now' = 0, jamStagingSet' = List(), solicitedSet' = Set(),
     lastStepWorkResults' = List(), lastStepAssigns' = List(), lastStepAssignBudget' = { flush: 0, end: 0 },
     lastHeadRoot' = None, foreignServices' = Map(), logPrunedBelow' = Map(),
-    replayDesignate' = List()
+    noHostCalls, replayDesignate' = List()
   }
   def work(p: ParaId, parent: int, msgs: List[UpwardMessage]): WorkResult = {
     val h = if (p == AssetHubParaId) 2 else 1
@@ -37,6 +38,7 @@ module validator_keys_replay {
       FixedCodeLen, packages, foreignServices)
     all {
       svc' = out.state, now' = now + 1, prevSvc' = svc,
+      replayHostCalls' = packageHostCalls(svc, foreignServices, packages, now + 1),
       replayDesignate' = out.staging,
       jamStagingSet' = if (out.staging == List()) jamStagingSet else out.staging,
       solicitedSet' = out.solicited, lastStepWorkResults' = out.results,

@@ -138,6 +138,41 @@ fn proof_for_wrong_index_errors() {
 		.expect_err("Merkle proof for index 1 must be rejected for expected index 0");
 }
 
+/// The recent anchor and lookup anchor select different collators. Re-sign every token
+/// against the same context so rejection can only be caused by collator selection.
+#[test]
+fn anchor_slot_selection_works() {
+	use codec::{DecodeAll, Encode};
+	use ed25519_dalek::{Signer, SigningKey};
+	use parachain_authorizer::aura::{signable_work_package_hash, AuthToken};
+
+	let seeds = [[0x42; 32], [0x43; 32]];
+	for index in 0..seeds.len() {
+		let (engine, mut package, storage) = make_wrong_collator_index_args(
+			&authorizer(),
+			vec![ParaId::new(0)],
+			work_items(1),
+			&seeds,
+			index,
+		);
+		package.context.anchor_slot = 1;
+		package.context.lookup_anchor_slot = 14_402;
+		let mut token =
+			AuthToken::decode_all(&mut &package.authorization[..]).expect("test token must decode");
+		token.signature = SigningKey::from_bytes(&seeds[index])
+			.sign(signable_work_package_hash(&package).as_bytes())
+			.to_bytes();
+		package.authorization = jam_types::Authorization(token.encode());
+
+		let result = pj::is_authorized(&engine, &package, 0, &storage);
+		if index == 1 {
+			result.expect("the anchor-selected collator must be authorized");
+		} else {
+			result.expect_err("the lookup-anchor-selected collator must be rejected");
+		}
+	}
+}
+
 /// RFC 8032 §7.1 Test Vector 1 keypair run end-to-end through the real
 /// authorizer PVM blob. This proves the guest-side curve25519-dalek backend
 /// computes correct ed25519 arithmetic on riscv64emac-unknown-none-polkavm.
@@ -163,11 +198,11 @@ fn ed25519_known_answer_vector_works() {
 	eprintln!("ed25519_known_answer_vector_works: gas_used={}", outcome.gas_used);
 
 	use codec::DecodeAll;
-	let trace = parachain_service_core::authorization::DevelopmentAuthTrace::decode_all(
+	let trace = parachain_service_core::authorization::AuthTrace::decode_all(
 		&mut &outcome.auth_trace.0[..],
 	)
 	.expect("auth trace must decode");
-	assert_eq!(trace.aura.author_key, expected_vk, "author key must match RFC 8032 verifying key");
+	assert_eq!(trace.author_key, expected_vk, "author key must match RFC 8032 verifying key");
 
 	let _ = MOCK_SERVICE_ID;
 }

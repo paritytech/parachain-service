@@ -1,5 +1,6 @@
 // Transfer inputs and an effect observer built only from pinned model functions.
 module outgoing_inputs {
+  import host_call_inputs.* from "./host_call_inputs"
   import types.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/types"
   import messages.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/messages"
   import state.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state"
@@ -10,7 +11,7 @@ module outgoing_inputs {
 
   import service_inputs.* from "./service_inputs"
   var replayTransfers: List[TransferOutArgs]
-  action noOutgoing = all { replayTransfers' = List(), noCreations }
+  action noOutgoing = all { replayTransfers' = List(), noCreations, noHostCalls }
   pure def destination(id: ServiceId, gas: int): ForeignService = {
     supervisor: id, supervisorCreated: 0, created: 0, codeHash: { hashBytes: 0 },
     requests: Map(), storage: Map(),
@@ -43,8 +44,8 @@ module outgoing_inputs {
 
   // Observe effects through pinned model functions; duplicate IDs and no-op
   // upgrades cannot be inferred from net balances or final code hashes.
-  type ReplayEffects = { transfers: List[TransferOutArgs], minAccGas: Option[int], creations: List[CreationEffect] }
-  pure val noEffects: ReplayEffects = { transfers: List(), minAccGas: None, creations: List() }
+  type ReplayEffects = { calls: List[HostCall], transfers: List[TransferOutArgs], minAccGas: Option[int], creations: List[CreationEffect] }
+  pure val noEffects: ReplayEffects = { calls: List(), transfers: List(), minAccGas: None, creations: List() }
   def messageEffects(packages: List[WorkResult], slot: Timeslot): ReplayEffects = {
     val initial = accumulateBlock(svc, slot, jamStagingSet, solicitedSet,
       FixedCodeLen, List(), foreignServices)
@@ -80,7 +81,7 @@ module outgoing_inputs {
                     { ...m.effects, minAccGas: Some(u.minAccGas) } else m.effects
                   | _ => m.effects
                 }
-                { acc: applied, effects: effects }
+                { acc: applied, effects: { ...effects, calls: effects.calls.concat(messageHostCalls(m.acc, applied, msg)) } }
               })
               messages.effects
             }
@@ -91,6 +92,7 @@ module outgoing_inputs {
         FixedCodeLen, slot, a.foreign)
       { state: after.state, foreign: after.foreign, solicited: after.solicited,
         staging: after.jamDesignate, effects: {
+          calls: a.effects.calls.concat(emitted.calls),
           transfers: a.effects.transfers.concat(emitted.transfers),
           creations: a.effects.creations.concat(emitted.creations),
           minAccGas: if (emitted.minAccGas == None) a.effects.minAccGas else emitted.minAccGas

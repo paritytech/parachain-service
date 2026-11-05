@@ -29,14 +29,26 @@ pub fn trace(json: &str) -> Result<(), String> {
 pub fn document_trace(document: &Value) -> Result<(), String> {
 	// Validate every Quint value strictly before using the ergonomic JSON view.
 	super::value::ItfValue::try_from(document)?;
+	if document
+		.get("states")
+		.and_then(Value::as_array)
+		.is_some_and(|states| states.iter().any(|s| s.get("replayRefine").is_some()))
+	{
+		return super::refine::trace(document);
+	}
 	let document = super::storage_budget::normalize(document)?;
 	let states = document.get("states").and_then(Value::as_array).ok_or("missing states")?;
 	super::host_budget::validate(states)?;
+	super::refine::validate(&document, states)?;
+	super::host_calls::validate(&document, states)?;
 	super::validator_keys::validate(states)?;
 	super::services::validate(states)?;
 	let mut created_accounts = Default::default();
 	let first = states.first().ok_or("trace has no states")?;
-	if super::instruction_gas::enabled(first) || super::gas::before_checkpoint(first)? {
+	if super::instruction_gas::enabled(first) ||
+		super::instruction_gas::due_flush_enabled(first) ||
+		super::gas::before_checkpoint(first)?
+	{
 		return Err("initial frame cannot specify invocation gas".into());
 	}
 	let gas_profile = first.get("replayGasLimits").is_some();
@@ -86,7 +98,9 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 		let mut output = None;
 		let mut host_offset = None;
 		let kind = classify(&pair[0], &pair[1])?;
-		if (super::instruction_gas::enabled(&pair[1]) || super::gas::before_checkpoint(&pair[1])?) &&
+		if (super::instruction_gas::enabled(&pair[1]) ||
+			super::instruction_gas::due_flush_enabled(&pair[1]) ||
+			super::gas::before_checkpoint(&pair[1])?) &&
 			!matches!(kind, FrameKind::Block | FrameKind::IncomingTransfer)
 		{
 			return Err("invocation gas requires an invocation frame".into());
@@ -152,10 +166,8 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 					}) {
 					return Err("UpgradeService inputs require replayMinAccGas".into());
 				}
-				let mut items = results
-					.iter()
-					.map(|result| work_item(result, &mut codex))
-					.collect::<Result<Vec<_>, _>>()?;
+				let mut items = super::refine::work_items(&storage, &pair[1], results, &mut codex)
+					.map_err(|e| format!("frame {frame}: {e}"))?;
 				super::gas::apply(&pair[1], &mut items)?;
 				super::recovery::inject(&pair[1], &mut items)?;
 				// Put arrivals after reports deliberately: the runtime must collect all
@@ -274,7 +286,7 @@ pub(super) fn work_item(value: &Value, codex: &mut Codex) -> Result<AccumulateIt
 	}
 }
 
-fn work_digest(value: &Value, codex: &mut Codex) -> Result<ParachainWorkDigest, String> {
+pub(super) fn work_digest(value: &Value, codex: &mut Codex) -> Result<ParachainWorkDigest, String> {
 	let (tag, value) = variant(value)?;
 	match tag {
 		"Ok" => digest_ok(value, codex),
@@ -318,7 +330,7 @@ fn digest_ok(value: &Value, codex: &mut Codex) -> Result<ParachainWorkDigest, St
 	})
 }
 
-fn upward_message(
+pub(super) fn upward_message(
 	value: &Value,
 	caller: ParaId,
 	codex: &mut Codex,
@@ -553,7 +565,13 @@ pub(super) fn accumulate_block_recovery(
 	let mut context = parachain_service_bin::mock::accumulate_context_with_privileges(
 		storage, items, slot, privileges,
 	);
-	if let Some(frame) = frame {
+	let cutoff = frame
+		.map(|frame| super::instruction_gas::due_flush_cutoff(&engine, &context, frame))
+		.transpose()?
+		.flatten();
+	if let Some((limit, _, _)) = cutoff {
+		context.gas = limit;
+	} else if let Some(frame) = frame {
 		context.gas = super::instruction_gas::limit(&engine, &context, frame)?;
 	}
 	let code_hash = context
@@ -561,7 +579,18 @@ pub(super) fn accumulate_block_recovery(
 		.service(MOCK_SERVICE_ID)
 		.expect("replay service exists")
 		.code_hash;
-	let (result, elapsed, gas_used) = engine.accumulate(code_hash, &mut context);
+	let calls = super::host_calls::Capture::start()?;
+	let (result, elapsed, gas_used) = if let Some((_, ordinal, after)) = cutoff {
+		let (result, reached) = jam_node::vm::replay_fault::with_cutoff(ordinal, after, || {
+			engine.accumulate(code_hash, &mut context)
+		});
+		if !reached {
+			return Err("due-flush gas cutoff was not reached".into());
+		}
+		result
+	} else {
+		engine.accumulate(code_hash, &mut context)
+	};
 	let yielded = if let Some(expected) = interrupted {
 		// The test VM API does not export its error enum. Require this exact
 		// nonfatal cause rather than accepting arbitrary execution failures.
@@ -584,6 +613,11 @@ pub(super) fn accumulate_block_recovery(
 	} else {
 		result.map_err(|error| format!("accumulate installed service {code_hash:?}: {error}"))?
 	};
+	if let Some(frame) = frame {
+		calls.compare(frame, interrupted.is_some()).map_err(|error| {
+			format!("host-call history (lastStepAssigns/replayHostCalls): {error}")
+		})?;
+	}
 	let outcome = executor::pj::AccumulateOutcome { yielded, elapsed, gas_used };
 	Ok((outcome, context.storage, context.mutations))
 }

@@ -19,10 +19,8 @@ module assignment_inputs {
           )))
       })))
   }
-  // TODO: Record individual JAM assign calls in the replay host and compare
-  // their arguments and order against Quint's lastStepAssigns within each block,
-  // including calls overwritten by later assignments to the same core. Replay
-  // currently compares only the final assignment effects after each block.
+  // Replay compares successful host calls in order, including overwritten
+  // assignments, and separately verifies final queues and privileges.
   // Keep successful Coretime work reachable despite the broad mixed-UMP pool.
   action assignmentBlock = {
     nondet caller = oneOf(Set(CoretimeParaId, AssetHubParaId))

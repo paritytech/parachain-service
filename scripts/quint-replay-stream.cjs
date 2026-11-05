@@ -55,6 +55,13 @@ async function main() {
     if (outcome.status !== 'ok' || !trace || trace.states.length !== steps + 1)
       throw new Error(`seed ${seed}: simulation failed or stopped early (${outcome.status})`);
     // Strip only ITF metadata; preserve all generated model values.
+    // The default campaign must never silently fall back to supplied digests.
+    if (['fuzz.qnt', 'refine_gas_pipeline.qnt'].includes(path.basename(input))) trace.replayRefineRequired = true;
+    if (path.basename(input) === 'authorization_fuzz.qnt') {
+      trace.replayRefineRequired = true;
+      trace.replayAuthorizationRequired = true;
+    }
+    if ('replayHostCalls' in trace.states[0]) trace.replayHostCallsRequired = true;
     delete trace['#meta'];
     for (const state of trace.states) delete state['#meta'];
     const line = JSON.stringify({ seed: seed.toString(), steps, version,

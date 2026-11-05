@@ -175,7 +175,7 @@ fn join(left: &[u8; 32], right: &[u8; 32]) -> [u8; 32] {
 ///
 /// Lives next to `check_proof` on purpose: it is that function's inverse, and everything the
 /// scheme leaves open — leaf hashing, node hashing, sibling order, padding — is pinned once, in
-/// the doc comment there, by code both sides share. The collator, `parasim-tool` and the tests
+/// the doc comment there, by code both sides share. The collator and the tests
 /// all build their roots here, so a change to the protocol cannot move one side without the
 /// other.
 ///

@@ -47,3 +47,16 @@ fn refine_error_replay_works() {
 
 mod final_checkpoint;
 mod pre_checkpoint;
+
+mod refine;
+
+mod combined;
+
+mod storage_recovery;
+
+mod host_calls;
+
+mod authorization;
+
+mod write_recovery;
+mod due_flush;

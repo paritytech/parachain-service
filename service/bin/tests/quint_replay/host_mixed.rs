@@ -100,3 +100,44 @@ fn failed_head_oracle_errors() {
 	trace["states"][1]["replayHostFailedHeads"] = serde_json::json!([]);
 	assert!(replay::document_trace(&trace).unwrap_err().contains("parent_head_continuity"));
 }
+
+#[test]
+fn kv_charge_boundaries_works() {
+	for fixture in [
+		include_str!("../fixtures/quint/host_mixed/kv_charge_insert_works.itf.json"),
+		include_str!("../fixtures/quint/host_mixed/kv_charge_overwrite_works.itf.json"),
+	] {
+		replay::trace(fixture).unwrap();
+	}
+}
+
+#[test]
+fn kv_charge_recovery_works() {
+	for sample in [0, 250000, 500000, 750000, 1000000] {
+		let mut trace: serde_json::Value = serde_json::from_str(include_str!(
+			"../fixtures/quint/host_mixed/kv_charge_recovery_works.itf.json"
+		))
+		.unwrap();
+		for state in trace["states"].as_array_mut().unwrap().iter_mut().skip(1) {
+			if state["replayInterrupt"]["#bigint"] != "-1" {
+				state["replayGasSample"] = serde_json::json!({"#bigint":sample.to_string()});
+			}
+		}
+		replay::document_trace(&trace).unwrap();
+	}
+}
+
+#[test]
+fn kv_charge_budget_errors() {
+	let original: serde_json::Value = serde_json::from_str(include_str!(
+		"../fixtures/quint/host_mixed/kv_charge_insert_works.itf.json"
+	))
+	.unwrap();
+	// Funding both writes must disagree with the independent rejected state;
+	// refusing the second write must disagree with the committed state.
+	for (frame, budget) in [(3, "52"), (4, "52"), (5, "52"), (6, "51")] {
+		let mut trace = original.clone();
+		trace["states"][frame]["replayHostBudget"] = serde_json::json!({"#bigint":budget});
+		assert!(replay::document_trace(&trace).is_err(), "frame {frame}");
+	}
+}

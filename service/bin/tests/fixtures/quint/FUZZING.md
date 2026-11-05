@@ -1,9 +1,10 @@
 # Streaming Quint replay
 
-Each worker runs a persistent Node/Quint generator and replays its traces through
-Rust Accumulate in the PolkaJAM PVM interpreter. Quint supplies expected states
-and work results; Rust Refine is not executed. Storage, head commitments, supported
-JAM effects, and invariants are checked by the [replay harness](../../../../../QUINT_REPLAY.md).
+Each worker runs a persistent Node/Quint generator. In the default campaign,
+Rust Refine executes each candidate's retained host-call script in the PolkaJAM
+PVM, and its actual result is compared with Quint before being passed to Rust
+Accumulate. Storage, head commitments, supported JAM effects, and invariants are
+then checked by the [replay harness](../../../../../QUINT_REPLAY.md).
 
 ## Running campaigns
 
@@ -19,7 +20,7 @@ Configuration:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `QUINT_FUZZ_PROFILE` | `fuzz` | `fuzz` for general inputs; `storage` for metadata/KV/queue failures; `code_storage` for code acquisition/announcement failures; `outgoing_boundary` for exact spendable-balance limits; `self_payment` for deferred self-credit; `designation` for privilege changes |
+| `QUINT_FUZZ_PROFILE` | `fuzz` | `fuzz` for combined Refine → Accumulate inputs; `refine_gas` for Refine gas failures mixed with funded work and retries; `authorization` for real IsAuthorized → Refine → Accumulate admission and malformed-byte cases; `storage` for metadata/KV/queue failures; `storage_recovery` for those failures combined with checkpoint exhaustion; `code_storage` for code acquisition/announcement failures; `code_recovery` for those failures with checkpoint exhaustion; `outgoing_boundary` for exact spendable-balance limits; `self_payment` for deferred self-credit; `designation` for privilege changes |
 | `QUINT_FUZZ_TRACES` | `100` | Total traces across workers; `0` runs until failure/interruption |
 | `QUINT_FUZZ_STEPS` | `15` | Transitions per trace, 1–10000 |
 | `QUINT_FUZZ_WORKERS` | `1` | Independent Rust workers and generator processes |
@@ -365,6 +366,18 @@ oracle restores the report-entry state and free balance. Later invocations retry
 normally. This covers the existing panic behavior; it does not change production
 error handling. `solicit_implies_registry` is checked on every replay frame.
 
+`QUINT_FUZZ_PROFILE=code_recovery just quint-fuzz` combines the same oracle
+with exhaustion before the first checkpoint, inside the report, and after its
+final checkpoint. The generated regression requires registry, forced-metadata,
+and announcement rejections retained at the final checkpoint, all recovery
+phases, and subsequent successful invocations. Deterministic fixtures sample
+five gas positions per interval and retry acquisition and announcement writes.
+A negative replay discards a retained acquisition to verify checkpoint checking.
+Gas samples exclude invocations that would naturally trap on solicitation:
+those execute with the ordinary budget and assert `Trap` separately. Failure
+labels on rolled-back frames describe the attempted message's footprint;
+coverage of retained rejections requires the final checkpoint.
+
 ## Outgoing spendable-balance boundaries
 
 The `outgoing_boundary` profile mixes ordinary outgoing invocations with amounts
@@ -432,3 +445,108 @@ that fixture is regenerated with the compatibility wrapper. A separate
 `cleanup_reregister` regression covers removal and recreation within one package.
 Mutation tests reject nonexistent registry entries, wrong referencers, and absent
 `solicitedSet` metadata. No expected history is repaired from actual Rust storage.
+
+## Refine execution in the default campaign
+
+No extra profile or server is needed: `just quint-fuzz --infinite` runs both
+stages, and `just quint-fuzz-deploy SERVER` deploys the same campaign.
+The existing saved-failure replay command also runs both stages, without Quint.
+
+A block retains one refine input for every work result. Candidates execute
+sequentially, then one accumulate invocation receives their actual outputs in
+order. Work rejected by JAM before refine is explicitly marked as skipped.
+Refine is checked even for reports that accumulate later skips for gas or loses
+during checkpoint recovery. Existing explicit malformed-digest injection still
+occurs after the refinement check.
+
+`combined.qnt` supplies end-to-end regression fixtures for a single candidate,
+ordered batches, errors, and checkpoint recovery. Mutation tests independently
+corrupt the script, expected digest, expected accumulated state, and metadata.
+`refine_fuzz.qnt` remains a focused test-only generator for declaration ordering
+and message byte/count boundaries. `refine_bytes.qnt` adds a separate campaign
+for malformed candidate encodings and invalid PVF headers. `refine_gas.qnt`
+samples zero gas, a finite-budget infinite child loop, and a funded control, each
+with and without the code preimage. The ignored
+`refine_generated_works` test runs ten seeds of twenty steps for each campaign,
+requiring every byte fault, each gas mode/availability pair, and the existing
+outcome classes. These standalone
+generators are not selectable continuous campaign profiles; their byte/gas-failure
+oracle is a local extension of the typed model (see the fixture guide).
+See the [adapter limits](../../../../../QUINT_REPLAY.md#combined-campaign).
+
+## Storage recovery campaign
+
+Set `QUINT_FUZZ_PROFILE=storage_recovery` to mix storage-deposit failures with
+pre-checkpoint, report, and final-checkpoint exhaustion and normal retries.
+The profile uses two reports, head/KV operations, metadata registration and head
+updates, validator staging, and zero to three arrivals. Raw saved traces select
+the middle of each interrupted interval by default; sampled replay can override
+that position using `replayGasSample`. The expected retained prefix comes from
+Quint, independently of gas calibration. This focused profile supplies work
+results directly and does not execute Refine.
+
+## Ordered host effects
+
+The default campaign records every successful designation and self-upgrade in
+`replayHostCalls`, including duplicate calls and interleaving within reports.
+Mixed host-budget invocations record their successful upgrades as well. Rust
+checks these events against hazmat host observation after applying checkpoint
+rollback. Generated designation and upgrade regressions require their respective
+history events; final-state and assignment comparisons remain enabled.
+
+The `storage_recovery` profile also samples compact-u64 balance boundaries and
+valid nonempty validator finalization at zero spare host balance. Focused fixtures
+check five gas cutoffs per checkpoint interval, retained storage refunds and
+designations, and retries after rolled-back growth/finalization.
+
+Scheduled assignments are also generated under constrained host balance. The
+oracle prices payload and dirty-index writes separately, including the first
+index's item deposit. Coverage requires checkpointed payload and index rejection;
+a focused generator action keeps index rejection reachable by funding its payload
+but leaving the index one unit short. Fixtures also check failed replacements,
+shrink refunds, and retries after both gas rollback and index-failure rollback.
+Future scheduling sets a distant due time; dedicated flush actions advance past it.
+
+The `storage_recovery` campaign also mixes inline assignment storage failures,
+funded retries, and later due flushes. Its opt-in test requires payload and index
+rejections with retained JAM calls, plus a successful due flush. Interrupted
+invocations exclude already-due entries because gas sampling removes the initial
+flush allowance; due-flush invocations use full funding.
+
+## Authorization campaign
+
+`QUINT_FUZZ_PROFILE=authorization` selects `authorization_fuzz.qnt`. Each step
+samples two packages from the valid/signature/proof/signed-context/config/token/
+trace fault domain and a successful, logged-error, or trapped PVF script. The
+model filters authorization failures before invoking Accumulate; the Rust adapter
+executes the authorizer and passes only admitted packages through Refine. Original
+authorizer trace bytes accompany the actual Refine outputs into Accumulate.
+
+The opt-in `authorization_generated_works` test runs 10 seeds × 20 steps and
+requires all 17 fault choices, all three Refine outcome classes, rejected-only
+invocations, and mixed accepted/rejected invocations. Stream metadata requires
+both authorization inputs and Refine execution, including when replaying saved
+failures. The standard full workspace command includes this generated test.
+
+See [the fixture guide](README.md#authorization-pipeline) for the symbolic exact
+trace mapping and single-collator/gas limits. Malformed traces are explicit
+post-authorization boundary injections, never claimed as real authorizer output.
+
+### Refine gas pipeline
+
+`QUINT_FUZZ_PROFILE=refine_gas` generates zero-entry, infinite-child, and
+finite-script cutoff failures surrounding a funded candidate in each block.
+Quint predicts `WorkErr` for interrupted candidates before Rust executes them;
+only the funded candidate may advance the head and KV state. Later blocks retry
+from that retained head. The opt-in regression requires all three fault modes
+and all five cutoff samples across ten seeds. Each seed selects a random
+starting phase in a 15-block cycle containing every mode/sample combination;
+use at least 15 steps to complete the cycle.
+
+For finite scripts, a discarded funded invocation must return a successful
+digest. Its measured gas cost sets a budget between zero and one below that
+cost, sampled at 0%, 25%, 50%, 75%, and 100% of the interval. The probe does not
+supply the expected failure or Accumulate state. Refine must actually trap or
+exhaust gas; its actual work failure is passed to Accumulate. The adapter resets
+the probe's output-length accounting before the checked invocation. This covers
+a finite host-call script, not arbitrary PVF programs or every instruction.

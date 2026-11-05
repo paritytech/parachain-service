@@ -9,6 +9,10 @@ use parachain_service::work_digest::{
 use parachain_service_bin::blob as service;
 use parachain_service_core::types::{HeadData, ParaId};
 
+// Large reservations need a hash identity, not gigabytes of synthetic bytes.
+// Provision beyond this adapter limit is explicitly rejected by `blob`.
+const MAX_MATERIALIZED_PREIMAGE_LEN: u32 = 16 * 1024 * 1024;
+
 /// Deterministic mapping between Quint's abstract integers and Rust values.
 #[derive(Debug)]
 pub struct Codex {
@@ -129,7 +133,16 @@ impl Codex {
 		if let Some(hash) = self.hashes.get(&value) {
 			return Ok(*hash);
 		}
-		let hash = hash_raw(&Self::blob(value, len)?);
+		let hash = if len > MAX_MATERIALIZED_PREIMAGE_LEN {
+			let value =
+				u64::try_from(value).map_err(|_| format!("hashBytes out of range: {value}"))?;
+			hash_raw(
+				&[b"quint-large-reservation".as_slice(), &value.to_le_bytes(), &len.to_le_bytes()]
+					.concat(),
+			)
+		} else {
+			hash_raw(&Self::blob(value, len)?)
+		};
 		self.hashes.insert(value, hash);
 		Ok(hash)
 	}
@@ -157,6 +170,9 @@ impl Codex {
 	}
 
 	pub fn blob(value: i128, len: u32) -> Result<Vec<u8>, String> {
+		if len > MAX_MATERIALIZED_PREIMAGE_LEN {
+			return Err("materialized preimage exceeds replay limit (16 MiB); only reservations are supported".into());
+		}
 		if super::service_upgrade::is_code(value) {
 			return super::service_upgrade::blob(value, len);
 		}
@@ -182,6 +198,10 @@ impl Codex {
 	}
 
 	pub fn auth_trace(len: i128) -> Result<AuthTrace, String> {
+		// Reserved symbolic identity for the authorization profile, not a byte length.
+		if len == -1 {
+			return Ok(super::authorization::expected_trace());
+		}
 		let len =
 			usize::try_from(len).map_err(|_| format!("auth trace length out of range: {len}"))?;
 		if len > MAX_REFINE_OUTPUT_SIZE {
@@ -193,6 +213,9 @@ impl Codex {
 	}
 
 	pub fn auth_trace_int(value: &AuthTrace) -> Result<i128, String> {
+		if *value == super::authorization::expected_trace() {
+			return Ok(-1);
+		}
 		if value.0.iter().any(|byte| *byte != 0xaa) {
 			return Err("auth trace is not a codex value".into());
 		}
@@ -289,5 +312,35 @@ mod tests {
 		assert!(Codex::auth_trace((MAX_REFINE_OUTPUT_SIZE + 1) as i128)
 			.unwrap_err()
 			.contains("exceeds the report limit"));
+	}
+}
+
+#[cfg(test)]
+mod large_reservations {
+	use super::*;
+
+	#[test]
+	fn distinct_identities_works() {
+		let mut codex = Codex::default();
+		let first = codex.hash(10000, u32::MAX).unwrap();
+		assert_eq!(codex.hash(10000, u32::MAX).unwrap(), first);
+		assert_ne!(codex.hash(10001, u32::MAX).unwrap(), first);
+		assert_eq!(codex.hash_int(first).unwrap(), 10000);
+		assert_ne!(Codex::default().hash(10000, u32::MAX - 1).unwrap(), first);
+		assert_ne!(Codex::default().hash(10000, 16).unwrap(), first);
+	}
+
+	#[test]
+	fn conflicting_length_errors() {
+		let mut codex = Codex::default();
+		codex.hash(10000, u32::MAX).unwrap();
+		assert!(codex.hash(10000, u32::MAX - 1).unwrap_err().contains("conflicting lengths"));
+	}
+
+	#[test]
+	fn materialization_errors() {
+		for len in [MAX_MATERIALIZED_PREIMAGE_LEN + 1, u32::MAX] {
+			assert!(Codex::blob(10000, len).unwrap_err().contains("only reservations"));
+		}
 	}
 }

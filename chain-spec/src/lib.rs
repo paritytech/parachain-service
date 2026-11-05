@@ -11,17 +11,17 @@
 //! [`ParachainServiceSpec::authorizer_hashes`] to fill the cores' queues.
 //!
 //! ```
-//! use cumulus_aura_authorizer::AuthConfig;
+//! use cumulus_aura_authorizer_utils::AuthConfig;
 //! use parachain_chain_spec::{ParachainServiceSpec, ParachainSpec};
 //! use parachain_service_core::types::ParaId;
 //! use primitive_types::H256;
 //!
 //! let config = AuthConfig {
-//!     para_ids: vec![ParaId::new(2000)],
+//!     para_ids: vec![2000u32.into()],
 //!     parachain_service: 1,
 //!     collator_set_root: H256::zero(),
-//!     collator_set_size: 1,
-//!     slot_duration: 6,
+//!     collator_set_size: core::num::NonZero::new(1).expect("nonzero configuration"),
+//!     slot_duration: core::num::NonZero::new(6).expect("nonzero configuration"),
 //! };
 //! let spec = ParachainServiceSpec::new(1, b"service code").parachain(
 //!     ParachainSpec::new(ParaId::new(2000))

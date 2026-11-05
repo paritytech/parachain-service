@@ -4,7 +4,7 @@ use parachain_service_core::types::validation_code_hash_bytes;
 use std::collections::{BTreeMap, BTreeSet};
 
 use codec::{Decode, Encode};
-use cumulus_aura_authorizer::AuthConfig;
+use cumulus_aura_authorizer_utils::AuthConfig;
 use jam_std_common::hash_raw;
 use jam_types::{AuthorizerHash, Balance};
 use parachain_service::{
@@ -28,11 +28,11 @@ const RICH: Balance = 10_000_000;
 
 fn realm_config(para: ParaId) -> AuthConfig {
 	AuthConfig {
-		para_ids: vec![para],
+		para_ids: vec![u32::from(para).into()],
 		parachain_service: PARACHAIN_SERVICE_ID,
 		collator_set_root: H256::zero(),
-		collator_set_size: 1,
-		slot_duration: 6,
+		collator_set_size: core::num::NonZero::new(1).expect("nonzero configuration"),
+		slot_duration: core::num::NonZero::new(6).expect("nonzero configuration"),
 	}
 }
 

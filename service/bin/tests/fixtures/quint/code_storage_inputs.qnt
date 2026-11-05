@@ -1,5 +1,6 @@
 // Independent host-write oracle for code acquisition and announcements.
 module code_storage_inputs {
+  import refine_inputs.* from "./refine_inputs"
   import types.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/types"
   import messages.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/messages"
   import state.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state"
@@ -66,27 +67,33 @@ module code_storage_inputs {
     hash: { vchBytes: hash }, len: FixedCodeLen, phase: Announcement })
   action codeInit = all { init, noTransfers, noDesignation, noGas,
     replayHostTrap' = false, replayCodeFailure' = "" }
-  action codeBlock(allowance: int, msg: UpwardMessage): bool = {
+  action codeBlock(allowance: int, msg: UpwardMessage): bool =
+    codeRecoveryBlock(allowance, msg, -1)
+  // Select the retained prefix independently of the VM gas calibration.
+  // Natural solicitation traps remain ordinary codeBlock scenarios.
+  action codeRecoveryBlock(allowance: int, msg: UpwardMessage, stop: int): bool = {
     val start = { state: svc, free: allowance, slot: now + 1, logs: List(), failure: "", trap: false }
     val applied = codeMessage(start, msg)
     val logged = applied.state.appendAccumulateLogs(CoretimeParaId, now + 1, applied.logs)
     val saved = codeWrite(applied, logged, applied.failure)
-    val out = if (applied.trap) start else saved
+    val out = if (applied.trap or stop == -2 or stop == 0) start else saved
     val pi = svc.paraInfo(CoretimeParaId)
     val wr = { result: WorkOk(Ok({ paraId: CoretimeParaId,
       validationCode: activeCodeHashOr(pi, { vchBytes: 0 }),
       parentHeadHash: headHash(pi.headData), headData: pi.headData,
       lookupAnchor: 0, upwardMessages: List(msg) })), authTrace: 0 }
     all {
+      stop == -1 or not(applied.trap),
       svc' = out.state, prevSvc' = svc, now' = now + 1,
       lastStepWorkResults' = List(wr), lastStepAssigns' = List(), lastStepAssignBudget' = FullAssignBudget,
-      lastHeadRoot' = if (applied.trap) None else headCommitment(svc, out.state),
+      lastHeadRoot' = if (applied.trap or stop != -1) None else headCommitment(svc, out.state),
       solicitedSet' = solicitedSet, jamStagingSet' = jamStagingSet,
       foreignServices' = foreignServices, logPrunedBelow' = logPrunedBelow,
       noTransfers, noDesignation,
       replayHostFailedHeads' = List(), replayHostBudget' = allowance, replayHostFree' = out.free,
       replayHostRejects' = if (applied.failure == "") 0 else 1,
-      replayGasLimits' = List(UnlimitedGas), replayInterrupt' = if (applied.trap) 0 else -1,
+      noRefine,
+      replayGasLimits' = List(UnlimitedGas), replayInterrupt' = if (applied.trap) 0 else stop,
       replayPanic' = false, replayHostTrap' = applied.trap,
       replayCodeFailure' = applied.failure
     }
@@ -97,7 +104,12 @@ module code_storage_inputs {
     provide({ hashBytes: hash }, FixedCodeLen), noTransfers, noDesignation, noGas,
     replayHostTrap' = false, replayCodeFailure' = ""
   }
-  action codeStep = {
+  action codeStep = codeStepAt(-1)
+  action codeRecoveryStep = {
+    nondet stop = Set(-2, -1, 0, 1).oneOf()
+    codeStepAt(stop)
+  }
+  action codeStepAt(stop: int): bool = {
     nondet allowance = oneOf(Set(0, 1, 2, 35, 36, 85, 86, 87, 88, 65722, 65723, 65759, 1000000))
     nondet hash = oneOf(Set(777, 778, 779))
     nondet target = oneOf(Set(MkParaId(3), MkParaId(4)))
@@ -107,7 +119,7 @@ module code_storage_inputs {
       forcedCode(target, hash),
       Solicit({ target: Parachain(CoretimeParaId), hash: { hashBytes: hash }, len: FixedCodeLen }),
       announce(hash)))
-    codeBlock(allowance, msg)
+    codeRecoveryBlock(allowance, msg, stop)
   }
   action codeProvision = { nondet hash = oneOf(Set(777, 778, 779)); codeProvide(hash) }
 }

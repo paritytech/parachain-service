@@ -9,7 +9,7 @@ use codec::{Decode, DecodeAll};
 use jam_pvm_common::refine::{self, auth_trace, lookup as historical_lookup};
 use jam_types::{CoreIndex, ServiceId, WorkPackageHash, WorkPayload};
 use parachain_service_core::{
-	authorization::DevelopmentAuthTrace,
+	authorization::AuthTrace,
 	types::{validation_code_hash_bytes, ParaId},
 };
 
@@ -28,7 +28,7 @@ pub fn refine(
 	let Ok(para_ids) = Vec::<ParaId>::decode(&mut &raw_auth_config[..]) else {
 		panic!("The AuthConfig already passed IsAuthorized, it must be valid")
 	};
-	let Ok(_auth_trace) = DevelopmentAuthTrace::decode_all(&mut &raw_auth_trace[..]) else {
+	let Ok(_auth_trace) = AuthTrace::decode_all(&mut &raw_auth_trace[..]) else {
 		panic!("The AuthTrace was produced by IsAuthorized, it must be valid")
 	};
 

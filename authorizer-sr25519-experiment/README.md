@@ -126,6 +126,6 @@ ed25519, and the design doc should not say it is. If sr25519 is rejected, reject
 ground.
 
 Note that this experiment only swapped the verification primitive. An actual migration also has
-to move collator key generation, the keystore, `parasim-tool` and the collator-set fixtures, and
+to move collator key generation, the keystore and the collator-set fixtures, and
 sr25519 signing is randomised where ed25519 signing is deterministic — none of which is measured
 here.

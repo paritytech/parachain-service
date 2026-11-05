@@ -43,27 +43,26 @@ fn report(name: &str, gas: u64, elapsed: std::time::Duration, digest_len: usize)
 
 /// Pinned gas measurements for the benchmarks below.
 ///
-/// Re-baselined 2026-10-13 after the budgeted due-assign flush (§5.1); the
-/// authorizer, destination-handler and incoming-transfer pins were already stale
-/// before it. These are measured PVM costs, not production budgets.
+/// Re-baselined 2026-10-15 after making inline assignment writes atomic.
+/// These are measured PVM costs, not production budgets.
 mod gas {
 	/// 1024-solicit digest — the heaviest reachable digest replay.
-	pub const MAX_SOLICITS: u64 = 67_672_627;
+	pub const MAX_SOLICITS: u64 = 66_619_393;
 	/// 1024 KV writes filling the report's elective-data limit.
-	pub const MAX_KV_WRITES: u64 = 53_943_628;
+	pub const MAX_KV_WRITES: u64 = 54_803_341;
 	/// 332 outbound transfers to a friendly destination.
-	pub const MAX_TRANSFER_OUTS: u64 = 4_999_723;
+	pub const MAX_TRANSFER_OUTS: u64 = 5_279_171;
 	/// 332 outbound transfers to a destination demanding `HIGH_TRANSFER_GAS`.
-	pub const MAX_GAS_TRANSFER_OUTS: u64 = 4_999_723;
+	pub const MAX_GAS_TRANSFER_OUTS: u64 = 5_279_171;
 	/// Gas for 1024 incoming transfers recorded in one bucket write.
-	pub const MAX_INCOMING_TRANSFERS: u64 = 8_724_206;
+	pub const MAX_INCOMING_TRANSFERS: u64 = 7_597_537;
 	/// Due `assign` flush for all 341 cores in one block.
-	pub const ALL_DUE_ASSIGNS: u64 = 61_070_128;
+	pub const ALL_DUE_ASSIGNS: u64 = 57_371_447;
 	/// Marginal cost of a realistic destination's memo handler, per transfer.
-	pub const DEST_HANDLER_PER_TRANSFER: u64 = 20_691;
+	pub const DEST_HANDLER_PER_TRANSFER: u64 = 19_602;
 	/// Gas for one Ed25519 authorization.
-	// Rebuilt with the `authorize_block_ext` entry point in the same blob.
-	pub const IS_AUTHORIZED_ED25519: u64 = 3_995_935;
+	/// Re-measured with the shared SDK AURA utilities and the `authorize_block_ext` entry point.
+	pub const IS_AUTHORIZED_ED25519: u64 = 4_051_252;
 }
 
 /// A report admitted by the gas gate must leave 20% execution headroom.

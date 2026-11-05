@@ -1,21 +1,16 @@
 use super::aura::{self, AuthConfig, AuthToken, SignatureVerifier};
 use codec::{DecodeAll, Encode};
 use jam_pvm_common::is_authorized::{auth_token, refine_context, work_package};
-use jam_types::{AuthTrace, CoreIndex, Slot, WorkPackage};
-use parachain_service_core::authorization::DevelopmentAuthTrace;
+use jam_types::{AuthTrace, CoreIndex};
 
 #[derive(Debug)]
-pub enum AuthorizationError {
+pub(crate) enum AuthorizationError {
 	UndecodableAuthConfig,
 	UndecodableAuthToken,
-	/// Number of work items does not match the number of para IDs.
-	InvalidWorkItemCount,
-	/// A work item does not target the Parachain Service.
-	InvalidWorkItemService,
 	BadAuthorization(aura::AuthorizationError),
 }
 
-pub fn is_authorized<S: SignatureVerifier>(
+pub(crate) fn is_authorized<S: SignatureVerifier>(
 	_core: CoreIndex,
 ) -> Result<AuthTrace, AuthorizationError> {
 	let package = work_package();
@@ -29,41 +24,13 @@ pub fn is_authorized<S: SignatureVerifier>(
 	let token = AuthToken::decode_all(&mut &auth_token().0[..])
 		.map_err(|_| AuthorizationError::UndecodableAuthToken)?;
 
-	// §7.1 step 4 wants the slot to select the collator with. FIXME: the design says to read the
-	// *anchor* timeslot from the refinement context, but the Gray Paper's RefineContext exposes
-	// only the lookup-anchor slot — the anchor's slot is not available in-core. Using
-	// `lookup_anchor_slot` here lets a collator pick any lookup anchor mapping to its own index;
-	// needs upstreaming.
-	let slot = refine_context().lookup_anchor_slot;
+	// §7.1 selects the collator using the recent anchor's timeslot.
+	let slot = refine_context().anchor_slot;
 
-	Ok(AuthTrace(authorize::<S>(&config, &token, &package, slot)?.encode()))
+	let trace = aura::AuthTrace::try_from_token::<S>(&config, &token, &package, slot)
+		.map_err(AuthorizationError::BadAuthorization)?;
+	Ok(AuthTrace(trace.encode()))
 }
 
-/// Validate a package without host calls, using the supplied config, token, and slot.
-pub fn authorize<S: SignatureVerifier>(
-	config: &AuthConfig,
-	token: &AuthToken,
-	package: &WorkPackage,
-	lookup_anchor_slot: Slot,
-) -> Result<DevelopmentAuthTrace, AuthorizationError> {
-	// Deliberately outside the sudo bypass: para-specific coretime must not be spent on other
-	// JAM work whatever a package carries (SPEC_GAPS #7).
-	if package.items.iter().any(|item| item.service != config.parachain_service) {
-		return Err(AuthorizationError::InvalidWorkItemService);
-	}
-
-	// Permit control commands on parked cores. FIXME: remove the development bypass; see SUDO_KEY.
-	if token.key == aura::SUDO_KEY {
-		return Ok(DevelopmentAuthTrace {
-			aura: aura::AuthTrace { author_key: token.key },
-			sudo: true,
-		});
-	}
-
-	if config.para_ids.len() != package.items.len() {
-		return Err(AuthorizationError::InvalidWorkItemCount);
-	}
-	aura::authorize::<S>(config, token, package, lookup_anchor_slot)
-		.map(|aura| DevelopmentAuthTrace { aura, sudo: false })
-		.map_err(AuthorizationError::BadAuthorization)
-}
+#[cfg(test)]
+mod tests;

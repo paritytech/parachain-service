@@ -95,13 +95,38 @@ fn conflicting_faults_errors() {
 	assert!(replay::document_trace(&trace).unwrap_err().contains("cannot be combined"));
 }
 
+#[test]
+fn due_assignment_panic_sampling_works() {
+	let mut trace: Value = serde_json::from_str(include_str!(
+		"../fixtures/quint/panic_recovery/assignment_checkpoint_works.itf.json"
+	))
+	.unwrap();
+	// This seed would replace the panic after the due-assignment flush with
+	// a low-gas invocation, which cannot pay for that flush.
+	let original = trace["states"][2].clone();
+	sample(&mut trace, 1);
+	assert_eq!(trace["states"][2], original);
+	replay::document_trace(&trace).unwrap();
+}
+
 /// Deterministic decoration of mixed Quint campaigns. Keep half of the panic
 /// frames as traps; sample invocation gas in eligible remaining frames. The
 /// preserved failure envelope includes both the original oracle and the sample.
 pub fn sample(trace: &mut Value, seed: u64) -> usize {
 	let mut random = seed;
 	let mut count = 0;
-	for state in trace["states"].as_array_mut().unwrap() {
+	let states = trace["states"].as_array_mut().unwrap();
+	for index in 0..states.len() {
+		let due_assignment = index > 0 &&
+			states[index - 1]["svc"]["pendingAssignCores"]["#map"]
+				.as_array()
+				.unwrap()
+				.iter()
+				.any(|entry| {
+					replay::integer(&entry[1]).unwrap() <=
+						replay::integer(&states[index]["now"]).unwrap()
+				});
+		let state = &mut states[index];
 		random = random.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
 		let final_checkpoint = state["lastStepWorkResults"].as_array().is_some_and(|results| {
 			replay::integer(&state["replayInterrupt"]).ok() == Some(results.len() as i128)
@@ -112,6 +137,13 @@ pub fn sample(trace: &mut Value, seed: u64) -> usize {
 			continue;
 		}
 		if state["replayPanic"] != true || (random >> 32) % 2 == 0 {
+			continue;
+		}
+		// Panic runs have a full initial assignment allowance. Gas sampling
+		// calibrates with no allowance, so preserve the panic whenever a due
+		// entry could be flushed (including rejected assignments and rotations).
+		// Otherwise the retained Quint oracle would describe a different prefix.
+		if due_assignment {
 			continue;
 		}
 		let stop = replay::integer(&state["replayInterrupt"]).unwrap() as usize;

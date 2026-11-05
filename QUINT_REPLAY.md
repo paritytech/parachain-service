@@ -1,14 +1,18 @@
-# Quint Accumulate replay
+# Quint Rust replay
 
-The harness replays Quint ITF traces through Rust Accumulate in the PolkaJAM PVM.
-It compares storage, head commitments, and supported JAM effects after each
-transition. Coverage includes ordered outgoing transfers, regular JAM balances,
-validator designation, core assignments, service upgrades, service creation, and
+The default campaign replays Quint inputs through Rust Refine and then Rust
+Accumulate in the PolkaJAM PVM. It compares each actual refine digest or trap,
+then feeds those actual results into accumulate and compares storage, head
+commitments, and supported JAM effects after each transition. Coverage includes
+ordered outgoing transfers, regular JAM balances,
+validator designation, ordered successful core-assignment calls, service upgrades, service creation, and
 ejection, service-targeted solicit/forget, storage removal, and supervisor handoff
 refusals. Creation checks include the
 new account and its code request. Upgrade checks
 verify installed code and gas settings; subsequent invocations execute that code.
-Quint supplies work results; Rust Refine is not executed. Recovery coverage
+Historical fixtures and focused accumulate profiles still accept supplied work
+results. The default campaign requires refine inputs for every candidate.
+Recovery coverage
 includes sampled invocation gas cutoffs before the first checkpoint, inside
 reports, and after the final report checkpoint, transfer-induced out-of-gas, and
 explicit malformed-digest faults that trigger real Accumulate
@@ -51,3 +55,48 @@ solicit/forget operations; the replay wrapper additionally records implicit
 reference releases during cleanup and code changes, preventing stale history
 from reappearing when a parachain is re-registered. Mutation tests cover missing
 entries, wrong referencers, and missing ghost metadata.
+
+## Combined campaign
+
+`just quint-fuzz --infinite` exercises both stages. Deploy with
+`just quint-fuzz-deploy SERVER`; there is no separate refine campaign to select.
+Each block retains its packages, ordered host-call scripts, code availability,
+and lookup anchors alongside Quint's independently computed work results.
+The harness executes refine sequentially for the block's candidates (currently
+up to three), compares the results, and passes the actual decoded digests to
+one accumulate invocation, preserving order. Explicit JAM work errors skip
+refine. Deliberate malformed-output recovery faults are injected only after
+refine has been checked, as part of the existing accumulate recovery tests.
+
+The test-only `refine-replay-pvf` executes scripts through the real service host
+functions. The currently installed service code is used, including after an
+upgrade. The compiled interpreter PVF stands in for abstract validation code:
+after verifying its hash in the real result, the adapter translates only that
+identity back into the accumulate codex's candidate identity. Heads, messages,
+errors, and lookup anchors are the actual Rust outputs. Code availability is an
+input to the isolated historical-lookup context, reflecting the pinned model's
+registry abstraction; arbitrary PVF semantics and historical availability
+transitions are outside this model.
+
+A predicted work failure requires an actual PVM trap, or actual gas exhaustion
+in an explicit gas-fault scenario. Ordinary traces still reject out-of-gas;
+invalid output and host initialization failures always fail replay. The dedicated
+`refine_gas` campaign includes zero-entry, infinite-child, and sampled finite-script
+gas cutoffs, funded candidates in the same block, and subsequent retries.
+New campaign traces carry
+`replayRefineRequired` so dropping refine inputs cannot silently downgrade a
+saved trace into an accumulate-only replay. Legacy fixtures remain supported.
+
+The model conservatively charges `ParachainSetHead` its maximum encoded size;
+the existing codex maps abstract heads to empty or eight-byte heads. The default
+message pools keep these calls away from the output-size boundary. Focused
+refine boundary fixtures use concrete-size KV messages instead. Those standalone
+fixtures remain regression tests, not a separate server profile.
+
+The PolkaJAM hazmat host emits completed assignment, designation, upgrade, and
+checkpoint events for ordered replay comparison. Assignment order is compared
+against `lastStepAssigns`; interleaved designation/upgrade order is compared
+against `replayHostCalls`. Completed checkpoints select the retained history
+after rollback. Final-effect checks remain independent. New generated traces
+require the history metadata; legacy traces retain their existing comparisons. Remaining work
+is tracked in [the coverage TODO](QUINT_REPLAY_COVERAGE_TODO.md).

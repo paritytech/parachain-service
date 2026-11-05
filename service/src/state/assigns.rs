@@ -74,6 +74,9 @@ impl DirtyCores {
 
 	pub fn remove(core: CoreIndex) {
 		let mut cores = Self::get();
+		if !cores.iter().any(|(c, _)| *c == core) {
+			return;
+		}
 		cores.retain(|(c, _)| *c != core);
 		// Removal shrinks the entry, which JAM never rejects.
 		Self::set(&cores).expect("removing a dirty core shrinks the index; qed");

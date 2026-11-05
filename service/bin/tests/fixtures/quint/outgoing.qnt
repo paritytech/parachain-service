@@ -1,5 +1,6 @@
 // Replay effects are evaluated by the pinned model, including same-set designation.
 module outgoing_replay {
+  import host_call_inputs.* from "./host_call_inputs"
   import types.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/types"
   import messages.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/messages"
   import state.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state"
@@ -10,7 +11,7 @@ module outgoing_replay {
   import state_balance.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state_balance"
   import support.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/tests/support"
   var replayDesignate: List[ValidatorKey]
-  action check(ok: bool): bool = all { expectThat(ok), replayDesignate' = replayDesignate, replayCreations' = replayCreations, replayTransfers' = replayTransfers }
+  action check(ok: bool): bool = all { expectThat(ok), keepHostCalls, replayDesignate' = replayDesignate, replayCreations' = replayCreations, replayTransfers' = replayTransfers }
   import service_inputs.* from "./service_inputs"
   import outgoing_inputs.* from "./outgoing_inputs"
   action start = all { outgoingInit, replayDesignate' = List() }
@@ -30,6 +31,7 @@ module outgoing_replay {
       svc' = out.state, now' = now + 1, prevSvc' = svc,
       replayDesignate' = out.staging,
       noCreations, replayTransfers' = outgoingEffects(packages, now + 1),
+      replayHostCalls' = messageEffects(packages, now + 1).calls,
       jamStagingSet' = if (out.staging == List()) jamStagingSet else out.staging,
       solicitedSet' = out.solicited, lastStepWorkResults' = out.results,
       lastStepAssigns' = out.assigns, lastHeadRoot' = out.headRoot,

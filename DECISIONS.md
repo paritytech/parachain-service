@@ -26,19 +26,6 @@ Coretime to never mark a non-privileged para as privileged.
 options should be listed; constants require a service self-upgrade to migrate Asset Hub or
 Coretime to a new ParaId.
 
-## D-4: the AURA authorizer keeps a dev-network sudo bypass
-
-Gap: the AURA authorizer is an example in the design, not an executable protocol.
-
-The authorizer implements the complete §7.1 pipeline — config/token decoding, round-robin
-collator-index computation, Merkle-proof verification of the collator key, and a real signature
-check (ed25519 `verify_strict` or sr25519, one blob each). One deliberate hole remains: a token
-carrying the all-ones `SUDO_KEY` is authorized on any core without a signature, so control
-packages can reach a parked core (user decision, 2026-09-02). It must not ship.
-
-**Spec feedback**: none for the bypass, which is PoC-only. The §7.1 canonical proof/encoding
-rules still need specifying.
-
 ## D-5: the parent-head check's `hash(head_data)` is blake2b-256
 
 New finding (not previously tracked). The design's parent-head check (§5.1 step 4) compares

@@ -13,7 +13,7 @@ publish = false
 workspace = true
 
 [dependencies]
-cumulus-aura-authorizer = { workspace = true }
+cumulus-aura-authorizer-utils = { workspace = true }
 polkadot-parachain-primitives = { workspace = true }
 sp-crypto-hashing = { workspace = true }
 bounded-collections = { workspace = true }
@@ -28,6 +28,7 @@ jam-program-blob-common = { workspace = true, optional = true, features = ["polk
 [target.'cfg(any(target_arch = "riscv32", target_arch = "riscv64"))'.dependencies]
 polkavm-derive = { workspace = true }
 # JAM guests provide their own allocator and panic handler.
+sp-io = { workspace = true, features = ["disable_allocator", "disable_panic_handler"] }
 # Published parachain primitives pull a separate registry copy of sp-io.
 sp-io-published = { package = "sp-io", version = "48.0.0", default-features = false, features = ["disable_allocator", "disable_panic_handler"] }
 
@@ -45,7 +46,7 @@ authorize-block = ["dep:jam-program-blob-common", "dep:polkavm"]
 std = [
 	"jam-program-blob-common?/std",
 	"polkavm?/std",
-	"cumulus-aura-authorizer/std",
+	"cumulus-aura-authorizer-utils/std",
 	"polkadot-parachain-primitives/std",
 	"sp-crypto-hashing/std",
 	"bounded-collections/std",

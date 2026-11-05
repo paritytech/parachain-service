@@ -1,5 +1,5 @@
-//! Assignment value mapping and final JAM effects. The host exposes final
-//! mutations per core, not a call log; repeated calls are folded in model order.
+//! Assignment value mapping and final JAM effects. Repeated calls are folded
+//! in model order; host_calls separately checks the full retained history.
 use std::collections::BTreeMap;
 
 use jam_node::vm::{StateMutations, Storage};

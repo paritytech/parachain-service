@@ -45,17 +45,31 @@ pub fn schedule(
 		}
 		return;
 	}
-	PendingAssigns::set(core, &PendingAssign { queue, assigner: new_assigner }).unwrap_or_else(
-		|_| {
-			// A failed cache write (baseline-covered, §6.1 backstop)
-			// drops the assign. There is no per-para log channel for the
-			// service-global assign cache, so only the
-			// error is surfaced. The dirty-core index must NOT be armed: the
-			// flush would then expect a payload that was never cached.
-			jam_pvm_common::error!("assign for core {core} not cached: storage full");
-		},
-	);
+	cache(core, queue, new_assigner, jam_slot);
+}
+
+/// Keep the payload and due time together when either storage write is rejected.
+fn cache(
+	core: CoreIndex,
+	queue: Vec<AuthorizerHash>,
+	new_assigner: Option<ServiceId>,
+	jam_slot: Timeslot,
+) {
+	let previous = PendingAssigns::get(core);
+	if PendingAssigns::set(core, &PendingAssign { queue, assigner: new_assigner }).is_err() {
+		// Keep the prior payload and due time together. Arming the index after
+		// a rejected new payload could make the due flush read a missing entry.
+		jam_pvm_common::error!("assign for core {core} not cached: storage full");
+		return;
+	}
 	if DirtyCores::upsert(core, jam_slot).is_err() {
+		// The index kept its old contents. Restore the matching payload; the
+		// rejected index write spent nothing, so its original footprint fits.
+		match previous {
+			Some(entry) => PendingAssigns::set(core, &entry)
+				.expect("restoring the original payload fits its original deposit; qed"),
+			None => PendingAssigns::remove(core),
+		}
 		jam_pvm_common::error!("dirty-core index not updated for core {core}: storage full");
 	}
 }
@@ -138,8 +152,7 @@ fn settle_after_assign(
 		PendingAssigns::remove(core);
 		DirtyCores::remove(core);
 	} else {
-		let _ = PendingAssigns::set(core, &PendingAssign { queue: advance_queue(queue), assigner });
-		let _ = DirtyCores::upsert(core, now + auth_queue_len() as Timeslot);
+		cache(core, advance_queue(queue), assigner, now + auth_queue_len() as Timeslot);
 	}
 }
 

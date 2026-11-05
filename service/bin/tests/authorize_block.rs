@@ -32,8 +32,13 @@ struct Collators {
 fn collators() -> Collators {
 	let keys: Vec<_> = (1..=2u8).map(|i| SigningKey::from_bytes(&[i; 32])).collect();
 	let public: Vec<[u8; 32]> = keys.iter().map(|k| k.verifying_key().to_bytes()).collect();
-	let (root, proofs) = aura::build_collator_proofs(&public).expect("valid collator set");
-	Collators { keys, proofs, root }
+	let (proofs, roots): (Vec<_>, Vec<_>) = (0..public.len() as u32)
+		.map(|i| {
+			let (root, proof) = aura::build_collator_proof(&public, i).expect("valid collator set");
+			(proof, root)
+		})
+		.unzip();
+	Collators { keys, proofs, root: roots[0] }
 }
 
 /// A block authorization by collator `signer` over `signed`.
@@ -43,8 +48,8 @@ fn authorization(blob: &[u8], signer: usize, signed: H256) -> BlockAuthorization
 		para_ids: vec![PARA.into()],
 		parachain_service: 1337,
 		collator_set_root: collators.root,
-		collator_set_size: 2,
-		slot_duration: 1,
+		collator_set_size: 2.try_into().unwrap(),
+		slot_duration: 1.try_into().unwrap(),
 	};
 	let key = &collators.keys[signer];
 	let token = aura::AuthToken {

@@ -5,6 +5,7 @@ module host_mixed {
   import state_vars.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state_vars"
   import main.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/main"
   import support.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/tests/support"
+  import host_invocation.* from "./host_invocation"
   import fuzz.* from "./fuzz"
   import gas_inputs.* from "./gas_inputs"
   import transfer_inputs.* from "./transfer_inputs"
@@ -75,4 +76,69 @@ module host_mixed {
   run queue_cleanup_works = replayInit
     .then(hostBlockAt(1000, 3, 4, false, CleanUpBucketsUpTo(0), remove82))
     .then(normal(AssetHubParaId, List(storeKV(81, 1))))
+  // An unprovided solicitation raises the private charge without allocating a
+  // gigabyte of bytes. The next KV write crosses SCALE's 2^30 boundary.
+  action chargeBoundary = normal(AssetHubParaId, List(solicit(888,
+    1073741823 - svc.paraInfo(AssetHubParaId).usedStateBalance - 187)))
+  action fundCharge = normal(CoretimeParaId, List(ParachainSetStateBalance({
+    paraId: AssetHubParaId, newTotal: 2147483648 })))
+  action chargeWrite(allowance: int, len: int, stop: int): bool =
+    hostInvocation(List(replayWork(svc, AssetHubParaId,
+      svc.paraInfo(AssetHubParaId).headData, activeCodeCandidate(svc, AssetHubParaId),
+      0, 0, 0, List(storeKV(83, len)))), now + 1, List(), List(UnlimitedGas), allowance, stop)
+
+  run kv_charge_insert_works = replayInit
+    .then(fundCharge).then(chargeBoundary)
+    .then(chargeWrite(0, 1, -1))
+    .then(chargeWrite(1, 1, -1))
+    .then(chargeWrite(51, 1, -1))
+    .then(chargeWrite(52, 1, -1))
+    .then(normal(AssetHubParaId, List(RemoveKV({ paraId: AssetHubParaId, key: List(83) }))))
+  run kv_charge_overwrite_works = replayInit
+    .then(fundCharge).then(normal(AssetHubParaId, List(storeKV(83, 1))))
+    .then(chargeBoundary)
+    .then(chargeWrite(0, 2, -1))
+    .then(chargeWrite(1, 2, -1))
+    .then(chargeWrite(2, 2, -1))
+    .then(chargeWrite(0, 1, -1))
+  run kv_charge_recovery_works = replayInit
+    .then(fundCharge).then(chargeBoundary)
+    .then(chargeWrite(0, 1, 1))
+    .then(chargeWrite(1, 1, 1))
+    .then(chargeWrite(52, 1, 0))
+    .then(chargeWrite(52, 1, 1))
+    .then(normal(AssetHubParaId, List(RemoveKV({ paraId: AssetHubParaId, key: List(83) }))))
+
+  // The model commits only the prefix selected before VM gas calibration.
+  // stop=0 rolls back the message; stop=1 retains it at the final checkpoint.
+  action recoverMessage(message: UpwardMessage, stop: int): bool =
+    hostInvocation(List(replayWork(svc, AssetHubParaId,
+      svc.paraInfo(AssetHubParaId).headData, activeCodeCandidate(svc, AssetHubParaId),
+      0, now, 0, List(message))), now + 1, List(), List(UnlimitedGas), 2000000, stop)
+  action chargedQueue = hostBlockTransfers(2000000, 1024, 0, 4, false, remove81, remove82)
+    .then(hostBlockTransfers(2000000, 3, 300, 4, false, remove81, remove82))
+  run cleanup_partial_recovery_works = replayInit.then(chargedQueue)
+    .then(recoverMessage(CleanUpBucketsUpTo(0), 0))
+    .then(recoverMessage(CleanUpBucketsUpTo(0), 1))
+    .then(normal(AssetHubParaId, List(CleanUpBucketsUpTo(10000))))
+  run cleanup_full_recovery_works = replayInit.then(chargedQueue)
+    .then(recoverMessage(CleanUpBucketsUpTo(10000), 0))
+    .then(recoverMessage(CleanUpBucketsUpTo(10000), 1))
+    .then(hostBlockTransfers(2000000, 1, 0, 4, false, remove81, remove82))
+  run remove_refund_recovery_works = replayInit
+    .then(normal(AssetHubParaId, List(storeKV(81, 4096))))
+    .then(recoverMessage(remove81, 0)).then(recoverMessage(remove81, 1))
+    .then(normal(AssetHubParaId, List(storeKV(81, 4096))))
+  run forget_refund_recovery_works = replayInit
+    .then(normal(AssetHubParaId, List(solicit(777, FixedCodeLen))))
+    .then(recoverMessage(forget(777, FixedCodeLen), 0))
+    .then(recoverMessage(forget(777, FixedCodeLen), 1))
+    .then(normal(AssetHubParaId, List(solicit(777, FixedCodeLen))))
+  run code_apply_recovery_works = replayInit
+    .then(normal(AssetHubParaId, List(solicit(777, FixedCodeLen))))
+    .then(supplied(777, FixedCodeLen))
+    .then(normal(AssetHubParaId, List(code(Announcement))))
+    .then(recoverMessage(code(Apply), 0)).then(recoverMessage(code(Apply), 1))
+    .then(normal(AssetHubParaId, List(forget(2, FixedCodeLen), storeKV(81, 1))))
+
 }

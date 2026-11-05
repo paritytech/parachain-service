@@ -1,5 +1,6 @@
 // Service self-upgrade scenarios; all decisions come from the pinned model.
 module service_upgrades_replay {
+  import host_call_inputs.* from "./host_call_inputs"
   import types.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/types"
   import messages.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/messages"
   import state.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state"
@@ -10,7 +11,7 @@ module service_upgrades_replay {
   import state_balance.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state_balance"
   import support.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/tests/support"
   var replayDesignate: List[ValidatorKey]
-  action check(ok: bool): bool = all { expectThat(ok), replayDesignate' = replayDesignate, replayCreations' = replayCreations, replayTransfers' = replayTransfers, keepUpgradeGas }
+  action check(ok: bool): bool = all { expectThat(ok), keepHostCalls, replayDesignate' = replayDesignate, replayCreations' = replayCreations, replayTransfers' = replayTransfers, keepUpgradeGas }
   import service_inputs.* from "./service_inputs"
   import outgoing_inputs.* from "./outgoing_inputs"
   import service_upgrade_inputs.* from "./service_upgrade_inputs"
@@ -32,7 +33,7 @@ module service_upgrades_replay {
     all {
       svc' = out.state, now' = now + 1, prevSvc' = svc,
       replayDesignate' = out.staging,
-      replayCreations' = effects.creations, replayTransfers' = effects.transfers,
+      replayHostCalls' = effects.calls, replayCreations' = effects.creations, replayTransfers' = effects.transfers,
       replayMinAccGas' = effects.minAccGas.optionGetOr(replayMinAccGas),
       jamStagingSet' = if (out.staging == List()) jamStagingSet else out.staging,
       solicitedSet' = out.solicited, lastStepWorkResults' = out.results,

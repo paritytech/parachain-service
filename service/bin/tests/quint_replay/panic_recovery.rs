@@ -75,6 +75,9 @@ fn work_error_fault_errors() {
 	let mut trace: Value = serde_json::from_str(MIDDLE).unwrap();
 	trace["states"][1]["lastStepWorkResults"][1]["result"] =
 		json!({"tag":"WorkErr", "value":{"#tup":[]}});
+	// Keep the generated Refine input consistent with JAM rejecting this work,
+	// so the test reaches the panic-injection guard instead of digest comparison.
+	trace["states"][1]["replayRefineInputs"]["value"][1]["skip"] = json!(true);
 	assert!(replay::document_trace(&trace)
 		.unwrap_err()
 		.contains("panic report must have WorkOk output"));

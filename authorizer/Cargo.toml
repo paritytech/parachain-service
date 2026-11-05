@@ -16,7 +16,7 @@ workspace = true
 primitive-types = { workspace = true }
 parachain-service-core = { workspace = true }
 jam-types = { workspace = true }
-cumulus-aura-authorizer = { workspace = true }
+cumulus-aura-authorizer-utils = { workspace = true }
 jam-pvm-common = { workspace = true, features = ["authorizer", "logging"] }
 codec = { workspace = true }
 # Enables smaller compression code in the SDK hashing dependency to fit the guest size limit.
@@ -37,7 +37,7 @@ std = [
 	"codec/std",
 	"jam-pvm-common/std",
 	"jam-types/std",
-	"cumulus-aura-authorizer/std",
+	"cumulus-aura-authorizer-utils/std",
 	"parachain-service-core/std",
 	"parachain-service/std",
 	"primitive-types/std",

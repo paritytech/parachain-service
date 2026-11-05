@@ -12,7 +12,7 @@ workspace = true
 
 [dependencies]
 anyhow = "1"
-jam-node = { path = "../../vendor/polkajam/crates/node", default-features = false, features = ["hazmat"] }
+jam-node = { path = "../../../polkajam2/crates/node", default-features = false, features = ["hazmat"] }
 jam-types = { workspace = true, features = ["std"] }
 parachain-service = { workspace = true }
 codec = { workspace = true }

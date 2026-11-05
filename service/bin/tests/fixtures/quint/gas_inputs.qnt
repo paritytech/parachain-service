@@ -7,6 +7,7 @@ module gas_inputs {
   import main.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/main"
   import accumulate.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/accumulate"
   import host_metadata.* from "./host_metadata"
+  import refine_inputs.* from "./refine_inputs"
   var replayGasLimits: List[int]
   // -2 fails before the first checkpoint; -1 completes; 0..length-1 interrupts that report; length fails after the final checkpoint.
   var replayInterrupt: int
@@ -14,7 +15,8 @@ module gas_inputs {
   var replayPanic: bool
   pure val UnlimitedGas = 18446744073709551615
   pure val ExhaustPoolGas = 6000000000
-  action noGas = all { noHostBudget, replayGasLimits' = List(), replayInterrupt' = -1, replayPanic' = false }
+  action noGas = noGasWithRefine(None)
+  action noGasWithRefine(inputs: Option[List[RefineInput]]): bool = all { replayRefineInputs' = inputs, noHostBudget, replayGasLimits' = List(), replayInterrupt' = -1, replayPanic' = false }
 
   // §5.1 implementation budget, including gas forwarded by deferred transfers.
   // Keep independent of Rust report_cost so boundary replays detect drift.

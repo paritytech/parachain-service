@@ -33,10 +33,15 @@ fn generator(seed: u64, stride: u64, count: u64, steps: u64) -> Command {
 fn generator_profile(profile: &str, seed: u64, stride: u64, count: u64, steps: u64) -> Command {
 	let input = match profile {
 		"fuzz" => "service/bin/tests/fixtures/quint/fuzz.qnt",
+		"refine_gas" => "service/bin/tests/fixtures/quint/refine_gas_pipeline.qnt",
+		"authorization" => "service/bin/tests/fixtures/quint/authorization_fuzz.qnt",
 		"designation" => "service/bin/tests/fixtures/quint/designation_fuzz.qnt",
 		"self_payment" => "service/bin/tests/fixtures/quint/self_payment_fuzz.qnt",
 		"outgoing_boundary" => "service/bin/tests/fixtures/quint/outgoing_boundary_fuzz.qnt",
 		"storage" => "service/bin/tests/fixtures/quint/storage_fuzz.qnt",
+		"kv_charge" => "service/bin/tests/fixtures/quint/kv_charge_fuzz.qnt",
+		"storage_recovery" => "service/bin/tests/fixtures/quint/storage_recovery.qnt",
+		"code_recovery" => "service/bin/tests/fixtures/quint/code_recovery.qnt",
 		"code_storage" => "service/bin/tests/fixtures/quint/code_storage_fuzz.qnt",
 		_ => panic!("unknown QUINT_FUZZ_PROFILE: {profile}"),
 	};
@@ -49,7 +54,13 @@ fn generator_profile(profile: &str, seed: u64, stride: u64, count: u64, steps: u
 		&count.to_string(),
 		&steps.to_string(),
 	]);
-	if profile == "outgoing_boundary" {
+	if profile == "refine_gas" {
+		command.arg("gas_pipeline");
+	} else if profile == "kv_charge" {
+		command.arg("kv_charge_fuzz");
+	} else if profile == "authorization" {
+		command.arg("authorization_fuzz");
+	} else if profile == "outgoing_boundary" {
 		command.arg("outgoing_boundary_fuzz");
 	} else if profile == "self_payment" {
 		command.arg("self_payment_fuzz");
@@ -251,7 +262,7 @@ fn replay_input_works() {
 }
 
 #[test]
-#[ignore = "checks pinned internal streaming API against the Quint CLI; requires /dev/stdout"]
+#[ignore = "checks pinned internal streaming API against the Quint CLI"]
 fn stream_matches_cli_works() {
 	let stream = generator(1, 3, 2, 10).output().expect("stream generator");
 	assert!(stream.status.success());
@@ -261,6 +272,16 @@ fn stream_matches_cli_works() {
 	for (line, seed) in lines.into_iter().zip(["1", "4"]) {
 		let stream: Value = serde_json::from_str(line).unwrap();
 		assert_eq!(stream["seed"], seed);
+		// Quint writes ITF synchronously. A large trace sent to the captured
+		// stdout pipe can fail with EAGAIN, so give the CLI a regular file.
+		let output = env::temp_dir().join(format!(
+			"quint-cli-{}-{seed}-{}.itf.json",
+			std::process::id(),
+			std::time::SystemTime::now()
+				.duration_since(std::time::UNIX_EPOCH)
+				.unwrap()
+				.as_nanos()
+		));
 		let cli = Command::new("quint")
 			.current_dir(root())
 			.args([
@@ -279,14 +300,17 @@ fn stream_matches_cli_works() {
 				"--max-steps",
 				"10",
 				"--out-itf",
-				"/dev/stdout",
-				"--verbosity",
-				"0",
 			])
+			.arg(&output)
+			.args(["--verbosity", "0"])
 			.output()
 			.expect("Quint CLI");
+		let trace = fs::read(&output);
+		if output.exists() {
+			fs::remove_file(&output).expect("remove CLI trace");
+		}
 		assert!(cli.status.success(), "{}", String::from_utf8_lossy(&cli.stderr));
-		let mut cli: Value = serde_json::from_slice(&cli.stdout).unwrap();
+		let mut cli: Value = serde_json::from_slice(&trace.expect("read CLI trace")).unwrap();
 		for state in cli["states"].as_array_mut().unwrap() {
 			state.as_object_mut().unwrap().remove("#meta");
 		}
@@ -309,6 +333,12 @@ fn validator_keys_generated_works() {
 		}),
 		"fuzz seed must exercise a successful validator-key designation"
 	);
+	assert_eq!(trace["replayHostCallsRequired"], true);
+	assert!(trace["states"].as_array().unwrap().iter().any(|state| state["replayHostCalls"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.any(|call| call["tag"] == "DesignateCall")));
 	replay::document_trace(trace).expect("generated validator keys should match Quint");
 }
 
@@ -344,6 +374,12 @@ fn service_upgrade_generated_works() {
 			.any(|state| state["svc"]["serviceCodeHash"]["hashBytes"]["#bigint"] != "0"),
 		"fuzz seed must install new service code"
 	);
+	assert_eq!(trace["replayHostCallsRequired"], true);
+	assert!(trace["states"].as_array().unwrap().iter().any(|state| state["replayHostCalls"]
+		.as_array()
+		.unwrap()
+		.iter()
+		.any(|call| call["tag"] == "UpgradeCall")));
 	replay::document_trace(trace).expect("generated service upgrades should match Quint");
 }
 
@@ -910,4 +946,401 @@ fn designation_privilege_generated_works() {
 		rejected && staged && resumed,
 		"missing privilege rejection, partial staging, or restoration"
 	);
+}
+
+#[test]
+#[ignore = "executes generated Refine scripts; requires Node and Quint 0.32.0"]
+fn refine_generated_works() {
+	// Focused boundary regressions remain test-only; the server uses the
+	// default campaign, which now executes refine before accumulate.
+	let mut byte_faults = std::collections::BTreeSet::new();
+	let mut gas_modes = std::collections::BTreeSet::new();
+	let mut outcomes = std::collections::BTreeSet::new();
+	for (source, module) in
+		[("refine_fuzz", "fuzz"), ("refine_bytes", "byte_fuzz"), ("refine_gas", "gas_fuzz")]
+	{
+		let stream = Command::new("node")
+			.current_dir(root())
+			.args([
+				"scripts/quint-replay-stream.cjs",
+				&format!("service/bin/tests/fixtures/quint/{source}.qnt"),
+				"1",
+				"1",
+				"10",
+				"20",
+				module,
+			])
+			.output()
+			.expect("refine generator");
+		assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
+		for line in String::from_utf8(stream.stdout).unwrap().lines() {
+			let envelope: Value = serde_json::from_str(line).unwrap();
+			for state in envelope["trace"]["states"].as_array().unwrap().iter().skip(1) {
+				gas_modes.insert((
+					state["replayRefine"]["value"]["gasMode"].as_str().unwrap().to_owned(),
+					state["replayRefine"]["value"]["available"].as_bool().unwrap(),
+				));
+				byte_faults.insert(
+					state["replayRefine"]["value"]["byteFault"].as_str().unwrap().to_owned(),
+				);
+				let result = &state["replayRefineExpected"][0];
+				let tag = if result["tag"] == "WorkErr" {
+					"WorkErr"
+				} else if result["value"]["tag"] == "Ok" {
+					"Ok"
+				} else {
+					result["value"]["value"]["error"]["tag"].as_str().unwrap()
+				};
+				outcomes.insert(tag.to_owned());
+			}
+			replay::document_trace(&envelope["trace"])
+				.unwrap_or_else(|error| panic!("seed {}: {error}", envelope["seed"]));
+		}
+	}
+	for mode in ["zero", "funded", "child"] {
+		for available in [false, true] {
+			assert!(
+				gas_modes.contains(&(mode.to_owned(), available)),
+				"missing gas mode {mode}/{available}"
+			);
+		}
+	}
+	for fault in [
+		"valid",
+		"candidate_empty",
+		"candidate_truncated",
+		"candidate_trailing",
+		"pvf_empty",
+		"pvf_magic",
+		"pvf_truncated",
+		"pvf_memory",
+		"pvf_entry",
+	] {
+		assert!(byte_faults.contains(fault), "missing byte fault {fault}");
+	}
+	for expected in [
+		"Ok",
+		"WorkErr",
+		"ValidationCodeLookupFailed",
+		"InvalidHeadDeclaration",
+		"Opaque",
+		"UpwardMessagesTooLarge",
+		"TooManyUpwardMessages",
+	] {
+		assert!(outcomes.contains(expected), "missing {expected}: {outcomes:?}");
+	}
+}
+
+#[test]
+#[ignore = "checks storage failures with gas recovery; requires Node and Quint 0.32.0"]
+fn storage_recovery_generated_works() {
+	let output = generator_profile("storage_recovery", 1, 1, 30, 50).output().unwrap();
+	assert!(output.status.success());
+	let mut phases = std::collections::BTreeSet::new();
+	let mut metadata_failure = false;
+	let mut head_failure = false;
+	let mut resumed = false;
+	let mut finalization = false;
+	let mut assignment_failures = std::collections::BTreeSet::new();
+	let mut inline_failures = std::collections::BTreeSet::new();
+	let mut due_flush = false;
+	for line in String::from_utf8(output.stdout).unwrap().lines() {
+		let envelope: Value = serde_json::from_str(line).unwrap();
+		let mut interrupted = false;
+		for state in envelope["trace"]["states"].as_array().unwrap().iter().skip(1) {
+			let phase = state["replayInterrupt"]["#bigint"].as_str().unwrap();
+			phases.insert(phase.to_owned());
+			finalization |= phase == "1" &&
+				state["replayStorageBudget"] == serde_json::json!({"#bigint":"0"}) &&
+				!state["replayDesignate"].as_array().unwrap().is_empty();
+			resumed |= interrupted && phase == "-1";
+			interrupted |= phase != "-1";
+			if phase == "1" {
+				let failure = state["replayAssignmentFailure"].as_str().unwrap();
+				if !failure.is_empty() {
+					assignment_failures.insert(failure.to_owned());
+					if !state["lastStepAssigns"].as_array().unwrap().is_empty() {
+						inline_failures.insert(failure.to_owned());
+					}
+				}
+			}
+			due_flush |= phase == "-1" &&
+				!state["lastStepAssigns"].as_array().unwrap().is_empty() &&
+				state["lastStepWorkResults"].as_array().unwrap().iter().all(|report| {
+					report
+						.pointer("/result/value/value/upwardMessages")
+						.and_then(Value::as_array)
+						.is_some_and(Vec::is_empty)
+				});
+			if phase != "-1" {
+				metadata_failure |= !state["replayFailedMessages"].as_array().unwrap().is_empty();
+				head_failure |= !state["replayFailedHeads"].as_array().unwrap().is_empty();
+			}
+		}
+		replay::document_trace(&envelope["trace"])
+			.unwrap_or_else(|e| panic!("seed {}: {e}", envelope["seed"]));
+	}
+	assert_eq!(
+		assignment_failures,
+		["payload", "index"].map(str::to_owned).into(),
+		"missing checkpointed assignment rejection"
+	);
+	assert_eq!(
+		inline_failures,
+		["payload", "index"].map(str::to_owned).into(),
+		"missing checkpointed inline rejection with retained JAM call"
+	);
+	assert!(due_flush, "missing funded due flush after cached assignment");
+	assert!(finalization, "missing zero-headroom checkpointed finalization");
+	assert_eq!(phases, ["-2", "-1", "0", "1", "2"].map(str::to_owned).into());
+	assert!(metadata_failure && head_failure && resumed,
+		"missing mixed failure/retry coverage: metadata={metadata_failure}, head={head_failure}, resumed={resumed}");
+}
+
+#[test]
+#[ignore = "checks code storage failures with gas recovery; requires Node and Quint 0.32.0"]
+fn code_recovery_generated_works() {
+	let output = generator_profile("code_recovery", 1, 1, 30, 50).output().unwrap();
+	assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+	let mut phases = std::collections::BTreeSet::new();
+	let mut retained_failures = std::collections::BTreeSet::new();
+	let mut resumed = false;
+	for line in String::from_utf8(output.stdout).unwrap().lines() {
+		let envelope: Value = serde_json::from_str(line).unwrap();
+		let mut interrupted = false;
+		for state in envelope["trace"]["states"].as_array().unwrap().iter().skip(1) {
+			let phase = state["replayInterrupt"]["#bigint"].as_str().unwrap();
+			phases.insert(phase.to_owned());
+			// A provision step is not an Accumulate retry.
+			resumed |= interrupted &&
+				phase == "-1" &&
+				state["replayHostBudget"]["#bigint"] != "-1" &&
+				state["replayCodeFailure"] == "";
+			interrupted |= phase != "-1";
+			if phase == "1" {
+				retained_failures.insert(state["replayCodeFailure"].as_str().unwrap().to_owned());
+			}
+		}
+		if let Err(error) = replay::document_trace(&envelope["trace"]) {
+			let path = preserve(&envelope, &error).unwrap();
+			panic!("{error}; {}", path.display());
+		}
+	}
+	assert_eq!(phases, ["-2", "-1", "0", "1"].map(str::to_owned).into());
+	for site in ["registry", "forced-metadata", "announcement"] {
+		assert!(retained_failures.contains(site), "missing checkpointed {site} rejection");
+	}
+	assert!(resumed, "missing successful invocation after recovery");
+}
+
+#[test]
+#[ignore = "executes real authorization, Refine and Accumulate; requires Node and Quint 0.32.0"]
+fn authorization_generated_works() {
+	let stream = generator_profile("authorization", 1, 1, 10, 20)
+		.output()
+		.expect("authorization generator");
+	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
+	let mut faults = std::collections::BTreeSet::new();
+	let mut outcomes = std::collections::BTreeSet::new();
+	let mut rejected_only = false;
+	let mut mixed = false;
+	for line in String::from_utf8(stream.stdout).unwrap().lines() {
+		let envelope: Value = serde_json::from_str(line).unwrap();
+		assert_eq!(envelope["trace"]["replayAuthorizationRequired"], true);
+		assert_eq!(envelope["trace"]["replayRefineRequired"], true);
+		for state in envelope["trace"]["states"].as_array().unwrap().iter().skip(1) {
+			let inputs = state["replayAuthorizationInputs"].as_array().unwrap();
+			let admitted = inputs.iter().filter(|i| i["accepted"] == true).count();
+			rejected_only |= admitted == 0;
+			mixed |= admitted > 0 && admitted < inputs.len();
+			for input in inputs {
+				faults.insert(input["fault"].as_str().unwrap().to_owned());
+			}
+			for work in state["lastStepWorkResults"].as_array().unwrap() {
+				let result = &work["result"];
+				outcomes.insert(
+					if result["tag"] == "WorkErr" {
+						"WorkErr"
+					} else {
+						result["value"]["tag"].as_str().unwrap()
+					}
+					.to_owned(),
+				);
+			}
+		}
+		replay::document_trace(&envelope["trace"])
+			.unwrap_or_else(|error| panic!("seed {}: {error}", envelope["seed"]));
+	}
+	for fault in [
+		"valid",
+		"signature",
+		"proof",
+		"signed_context",
+		"wrong_service",
+		"para_count",
+		"zero_collators",
+		"zero_duration",
+		"config_empty",
+		"config_truncated",
+		"config_trailing",
+		"token_empty",
+		"token_truncated",
+		"token_trailing",
+		"trace_empty",
+		"trace_truncated",
+		"trace_trailing",
+	] {
+		assert!(faults.contains(fault), "missing authorization fault {fault}");
+	}
+	for outcome in ["Ok", "Err", "WorkErr"] {
+		assert!(outcomes.contains(outcome), "missing authorized outcome {outcome}");
+	}
+	assert!(rejected_only && mixed, "must cover rejected-only and mixed-admission invocations");
+}
+
+#[test]
+#[ignore = "checks generated KV charge boundaries; requires Node and Quint 0.32.0"]
+fn kv_charge_generated_works() {
+	let output = generator_profile("kv_charge", 1, 1, 100, 11).output().unwrap();
+	assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+	let mut cases = std::collections::BTreeSet::new();
+	for line in String::from_utf8(output.stdout).unwrap().lines() {
+		let mut envelope: Value = serde_json::from_str(line).unwrap();
+		let states = envelope["trace"]["states"].as_array().unwrap();
+		assert_eq!(states.len(), 12);
+		let integer = |state: &Value, field: &str| {
+			state[field]["#bigint"].as_str().unwrap().parse::<u64>().unwrap()
+		};
+		cases.insert((
+			integer(&states[0], "chargeWidth"),
+			integer(&states[0], "chargeOldLen"),
+			integer(&states[0], "chargeGrowth"),
+		));
+		let used = |frame: usize| {
+			let info = states[frame]["svc"]["parachains"]["#map"]
+				.as_array()
+				.unwrap()
+				.iter()
+				.find(|entry| entry[0]["value"]["#bigint"] == "2")
+				.unwrap();
+			integer(&info[1], "usedStateBalance")
+		};
+		let boundary = integer(&states[0], "chargeWidth");
+		let growth = integer(&states[0], "chargeGrowth") +
+			if integer(&states[0], "chargeOldLen") == 0 { 50 } else { 0 };
+		assert_eq!(used(3), boundary - 1, "reservation must reach the boundary");
+		assert_eq!(used(7), boundary - 1, "interrupted crossing must roll back");
+		assert_eq!(used(8), boundary - 1 + growth, "checkpoint must retain crossing");
+		assert_eq!(used(9), boundary - 1, "shrink/removal must refund crossing");
+		assert_eq!(used(10), boundary - 1 + growth, "retry must cross again");
+		assert_eq!(used(11), boundary - 1, "final refund must restore charge");
+		// The three underfunded writes reject; rollback, exact-fit retries,
+		// and zero-budget shrink/removal have no retained host rejection.
+		for frame in 4..=11 {
+			assert_eq!(
+				integer(&states[frame], "replayHostRejects"),
+				if frame <= 6 { 1 } else { 0 },
+				"seed {} frame {frame}",
+				envelope["seed"]
+			);
+		}
+		// Quint already selected the retained prefix. Sample gas within that
+		// checkpoint interval without deriving the expected state from Rust.
+		let seed: u64 = envelope["seed"].as_str().unwrap().parse().unwrap();
+		let sample = [0, 250000, 500000, 750000, 1000000][seed as usize % 5];
+		for state in envelope["trace"]["states"].as_array_mut().unwrap() {
+			if state["replayInterrupt"]["#bigint"] == "0" ||
+				state["replayInterrupt"]["#bigint"] == "1"
+			{
+				state["replayGasSample"] = serde_json::json!({"#bigint":sample.to_string()});
+			}
+		}
+		replay::document_trace(&envelope["trace"])
+			.unwrap_or_else(|error| panic!("seed {}: {error}", envelope["seed"]));
+	}
+	for width in [1u64 << 30, 1 << 32, 1 << 40] {
+		for old_len in [0, 1] {
+			for growth in [1, 2, 64] {
+				assert!(
+					cases.contains(&(width, old_len, growth)),
+					"missing boundary case {width}/{old_len}/{growth}"
+				);
+			}
+		}
+	}
+}
+
+#[test]
+#[ignore = "executes malformed Refine inputs through Accumulate; requires Node and Quint 0.32.0"]
+fn refine_bytes_pipeline_generated_works() {
+	let stream = Command::new("node")
+		.current_dir(root())
+		.args([
+			"scripts/quint-replay-stream.cjs",
+			"service/bin/tests/fixtures/quint/refine_bytes_pipeline.qnt",
+			"1",
+			"1",
+			"10",
+			"20",
+			"byte_pipeline",
+		])
+		.output()
+		.expect("byte pipeline generator");
+	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
+	let mut faults = std::collections::BTreeSet::new();
+	for line in String::from_utf8(stream.stdout).unwrap().lines() {
+		let mut envelope: Value = serde_json::from_str(line).unwrap();
+		envelope["trace"]["replayRefineRequired"] = Value::Bool(true);
+		for state in envelope["trace"]["states"].as_array().unwrap().iter().skip(1) {
+			faults.insert(
+				state["replayRefineInputs"]["value"][0]["byteFault"]
+					.as_str()
+					.unwrap()
+					.to_owned(),
+			);
+		}
+		replay::document_trace(&envelope["trace"])
+			.unwrap_or_else(|error| panic!("seed {}: {error}", envelope["seed"]));
+	}
+	for fault in [
+		"candidate_empty",
+		"candidate_truncated",
+		"candidate_trailing",
+		"pvf_empty",
+		"pvf_magic",
+		"pvf_truncated",
+		"pvf_memory",
+		"pvf_entry",
+	] {
+		assert!(faults.contains(fault), "missing pipeline fault {fault}");
+	}
+}
+
+#[test]
+#[ignore = "checks Refine gas cutoffs through Accumulate; requires Node and Quint 0.32.0"]
+fn refine_gas_pipeline_generated_works() {
+	let output = generator_profile("refine_gas", 1, 1, 10, 15).output().unwrap();
+	assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+	let mut cases = std::collections::BTreeSet::new();
+	for line in String::from_utf8(output.stdout).unwrap().lines() {
+		let envelope: Value = serde_json::from_str(line).unwrap();
+		assert_eq!(envelope["trace"]["replayRefineRequired"], true);
+		for state in envelope["trace"]["states"].as_array().unwrap().iter().skip(1) {
+			let input = &state["replayRefineInputs"]["value"][0];
+			cases.insert((
+				input["gasMode"].as_str().unwrap().to_owned(),
+				input["gasSample"]["#bigint"].as_str().unwrap().to_owned(),
+			));
+		}
+		replay::document_trace(&envelope["trace"])
+			.unwrap_or_else(|error| panic!("seed {}: {error}", envelope["seed"]));
+	}
+	for mode in ["zero", "child", "cutoff"] {
+		for sample in ["0", "250000", "500000", "750000", "1000000"] {
+			assert!(
+				cases.contains(&(mode.to_owned(), sample.to_owned())),
+				"missing {mode}/{sample}"
+			);
+		}
+	}
 }

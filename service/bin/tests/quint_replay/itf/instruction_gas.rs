@@ -19,10 +19,15 @@ thread_local! {
 struct Observer;
 impl log::Log for Observer {
 	fn enabled(&self, metadata: &log::Metadata) -> bool {
-		metadata.target() == "service" && EVENTS.with(|events| events.borrow().is_some())
+		(metadata.target() == "service" && EVENTS.with(|events| events.borrow().is_some())) ||
+			(metadata.target() == "replay_host" && super::host_calls::enabled())
 	}
 	fn log(&self, record: &log::Record) {
 		if !self.enabled(record.metadata()) {
+			return;
+		}
+		if record.target() == "replay_host" {
+			super::host_calls::record(&record.args().to_string());
 			return;
 		}
 		EVENTS.with(|events| {
@@ -36,7 +41,7 @@ impl log::Log for Observer {
 	fn flush(&self) {}
 }
 
-fn observe() -> Result<(), String> {
+pub(super) fn observe() -> Result<(), String> {
 	static INSTALLED: OnceLock<Result<(), String>> = OnceLock::new();
 	INSTALLED
 		.get_or_init(|| {
@@ -82,6 +87,87 @@ fn probe(
 	}
 	let events = EVENTS.with(|events| events.borrow_mut().take().unwrap());
 	Ok((events, used, result.is_ok()))
+}
+
+/// A funded flush cannot be sampled by lowering entry gas: that changes the
+/// flush budget itself. Inject exhaustion at a host boundary instead, preserving
+/// the unmodified guest and its gas gates. Only call order comes from the probe.
+pub fn due_flush_enabled(frame: &Value) -> bool {
+	frame
+		.get("replayDueFlushBoundary")
+		.is_some_and(|value| value.as_str() != Some(""))
+}
+
+pub fn due_flush_cutoff(
+	engine: &Engine,
+	context: &AccumulateCallContext<'_>,
+	frame: &Value,
+) -> Result<Option<(u64, usize, bool)>, String> {
+	let Some(boundary) = frame.get("replayDueFlushBoundary") else { return Ok(None) };
+	if boundary.as_str() == Some("") {
+		return Ok(None);
+	}
+	if enabled(frame) || frame.get("replayPanic") == Some(&Value::Bool(true)) {
+		return Err("due-flush injection cannot be combined with another gas or panic fault".into());
+	}
+	let parts: Vec<_> = boundary
+		.as_str()
+		.ok_or("due-flush boundary must be a string")?
+		.split(':')
+		.collect();
+	let [phase, side, call, occurrence] = parts.as_slice() else {
+		return Err("expected initial|final:before|after:assign|write|read:occurrence".into());
+	};
+	if !matches!(*side, "before" | "after") || !matches!(*call, "assign" | "write" | "read") {
+		return Err("unsupported due-flush boundary".into());
+	}
+	let occurrence = occurrence.parse::<usize>().map_err(|_| "invalid due-flush occurrence")?;
+	let results = field(frame, "lastStepWorkResults")?.as_array().ok_or("missing work results")?;
+	let initial = match *phase {
+		"initial" if gas::before_checkpoint(frame)? => true,
+		"final" if gas::interrupted(frame)? == Some(results.len()) => false,
+		_ => return Err("due-flush phase disagrees with checkpoint expectation".into()),
+	};
+	if results.iter().zip(gas::limits(frame, results.len())?).any(|(r, l)| {
+		variant(&r["result"]).map(|(tag, _)| tag != "WorkOk").unwrap_or(true) || l != u64::MAX
+	}) {
+		return Err("due-flush injection requires admitted WorkOk reports".into());
+	}
+	let declared = context.items.iter().fold(0u64, |sum, item| {
+		sum.saturating_add(match item {
+			AccumulateItem::WorkItem(record) => record.gas_limit,
+			AccumulateItem::Transfer(transfer) => transfer.gas_limit,
+		})
+	});
+	// For the final flush, keep the initial allowance below one assignment.
+	let limit =
+		if initial { context.gas } else { context.gas.min(declared.saturating_add(5_999_999)) };
+	let (events, _, completed) = probe(engine, context, limit)?;
+	if !completed {
+		return Err("due-flush calibration did not complete".into());
+	}
+	let checkpoints: Vec<_> = events
+		.iter()
+		.enumerate()
+		.filter_map(|(i, e)| (e == "checkpoint").then_some(i))
+		.collect();
+	if checkpoints.len() != results.len() + 1 {
+		return Err("due-flush checkpoint count differs".into());
+	}
+	let (start, end) =
+		if initial { (0, checkpoints[0]) } else { (checkpoints[results.len()] + 1, events.len()) };
+	let assignments: Vec<_> = (start..end).filter(|&i| events[i] == "assign").collect();
+	if assignments.is_empty() {
+		return Err("selected phase has no due assignment".into());
+	}
+	if !initial && events[..checkpoints[0]].iter().any(|e| e == "assign") {
+		return Err("final-flush calibration unexpectedly flushed initial assignments".into());
+	}
+	let index = (start..end)
+		.filter(|&i| events[i] == *call)
+		.nth(occurrence)
+		.ok_or("due-flush boundary call absent from selected phase")?;
+	Ok(Some((limit, index, *side == "after")))
 }
 
 // Minimum gas which reaches the selected host-call attempt. The call itself
@@ -132,6 +218,10 @@ pub fn limit(
 	let after_checkpoint = gas::interrupted(frame)? == Some(results.len());
 	if !before_checkpoint &&
 		!after_checkpoint &&
+		!((frame.get("replayStorageBudget").is_some() ||
+			(frame.get("replayCodeFailure").is_some() &&
+				frame.get("replayHostTrap") == Some(&Value::Bool(false)))) &&
+			gas::interrupted(frame)?.is_some()) &&
 		absolute.is_none() &&
 		sample.is_none() &&
 		boundary.is_none()
@@ -212,15 +302,32 @@ pub fn limit(
 		let name = boundary.as_str().ok_or("gas boundary must be a string")?;
 		let (side, call) =
 			name.split_once(':').ok_or("gas boundary must be before:call or after:call")?;
-		if !matches!(call, "write" | "new" | "transfer" | "assign" | "read") {
+		if !matches!(
+			call.split(':').next().unwrap(),
+			"write" | "new" | "transfer" | "assign" | "read"
+		) {
 			return Err("unsupported gas boundary call".into());
 		}
-		let index = (start..end).find(|&i| events[i] == call).ok_or_else(|| {
-			format!("gas boundary call absent from selected phase: {:?}", &events[start..end])
-		})?;
+		// Optional zero-based occurrence targets every write in a multi-write
+		// operation, rather than repeatedly stopping at the head-data write.
+		let (call, occurrence) = match call.split_once(':') {
+			Some((call, occurrence)) => (
+				call,
+				occurrence
+					.parse::<usize>()
+					.map_err(|_| "gas boundary occurrence must be an unsigned integer")?,
+			),
+			None => (call, 0),
+		};
+		let index =
+			(start..end).filter(|&i| events[i] == call).nth(occurrence).ok_or_else(|| {
+				format!("gas boundary call absent from selected phase: {:?}", &events[start..end])
+			})?;
 		match side {
 			"before" => Some((index, false)),
-			"after" if index + 1 < end => Some((index + 1, true)),
+			// At a following checkpoint, reaching the attempt pays none of
+			// its fixed charge, so its snapshot has not replaced our prefix.
+			"after" if index + 1 <= end && index + 1 < events.len() => Some((index + 1, true)),
 			_ => return Err("unsupported gas boundary side".into()),
 		}
 	} else {
@@ -262,7 +369,7 @@ pub fn limit(
 	if completed ||
 		(!before_checkpoint && !after_checkpoint && actual.len() <= start) ||
 		final_start.is_some_and(|lo| limit < lo) ||
-		actual.len() > end ||
+		actual.len() > end + usize::from(index == Some((end, true))) ||
 		!events.starts_with(&actual)
 	{
 		return Err(format!(

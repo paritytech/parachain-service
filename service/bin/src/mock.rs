@@ -12,8 +12,8 @@ use jam_types::{
 	ExtrinsicHash, ExtrinsicSpec, FixedVec, ProtocolParameters, RefineContext, ServiceId, WorkItem,
 	WorkPackage, WorkPayload,
 };
-use parachain_authorizer::{aura, aura::build_collator_proofs, ParaId};
-use parachain_service_core::authorization::DevelopmentAuthTrace;
+use parachain_authorizer::{aura, aura::build_collator_proof};
+use parachain_service_core::types::ParaId;
 use primitive_types::H256;
 
 const SERVICE_ID: ServiceId = 0;
@@ -50,13 +50,13 @@ pub fn good_config(para_ids: usize) -> AuthConfig {
 pub fn good_config_for(para_ids: Vec<ParaId>) -> AuthConfig {
 	let signing_key = SigningKey::from_bytes(&COLLATOR_SEED);
 	let key_bytes: [u8; 32] = signing_key.verifying_key().to_bytes();
-	let (root, _) = build_collator_proofs(&[key_bytes]).expect("valid test collator set");
+	let (root, _) = build_collator_proof(&[key_bytes], 0).expect("valid test collator set");
 	let config = aura::AuthConfig {
-		para_ids,
+		para_ids: para_ids.into_iter().map(|id| u32::from(id).into()).collect(),
 		parachain_service: SERVICE_ID,
 		collator_set_root: root,
-		collator_set_size: 1,
-		slot_duration: 1,
+		collator_set_size: core::num::NonZero::new(1).expect("nonzero configuration"),
+		slot_duration: core::num::NonZero::new(1).expect("nonzero configuration"),
 	};
 	AuthConfig(config.encode())
 }
@@ -73,7 +73,7 @@ pub fn good_token() -> AuthToken {
 }
 
 pub fn good_trace() -> AuthTrace {
-	let trace = DevelopmentAuthTrace { aura: aura::AuthTrace { author_key: [0; 32] }, sudo: false };
+	let trace = aura::AuthTrace { author_key: [0; 32] };
 	AuthTrace(trace.encode())
 }
 
@@ -101,15 +101,14 @@ pub fn make_auth_with_seed(
 	let signing_key = SigningKey::from_bytes(&seed);
 	let key_bytes: [u8; 32] = signing_key.verifying_key().to_bytes();
 
-	let (root, proofs) = build_collator_proofs(&[key_bytes]).expect("valid test collator set");
-	let proof = proofs[0].clone();
+	let (root, proof) = build_collator_proof(&[key_bytes], 0).expect("valid test collator set");
 
 	let config = aura::AuthConfig {
-		para_ids,
+		para_ids: para_ids.into_iter().map(|id| u32::from(id).into()).collect(),
 		parachain_service: SERVICE_ID,
 		collator_set_root: root,
-		collator_set_size: 1,
-		slot_duration: 1,
+		collator_set_size: core::num::NonZero::new(1).expect("nonzero configuration"),
+		slot_duration: core::num::NonZero::new(1).expect("nonzero configuration"),
 	};
 	let config_enc = AuthConfig(config.encode());
 
@@ -121,8 +120,7 @@ pub fn make_auth_with_seed(
 	let sig_bytes: [u8; 64] = signing_key.sign(wp_hash.as_bytes()).to_bytes();
 
 	let token = aura::AuthToken { proof, key: key_bytes, signature: sig_bytes };
-	let trace =
-		DevelopmentAuthTrace { aura: aura::AuthTrace { author_key: key_bytes }, sudo: false };
+	let trace = aura::AuthTrace { author_key: key_bytes };
 
 	(config_enc, AuthToken(token.encode()), AuthTrace(trace.encode()))
 }
@@ -140,11 +138,11 @@ pub fn make_single_collator_args_with_key(
 ) -> (Engine, WorkPackage, Storage) {
 	let root = collator_leaf_hash(&key);
 	let config = aura::AuthConfig {
-		para_ids,
+		para_ids: para_ids.into_iter().map(|id| u32::from(id).into()).collect(),
 		parachain_service: SERVICE_ID,
 		collator_set_root: root,
-		collator_set_size: 1,
-		slot_duration: 1,
+		collator_set_size: core::num::NonZero::new(1).expect("nonzero configuration"),
+		slot_duration: core::num::NonZero::new(1).expect("nonzero configuration"),
 	};
 	let token = aura::AuthToken { proof: vec![], key, signature };
 	is_authorized_args(
@@ -174,16 +172,17 @@ pub fn make_wrong_collator_index_args(
 		.iter()
 		.map(|s| SigningKey::from_bytes(s).verifying_key().to_bytes())
 		.collect();
-	let (root, proofs) = build_collator_proofs(&keys).expect("valid test collator set");
+	let (root, proof) =
+		build_collator_proof(&keys, proof_for_collator as u32).expect("valid test collator set");
 	let key = keys[proof_for_collator];
-	let proof = proofs[proof_for_collator].clone();
 
 	let config = aura::AuthConfig {
-		para_ids,
+		para_ids: para_ids.into_iter().map(|id| u32::from(id).into()).collect(),
 		parachain_service: SERVICE_ID,
 		collator_set_root: root,
-		collator_set_size: all_seeds.len() as u32,
-		slot_duration: 1,
+		collator_set_size: core::num::NonZero::new(all_seeds.len() as u32)
+			.expect("nonzero configuration"),
+		slot_duration: core::num::NonZero::new(1).expect("nonzero configuration"),
 	};
 	let token = aura::AuthToken { proof, key, signature: [0u8; 64] };
 	is_authorized_args(

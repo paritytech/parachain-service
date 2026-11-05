@@ -27,6 +27,8 @@ module fuzz {
   import host_invocation.* from "./host_invocation"
   import host_metadata.* from "./host_metadata"
 
+  import refine_inputs.* from "./refine_inputs"
+
   action replayInit = all { noGas, outgoingInit, noTransfers, noDesignation, replayMinAccGas' = 100 }
 
   pure def activeCodeCandidate(s: ParachainServiceState, para: ParaId): ParachainCandidate =
@@ -36,7 +38,14 @@ module fuzz {
     s: ParachainServiceState, para: ParaId, curHead: HeadData,
     candidate: ParachainCandidate, mode: int, anchor: Timeslot, auth: int,
     msgs: List[UpwardMessage]
-  ): WorkResult = {
+  ): WorkResult =
+    replayCandidate(s, para, curHead, candidate, mode, anchor, auth, msgs).work
+
+  pure def replayCandidate(
+    s: ParachainServiceState, para: ParaId, curHead: HeadData,
+    candidate: ParachainCandidate, mode: int, anchor: Timeslot, auth: int,
+    msgs: List[UpwardMessage]
+  ): RefinedWork = {
     val announced = match s.paraInfo(para).announcedUpgrade {
       | None => activeCodeCandidate(s, para)
       | Some(ref) => { validationCode: ref }
@@ -52,7 +61,10 @@ module fuzz {
     val codeEnd = if (mode == 2) List(ReportError(42)) else if (mode == 4) List(Panic) else List()
     val calls = parentCalls.concat(headCalls).concat(sends(msgs)).concat(codeEnd)
     val result = if (mode == 1) WorkErr else refine(s, pkg, false, calls, anchor)[0]
-    { result: result, authTrace: auth }
+    { work: { result: result, authTrace: auth }, input: {
+      pkg: pkg, calls: calls, anchor: anchor, missingPrefix: false,
+      available: codeAvailable(s, pkg.items[0].validationCode), skip: mode == 1, byteFault: "valid", gasMode: "normal", gasSample: 0
+    } }
   }
 
   // A small shared preimage pool makes repeats and cross-para references common.
@@ -170,9 +182,9 @@ module fuzz {
     val head3 = if (chain3 and para3 == para2) head2 + 1
       else if (chain3 and para3 == para1) head1 + 1
       else svc.paraInfo(para3).headData
-    val wp1 = replayWork(svc, para1, head1, candidate1, mode1, anchor1, auth1, msgs1)
-    val wp2 = replayWork(svc, para2, head2, candidate2, mode2, anchor2, auth2, msgs2)
-    val wp3 = replayWork(svc, para3, head3, candidate3, mode3, anchor3, auth3, msgs3)
+    val wp1 = replayCandidate(svc, para1, head1, candidate1, mode1, anchor1, auth1, msgs1)
+    val wp2 = replayCandidate(svc, para2, head2, candidate2, mode2, anchor2, auth2, msgs2)
+    val wp3 = replayCandidate(svc, para3, head3, candidate3, mode3, anchor3, auth3, msgs3)
     val packages = List(wp1, wp2, wp3).slice(0, numPkgs)
     nondet sender = oneOf(Set(MkServiceId(0), MkServiceId(3), MkServiceId(7)))
     nondet amount = oneOf(Set(0, IncomingTransferEntryFootprint - 1,
@@ -184,12 +196,31 @@ module fuzz {
     nondet gas1 = oneOf(0.to(4))
     nondet gas2 = oneOf(0.to(4))
     nondet gas3 = oneOf(0.to(4))
-    val limits = List(budget(wp1, gas1), budget(wp2, gas2), budget(wp3, gas3)).slice(0, numPkgs)
-    budgetedInvocation(packages, slot, arrivals, limits, -1)
+    val limits = List(budget(wp1.work, gas1), budget(wp2.work, gas2), budget(wp3.work, gas3)).slice(0, numPkgs)
+    refinedBudgeted(packages, slot, arrivals, limits, -1)
   }
 
   action replayBlock(packages: List[WorkResult], slot: Timeslot): bool =
     replayInvocation(packages, slot, List())
+
+  action refinedBlock(packages: List[RefinedWork], slot: Timeslot): bool =
+    refinedBudgeted(packages, slot, List(), packages.foldl(List(), (acc, _) => acc.append(UnlimitedGas)), -1)
+
+  action refinedBudgeted(packages: List[RefinedWork], slot: Timeslot,
+    incoming: List[IncomingTransfer], limits: List[int], interrupt: int): bool =
+    refinedInterrupted(packages, slot, incoming, limits, interrupt, false)
+
+  action refinedInterrupted(packages: List[RefinedWork], slot: Timeslot,
+    incoming: List[IncomingTransfer], limits: List[int], interrupt: int, panic: bool): bool =
+    invocationWithRefine(workResults(packages), slot, incoming, limits, interrupt, panic, refineInputs(packages))
+
+  action refinedPreCheckpoint(packages: List[RefinedWork], slot: Timeslot,
+    incoming: List[IncomingTransfer]): bool =
+    preCheckpointWithRefine(workResults(packages), slot, incoming, refineInputs(packages))
+
+  action refinedHost(packages: List[RefinedWork], slot: int, incoming: List[IncomingTransfer],
+    limits: List[int], allowance: int, interrupt: int): bool =
+    hostWithRefine(workResults(packages), slot, incoming, limits, allowance, interrupt, refineInputs(packages))
 
   action incoming = {
     nondet sender = oneOf(Set(MkServiceId(0), MkServiceId(3), MkServiceId(7)))
@@ -211,9 +242,9 @@ module fuzz {
     nondet repeated = oneOf(Set(false, true))
     nondet mode = oneOf(Set(0, 7))
     val msgs = if (repeated) List(msg, msg) else List(msg)
-    val wr = replayWork(svc, caller, svc.paraInfo(caller).headData,
+    val wr = replayCandidate(svc, caller, svc.paraInfo(caller).headData,
       activeCodeCandidate(svc, caller), mode, now, 0, msgs)
-    replayBlock(List(wr), now + 1)
+    refinedBlock(List(wr), now + 1)
   }
 
   action outgoingBlock = {
@@ -221,9 +252,9 @@ module fuzz {
     nondet first = oneOf(outgoingMessages)
     nondet second = oneOf(outgoingMessages)
     nondet mode = oneOf(Set(0, 7))
-    val wr = replayWork(svc, caller, svc.paraInfo(caller).headData,
+    val wr = replayCandidate(svc, caller, svc.paraInfo(caller).headData,
       activeCodeCandidate(svc, caller), mode, now, 0, List(first, second))
-    replayBlock(List(wr), now + 1)
+    refinedBlock(List(wr), now + 1)
   }
 
   // Keep service creation/ejection frequent in the default campaign. Reports
@@ -235,10 +266,10 @@ module fuzz {
     nondet mode = oneOf(Set(0, 7))
     nondet gasMode = oneOf(Set(1, 2, 4))
     nondet count = oneOf(Set(0, 1, 3))
-    val wr = replayWork(svc, caller, svc.paraInfo(caller).headData,
+    val wr = replayCandidate(svc, caller, svc.paraInfo(caller).headData,
       activeCodeCandidate(svc, caller), mode, now, 0, List(first, second))
-    budgetedInvocation(List(wr), now + 1,
-      range(0, count).foldl(List(), (list, i) => list.append({ source: MkServiceId(7), amount: 1000, toSupervisorBalance: false, memo: i })), List(budget(wr, gasMode)), -1)
+    refinedBudgeted(List(wr), now + 1,
+      range(0, count).foldl(List(), (list, i) => list.append({ source: MkServiceId(7), amount: 1000, toSupervisorBalance: false, memo: i })), List(budget(wr.work, gasMode)), -1)
   }
 
   // Advance preparation as well as attempts, so success stays reachable even
@@ -253,9 +284,9 @@ module fuzz {
       Solicit({ target: Parachain(AssetHubParaId), hash: hash, len: ServiceCodeLen }))
     val msgs = if (not(svc.hasReferencer(hash, ServiceCodeLen, AssetHubParaId))) prepare
       else List(upgrade(hash, 123456, 789), msg)
-    val wr = replayWork(svc, caller, svc.paraInfo(caller).headData,
+    val wr = replayCandidate(svc, caller, svc.paraInfo(caller).headData,
       activeCodeCandidate(svc, caller), mode, now, 0, msgs)
-    replayBlock(List(wr), now + 1)
+    refinedBlock(List(wr), now + 1)
   }
 
   // Valid chained reports make the interruption position observable. The
@@ -263,11 +294,11 @@ module fuzz {
   action checkpointBlockAt(stop: int): bool = {
     val para = AssetHubParaId
     val parent = svc.paraInfo(para).headData
-    val packages = range(0, 3).foldl(List(), (acc, i) => acc.append(replayWork(svc, para, parent + i,
+    val packages = range(0, 3).foldl(List(), (acc, i) => acc.append(replayCandidate(svc, para, parent + i,
       activeCodeCandidate(svc, para), 0, now, 0,
       List(SetKV({ key: List(71), value: List(i + 1) }),
         TransferOut(transfer(0, 1, i, if (i == stop) ExhaustPoolGas else 100))))))
-    budgetedInvocation(packages, now + 1,
+    refinedBudgeted(packages, now + 1,
       List({ source: MkServiceId(7), amount: 1000, toSupervisorBalance: false, memo: 0 }),
       packages.foldl(List(), (acc, _) => acc.append(UnlimitedGas)), stop)
   }
@@ -277,12 +308,12 @@ module fuzz {
   action panicBlockAt(stop: int, faultGas: int): bool = {
     val para = AssetHubParaId
     val parent = svc.paraInfo(para).headData
-    val packages = range(0, 3).foldl(List(), (acc, i) => acc.append(replayWork(svc, para, parent + i,
+    val packages = range(0, 3).foldl(List(), (acc, i) => acc.append(replayCandidate(svc, para, parent + i,
       activeCodeCandidate(svc, para), 0, now, 0,
       List(SetKV({ key: List(72), value: List(i + 1) }),
         CreateService(createArgs(Some(MkServiceId(42 + i)), 90 + i)),
         serviceForget(MkServiceId(99)), TransferOut(transfer(0, 1, i, 100))))))
-    interruptedInvocation(packages, now + 1,
+    refinedInterrupted(packages, now + 1,
       List({ source: MkServiceId(7), amount: 1000, toSupervisorBalance: false, memo: 0 }),
       range(0, 3).foldl(List(), (acc, i) => acc.append(if (i == stop) faultGas else UnlimitedGas)), stop, stop < 3)
   }
@@ -331,24 +362,24 @@ module fuzz {
     val parent = svc.paraInfo(para).headData
     val large = SetKV({ key: List(81), value: range(0, 4096).foldl(List(), (a, _) => a.append(42)) })
     val small = SetKV({ key: List(82), value: List(42) })
-    val wr1 = replayWork(svc, para, parent, activeCodeCandidate(svc, para), 0, now, 0, List(large, first))
+    val wr1 = replayCandidate(svc, para, parent, activeCodeCandidate(svc, para), 0, now, 0, List(large, first))
     // Both competing and chained work stay observable when the first gas gate
     // rejects. Build the second report against the actual modeled prefix.
     val incoming = range(0, count).foldl(List(), (a, i) => a.append({
       source: MkServiceId(7), amount: amount, toSupervisorBalance: false, memo: i }))
-    val limit1 = budget(wr1, gasMode)
-    val prefix = hostPrefix(List(wr1), now + 1, incoming, List(limit1), allowance,
+    val limit1 = budget(wr1.work, gasMode)
+    val prefix = hostPrefix(List(wr1.work), now + 1, incoming, List(limit1), allowance,
       hostAssignBudget(stop))
-    val wr2 = replayWork(prefix.state, para, prefix.state.paraInfo(para).headData,
+    val wr2 = replayCandidate(prefix.state, para, prefix.state.paraInfo(para).headData,
       activeCodeCandidate(prefix.state, para), 0, now, 0, List(second, small))
     val packages = List(wr1, wr2)
     val limits = List(limit1, UnlimitedGas)
-    val beforeStop = hostPrefix(packages, now + 1, incoming, limits, allowance,
+    val beforeStop = hostPrefix(workResults(packages), now + 1, incoming, limits, allowance,
       hostAssignBudget(stop))
-    val interrupting = replayWork(beforeStop.state, para, beforeStop.state.paraInfo(para).headData,
+    val interrupting = replayCandidate(beforeStop.state, para, beforeStop.state.paraInfo(para).headData,
       activeCodeCandidate(beforeStop.state, para), 0, now, 0,
       List(large, TransferOut(transfer(0, 0, 0, ExhaustPoolGas))))
-    hostInvocation(if (stop) packages.append(interrupting) else packages, now + 1, incoming,
+    refinedHost(if (stop) packages.append(interrupting) else packages, now + 1, incoming,
       if (stop) limits.append(UnlimitedGas) else limits, allowance, if (stop) 2 else -1)
   }
   action hostBlock = {
@@ -366,11 +397,65 @@ module fuzz {
     nondet count = oneOf(Set(0, 1, 3))
     nondet amount = oneOf(Set(0, 1, 1000))
     nondet reports = oneOf(Set(false, true))
-    val wr = replayWork(svc, AssetHubParaId, svc.paraInfo(AssetHubParaId).headData,
+    val wr = replayCandidate(svc, AssetHubParaId, svc.paraInfo(AssetHubParaId).headData,
       activeCodeCandidate(svc, AssetHubParaId), 0, now, 0, List())
-    preCheckpointInvocation(if (reports) List(wr) else List(), now + 1,
+    refinedPreCheckpoint(if (reports) List(wr) else List(), now + 1,
       range(0, count).foldl(List(), (list, i) => list.append({
         source: MkServiceId(7), amount: amount, toSupervisorBalance: false, memo: i })))
+  }
+
+
+  action refinedLifecycleWork(p: ParaId, h: int, msgs: List[UpwardMessage], gap: int): bool = {
+    val parent = if (svc.isLive(p)) svc.paraInfo(p).headData else 0
+    val pkg: WorkPackage = { authorizedParas: List(p),
+      items: List({ validationCode: { hash: { vchBytes: h }, len: FixedCodeLen } }) }
+    val input: RefineInput = { pkg: pkg, missingPrefix: false, skip: false, byteFault: "valid", gasMode: "normal", gasSample: 0,
+      available: codeAvailable(svc, pkg.items[0].validationCode), anchor: now,
+      calls: List(SetParentHeadHash(headHash(parent)), SetHead(parent + 1)).concat(sends(msgs)) }
+    all { lifecycleWork(p, h, msgs, gap), noGasWithRefine(Some(List(input))) }
+  }
+
+  action refinedLifecycleBlock = {
+    nondet p = oneOf(lifecycleParas)
+    nondet caller = oneOf(Set(CoretimeParaId, AssetHubParaId))
+    nondet mode = oneOf(Set(0, 1, 2, 3))
+    nondet msg = oneOf(lifecycleMessages)
+    nondet gap = oneOf(Set(1, ExpungePeriod, ExpungePeriod + 1))
+    val h = activeCodeHashOr(svc.paraInfo(caller), NoCodeHash).vchBytes
+    if (mode == 0) refinedLifecycleWork(caller, h,
+      List(fund(p, InitialParaBalance), setHead(p, 0), code(p, 777)), gap)
+    else if (mode == 1) refinedLifecycleWork(caller, h, List(ParachainCleanUp(p)), gap)
+    else if (mode == 2) refinedLifecycleWork(caller, h, List(msg), gap)
+    else refinedLifecycleWork(p,
+      if (svc.isLive(p)) activeCodeHashOr(svc.paraInfo(p), NoCodeHash).vchBytes else 777,
+      List(SetKV({ key: List(1), value: List(1) })), gap)
+  }
+
+  action refinedAssignmentBlock = {
+    nondet caller = oneOf(Set(CoretimeParaId, AssetHubParaId))
+    nondet gap = oneOf(Set(1, AuthorizerQueueLength - 1, AuthorizerQueueLength,
+      AuthorizerQueueLength + 1))
+    nondet first = oneOf(assignmentMessages(now + gap))
+    nondet second = oneOf(assignmentMessages(now + gap))
+    nondet count = oneOf(Set(0, 1, 2))
+    val h = activeCodeHashOr(svc.paraInfo(caller), NoCodeHash).vchBytes
+    refinedLifecycleWork(caller, h, List(first, second).slice(0, count), gap)
+  }
+
+  def gasCandidate(mode: str, sample: int, parent: int): RefinedWork = {
+    val p = replayCandidate(svc, CoretimeParaId, parent,
+      activeCodeCandidate(svc, CoretimeParaId), 0, now, 7,
+      List(SetKV({ key: List(1), value: List(2, 3, 4) })))
+    { input: { ...p.input, gasMode: mode, gasSample: sample },
+      work: if (mode == "funded") p.work else { ...p.work, result: WorkErr } }
+  }
+  action refineGasBlockAt(mode: str, sample: int): bool = {
+    val parent = svc.paraInfo(CoretimeParaId).headData
+    // Faults surround a funded candidate. Only its actual digest may advance
+    // the head; a later block retries from that retained head.
+    all { codeAvailable(svc, activeCodeCandidate(svc, CoretimeParaId).validationCode),
+      refinedBlock(List(gasCandidate(mode, sample, parent),
+        gasCandidate("funded", 0, parent), gasCandidate(mode, sample, parent + 1)), now + 1) }
   }
 
   action replayStep = any {
@@ -383,8 +468,8 @@ module fuzz {
     block,
     all { provisionPreimage, noTransfers, noDesignation, noOutgoing, keepUpgradeGas, noGas },
     all { incoming, noDesignation, noOutgoing, keepUpgradeGas, noGas },
-    all { lifecycleBlock, noTransfers, noDesignation, noOutgoing, keepUpgradeGas, noGas },
-    all { assignmentBlock, noTransfers, noDesignation, noOutgoing, keepUpgradeGas, noGas },
+    all { refinedLifecycleBlock, noTransfers, noDesignation, noOutgoing, keepUpgradeGas },
+    all { refinedAssignmentBlock, noTransfers, noDesignation, noOutgoing, keepUpgradeGas },
     validatorKeysBlock,
     outgoingBlock,
     serviceUpgradeBlock

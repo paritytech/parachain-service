@@ -1,5 +1,6 @@
 // Compose incoming transfers and work reports using the pinned model phases.
 module invocation_inputs {
+  import host_call_inputs.* from "./host_call_inputs"
   import types.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/types"
   import messages.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/messages"
   import state.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state"
@@ -22,6 +23,8 @@ module invocation_inputs {
 
   import host_metadata.* from "./host_metadata"
 
+  import refine_inputs.* from "./refine_inputs"
+
   action replayInvocation(packages: List[WorkResult], slot: Timeslot,
     incoming: List[IncomingTransfer]): bool =
     budgetedInvocation(packages, slot, incoming, packages.foldl(List(), (acc, _) => acc.append(UnlimitedGas)), -1)
@@ -31,7 +34,12 @@ module invocation_inputs {
     interruptedInvocation(packages, slot, incoming, limits, interrupt, false)
 
   action interruptedInvocation(packages: List[WorkResult], slot: Timeslot,
-    incoming: List[IncomingTransfer], limits: List[int], interrupt: int, panic: bool): bool = {
+    incoming: List[IncomingTransfer], limits: List[int], interrupt: int, panic: bool): bool =
+    invocationWithRefine(packages, slot, incoming, limits, interrupt, panic, None)
+
+  action invocationWithRefine(packages: List[WorkResult], slot: Timeslot,
+    incoming: List[IncomingTransfer], limits: List[int], interrupt: int, panic: bool,
+    inputs: Option[List[RefineInput]]): bool = {
     val applied = range(0, packages.length()).foldl(List(), (acc, i) =>
       if ((interrupt < 0 or i < interrupt) and limits[i] >= reportGas(packages[i]))
         acc.append(packages[i]) else acc)
@@ -48,6 +56,7 @@ module invocation_inputs {
       slot, applied, foreignServices)
     val effects = messageEffectsFrom(arrived, applied, slot)
     all {
+      replayRefineInputs' = inputs,
       noHostBudget,
       replayIncoming' = incoming,
       replayGasLimits' = limits,
@@ -57,6 +66,7 @@ module invocation_inputs {
       foreignServices' = out.foreign,
       now' = slot,
       replayDesignate' = out.jamDesignate,
+      replayHostCalls' = effects.calls,
       replayTransfers' = effects.transfers,
       replayCreations' = effects.creations,
       replayMinAccGas' = effects.minAccGas.optionGetOr(replayMinAccGas),
@@ -74,7 +84,12 @@ module invocation_inputs {
   // Failure before the service's first checkpoint rolls back every guest
   // mutation, including due assigns and queue writes. JAM's prior credits stay.
   action preCheckpointInvocation(packages: List[WorkResult], slot: Timeslot,
-    incoming: List[IncomingTransfer]): bool = all {
+    incoming: List[IncomingTransfer]): bool =
+    preCheckpointWithRefine(packages, slot, incoming, None)
+
+  action preCheckpointWithRefine(packages: List[WorkResult], slot: Timeslot,
+    incoming: List[IncomingTransfer], inputs: Option[List[RefineInput]]): bool = all {
+    replayRefineInputs' = inputs,
     noHostBudget,
     svc' = { ...svc, jamAccount: incoming.foldl(svc.jamAccount,
       (account, t) => account.credit(t.amount, t.toSupervisorBalance)) },
@@ -85,7 +100,7 @@ module invocation_inputs {
     lastStepAssignBudget' = { flush: 0, end: 0 },
     replayIncoming' = incoming, replayInterrupt' = -2, replayPanic' = false,
     replayGasLimits' = packages.foldl(List(), (limits, _) => limits.append(UnlimitedGas)),
-    replayDesignate' = List(), replayTransfers' = List(), replayCreations' = List(),
+    noHostCalls, replayDesignate' = List(), replayTransfers' = List(), replayCreations' = List(),
     keepUpgradeGas
   }
 

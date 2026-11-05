@@ -124,18 +124,13 @@ The doc no longer promises that an empty `queue` cancels a cached entry. Both si
 malformed queue (empty, over-long, or a short handoff) as a defensive no-op in Accumulate,
 since Refine rejects them first (Quint `6b8f7292e0`).
 
-## M-10: no model invariant is checked against Rust
+## M-10: no model invariant is checked against Rust — resolved
 
-The replay harness ([QUINT_REPLAY.md](./QUINT_REPLAY.md)) replays 75 deterministic fixtures and
-streaming fuzz campaigns, comparing storage, logs, head commitments and JAM effects after every
-transition. It covers Accumulate only: Rust Refine is checked against the model by reading and by
-`refine.rs`.
-
-None of the 32 invariants in `quint/invariants.qnt` is asserted on the Rust side. Several are
-cheap to port against real storage and would catch derived-constant drift of the kind that
-made Asset Hub's baseline under-reserve its pending-assign queues:
-`used_balance_consistency`, `pending_authorizer_cores_consistent`,
-`fired_assign_not_left_due`, `parachain_log_within_capacity`.
+The replay harness checks the pinned model's invariant catalogue against Rust
+storage after replay transitions. Assignment checks include
+`pending_authorizer_cores_consistent` and `fired_assign_not_left_due`: an
+unprocessed due entry may remain cached, while a fired entry must be removed or
+re-armed in the future.
 
 ## M-11: the model decides the §6.5 supervised-service outcomes; Rust can only refuse
 
@@ -202,3 +197,10 @@ Since Quint `73d4d9eb9d8` Refine rejects an `AssignCore` naming a core at or abo
 answer `CORE`, and the dirty-core index's 341-entry bound holds. `WHO` was already unreachable,
 so an `assign` now fails only for a handoff. The model fixes `CoreCount` at the full chain's
 341.
+
+## M-15: Rust always completes the due-assignment phase — resolved
+
+Rust now follows spec §5.1 and Quint: flush the due-assignment prefix paid for by
+the always-accumulate allowance, retry remaining entries after work packages
+using leftover gas, and carry any unprocessed entries into later blocks. Replay
+checks `fired_assign_not_left_due`; entries that did not fire may remain due.

@@ -39,6 +39,14 @@ pub fn authorize_block<S: SignatureVerifier>(
 	let token = AuthToken::decode_all(&mut &params.token[..])
 		.map_err(|_| BlockAuthorizationError::UndecodableAuthToken)?;
 
-	aura::authorize_hash::<S>(&config, &token, signable_block_hash(&params.block_hash), params.slot)
-		.map_err(BlockAuthorizationError::BadAuthorization)
+	token
+		.check_proof(&config, config.expected_collator_index(params.slot))
+		.map_err(BlockAuthorizationError::BadAuthorization)?;
+	token
+		.check_signature::<S>(signable_block_hash(&params.block_hash))
+		.map_err(|e| {
+			BlockAuthorizationError::BadAuthorization(aura::AuthorizationError::BadToken(e))
+		})?;
+
+	Ok(aura::AuthTrace { author_key: token.key })
 }

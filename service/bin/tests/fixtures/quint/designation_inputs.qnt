@@ -1,5 +1,6 @@
 // Replay effects are evaluated by the pinned model, including same-set designation.
 module designation_inputs {
+  import host_call_inputs.* from "./host_call_inputs"
   import types.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/types"
   import messages.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/messages"
   import state.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state"
@@ -12,7 +13,7 @@ module designation_inputs {
   import head_commitment.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/head_commitment"
   var replayCanDesignate: bool
   var replayDesignate: List[ValidatorKey]
-  action check(ok: bool): bool = all { expectThat(ok), replayDesignate' = replayDesignate, replayCanDesignate' = replayCanDesignate }
+  action check(ok: bool): bool = all { expectThat(ok), keepHostCalls, replayDesignate' = replayDesignate, replayCanDesignate' = replayCanDesignate }
   pure def keyList(n: int, start: int): List[ValidatorKey] =
     range(0, n).foldl(List(), (acc, i) => acc.append(start + i))
   pure def msg(n: int, start: int, last: bool): UpwardMessage =
@@ -23,7 +24,7 @@ module designation_inputs {
     now' = 0, jamStagingSet' = List(), solicitedSet' = Set(),
     lastStepWorkResults' = List(), lastStepAssigns' = List(), lastStepAssignBudget' = { flush: 0, end: 0 },
     lastHeadRoot' = None, foreignServices' = Map(), logPrunedBelow' = Map(),
-    replayDesignate' = List(), replayCanDesignate' = true
+    noHostCalls, replayDesignate' = List(), replayCanDesignate' = true
   }
   def work(p: ParaId, parent: int, msgs: List[UpwardMessage]): WorkResult = {
     val h = if (p == AssetHubParaId) 2 else 1
@@ -68,6 +69,7 @@ module designation_inputs {
     }
     all {
       svc' = out.state, prevSvc' = svc, now' = slot,
+      replayHostCalls' = if (allowed) packageHostCalls(svc, foreignServices, List(wr), slot) else List(),
       replayCanDesignate' = allowed, replayDesignate' = out.jamDesignate,
       jamStagingSet' = if (out.jamDesignate == List()) jamStagingSet else out.jamDesignate,
       solicitedSet' = solicitedSet, foreignServices' = foreignServices,
