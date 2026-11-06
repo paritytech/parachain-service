@@ -170,6 +170,8 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 					.map_err(|e| format!("frame {frame}: {e}"))?;
 				super::gas::apply(&pair[1], &mut items)?;
 				super::recovery::inject(&pair[1], &mut items)?;
+				super::gas::check_out_of_gas(&pair[1], results.len())
+					.map_err(|e| format!("frame {frame}: {e}"))?;
 				// Put arrivals after reports deliberately: the runtime must collect all
 				// transfers before processing any work, regardless of operand position.
 				items.extend(incoming_items(&mut storage, &pair[1])?);

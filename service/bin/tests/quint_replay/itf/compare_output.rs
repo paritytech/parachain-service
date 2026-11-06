@@ -82,12 +82,9 @@ pub fn state(
 	codex: &mut Codex,
 	frame: usize,
 ) -> Result<(), String> {
-	let root = if super::gas::interrupted(current)?.is_some() {
-		// Interrupted invocations never reach the final commitment return.
-		None
-	} else {
-		commitment(previous, current, codex)?
-	};
+	// An interrupted invocation restores the root yielded at its last checkpoint,
+	// which covers exactly the heads the retained reports changed (§5.1, §5.5).
+	let root = commitment(previous, current, codex)?;
 	let expected = match variant(field(current, "lastHeadRoot")?)? {
 		("None", _) => None,
 		("Some", hash) => Some(integer(

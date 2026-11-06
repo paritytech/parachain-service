@@ -86,7 +86,10 @@ module code_storage_inputs {
       stop == -1 or not(applied.trap),
       svc' = out.state, prevSvc' = svc, now' = now + 1,
       lastStepWorkResults' = List(wr), lastStepAssigns' = List(), lastStepAssignBudget' = FullAssignBudget,
-      lastHeadRoot' = if (applied.trap or stop != -1) None else headCommitment(svc, out.state),
+      // A host trap restores the same checkpoint as running out of gas there.
+      lastStepOutOfGas' = if (applied.trap or stop == 0) InPackage(0) else if (stop < 0) Never else InLateAssigns,
+      // A stopped invocation keeps the root yielded at its last checkpoint (§5.5).
+      lastHeadRoot' = headCommitment(svc, out.state),
       solicitedSet' = solicitedSet, jamStagingSet' = jamStagingSet,
       foreignServices' = foreignServices, logPrunedBelow' = logPrunedBelow,
       noTransfers, noDesignation,

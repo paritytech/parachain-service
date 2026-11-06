@@ -52,7 +52,10 @@ module fuzz {
       stop == -1 or svc.pendingAssignCores.keys().forall(c => svc.pendingAssignCores.get(c) > slot),
       svc' = out.state, prevSvc' = svc, now' = slot,
       lastStepWorkResults' = packages, lastStepAssigns' = out.assigns, lastStepAssignBudget' = FullAssignBudget,
-      lastHeadRoot' = if (stop == -1) headCommitment(svc, out.state) else None,
+      lastStepOutOfGas' = if (stop < 0) Never
+        else if (stop < packages.length()) InPackage(stop) else InLateAssigns,
+      // A stopped invocation keeps the root yielded at its last checkpoint (§5.5).
+      lastHeadRoot' = headCommitment(svc, out.state),
       solicitedSet' = solicitedSet,
       jamStagingSet' = if (end > 0 and designated != List()) designated else jamStagingSet,
       foreignServices' = foreignServices, logPrunedBelow' = logPrunedBelow,
@@ -93,10 +96,16 @@ module fuzz {
       AssignCore({ core: core, queue: range(0, count).foldl(List(),
         (a, i) => a.append({ authBytes: now + i + 10 })),
         newAssigner: None, jamSlot: now })))), List(), List())
-  action flushRecovery(stop: int): bool = all {
-    stop == -1,
-    now + 1000081 < 4294967296,
-    recoverAt(0, stop, List(metadataWork(CoretimeParaId, List())), List(), List(), now + 1000001)
+  // Flush at the latest due slot: every cached core fires, and a kept set is
+  // re-armed 80 slots after its own due slot, past this one (§7.1).
+  action flushRecovery(stop: int): bool = {
+    val slot = svc.pendingAssignCores.keys().fold(now + 1, (latest, c) =>
+      if (svc.pendingAssignCores.get(c) > latest) svc.pendingAssignCores.get(c) else latest)
+    all {
+      stop == -1,
+      slot + 80 < 4294967296,
+      recoverAt(0, stop, List(metadataWork(CoretimeParaId, List())), List(), List(), slot)
+    }
   }
 
   // Three hashes do not tile the 80-slot queue: payload 145, initial index 52.

@@ -181,10 +181,10 @@ than silently dropping a parachain's request.
 reachable before JAM ships GP >= 0.8 supervision, and `ServiceCreationResult`
 needs a variant for a `desired_id` outside the protected range.
 
-## F-1: §7.1 needs the anchor timeslot, but the refinement context does not carry it
+## F-1: §7.2 needs the anchor timeslot, but the refinement context does not carry it
 
 The AURA authorizer computes `collator_index` from "the anchor timeslot read from the
-refinement context" (§7.1 step 3). The Gray Paper's `RefineContext` exposes only the
+refinement context" (§7.2 step 3). The Gray Paper's `RefineContext` exposes only the
 **lookup-anchor** slot; the anchor's own slot is not available in-core. The PoC uses
 `lookup_anchor_slot` behind a FIXME, which would let a collator pick any lookup anchor
 mapping to its own index. The design needs either a JAM change (anchor slot in the context)
@@ -201,7 +201,7 @@ or a different slot source. Extends the AURA-authorizer gap.
 
 To close the AURA authorizer's "does not require work items to target the Parachain Service", the
 PoC adds `parachain_service: ServiceId` to the AURA `AuthorizerConfig` and rejects packages
-whose items target any other service. §7.1's config struct needs the field.
+whose items target any other service. §7.2's config struct needs the field.
 
 ## F-10: the 1024-message digest cap has no gas headroom against `Ga`
 

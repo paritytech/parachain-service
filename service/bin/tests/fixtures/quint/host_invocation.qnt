@@ -143,7 +143,7 @@ module host_invocation {
   def hostPrefix(packages: List[WorkResult], slot: int, incoming: List[IncomingTransfer],
     limits: List[int], allowance: int, assignBudget: AssignBudget): HostPackage = {
     val due = accumulateBlockBudgeted(svc, slot, List(), solicitedSet, FixedCodeLen, List(),
-      foreignServices, assignBudget)
+      foreignServices, assignBudget, Never)
     val proposed = applyIncomingTransfers(due.state, incoming)
     val credited = { ...due.state, jamAccount: proposed.jamAccount }
     val available = allowance + incoming.foldl(0, (n, t) => n + t.amount)
@@ -177,7 +177,7 @@ module host_invocation {
     val out = hostPrefix(packages.slice(0, end), slot, incoming, limits.slice(0, end), allowance,
       assignBudget)
     val due = accumulateBlockBudgeted(svc, slot, List(), solicitedSet, FixedCodeLen, List(),
-      foreignServices, assignBudget)
+      foreignServices, assignBudget, Never)
     all {
       replayRefineInputs' = inputs,
       out.safe,
@@ -189,7 +189,10 @@ module host_invocation {
       solicitedSet' = out.solicited, jamStagingSet' = jamStagingSet,
       lastStepWorkResults' = packages, lastStepAssigns' = due.assigns,
       lastStepAssignBudget' = assignBudget,
-      lastHeadRoot' = if (interrupt < 0) headCommitment(svc, out.state) else None,
+      lastStepOutOfGas' = if (interrupt < 0) Never
+        else if (interrupt < packages.length()) InPackage(interrupt) else InLateAssigns,
+      // A stopped invocation keeps the root yielded at its last checkpoint (§5.5).
+      lastHeadRoot' = headCommitment(svc, out.state),
       logPrunedBelow' = out.pruned.foldl(logPrunedBelow, (m, pair) => m.put(pair._1, pair._2)),
       replayIncoming' = incoming, replayGasLimits' = limits, replayInterrupt' = interrupt, replayPanic' = false,
       replayHostCalls' = out.calls, replayDesignate' = List(), replayTransfers' = out.transfers, replayCreations' = out.creations,

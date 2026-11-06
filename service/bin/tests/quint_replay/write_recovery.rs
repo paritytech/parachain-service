@@ -90,6 +90,7 @@ fn wrong_checkpoint_errors() {
 			.unwrap();
 		// Commit the report while retaining Quint's rollback expectation.
 		state["replayInterrupt"] = json!({"#bigint": "1"});
+		state["lastStepOutOfGas"] = json!({"tag": "InLateAssigns", "value": {"#tup": []}});
 		state["replayGasSample"] = json!({"#bigint": "500000"});
 		let error = replay::document_trace(&trace).unwrap_err();
 		assert!(error.contains("differs"), "{name}: {error}");

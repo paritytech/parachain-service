@@ -20,7 +20,7 @@ module validator_keys_replay {
     svc' = { ...initialState, stagedValidatorKeys: keyList(n, 0) },
     prevSvc' = { ...initialState, stagedValidatorKeys: keyList(n, 0) },
     now' = 0, jamStagingSet' = List(), solicitedSet' = Set(),
-    lastStepWorkResults' = List(), lastStepAssigns' = List(), lastStepAssignBudget' = { flush: 0, end: 0 },
+    lastStepWorkResults' = List(), lastStepAssigns' = List(), lastStepAssignBudget' = { flush: 0, end: 0 }, lastStepOutOfGas' = Never,
     lastHeadRoot' = None, foreignServices' = Map(), logPrunedBelow' = Map(),
     noHostCalls, replayDesignate' = List()
   }
@@ -34,8 +34,10 @@ module validator_keys_replay {
   action block(packages: List[WorkResult]): bool = {
     // With an empty incoming JAM set, out.staging is exactly the last
     // successful designation (or empty for no effect), even for identical sets.
-    val out = accumulateBlock(svc, now + 1, List(), solicitedSet,
-      FixedCodeLen, packages, foreignServices)
+    val out = accumulateBlockBudgeted(svc, now + 1, List(), solicitedSet,
+      FixedCodeLen, packages, foreignServices,
+      // The reports leave gas for the due assigns still pending (§5.1).
+      { flush: CoreCount, end: CoreCount }, Never)
     all {
       svc' = out.state, now' = now + 1, prevSvc' = svc,
       replayHostCalls' = packageHostCalls(svc, foreignServices, packages, now + 1),
@@ -43,7 +45,8 @@ module validator_keys_replay {
       jamStagingSet' = if (out.staging == List()) jamStagingSet else out.staging,
       solicitedSet' = out.solicited, lastStepWorkResults' = out.results,
       lastStepAssigns' = out.assigns, lastHeadRoot' = out.headRoot,
-      lastStepAssignBudget' = FullAssignBudget,
+      lastStepAssignBudget' = { flush: CoreCount, end: CoreCount },
+      lastStepOutOfGas' = Never,
       foreignServices' = out.foreign,
       logPrunedBelow' = out.logPruned.foldl(logPrunedBelow, (m, pair) => m.put(pair._1, pair._2))
     }

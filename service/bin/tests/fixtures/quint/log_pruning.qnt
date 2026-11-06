@@ -14,9 +14,11 @@ module log_pruning {
     match st { | Unrequested(r) => r.unrequestedSince | _ => -1 }
 
   action applyWork(result: WorkExecResult): bool = {
-    val out = accumulateBlock(
+    val out = accumulateBlockBudgeted(
       svc, now + 1, jamStagingSet, solicitedSet, FixedCodeLen,
-      List({ result: result, authTrace: 0 }), foreignServices)
+      List({ result: result, authTrace: 0 }), foreignServices,
+      // The reports leave gas for the due assigns still pending (§5.1).
+      { flush: CoreCount, end: CoreCount }, Never)
     all {
       svc' = out.state,
       foreignServices' = out.foreign,
@@ -26,7 +28,8 @@ module log_pruning {
       prevSvc' = svc,
       lastStepWorkResults' = out.results,
       lastStepAssigns' = out.assigns,
-      lastStepAssignBudget' = FullAssignBudget,
+      lastStepAssignBudget' = { flush: CoreCount, end: CoreCount },
+      lastStepOutOfGas' = Never,
       lastHeadRoot' = out.headRoot,
       logPrunedBelow' =
         out.logPruned.foldl(logPrunedBelow, (m, pair) => m.put(pair._1, pair._2))

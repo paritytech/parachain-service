@@ -2,7 +2,7 @@
 //!
 //! The authorized `ParaId`s are sourced from the authorizer **config** (pinned by
 //! the Coretime chain), not from the per-package authorization token: the service
-//! requires every authorizer config to begin with a `Vec<ParaId>` (spec §3.2, §7.1).
+//! requires every authorizer config to begin with a `Vec<ParaId>` (spec §3.2, §7.2).
 
 use executor::pj;
 

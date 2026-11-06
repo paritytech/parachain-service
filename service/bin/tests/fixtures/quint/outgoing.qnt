@@ -25,8 +25,10 @@ module outgoing_replay {
   action block(packages: List[WorkResult]): bool = {
     // With an empty incoming JAM set, out.staging is exactly the last
     // successful designation (or empty for no effect), even for identical sets.
-    val out = accumulateBlock(svc, now + 1, List(), solicitedSet,
-      FixedCodeLen, packages, foreignServices)
+    val out = accumulateBlockBudgeted(svc, now + 1, List(), solicitedSet,
+      FixedCodeLen, packages, foreignServices,
+      // The reports leave gas for the due assigns still pending (§5.1).
+      { flush: CoreCount, end: CoreCount }, Never)
     all {
       svc' = out.state, now' = now + 1, prevSvc' = svc,
       replayDesignate' = out.staging,
@@ -35,7 +37,8 @@ module outgoing_replay {
       jamStagingSet' = if (out.staging == List()) jamStagingSet else out.staging,
       solicitedSet' = out.solicited, lastStepWorkResults' = out.results,
       lastStepAssigns' = out.assigns, lastHeadRoot' = out.headRoot,
-      lastStepAssignBudget' = FullAssignBudget,
+      lastStepAssignBudget' = { flush: CoreCount, end: CoreCount },
+      lastStepOutOfGas' = Never,
       foreignServices' = out.foreign,
       logPrunedBelow' = out.logPruned.foldl(logPrunedBelow, (m, pair) => m.put(pair._1, pair._2))
     }

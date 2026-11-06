@@ -20,7 +20,7 @@ use parachain_service_core::{
 };
 use primitive_types::H256;
 
-/// Independent token layout from design §7.1, to check wire compatibility.
+/// Independent token layout from design §7.2, to check wire compatibility.
 #[derive(Encode)]
 struct SpecToken {
 	proof: Vec<H256>,

@@ -22,7 +22,7 @@ module designation_inputs {
     svc' = { ...initialState, stagedValidatorKeys: keyList(n, 0) },
     prevSvc' = { ...initialState, stagedValidatorKeys: keyList(n, 0) },
     now' = 0, jamStagingSet' = List(), solicitedSet' = Set(),
-    lastStepWorkResults' = List(), lastStepAssigns' = List(), lastStepAssignBudget' = { flush: 0, end: 0 },
+    lastStepWorkResults' = List(), lastStepAssigns' = List(), lastStepAssignBudget' = { flush: 0, end: 0 }, lastStepOutOfGas' = Never,
     lastHeadRoot' = None, foreignServices' = Map(), logPrunedBelow' = Map(),
     noHostCalls, replayDesignate' = List(), replayCanDesignate' = true
   }
@@ -73,7 +73,7 @@ module designation_inputs {
       replayCanDesignate' = allowed, replayDesignate' = out.jamDesignate,
       jamStagingSet' = if (out.jamDesignate == List()) jamStagingSet else out.jamDesignate,
       solicitedSet' = solicitedSet, foreignServices' = foreignServices,
-      lastStepWorkResults' = List(wr), lastStepAssigns' = List(), lastStepAssignBudget' = FullAssignBudget,
+      lastStepWorkResults' = List(wr), lastStepAssigns' = List(), lastStepAssignBudget' = FullAssignBudget, lastStepOutOfGas' = Never,
       lastHeadRoot' = headCommitment(svc, out.state),
       logPrunedBelow' = match plain.logPruned {
         | None => logPrunedBelow | Some(p) => logPrunedBelow.put(p._1, p._2)

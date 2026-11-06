@@ -295,9 +295,11 @@ module upgrades {
 
   // Jump to a later block slot without manufacturing intermediate state.
   action workErrorAt(slot: Timeslot): bool = {
-    val out = accumulateBlock(
+    val out = accumulateBlockBudgeted(
       svc, slot, jamStagingSet, solicitedSet, FixedCodeLen,
-      List({ result: WorkErr, authTrace: 7 }), foreignServices)
+      List({ result: WorkErr, authTrace: 7 }), foreignServices,
+      // The reports leave gas for the due assigns still pending (§5.1).
+      { flush: CoreCount, end: CoreCount }, Never)
     all {
       slot > now,
       svc' = out.state,
@@ -308,7 +310,8 @@ module upgrades {
       prevSvc' = svc,
       lastStepWorkResults' = out.results,
       lastStepAssigns' = out.assigns,
-      lastStepAssignBudget' = FullAssignBudget,
+      lastStepAssignBudget' = { flush: CoreCount, end: CoreCount },
+      lastStepOutOfGas' = Never,
       lastHeadRoot' = out.headRoot,
       logPrunedBelow' = logPrunedBelow
     }

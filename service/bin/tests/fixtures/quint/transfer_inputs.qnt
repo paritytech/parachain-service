@@ -20,6 +20,7 @@ module transfer_inputs {
     lastStepWorkResults' = List(),
     lastStepAssigns' = out.assigns,
     lastStepAssignBudget' = FullAssignBudget,
+    lastStepOutOfGas' = Never,
     lastHeadRoot' = None,
     foreignServices' = foreignServices,
     logPrunedBelow' = logPrunedBelow

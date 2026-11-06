@@ -1,5 +1,5 @@
 //! Scheduled JAM `assign`s: caching, inline application, and recurring queue
-//! rotation (§5.1, §7.1, D-7).
+//! rewrites (§5.1, §7.1, D-7).
 
 mod common;
 
@@ -241,35 +241,75 @@ fn invalid_core_is_noop_works() {
 	}
 }
 
+/// The 80-hash queue JAM got for `CORE`.
+fn written(mutations: &jam_node::vm::StateMutations) -> Vec<AuthorizerHash> {
+	let queue: Vec<_> = mutations.auths.get(&CORE).expect("assign fired").clone().into();
+	queue.into_iter().map(|hash| hash.0).collect()
+}
+
+/// §7.1: JAM reads entry `t % 80` at slot `t`, which must hold hash `t % len` of
+/// the set, for the 80 slots from `due` on.
+fn assert_covers(queue: &[AuthorizerHash], set: &[AuthorizerHash], due: u32) {
+	for slot in due..due + 80 {
+		assert_eq!(queue[slot as usize % 80], set[slot as usize % set.len()], "slot {slot}");
+	}
+}
+
 #[test]
-fn non_tiling_queue_rotates_works() {
+fn non_tiling_queue_follows_slots_works() {
 	let queue: Vec<AuthorizerHash> = (0..11).map(|i| [i; 32]).collect();
 	let msg = assign_msg(queue.clone(), NOW);
 	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
 
-	let (_, storage, first_mutations) =
-		accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
-	let first: Vec<_> = first_mutations.auths.get(&CORE).expect("first cycle fired").clone().into();
-	for (i, hash) in first.iter().enumerate() {
-		assert_eq!(hash.0, queue[i % queue.len()], "first cycle index {i}");
-	}
-	let rotated = queue[3..].iter().chain(&queue[..3]).copied().collect::<Vec<_>>();
-	assert_eq!(pending(&storage), Some(PendingAssign { queue: rotated.clone(), assigner: None }));
+	let (_, storage, first) = accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
+	assert_covers(&written(&first), &queue, NOW);
+	// The set is kept as sent and rewritten 80 slots later.
+	assert_eq!(pending(&storage), Some(PendingAssign { queue: queue.clone(), assigner: None }));
 	assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, NOW + 80)]);
 
 	let (_, before, mutations) = accumulate_block(storage, vec![], NOW + 79);
 	assert!(mutations.auths.is_empty());
-	assert_eq!(pending(&before).unwrap().queue, rotated);
 
-	let (_, storage, second_mutations) = accumulate_block(before, vec![], NOW + 80);
-	let second: Vec<_> =
-		second_mutations.auths.get(&CORE).expect("second cycle fired").clone().into();
-	for (i, hash) in second.iter().enumerate() {
-		assert_eq!(hash.0, rotated[i % rotated.len()], "second cycle index {i}");
-	}
-	let rotated_twice = rotated[3..].iter().chain(&rotated[..3]).copied().collect::<Vec<_>>();
-	assert_eq!(pending(&storage).unwrap().queue, rotated_twice);
+	let (_, storage, second) = accumulate_block(before, vec![], NOW + 80);
+	assert_covers(&written(&second), &queue, NOW + 80);
+	assert_eq!(pending(&storage).unwrap().queue, queue);
 	assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, NOW + 160)]);
+}
+
+#[test]
+fn design_example_works() {
+	// §7.1: the set `[A, B, C]` due at slot 40 starts with `B` at entry 40, slots 80
+	// to 119 read entries 0 to 39, and at slot 120 entry 40 starts with `A`.
+	let (a, b, c) = ([0xA; 32], [0xB; 32], [0xC; 32]);
+	let msg = assign_msg(vec![a, b, c], 40);
+	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
+	let (_, cached, _) = accumulate_block(ct_storage(), vec![work_item(&digest)], 10);
+
+	let (_, storage, mutations) = accumulate_block(cached, vec![], 40);
+	let first = written(&mutations);
+	assert_eq!((first[40], first[41], first[42], first[79]), (b, c, a, b));
+	assert_eq!((first[0], first[1], first[39]), (c, a, c));
+	assert_eq!(pending(&storage), Some(PendingAssign { queue: vec![a, b, c], assigner: None }));
+	assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, 120)]);
+
+	let (_, storage, mutations) = accumulate_block(storage, vec![], 120);
+	assert_eq!(written(&mutations)[40], a);
+	assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, 200)]);
+}
+
+#[test]
+fn late_flush_rearms_from_due_works() {
+	// §7.1: a rewrite carried over past its due slot is still laid out for, and
+	// re-armed from, the slot it was due at.
+	let queue = vec![HASH_A, HASH_B, HASH_A];
+	let msg = assign_msg(queue.clone(), NOW + 10);
+	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
+	let (_, cached, _) = accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
+
+	let (_, storage, mutations) = accumulate_block(cached, vec![], NOW + 15);
+
+	assert_covers(&written(&mutations), &queue, NOW + 10);
+	assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, NOW + 90)]);
 }
 
 #[test]
@@ -309,7 +349,7 @@ fn handed_away_core_inline_errors() {
 
 #[test]
 fn handed_away_core_flush_errors() {
-	// §5.1: a rotation left armed on a core that has since been handed away is
+	// §5.1: a rewrite left armed on a core that has since been handed away is
 	// rejected by JAM when due: the entry is dropped from both maps and the
 	// rejection lands in the Coretime chain's log.
 	let msg = assign_msg(vec![HASH_A, HASH_B, HASH_A], NOW + 10);
@@ -399,10 +439,10 @@ fn assign_with_correct_privilege_works() {
 	);
 
 	assert!(mutations.auths.contains_key(&CORE), "JAM assign fired");
-	// 80 % 3 == 2, so the queue resumes rotated by two, 80 slots later.
+	// 80 % 3 != 0, so the set is kept as sent and rewritten 80 slots later.
 	assert_eq!(
 		pending(&storage),
-		Some(PendingAssign { queue: vec![HASH_A, HASH_A, HASH_B], assigner: None })
+		Some(PendingAssign { queue: vec![HASH_A, HASH_B, HASH_A], assigner: None })
 	);
 	assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, NOW + 80)]);
 	assert!(ct_accumulate_logs(&storage).is_empty());

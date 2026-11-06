@@ -46,15 +46,19 @@ module invocation_inputs {
 
     // An exhausted pool holds no more than the reports' declared gas, so no
     // due assign fits the always-accumulate allowance and all stay cached (§5.1).
-    val assignBudget = if (interrupt >= 0 and not(panic)) { flush: 0, end: 0 } else FullAssignBudget
+    val assignBudget = if (interrupt >= 0 and not(panic)) { flush: 0, end: 0 }
+      else if (interrupt >= 0) FullAssignBudget else { flush: CoreCount, end: CoreCount }
     // Evaluate the pinned phases in runtime order, without inserting a second
     // invocation between incoming transfers and work reports.
     val prefix = accumulateBlockBudgeted(svc, slot, List(), solicitedSet,
-      FixedCodeLen, List(), foreignServices, assignBudget)
+      FixedCodeLen, List(), foreignServices, { ...assignBudget, end: 0 }, Never)
     val arrived = applyIncomingTransfers(prefix.state, incoming)
     val out = replayAll(arrived, solicitedSet, List(), FixedCodeLen,
       slot, applied, foreignServices)
     val effects = messageEffectsFrom(arrived, applied, slot)
+    // A completed invocation applies the due assigns still pending from the gas
+    // its reports left (§5.1); a stopped one never gets there.
+    val late = flushDueAssigns(out.state, slot, assignBudget.end)
     all {
       replayRefineInputs' = inputs,
       noHostBudget,
@@ -62,7 +66,7 @@ module invocation_inputs {
       replayGasLimits' = limits,
       replayInterrupt' = interrupt,
       replayPanic' = panic,
-      svc' = out.state,
+      svc' = late.state,
       foreignServices' = out.foreign,
       now' = slot,
       replayDesignate' = out.jamDesignate,
@@ -74,9 +78,13 @@ module invocation_inputs {
       solicitedSet' = out.solicited,
       prevSvc' = svc,
       lastStepWorkResults' = packages,
-      lastStepAssigns' = prefix.assigns.concat(out.jamAssigns),
+      lastStepAssigns' = prefix.assigns.concat(out.jamAssigns).concat(late.assigns),
       lastStepAssignBudget' = assignBudget,
-      lastHeadRoot' = if (interrupt < 0) headCommitment(svc, out.state) else None,
+      // A panic restores the same checkpoint as running out of gas there.
+      lastStepOutOfGas' = if (interrupt < 0) Never
+        else if (interrupt < packages.length()) InPackage(interrupt) else InLateAssigns,
+      // A stopped invocation keeps the root yielded at its last checkpoint (§5.5).
+      lastHeadRoot' = headCommitment(svc, out.state),
       logPrunedBelow' = out.logPruned.foldl(logPrunedBelow,
         (m, pair) => m.put(pair._1, pair._2))
     }
@@ -98,6 +106,7 @@ module invocation_inputs {
     logPrunedBelow' = logPrunedBelow,
     lastStepWorkResults' = packages, lastStepAssigns' = List(), lastHeadRoot' = None,
     lastStepAssignBudget' = { flush: 0, end: 0 },
+    lastStepOutOfGas' = Never,
     replayIncoming' = incoming, replayInterrupt' = -2, replayPanic' = false,
     replayGasLimits' = packages.foldl(List(), (limits, _) => limits.append(UnlimitedGas)),
     noHostCalls, replayDesignate' = List(), replayTransfers' = List(), replayCreations' = List(),

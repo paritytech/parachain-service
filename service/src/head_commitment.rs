@@ -85,13 +85,13 @@ impl HeadTracker {
 		self.prior.push((para_id, head_hash_of(para_id)));
 	}
 
-	/// The block's head commitment (§5.5): the Merkle root over the heads that
+	/// The head commitment so far (§5.5): the Merkle root over the heads that
 	/// actually changed, or `None` when none did.
-	pub fn commitment(self) -> Option<Hash> {
+	pub fn root(&self) -> Option<Hash> {
 		let touched = self
 			.prior
-			.into_iter()
-			.map(|(para_id, prior)| (para_id, prior, head_hash_of(para_id)))
+			.iter()
+			.map(|&(para_id, prior)| (para_id, prior, head_hash_of(para_id)))
 			.collect();
 		merkle_root(changed_leaves(touched))
 	}

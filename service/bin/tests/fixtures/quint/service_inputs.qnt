@@ -116,10 +116,10 @@ module service_inputs {
     designate: List[ValidatorKey], codeLen: int, slot: int, packages: List[WorkResult],
     foreign: ForeignServices): MultiPackageOutcome =
     packages.foldl({ state: state, solicited: solicited, jamDesignate: designate,
-      jamAssigns: List(), logPruned: List(), foreign: foreign }, (a, wr) => {
+      jamAssigns: List(), logPruned: List(), foreign: foreign, headRoot: None }, (a, wr) => {
       val out = replayPackage(a.state, wr, a.solicited, a.jamDesignate, codeLen, slot, a.foreign)
       { state: out.state, solicited: out.solicited, jamDesignate: out.jamDesignate,
         jamAssigns: a.jamAssigns.concat(out.jamAssigns), foreign: out.foreign,
-        logPruned: a.logPruned.appendOption(out.logPruned) }
+        logPruned: a.logPruned.appendOption(out.logPruned), headRoot: a.headRoot }
     })
 }

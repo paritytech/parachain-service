@@ -2,11 +2,14 @@
 use super::itf::replay;
 use serde_json::{json, Value};
 
-const FIXTURES: [(&str, &str); 4] = [
-	("initial", include_str!("../fixtures/quint/due_flush/initial_tiling_works.itf.json")),
-	("initial", include_str!("../fixtures/quint/due_flush/initial_rotating_works.itf.json")),
-	("final", include_str!("../fixtures/quint/due_flush/final_tiling_works.itf.json")),
-	("final", include_str!("../fixtures/quint/due_flush/final_rotating_works.itf.json")),
+/// Phase, fixture, and the fewest writes its flush makes: a tiling queue's payload
+/// is removed per core, while a non-tiling set stays cached as sent and only the
+/// dirty-core index is rewritten (§7.1).
+const FIXTURES: [(&str, &str, usize); 4] = [
+	("initial", include_str!("../fixtures/quint/due_flush/initial_tiling_works.itf.json"), 4),
+	("initial", include_str!("../fixtures/quint/due_flush/initial_rotating_works.itf.json"), 1),
+	("final", include_str!("../fixtures/quint/due_flush/final_tiling_works.itf.json"), 4),
+	("final", include_str!("../fixtures/quint/due_flush/final_rotating_works.itf.json"), 1),
 ];
 
 fn trace(fixture: &str, boundary: &str) -> Value {
@@ -17,8 +20,8 @@ fn trace(fixture: &str, boundary: &str) -> Value {
 
 #[test]
 fn host_boundaries_works() {
-	for (phase, fixture) in FIXTURES {
-		for (call, minimum) in [("assign", 3), ("write", 4), ("read", 1)] {
+	for (phase, fixture, writes) in FIXTURES {
+		for (call, minimum) in [("assign", 3), ("write", writes), ("read", 1)] {
 			let mut count = 0;
 			for occurrence in 0..128 {
 				let mut document = trace(fixture, &format!("{phase}:before:{call}:{occurrence}"));
@@ -44,7 +47,7 @@ fn host_boundaries_works() {
 
 #[test]
 fn retained_assignment_errors() {
-	for (phase, fixture) in FIXTURES {
+	for (phase, fixture, _) in FIXTURES {
 		let mut document = trace(fixture, &format!("{phase}:after:assign:2"));
 		document["states"][2]["lastStepAssigns"] = document["states"][3]["lastStepAssigns"].clone();
 		assert_eq!(document["states"][2]["lastStepAssigns"].as_array().unwrap().len(), 3);
@@ -87,7 +90,7 @@ fn cutoff_scope_works() {
 
 #[test]
 fn fixtures_works() {
-	for (_, fixture) in FIXTURES {
+	for (_, fixture, _) in FIXTURES {
 		replay::trace(fixture).unwrap();
 	}
 }

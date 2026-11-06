@@ -61,13 +61,10 @@ pub fn transition(
 	frame: usize,
 ) -> Result<(), String> {
 	let after = heads(storage, codex)?;
+	// After an interruption `after` is the restored checkpoint, and so is the
+	// yielded root.
 	check(
-		yielded ==
-			if super::gas::interrupted(current)?.is_some() {
-				None
-			} else {
-				commitment(before, &after)
-			},
+		yielded == commitment(before, &after),
 		"head_commitment_matches_changed_heads",
 		frame,
 		yielded,

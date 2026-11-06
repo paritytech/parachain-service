@@ -18,6 +18,29 @@ pub fn interrupted(frame: &Value) -> Result<Option<usize>, String> {
 	}
 }
 
+/// The spec's `lastStepOutOfGas` must name the stop `replayInterrupt` injects:
+/// a report, or the late due flush once all `count` reports are kept. A panic or
+/// host trap there restores the same checkpoint, so it is named alike.
+pub fn check_out_of_gas(frame: &Value, count: usize) -> Result<(), String> {
+	let Some(value) = frame.get("lastStepOutOfGas") else { return Ok(()) };
+	let expected = match interrupted(frame)? {
+		Some(index) if index < count => ("InPackage", Some(index)),
+		Some(_) => ("InLateAssigns", None),
+		None => ("Never", None),
+	};
+	let (tag, payload) = variant(value)?;
+	let index = match tag {
+		"InPackage" => Some(bounded_integer::<usize>(payload, "lastStepOutOfGas")?),
+		_ => None,
+	};
+	if (tag, index) != expected {
+		return Err(format!(
+			"lastStepOutOfGas {tag}{index:?} disagrees with replayInterrupt {expected:?}"
+		));
+	}
+	Ok(())
+}
+
 pub fn limits(frame: &Value, count: usize) -> Result<Vec<u64>, String> {
 	let Some(limits) = frame.get("replayGasLimits") else { return Ok(vec![u64::MAX; count]) };
 	let limits = limits.as_array().ok_or("replayGasLimits must be a list")?;

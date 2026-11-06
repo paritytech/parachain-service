@@ -55,9 +55,9 @@ pub const REPORT_BASE_GAS: u64 = 5_000_000;
 pub const UPWARD_MESSAGE_GAS: u64 = 250_000;
 
 /// §5.1 due-assign flush — the cost of applying one due assign: reading its
-/// cached queue, the JAM `assign` of a cycle-expanded 80-hash queue, and
-/// re-caching a rotating queue. PROVISIONAL: must be benchmarked; FIXME before
-/// production.
+/// cached queue, the JAM `assign` of the 80-hash queue laid out for its slots,
+/// and re-arming a non-tiling queue. PROVISIONAL: must be benchmarked; FIXME
+/// before production.
 pub const DUE_ASSIGN_GAS: u64 = 1_000_000;
 
 /// §5.1 due-assign flush — the fixed cost of one flush: reading and rewriting

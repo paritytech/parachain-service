@@ -23,7 +23,7 @@ use crate::{
 use alloc::{string::String, vec::Vec};
 use codec::{DecodeAll, Encode};
 use jam_pvm_common::refine;
-use jam_types::{core_count, Hash, PageMode};
+use jam_types::{core_count, Hash, PageMode, SignedGas};
 use parachain_service_core::{
 	host_call::HostCall,
 	types::ParaId,
@@ -145,8 +145,8 @@ impl ExecutorState {
 		}
 	}
 
-	/// Handle one child host call. `regs` are the inner PVM's registers at the
-	/// fault; return-value registers are updated in place.
+	/// Handle one child host call. `gas_left` and `regs` are the inner PVM's gas
+	/// and registers at the fault; return-value registers are updated in place.
 	///
 	/// Structured violations return a `RefineLog`; abnormal PVF exits (unknown
 	/// host calls, machine failures, oversized values) panic the whole refine
@@ -155,6 +155,7 @@ impl ExecutorState {
 		&mut self,
 		handle: u64,
 		index: u64,
+		gas_left: SignedGas,
 		regs: &mut [u64; 13],
 	) -> Result<(), RefineLog> {
 		let Ok(call) = HostCall::try_from(index) else {
@@ -171,8 +172,9 @@ impl ExecutorState {
 
 		match call {
 			// --- Data access (§4.3) -------------------------------------------------
+			// The inner VM's gas, not Refine's own (§4.3).
 			HostCall::Gas => {
-				regs[A0] = refine::gas();
+				regs[A0] = gas_left as u64;
 			},
 			HostCall::GrowHeap => {
 				// Child heap growth (§4.3): the guest allocator (jam-pvm-common's

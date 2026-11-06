@@ -31,7 +31,7 @@ and `just quint-compact` before committing.
 | Refine errors, WorkErr, empty blocks | Error logs, unlogged failures of other code, and unchanged state for skipped work |
 | Pre-checkpoint gas recovery | Independent rollback oracle, retained incoming funds, reverted due assignments and queue writes, repeated exhaustion, and successful retries |
 | Instruction gas recovery | Sampled invocation limits and cutoffs before/after writes, creation, and transfers; fixed Quint prefix, checkpoint effects, and subsequent invocations |
-| Due-flush recovery | Injected gas exhaustion before/after assignment, read, and write calls in funded initial/final flushes; rollback of three cores, rotating queues, retained reports/credits, and retries |
+| Due-flush recovery | Injected gas exhaustion before/after assignment, read, and write calls in funded initial/final flushes; rollback of three cores, rewritten non-tiling queues, retained reports/credits, and retries |
 | Accumulate panic recovery | Actual PVM traps from malformed work digests; first/middle/last checkpoints, zero report gas, repeated faults, due assignments, retained host effects, and successful later invocations |
 | Multiple work packages and parachains | Ordered processing, shared references, delegated forgets, and combined head commitments |
 | KV operations | Overwrite, empty keys/values rejected at Refine, values crossing 64 bytes without a length prefix, refunds, delegated and unauthorized removal, failed reservations, and stale candidates |
@@ -39,7 +39,7 @@ and `just quint-compact` before committing.
 | Balances and incoming transfers | Allowance boundaries, authorization, reservations/refunds, queue packing and rollover, admission/drop at the reservation limit, and Asset Hub charges |
 | Outgoing transfers | Ordered deferred records (source, destination, amount, memo, gas), zero amounts, repeated IDs, all refusal reasons, gas boundaries, rejected work, persistent debits, and service balances |
 | Lifecycle | Registration thresholds and repeated funding, unauthorized calls, forced head/code changes, cleanup refusal with extra storage, delayed cleanup, and re-registration |
-| Assignments | Immediate/delayed execution, due-slot boundaries, queue expansion/rotation, repeated replacements, authorization, invalid queues, handoffs, a cached assign rejected after a handoff, pending storage, and final JAM queues/privileges |
+| Assignments | Immediate/delayed execution, due-slot boundaries, slot-ordered queue layout and rewrites, repeated replacements, authorization, invalid queues, handoffs, a cached assign rejected after a handoff, pending storage, and final JAM queues/privileges |
 | Validator keys | Chunk staging, seeded buffers, full-size designation, same-set re-designation, empty aborts, invalid lengths, overflow, authorization, stale work, and final designation across multiple work packages |
 | Upgrades | Announcements and applies, supersession, refused forgets of validation code, unavailable or foreign code, failed reservations, and skipped work |
 | Service self-upgrades | Availability and Asset Hub reference checks, wrong lengths, unrequested/rerequested code, running-code protection, repeated upgrades and gas changes, ordered requests, and execution of installed code on later blocks |
@@ -80,7 +80,7 @@ JAM balances, installed code lengths, and upgrade gas-setting mismatches are rej
 - Due assignments are flushed in due-slot/core order within the available
   allowance, retried after work reports using leftover gas, and otherwise
   carried into later blocks (§5.1). Assignment regression tests cover partial
-  flushing, carry-over, rotation, and rejection log order. Interrupted replay
+  flushing, carry-over, rewrites, and rejection log order. Interrupted replay
   invocations select a zero assignment budget when no allowance remains;
   rollback before the first checkpoint retains no assignment effects.
 
@@ -213,8 +213,8 @@ See [invocation gas cutoffs](FUZZING.md#invocation-gas-cutoffs) for metadata,
 calibration, and limits.
 
 Final-checkpoint exhaustion fixtures live in `final_checkpoint/`. They preserve
-all reports' state and host effects while expecting `NotEnoughGas` with no head
-commitment. Tests sample the final tail, bracket head reads, and resume after
+all reports' state and host effects while expecting `NotEnoughGas` with the head
+commitment yielded at the final checkpoint. Tests sample the final tail, bracket head reads, and resume after
 repeated failures. Storage is persisted before the checkpoint in this runtime;
 there are no final-tail writes. See the fuzzing guide for calibration details.
 
@@ -281,7 +281,7 @@ replacement growth, shrink refunds, index-failure deposit refunds, and funded re
 Generated coverage requires checkpointed rejection at both assignment write sites.
 Inline fixtures cover post-call payload/index rejection, rollback of successful
 calls, retained calls despite rejected cache growth, funded replacement, zero-balance
-tiling queues, and later due flushing of preserved or rotated queues. Generated
+tiling queues, and later due flushing of preserved or rewritten queues. Generated
 coverage requires both inline write refusals with retained calls and a due flush.
 Sampled gas invocations exclude already-due entries: calibration removes the
 initial flush allowance. Due-flush checks use fully funded invocations.
@@ -313,7 +313,7 @@ fail against the original oracle. These are focused fixtures, not exhaustive
 instruction enumeration or generated combinations of all cleanup lifecycles.
 
 The `due_flush` fixtures cover three pending cores with one-hash tiling queues
-and three-hash rotating queues. `due_flush.rs` checks both sides of every assign,
+and three-hash rewritten queues. `due_flush.rs` checks both sides of every assign,
 read, and write in the selected initial or final phase. Initial faults preserve
 incoming scheduler credits but roll back all guest changes. Final faults retain
 the report checkpoint and roll back subsequent assignments and cache mutations.

@@ -95,17 +95,16 @@ module storage_inputs {
     else {
       val called = { ...h, state: h.state.recordAssigner(core, assigner.optionGetOr(ParachainServiceId)),
         assigns: h.assigns.append({ core: core, assigner: assigner.optionGetOr(ParachainServiceId),
-          queue: assignQueueFor(queue) }) }
+          queue: assignQueueFor(queue, due) }) }
       if (fillsDirectly(queue.length())) {
         val cleared = { ...called.state, pendingAssigns: called.state.pendingAssigns.mapRemove(core),
           pendingAssignCores: called.state.pendingAssignCores.mapRemove(core) }
         assignmentState(called, cleared)
-      } else schedule(called, core, advanceAssignQueue(queue), assigner,
-        slot + AuthorizerQueueLength, ri, mi)
+      } else schedule(called, core, queue, assigner, due + AuthorizerQueueLength, ri, mi)
     }
   }
 
-  // Payload deletion/rotation and index shrinking cannot require new deposit.
+  // Payload deletion and index shrinking cannot require new deposit.
   // An absent index remains absent when there was no cached entry to remove.
   pure def assignmentState(h: Host, proposed: ParachainServiceState): Host = {
     val oldCount = h.state.pendingAssignCores.keys().size()
@@ -223,7 +222,7 @@ module storage_inputs {
       (a, i) => report(a, packages[i], i, now + 1))
     all {
       svc' = out.state, prevSvc' = svc, now' = now + 1,
-      lastStepWorkResults' = packages, lastStepAssigns' = List(), lastStepAssignBudget' = FullAssignBudget,
+      lastStepWorkResults' = packages, lastStepAssigns' = List(), lastStepAssignBudget' = FullAssignBudget, lastStepOutOfGas' = Never,
       lastHeadRoot' = headCommitment(svc, out.state),
       solicitedSet' = solicitedSet, jamStagingSet' = jamStagingSet,
       foreignServices' = foreignServices, logPrunedBelow' = logPrunedBelow,

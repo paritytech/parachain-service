@@ -20,7 +20,7 @@ module outgoing_inputs {
   action outgoingInit = all {
     svc' = initialState, prevSvc' = initialState, now' = 0,
     jamStagingSet' = List(), solicitedSet' = Set(), lastStepWorkResults' = List(),
-    lastStepAssigns' = List(), lastStepAssignBudget' = { flush: 0, end: 0 }, lastHeadRoot' = None, logPrunedBelow' = Map(),
+    lastStepAssigns' = List(), lastStepAssignBudget' = { flush: 0, end: 0 }, lastStepOutOfGas' = Never, lastHeadRoot' = None, logPrunedBelow' = Map(),
     foreignServices' = Map(MkServiceId(0) -> destination(MkServiceId(0), 100),
       MkServiceId(7) -> destination(MkServiceId(7), 200)), noOutgoing
   }

@@ -20,7 +20,8 @@ panics in the PVM. Gas calibration observes host-call order; expected state and
 effects still come from Quint’s predetermined recovery oracle. Before the first
 checkpoint, only incoming funds credited by JAM survive; due assignments and
 incoming-queue writes roll back. After the final checkpoint, all report state and
-effects survive, while the invocation returns `NotEnoughGas` and no commitment.
+effects survive, while the invocation returns `NotEnoughGas` and outputs the head
+commitment yielded at that checkpoint.
 Later invocations retry from the recovered state.
 
 - [Fixture guide](service/bin/tests/fixtures/quint/README.md): regeneration,

@@ -34,11 +34,15 @@ module lifecycle_inputs {
       FixedCodeLen, List(), foreignServices)
     val out = replayAll(due.state, solicitedSet, jamStagingSet, FixedCodeLen,
       now + gap, List(wr), due.foreign)
+    // The report leaves gas for the due assigns still pending (§5.1).
+    val late = flushDueAssigns(out.state, now + gap, CoreCount)
     all {
-      svc' = out.state, now' = now + gap, prevSvc' = svc,
+      svc' = late.state, now' = now + gap, prevSvc' = svc,
       jamStagingSet' = out.jamDesignate, solicitedSet' = out.solicited,
-      lastStepWorkResults' = List(wr), lastStepAssigns' = due.assigns.concat(out.jamAssigns),
-      lastStepAssignBudget' = FullAssignBudget,
+      lastStepWorkResults' = List(wr),
+      lastStepAssigns' = due.assigns.concat(out.jamAssigns).concat(late.assigns),
+      lastStepAssignBudget' = { flush: CoreCount, end: CoreCount },
+      lastStepOutOfGas' = Never,
       lastHeadRoot' = headCommitment(svc, out.state), foreignServices' = out.foreign,
       logPrunedBelow' = out.logPruned.foldl(logPrunedBelow, (m, pair) => m.put(pair._1, pair._2))
     }

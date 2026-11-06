@@ -37,7 +37,7 @@ pub struct BlockAuthorization {
 	/// The authorizer code hash.
 	pub code_hash: [u8; 32],
 	/// The authorizer config, starting with the `Vec<ParaId>` every parachain authorizer config
-	/// starts with (§7.1).
+	/// starts with (§7.2).
 	pub config: Vec<u8>,
 	/// Opaque to everyone but the authorizer.
 	pub token: Vec<u8>,

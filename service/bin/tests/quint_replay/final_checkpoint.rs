@@ -73,6 +73,7 @@ fn completed_invocation_errors() {
 fn wrong_checkpoint_errors() {
 	let mut trace = trace("replayGasSample", json!({"#bigint": "500000"}));
 	trace["states"][2]["replayInterrupt"] = json!({"#bigint": "2"});
+	trace["states"][2]["lastStepOutOfGas"] = json!({"tag": "InPackage", "value": {"#bigint": "2"}});
 	assert!(replay::document_trace(&trace).unwrap_err().contains("headData differs"));
 }
 

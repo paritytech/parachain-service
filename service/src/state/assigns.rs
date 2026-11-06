@@ -11,8 +11,8 @@ use codec::{Decode, Encode};
 use parachain_service_core::types::{AuthorizerHash, CoreIndex, ServiceId, Timeslot};
 
 /// A scheduled JAM `assign` for one core (spec §3.1, §7.1). The queue is
-/// stored rotated to the beginning of its next 80-slot cycle, so no separate
-/// cursor is needed. JAM writes the queue and assigner atomically.
+/// stored as the Coretime chain sent it; each assign lays it out for the slots
+/// it covers. JAM writes the queue and assigner atomically.
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub struct PendingAssign {
 	pub queue: Vec<AuthorizerHash>,

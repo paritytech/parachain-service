@@ -117,7 +117,7 @@ pub fn run(
 		// behind: lending the whole counter always overshoots it, which drains refine to
 		// zero without ever entering the child.
 		let lent = refine::gas().saturating_sub(INVOKE_GAS_RESERVE) as i64;
-		let (outcome, _gas, out_regs) = refine::invoke(handle, lent, regs)
+		let (outcome, gas_left, out_regs) = refine::invoke(handle, lent, regs)
 			.unwrap_or_else(|_| panic!("PVF inner PVM invoke failed; §4.2 whole-refine failure"));
 		regs = out_regs;
 		let tag = match outcome {
@@ -132,7 +132,7 @@ pub fn run(
 		match outcome {
 			InvokeOutcome::Halt => break Ok(()),
 			InvokeOutcome::HostCallFault(index) => {
-				if let Err(e) = exe.dispatch(handle, index, &mut regs) {
+				if let Err(e) = exe.dispatch(handle, index, gas_left, &mut regs) {
 					break Err(e);
 				}
 			},

@@ -136,7 +136,7 @@ fn heap(top: u64, mapped_until: u64, limit: u64) -> Heap {
 fn grow(exe: &mut ExecutorState, handle: u64, pages: u64) -> u64 {
 	let mut regs = [0u64; 13];
 	regs[A0] = pages;
-	exe.dispatch(handle, HostCall::GrowHeap as u64, &mut regs).expect("ok");
+	exe.dispatch(handle, HostCall::GrowHeap as u64, 0, &mut regs).expect("ok");
 	regs[A0]
 }
 
@@ -211,7 +211,7 @@ fn log_hostcalls_100_and_204_share_the_abi() {
 		regs[A2] = target.len() as u64;
 		regs[A3] = TEXT_PTR;
 		regs[A4] = text.len() as u64;
-		exe.dispatch(LOG_HANDLE, index, &mut regs)
+		exe.dispatch(LOG_HANDLE, index, 0, &mut regs)
 			.expect("index 100/204 is a known log host call");
 		assert_eq!(regs[A0], 1, "log has no return value; A0 is untouched");
 	}

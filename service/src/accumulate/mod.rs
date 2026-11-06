@@ -4,8 +4,9 @@
 //! incoming-transfer processing, and per-work-package work. Each phase is paid
 //! from its own gas: the due assigns from the always-accumulate allowance, each
 //! transfer from the gas it carries, and each work-report from the gas it
-//! declared itself. The service checkpoints after applying a report so a later
-//! report running the budget dry cannot undo it. Due assigns that did not fit
+//! declared itself. The service checkpoints after the flush, and after applying a
+//! report it yields the head commitment so far and checkpoints, so running the
+//! budget dry later cannot undo either. Due assigns that did not fit
 //! the allowance are applied at the end if gas is left, and are otherwise
 //! carried over to the next block.
 
@@ -19,7 +20,7 @@ pub mod upward;
 pub mod validator_keys;
 
 use crate::{head_commitment::HeadTracker, state::log::ParachainLogs};
-use jam_pvm_common::accumulate::{accumulate_items, checkpoint, gas};
+use jam_pvm_common::accumulate::{accumulate_items, checkpoint, gas, yield_hash};
 use jam_types::{AccumulateItem, Hash, ServiceId, Slot, UnsignedGas};
 use parachain_service_core::types::CORETIME_PARA_ID;
 
@@ -48,8 +49,10 @@ pub fn accumulate(
 	let allowance = gas().saturating_sub(declared);
 
 	// Phase 1: always-accumulate — flush the due authorizer-queue assigns the
-	// allowance pays for (§5.1).
+	// allowance pays for, then checkpoint so running out of gas later cannot undo
+	// the flush (§5.1).
 	flush_due_assigns(now, service_id, assigns::budget(allowance));
+	checkpoint();
 
 	// Phase 2: incoming-transfer processing (§5.1). JAM already credited the
 	// balances unconditionally; recording is best effort. Transfers are
@@ -63,17 +66,22 @@ pub fn accumulate(
 		.collect();
 	transfers::record_incoming(&transfers);
 
-	// The always-accumulate work is done; protect it from a later failure.
-	// TODO: the design only mandates checkpointing after each work-report; the
-	// phase boundary here is an extra safety point.
-	checkpoint();
+	// TODO: the design only mandates checkpointing after the flush and after each
+	// work-report; the end of transfer recording is an extra safety point.
+	if !transfers.is_empty() {
+		checkpoint();
+	}
 
 	// Phase 3: per-work-package work, in operand order (§5.1 steps 1–6).
 	for item in items {
 		if let AccumulateItem::WorkItem(record) = item {
-			// §5.1: checkpoint after each applied work-report so its effects
-			// survive a later out-of-gas or panic.
+			// §5.1: a report that cleared the gas gate yields the commitment over the
+			// heads changed so far (§5.5), then checkpoints, so running out of gas or
+			// panicking later cannot undo either.
 			if package::process(now, service_id, &record, &mut heads) {
+				if let Some(root) = heads.root() {
+					yield_hash(&root);
+				}
 				checkpoint();
 			}
 		}
@@ -81,7 +89,7 @@ pub fn accumulate(
 
 	// The due assigns still pending are applied while the gas left pays for
 	// them (§5.1). They touch no head, so the commitment is final already.
-	let commitment = heads.commitment();
+	let commitment = heads.root();
 	flush_due_assigns(now, service_id, assigns::budget(gas()));
 
 	Ok(commitment)

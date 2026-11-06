@@ -32,8 +32,8 @@ pub fn schedule(
 		return;
 	}
 	if jam_slot <= now {
-		match jam_assign(service_id, core, &queue, new_assigner) {
-			Ok(()) => settle_after_assign(core, queue, new_assigner, now),
+		match jam_assign(service_id, core, &queue, new_assigner, jam_slot) {
+			Ok(()) => settle_after_assign(core, queue, new_assigner, jam_slot),
 			// The core was handed away: nothing is scheduled, and any entry still
 			// cached for it is dropped (§7.1).
 			Err(ApiError::ActionInvalid) => {
@@ -102,16 +102,13 @@ pub fn apply_due_assigns(
 	next.retain(|entry| !due.contains(entry));
 	for (core, jam_slot) in due {
 		let entry = PendingAssigns::get(core).expect("dirty index names cached entries; qed");
-		match jam_assign(service_id, core, &entry.queue, entry.assigner) {
+		match jam_assign(service_id, core, &entry.queue, entry.assigner, jam_slot) {
 			Ok(()) if fills_directly(entry.queue.len()) => PendingAssigns::remove(core),
-			Ok(()) => {
-				let _ = PendingAssigns::set(
-					core,
-					&PendingAssign { queue: advance_queue(entry.queue), assigner: entry.assigner },
-				);
-				next.try_push((core, now + auth_queue_len() as Timeslot))
-					.expect("re-arming cannot exceed the original number of dirty cores; qed");
-			},
+			// The set stays cached as sent and is rewritten 80 slots after this one was
+			// due, even when it is applied late (§7.1).
+			Ok(()) => next
+				.try_push((core, jam_slot + auth_queue_len() as Timeslot))
+				.expect("re-arming cannot exceed the original number of dirty cores; qed"),
 			// The core was handed away since the entry was cached: drop it (§5.1).
 			Err(ApiError::ActionInvalid) => {
 				PendingAssigns::remove(core);
@@ -140,19 +137,19 @@ fn well_formed(queue: &[AuthorizerHash], new_assigner: Option<ServiceId>) -> boo
 	}
 }
 
-/// Drop a self-sufficient queue after it fires, or retain and advance a short
-/// non-tiling queue so its endless sequence resumes 80 slots later (§7.1).
+/// Drop a self-sufficient queue after it fires, or keep a non-tiling set as sent
+/// so it is rewritten 80 slots after `due` (§7.1).
 fn settle_after_assign(
 	core: CoreIndex,
 	queue: Vec<AuthorizerHash>,
 	assigner: Option<ServiceId>,
-	now: Timeslot,
+	due: Timeslot,
 ) {
 	if fills_directly(queue.len()) {
 		PendingAssigns::remove(core);
 		DirtyCores::remove(core);
 	} else {
-		cache(core, advance_queue(queue), assigner, now + auth_queue_len() as Timeslot);
+		cache(core, queue, assigner, due + auth_queue_len() as Timeslot);
 	}
 }
 
@@ -160,26 +157,36 @@ fn fills_directly(queue_len: usize) -> bool {
 	auth_queue_len() % queue_len == 0
 }
 
-fn advance_queue(mut queue: Vec<AuthorizerHash>) -> Vec<AuthorizerHash> {
-	let by = auth_queue_len() % queue.len();
-	queue.rotate_left(by);
-	queue
-}
-
-/// Call JAM `assign(core, queue, assigner)`. A queue shorter than the protocol's
-/// exact length is cycle-repeated (`queue[i mod len]`, DECISIONS.md D-7); a
-/// cached `assigner` of `None` resolves to this service — JAM always writes one.
-/// JAM answers `ActionInvalid` once this service is no longer the core's
-/// assigner.
+/// Call JAM `assign(core, queue, assigner)` for an assign due at `due`. JAM adds
+/// entry `t % 80` to the pool at slot `t`, and slot `t` gets hash `t % len` of
+/// the set, so the slots `due` to `due + 79` are written into entries `due % 80`
+/// onwards, wrapping to entry 0 (§7.1, DECISIONS.md D-7). A set that tiles the
+/// 80 entries comes out as `queue` repeated from entry 0. A cached `assigner` of
+/// `None` resolves to this service — JAM always writes one. JAM answers
+/// `ActionInvalid` once this service is no longer the core's assigner.
 fn jam_assign(
 	service_id: ServiceId,
 	core: CoreIndex,
 	queue: &[AuthorizerHash],
 	assigner: Option<ServiceId>,
+	due: Timeslot,
 ) -> Result<(), ApiError> {
-	let target_len = auth_queue_len();
-	let expanded: Vec<JamAuthorizerHash> =
-		(0..target_len).map(|i| JamAuthorizerHash(queue[i % queue.len()])).collect();
+	let target_len = auth_queue_len() as u64;
+	let len = queue.len() as u64;
+	// Entry `due % 80` holds slot `due`; the entries before it hold the slots
+	// after `due + 80 - due % 80`, so entry 0 holds that slot.
+	let first_entry = due as u64 % target_len;
+	let mut hash = ((due as u64 + (target_len - first_entry) % target_len) % len) as usize;
+	let expanded: Vec<JamAuthorizerHash> = (0..target_len)
+		.map(|entry| {
+			if entry == first_entry {
+				hash = (due as u64 % len) as usize;
+			}
+			let authorizer = JamAuthorizerHash(queue[hash]);
+			hash = if hash + 1 == queue.len() { 0 } else { hash + 1 };
+			authorizer
+		})
+		.collect();
 	let auth_queue = AuthQueue::try_from(expanded).expect("expanded to the exact length; qed");
 	assign(core, &auth_queue, assigner.unwrap_or(service_id))
 }

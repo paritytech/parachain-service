@@ -13,13 +13,16 @@ module assignments {
     AssignCore({ core: c, queue: q(n), jamSlot: slot, newAssigner: owner })
   action core(msgs: List[UpwardMessage], gap: int): bool = lifecycleWork(CoretimeParaId, 1, msgs, gap)
   action empty(gap: int): bool = {
-    val out = accumulateBlock(svc, now + gap, jamStagingSet, solicitedSet,
-      FixedCodeLen, List(), foreignServices)
+    val out = accumulateBlockBudgeted(svc, now + gap, jamStagingSet, solicitedSet,
+      FixedCodeLen, List(), foreignServices,
+      // The reports leave gas for the due assigns still pending (§5.1).
+      { flush: CoreCount, end: CoreCount }, Never)
     all {
       svc' = out.state, now' = now + gap, prevSvc' = svc,
       jamStagingSet' = out.staging, solicitedSet' = out.solicited,
       lastStepWorkResults' = out.results, lastStepAssigns' = out.assigns,
-      lastStepAssignBudget' = FullAssignBudget,
+      lastStepAssignBudget' = { flush: CoreCount, end: CoreCount },
+      lastStepOutOfGas' = Never,
       lastHeadRoot' = out.headRoot, foreignServices' = out.foreign,
       logPrunedBelow' = logPrunedBelow
     }

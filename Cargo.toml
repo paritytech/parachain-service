@@ -32,7 +32,9 @@ license = "Apache-2.0"
 unexpected_cfgs = { level = "warn", check-cfg = [] }
 
 [workspace.dependencies]
-cumulus-aura-authorizer-utils = { path = "vendor/polkadot-sdk-companion/cumulus/jam/aura-authorizer-utils", default-features = false }
+# The published name, resolved to the companion's copy by the patch below: a consumer with its own
+# polkadot-sdk tree (cumulus) resolves it to its own copy and cannot hold a second path crate tree.
+cumulus-aura-authorizer-utils = { version = "0.1.0", default-features = false }
 polkadot-parachain-primitives = { version = "23.0.0", default-features = false }
 jam-types = { path = "../polkajam2/crates/jam-types", default-features = false }
 jam-codec = { version = "0.1.1", default-features = false, features = ["derive"] }
@@ -88,11 +90,14 @@ tiny-keccak = { version = "2.0.2", default-features = false, features = ["keccak
 # The published crate (same source as the companion's copy): a consumer with its own polkadot-sdk
 # tree (cumulus) cannot hold a second path crate named `sp-crypto-hashing`.
 sp-crypto-hashing = { version = "0.1.0", default-features = false }
-sp-io = { path = "vendor/polkadot-sdk-companion/substrate/primitives/io", default-features = false }
+# Like `cumulus-aura-authorizer-utils`: the companion's copy through the patch below.
+sp-io = { version = "30.0.0", default-features = false }
 
 # Use the same JAM types for the service and the SDK AURA utilities.
 [patch.crates-io]
+cumulus-aura-authorizer-utils = { path = "vendor/polkadot-sdk-companion/cumulus/jam/aura-authorizer-utils" }
 jam-types = { path = "../polkajam2/crates/jam-types" }
+sp-io = { path = "vendor/polkadot-sdk-companion/substrate/primitives/io" }
 
 [patch."ssh://git@github.com/paritytech/polkajam.git"]
 jam-std-common = { path = "../polkajam2/crates/jam-std-common" }

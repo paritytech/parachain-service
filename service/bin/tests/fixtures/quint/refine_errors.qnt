@@ -9,9 +9,11 @@ module refine_errors {
   import main.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/main"
 
   action applyWork(result: WorkExecResult, authTrace: int): bool = {
-    val out = accumulateBlock(
+    val out = accumulateBlockBudgeted(
       svc, now + 1, jamStagingSet, solicitedSet, FixedCodeLen,
-      List({ result: result, authTrace: authTrace }), foreignServices)
+      List({ result: result, authTrace: authTrace }), foreignServices,
+      // The reports leave gas for the due assigns still pending (§5.1).
+      { flush: CoreCount, end: CoreCount }, Never)
     all {
       svc' = out.state,
       foreignServices' = out.foreign,
@@ -21,7 +23,8 @@ module refine_errors {
       prevSvc' = svc,
       lastStepWorkResults' = out.results,
       lastStepAssigns' = out.assigns,
-      lastStepAssignBudget' = FullAssignBudget,
+      lastStepAssignBudget' = { flush: CoreCount, end: CoreCount },
+      lastStepOutOfGas' = Never,
       lastHeadRoot' = out.headRoot,
       logPrunedBelow' = logPrunedBelow
     }

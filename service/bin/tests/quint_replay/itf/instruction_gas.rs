@@ -98,6 +98,12 @@ pub fn due_flush_enabled(frame: &Value) -> bool {
 		.is_some_and(|value| value.as_str() != Some(""))
 }
 
+/// Checkpoints the service takes before the first report: one after the
+/// due-assign flush, and one after recording incoming transfers if any arrived.
+fn phase_checkpoints(context: &AccumulateCallContext<'_>) -> usize {
+	1 + usize::from(context.items.iter().any(|item| matches!(item, AccumulateItem::Transfer(_))))
+}
+
 pub fn due_flush_cutoff(
 	engine: &Engine,
 	context: &AccumulateCallContext<'_>,
@@ -151,11 +157,15 @@ pub fn due_flush_cutoff(
 		.enumerate()
 		.filter_map(|(i, e)| (e == "checkpoint").then_some(i))
 		.collect();
-	if checkpoints.len() != results.len() + 1 {
+	let phase = phase_checkpoints(context);
+	if checkpoints.len() != results.len() + phase {
 		return Err("due-flush checkpoint count differs".into());
 	}
-	let (start, end) =
-		if initial { (0, checkpoints[0]) } else { (checkpoints[results.len()] + 1, events.len()) };
+	let (start, end) = if initial {
+		(0, checkpoints[0])
+	} else {
+		(checkpoints[results.len() + phase - 1] + 1, events.len())
+	};
 	let assignments: Vec<_> = (start..end).filter(|&i| events[i] == "assign").collect();
 	if assignments.is_empty() {
 		return Err("selected phase has no due assignment".into());
@@ -271,27 +281,30 @@ pub fn limit(
 		.enumerate()
 		.filter_map(|(i, e)| (e == "checkpoint").then_some(i))
 		.collect();
-	if checkpoints.len() != results.len() + 1 {
+	let phase = phase_checkpoints(context);
+	if checkpoints.len() != results.len() + phase {
 		return Err(format!(
 			"checkpoint count differs: expected {}, actual {}",
-			results.len() + 1,
+			results.len() + phase,
 			checkpoints.len()
 		));
 	}
-	let start = if before_checkpoint { 0 } else { checkpoints[stop] + 1 };
+	// Report `stop` runs after the last phase checkpoint and its predecessors'.
+	let reports = &checkpoints[phase - 1..];
+	let start = if before_checkpoint { 0 } else { reports[stop] + 1 };
 	let end = if before_checkpoint {
 		checkpoints[0]
 	} else if after_checkpoint {
 		events.len()
 	} else {
-		checkpoints[stop + 1]
+		reports[stop + 1]
 	};
 	// The pinned checkpoint host call has only its fixed charge before taking
 	// the snapshot. Paying it proves completion even when no host calls follow
 	// (e.g. an empty invocation or unchanged heads). No recovered state is read.
 	let final_start = if after_checkpoint {
 		Some(
-			threshold(engine, context, &events, checkpoints[stop], used)?
+			threshold(engine, context, &events, reports[stop], used)?
 				.checked_add(jam_types::gas_costs::CHECKPOINT)
 				.ok_or("checkpoint gas overflow")?,
 		)

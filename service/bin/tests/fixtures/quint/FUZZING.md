@@ -87,8 +87,9 @@ a deferred transfer, exhausting the mock invocation's 5,000,000,000 gas pool.
 The harness requires an actual VM out-of-gas error and applies JAM's checkpoint
 recovery. Quint predicts the completed prefix, including incoming transfers and
 due assignments; comparisons cover storage, balances, logs, and host effects.
-The failed report and the remaining suffix must leave no effects. No head
-commitment is returned on interruption. Subsequent frames replay from recovered
+The failed report and the remaining suffix must leave no effects. The output is
+the head commitment yielded at the last checkpoint, over the completed prefix
+(`lastStepOutOfGas` names the interrupted report). Subsequent frames replay from recovered
 state. This action covers transfer-induced exhaustion. Invocation gas sampling
 below also interrupts execution inside reports.
 
@@ -98,8 +99,8 @@ report's output with empty SCALE bytes. The production decoder panics, and repla
 requires the PVM's exact `Trap` outcome before restoring the checkpoint. The
 Quint oracle evaluates only the completed prefix. Incoming transfers, due
 assignments, earlier KV writes, creation requests, logs, and deferred transfers
-must survive; the failing report and suffix must leave no effects or head
-commitment. Later invocations continue from that recovered state.
+must survive; the failing report and suffix must leave no effects, and the head
+commitment covers only the prefix. Later invocations continue from that recovered state.
 
 This is explicit fault injection: valid Rust Refine does not emit this malformed
 output. It tests Accumulate's panic recovery at the report boundary, before the
@@ -150,7 +151,8 @@ subsequent work in mixed generated traces. This samples gas at the interpreter's
 metering granularity; it does not exhaustively visit every instruction.
 
 The general campaign also generates `finalCheckpointBlock`: all three reports
-are applied by the Quint oracle, but `lastHeadRoot` is `None`. The worker samples
+are applied by the Quint oracle, `lastStepOutOfGas` is `InLateAssigns`, and
+`lastHeadRoot` is the root yielded at the final checkpoint. The worker samples
 exhaustion between completion of the final checkpoint and successful VM return.
 The lower bound is the gas needed to attempt the checkpoint plus the pinned
 host's fixed `CHECKPOINT` charge; this host call snapshots immediately after that
@@ -158,14 +160,14 @@ charge. The upper bound is one gas unit below the minimum successful invocation.
 This also covers tails with no host calls (empty reports or unchanged heads).
 No recovered state is used to calibrate either bound.
 
-The service currently persists writes before checkpointing; its final tail reads
-heads, computes the commitment, and returns it, without another storage write or
-yield host call. `final_checkpoint.qnt` and the Rust tests check five tail
+The service persists writes, yields the head commitment, and then checkpoints
+after every report; its final tail reads heads, computes the same commitment, and
+returns it, without another storage write or yield host call. `final_checkpoint.qnt` and the Rust tests check five tail
 positions, both sides of a head read, repeated failures, empty invocations, due
 assignments, and subsequent work. Mutation tests reject lost heads, transfers,
 creations, assignments, the wrong checkpoint, and a successful invocation where
 `NotEnoughGas` was expected. All checkpointed storage and effects survive;
-no commitment is returned on exhaustion. `fuzz::final_checkpoint_generated_works`
+the commitment yielded at the final checkpoint is the output on exhaustion. `fuzz::final_checkpoint_generated_works`
 requires retained transfers/creations and resumption in mixed generated traces.
 
 The general campaign also generates `preCheckpointBlock` frames, marked by
@@ -194,7 +196,7 @@ external provision steps following rollback; other state checks remain active.
 | State balances | Values below, at, and above usage; reservation headroom and unauthorized updates |
 | Incoming transfers | Batches, multiple sources and memos, zero amounts, and per-entry reservation boundaries |
 | Lifecycle | Registration, funding, deregistration, delayed cleanup, and re-registration for ordinary paras |
-| Core assignments | Queue-size and rotation boundaries, handoffs, and unauthorized callers |
+| Core assignments | Queue-size and rewrite boundaries, handoffs, and unauthorized callers |
 | Validator keys | Partial/final chunks, empty aborts, assembled-length boundaries, and repeated calls |
 | Outgoing transfers | Source/destination authorization, ordered payments, overdrafts, zero amounts, and memo-gas boundaries |
 | Service upgrades | Funding and code preparation, unavailable code, wrong lengths, repeated upgrades, gas changes, and rejected work |
