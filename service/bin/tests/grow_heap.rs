@@ -19,11 +19,11 @@
 //!
 //! The executor forwards its data-access host calls to JAM through `jam_pvm_common`
 //! imports (`gas`, `peek`, `poke`, `pages`, …), which link only inside a guest build.
-//! The shims below satisfy those symbols for this host test binary; each panics on
-//! contact, so a test that strays into a path needing real inner-PVM I/O fails loudly
-//! instead of silently passing. `pages` records its calls (the mapping the `grow_heap`
-//! tests assert on), and `peek` serves the fixed buffers of the `log` test only.
+//! The shims below satisfy those symbols for this host test binary. `machine` creates
+//! typed handles for dispatch; `pages` records mapping calls and `peek` serves the fixed
+//! buffers of the `log` test. Other unexpected I/O fails loudly.
 
+use jam_pvm_common::refine::{self, InstanceHandle, ModuleHandle};
 use jam_types::{PageMode, PageOperation};
 use parachain_service::{
 	constants::MAX_PVF_HEAP_SIZE,
@@ -93,8 +93,12 @@ pub extern "C" fn pages(handle: u64, page: u64, count: u64, operation: u64) -> u
 	0
 }
 #[no_mangle]
-pub extern "C" fn machine(_: *const u8, _: u64, _: u64) -> u64 {
-	panic!("test-only shim: the paths under test must not call `machine`")
+pub extern "C" fn compile(_: u64, _: *const u8, _: u64, _: u64, _: u64) -> u64 {
+	panic!("test-only shim: the paths under test must not call `compile`")
+}
+#[no_mangle]
+pub extern "C" fn machine(module: u64, _: u64) -> u64 {
+	module
 }
 #[allow(improper_ctypes_definitions)]
 #[no_mangle]
@@ -102,8 +106,8 @@ pub extern "C" fn invoke(_: u64, _: *mut core::ffi::c_void) -> (u64, u64) {
 	panic!("test-only shim: the paths under test must not call `invoke`")
 }
 #[no_mangle]
-pub extern "C" fn expunge(_: u64) -> u64 {
-	panic!("test-only shim: the paths under test must not call `expunge`")
+pub extern "C" fn expunge(_: u64, _: u64) -> u64 {
+	0
 }
 #[no_mangle]
 pub extern "C" fn fetch(_: *mut u8, _: u64, _: u64, _: u64, _: u64, _: u64) -> u64 {
@@ -133,10 +137,16 @@ fn heap(top: u64, mapped_until: u64, limit: u64) -> Heap {
 	Heap { page_size: PAGE, top, mapped_until, limit }
 }
 
+fn test_handle(id: u64) -> InstanceHandle {
+	let module = ModuleHandle(id);
+	refine::machine(&module, 0).expect("test machine")
+}
+
 fn grow(exe: &mut ExecutorState, handle: u64, pages: u64) -> u64 {
 	let mut regs = [0u64; 13];
 	regs[A0] = pages;
-	exe.dispatch(handle, HostCall::GrowHeap as u64, 0, &mut regs).expect("ok");
+	exe.dispatch(&test_handle(handle), HostCall::GrowHeap as u64, &mut 0, &mut regs)
+		.expect("ok");
 	regs[A0]
 }
 
@@ -203,7 +213,7 @@ fn log_hostcalls_100_and_204_share_the_abi() {
 	let target = b"panic_handler";
 	let text = b"Panic handler called!";
 	let mut exe = ExecutorState::new(ParaId::new(0), heap(0x10_0000, 0x10_4000, u64::MAX));
-
+	let handle = test_handle(LOG_HANDLE);
 	for index in [100u64, HostCall::Log as u64] {
 		let mut regs = [0u64; 13];
 		regs[A0] = 1; // warn
@@ -211,7 +221,7 @@ fn log_hostcalls_100_and_204_share_the_abi() {
 		regs[A2] = target.len() as u64;
 		regs[A3] = TEXT_PTR;
 		regs[A4] = text.len() as u64;
-		exe.dispatch(LOG_HANDLE, index, 0, &mut regs)
+		exe.dispatch(&handle, index, &mut 0, &mut regs)
 			.expect("index 100/204 is a known log host call");
 		assert_eq!(regs[A0], 1, "log has no return value; A0 is untouched");
 	}

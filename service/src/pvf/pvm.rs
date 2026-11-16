@@ -22,7 +22,7 @@ use polkavm::Reg;
 /// `machine` spawns the inner PVM code-only, so we also carry its memory image and layout
 /// to set up before invoking.
 pub struct ParsedPvf {
-	/// `code + jump table` blob, as the `machine` host call expects it.
+	/// `code + jump table` blob, as the `compile` host call expects it.
 	pub code: polkavm::ArcBytes,
 	/// Program counter of the `validate_block` export.
 	pub entry_pc: u64,
@@ -74,9 +74,9 @@ pub fn parse_pvf(code: &[u8]) -> Result<ParsedPvf, PvfParseError> {
 	Ok(ParsedPvf { code, entry_pc: entry_pc as u64, ro_data, rw_data, memory })
 }
 
-/// Gas withheld from the inner PVM's loan: the host's `invoke` base cost `M_K` (968), the
-/// `gas` host call that reads the counter (48), and slack for the instructions between the
-/// two. The node keeps its own copy of `M_K` for the same reason (`gas_costs::INVOKE`).
+/// Gas withheld from the inner PVM's loan: the host's `invoke` base cost `M_K` (968)
+/// and slack for instructions between reading the post-`gas` counter and invoking.
+/// The node uses `gas_costs::INVOKE` for the same base cost.
 const INVOKE_GAS_RESERVE: UnsignedGas = 2048;
 
 /// Instantiate the parsed PVF as an inner PVM and invoke `jam_validate_block()` (spec §4.2).
@@ -91,35 +91,43 @@ pub fn run(
 	pvf: &ParsedPvf,
 	para_id: ParaId,
 ) -> Result<(Hash, HeadData, UpwardMessages), RefineLog> {
-	let handle = match refine::machine(&pvf.code[..], pvf.entry_pc) {
-		Ok(h) => h,
-		Err(_) => panic!("PVF inner PVM machine spawn failed; §4.2 whole-refine failure"),
-	};
+	let module = refine::compile_from_bytes(&pvf.code[..])
+		.unwrap_or_else(|_| panic!("PVF inner PVM compilation failed; §4.2 whole-refine failure"));
+	let handle = refine::machine(&module, pvf.entry_pc).unwrap_or_else(|_| {
+		panic!("PVF inner PVM machine spawn failed; §4.2 whole-refine failure")
+	});
+	drop(module);
 	let mem = &pvf.memory;
 
 	// Map + fill the guest's RO, RW (incl. zeroed BSS) and stack regions. The heap
 	// beyond the RW data is mapped on demand by the `grow_heap` handler.
 	// TODO: map the RO region read-only once poking into protected pages is confirmed.
-	alloc_pages(handle, mem.ro_data_address(), mem.ro_data_size());
-	poke_bytes(handle, mem.ro_data_address(), &pvf.ro_data);
-	alloc_pages(handle, mem.rw_data_address(), mem.rw_data_size());
-	poke_bytes(handle, mem.rw_data_address(), &pvf.rw_data);
-	alloc_pages(handle, mem.stack_address_low(), mem.stack_size());
+	alloc_pages(&handle, mem.ro_data_address(), mem.ro_data_size());
+	poke_bytes(&handle, mem.ro_data_address(), &pvf.ro_data);
+	alloc_pages(&handle, mem.rw_data_address(), mem.rw_data_size());
+	poke_bytes(&handle, mem.rw_data_address(), &pvf.rw_data);
+	alloc_pages(&handle, mem.stack_address_low(), mem.stack_size());
 
 	let mut regs = [0u64; 13];
 	regs[Reg::SP as usize] = mem.stack_address_high() as u64;
 	regs[Reg::RA as usize] = polkavm::RETURN_TO_HOST;
 
 	let mut exe = ExecutorState::new(para_id, Heap::new(&pvf.memory));
+	// The first loan establishes the PVF's budget; later loans cannot replenish it.
+	let mut gas_left = i64::MAX;
 
 	let result: Result<(), RefineLog> = loop {
 		// The host charges `M_K + g_R` for an invoke, so the lent `g_R` has to leave `M_K`
 		// behind: lending the whole counter always overshoots it, which drains refine to
 		// zero without ever entering the child.
-		let lent = refine::gas().saturating_sub(INVOKE_GAS_RESERVE) as i64;
-		let (outcome, gas_left, out_regs) = refine::invoke(handle, lent, regs)
+		let available = refine::gas()
+			.saturating_sub(INVOKE_GAS_RESERVE)
+			.min(i64::MAX as u64) as i64;
+		let lent = gas_left.min(available);
+		let (outcome, remaining, out_regs) = refine::invoke(&handle, lent, regs)
 			.unwrap_or_else(|_| panic!("PVF inner PVM invoke failed; §4.2 whole-refine failure"));
 		regs = out_regs;
+		gas_left = remaining;
 		let tag = match outcome {
 			InvokeOutcome::Halt => "halt",
 			InvokeOutcome::HostCallFault(_) => "host",
@@ -132,7 +140,7 @@ pub fn run(
 		match outcome {
 			InvokeOutcome::Halt => break Ok(()),
 			InvokeOutcome::HostCallFault(index) => {
-				if let Err(e) = exe.dispatch(handle, index, gas_left, &mut regs) {
+				if let Err(e) = exe.dispatch(&handle, index, &mut gas_left, &mut regs) {
 					break Err(e);
 				}
 			},
@@ -154,7 +162,7 @@ pub fn run(
 }
 
 /// Allocate + zero the pages spanning `[addr, addr + len)`; `addr` must be page-aligned.
-fn alloc_pages(handle: u64, addr: u32, len: u32) {
+fn alloc_pages(handle: &refine::InstanceHandle, addr: u32, len: u32) {
 	if len == 0 {
 		return;
 	}
@@ -165,7 +173,7 @@ fn alloc_pages(handle: u64, addr: u32, len: u32) {
 }
 
 /// Copy `data` into the inner PVM at `addr` (whose page must already be allocated).
-fn poke_bytes(handle: u64, addr: u32, data: &[u8]) {
+fn poke_bytes(handle: &refine::InstanceHandle, addr: u32, data: &[u8]) {
 	if data.is_empty() {
 		return;
 	}

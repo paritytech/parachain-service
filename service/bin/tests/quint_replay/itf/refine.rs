@@ -349,7 +349,6 @@ pub(super) fn execute_authorized(
 		{
 			return Err("cutoff control must produce a successful digest with nonzero gas".into());
 		}
-		context.output_len = 0;
 		context.gas = (((used - 1) as u128 * sample as u128) / 1_000_000) as u64;
 	}
 	let (actual, _, _) = engine.refine(service_hash, RefineCallContext::from(&mut context));

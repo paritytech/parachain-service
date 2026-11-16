@@ -18,7 +18,7 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 #[derive(IntoPrimitive, TryFromPrimitive)]
 #[repr(u64)]
 pub enum HostCall {
-	// --- JAM host functions, forwarded unchanged (§4.3) ---
+	// --- JAM host functions (§4.3) ---
 	/// The remaining gas budget.
 	Gas = 0,
 	/// Expand the RW data region.
@@ -32,6 +32,20 @@ pub enum HostCall {
 	HistoricalLookup = 7,
 	/// Write a segment to the JAM Data Lake, e.g. an outbound XCMP payload.
 	Export = 8,
+	/// Compile a module from memory or a historical preimage.
+	Compile = 9,
+	/// Instantiate a module with empty memory.
+	Machine = 10,
+	/// Read an inner VM's memory.
+	Peek = 11,
+	/// Write an inner VM's memory.
+	Poke = 12,
+	/// Allocate, free or protect an inner VM's pages.
+	Pages = 13,
+	/// Run an inner VM using the caller's gas budget.
+	Invoke = 14,
+	/// Remove an inner VM or module.
+	Expunge = 15,
 
 	// --- PolkaJam's non-GP host functions ---
 	/// PolkaJam's own `log` (index 100), imported by `jam-pvm-common`'s panic

@@ -16,13 +16,8 @@
 
 //! The JAM refine host-call API, re-exported from `jam_pvm_common::refine`.
 //!
-//! This is the fetch surface the Parachain Service's own refine entry point
-//! (`parachain-service`'s `service/src/refine.rs`) drives from, so a PVF guest
-//! consuming these re-exports reads the work package, its refine context and the
-//! work-item payloads through the very same fetch wrappers as the node — a
-//! shared, single definition of the ABI for both sides instead of per-runtime
-//! copies of the raw `fetch` import. `refine_context`, for example, backs on
-//! `Fetch::RefineContext` and yields `lookup_anchor_slot` as the trusted relay
-//! block number.
+//! PVFs use the same wrappers to read work-package inputs and manage nested VMs.
+//! Nested module and instance handles are private to the PVF; `invoke` spends its
+//! remaining gas and refunds unused gas. A PVF handles its nested VM's host calls.
 
 pub use jam_pvm_common::refine::*;

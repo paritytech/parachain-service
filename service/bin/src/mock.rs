@@ -260,6 +260,7 @@ pub fn refine_args(
 		provide_preimage(&mut storage, blob);
 	}
 
+	let prior_output_len = auth_trace.len() as u32;
 	let context = RefineCallContextOwned {
 		storage,
 		core: 0,
@@ -272,11 +273,10 @@ pub fn refine_args(
 			.map(|per_item| per_item.into_iter().map(Into::into).collect())
 			.collect(),
 		export_counter: 0,
-		max_exports: 0,
 		exports: Vec::new(),
 		work_package: package.into(),
 		work_item_index,
-		output_len: 0,
+		prior_output_len,
 		engine: engine(),
 	};
 

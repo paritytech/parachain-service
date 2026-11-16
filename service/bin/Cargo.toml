@@ -46,7 +46,8 @@ primitive-types = { workspace = true, optional = true }
 jam-types = { workspace = true, optional = true }
 
 [dev-dependencies]
-polkavm-common = "=0.36.0"
+jam-pvm-common = { workspace = true, features = ["service"] }
+polkavm-common = "=0.37.0"
 refine-replay-pvf = { path = "../../testing/refine-replay-pvf" }
 log = "0.4"
 jam-codec = { workspace = true, features = ["std"] }
@@ -58,7 +59,7 @@ anyhow = "1" # TODO pull up to workspace
 parachain-service-core = { workspace = true, features = ["authorize-block"] }
 serde_json = "1"
 # The real-PVF test (`tests/real_pvf_executes.rs`) drives the inner PVM with the
-# same polkavm 0.36 the service pins, plus the JAM invoke/outcome types for the
+# same PolkaVM version as the service, plus the JAM invoke/outcome types for the
 # host-call shims.
 polkavm = { workspace = true }
 jam-types = { workspace = true }

@@ -60,9 +60,9 @@ blake2b_simd = { version = "1", default-features = false }
 ed25519-dalek = { version = "2", default-features = false }
 schnorrkel = { version = "0.11.5", default-features = false }
 primitive-types = { version = "0.13.1", default-features = false, features = ["codec"] }
-polkavm-derive = { version = "0.36.0", default-features = false }
+polkavm-derive = { version = "0.37.0", default-features = false }
 bounded-collections = { version = "0.3.2", default-features = false, features = ["scale-codec"] }
-polkavm = { version = "0.36.0", default-features = false }
+polkavm = { version = "0.37.0", default-features = false }
 num_enum = { version = "0.7", default-features = false }
 
 # Guest crates and their blob builder crates.
@@ -77,14 +77,7 @@ parachain-service-core = { path = "core", default-features = false }
 
 codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }
 thiserror = "2.0"
-# This crate parses the child PVF blobs the service drives as an inner PVM. It is pinned at 0.36
-# to match polkajam post-gp-v0.8.0 (polkajam bumped its polkavm 0.30 -> 0.36) and the SDK's
-# wasm-builder (polkavm-linker 0.35), so the blobs this service drives parse with a version whose
-# instruction set and section layout match what linked them. The vendored polkajam submodule has
-# moved to the merged gp-v0.8.0 HEAD (`2c34621b`, polkavm-linker 0.36), which drags in gp-v0.8.0's
-# ~8x gas-schedule change; the gas pins in `service/bin/tests/accumulate_gas.rs` are re-baselined
-# to the measured values of the new model. `sp-io` stays sourced from the vendored companion
-# (single SDK source).
+# Keep the PVF parser and interpreter aligned with the vendored PolkaJAM's PolkaVM version.
 executor = { path = "tools/executor" }
 tiny-keccak = { version = "2.0.2", default-features = false, features = ["keccak"] }
 # The published crate (same source as the companion's copy): a consumer with its own polkadot-sdk
