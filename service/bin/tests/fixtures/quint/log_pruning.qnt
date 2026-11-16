@@ -39,22 +39,20 @@ module log_pruning {
   action candidateAt(anchor: Timeslot): bool = {
     val pi = svc.paraInfo(CoretimeParaId)
     val pkg: WorkPackage = {
-      authorizedParas: List(CoretimeParaId),
-      items: List({ validationCode: { hash: { vchBytes: 1 }, len: FixedCodeLen } })
+      items: List({ paraId: CoretimeParaId, validationCode: { hash: { vchBytes: 1 }, len: FixedCodeLen } })
     }
-    applyWork(refine(svc, pkg, false,
+    applyWork(refine(svc, pkg,
       wellFormedCalls(headHash(pi.headData), pi.headData + 1, List()), anchor)[0])
   }
 
   // Reproduce the stale-parent/lookup-anchor shape found by fuzz seed 1.
   run stale_parent_seed_1_works = {
     val pkg: WorkPackage = {
-      authorizedParas: List(CoretimeParaId),
-      items: List({ validationCode: { hash: { vchBytes: 1 }, len: FixedCodeLen } })
+      items: List({ paraId: CoretimeParaId, validationCode: { hash: { vchBytes: 1 }, len: FixedCodeLen } })
     }
     init
       .then(applyWork(WorkOk(Err({ paraId: CoretimeParaId, validationCode: { vchBytes: 1 }, error: Opaque(42) }))))
-      .then(applyWork(refine(svc, pkg, false,
+      .then(applyWork(refine(svc, pkg,
         wellFormedCalls(headHash(StaleParentHead), 1, List()), 2)[0]))
       .then(expectThat(svc == prevSvc))
   }

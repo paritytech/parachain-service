@@ -32,8 +32,6 @@ pub enum AuthorizeBlockError {
 	AuthPoolsUnavailable,
 	/// No auth pool at the anchor holds the authorizer.
 	NotInAnyPool,
-	/// The authorizer config does not name this para.
-	ForeignPara,
 	/// The authorizer code is missing from JAM state.
 	CodeUnavailable,
 	/// The code read from JAM state does not hash to the code hash.
@@ -73,11 +71,6 @@ pub fn authorize_block(
 		return Err(AuthorizeBlockError::NotInAnyPool);
 	}
 
-	// The pools of all cores are searched, so an authorizer of another para is in there as well.
-	if !authorization.para_ids().is_some_and(|ids| ids.contains(&para_id)) {
-		return Err(AuthorizeBlockError::ForeignPara);
-	}
-
 	let code =
 		read(&service_preimage_state_key(authorization.auth_code_host, &authorization.code_hash))
 			.ok_or(AuthorizeBlockError::CodeUnavailable)?;
@@ -88,6 +81,7 @@ pub fn authorize_block(
 	let params = BlockAuthorizationParams {
 		config: authorization.config.clone(),
 		token: authorization.token.clone(),
+		para_id,
 		block_hash,
 		slot,
 	};

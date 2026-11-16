@@ -7,13 +7,13 @@ module fuzz {
   import refine.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/refine"
 
   type Input = {
-    pkg: WorkPackage, missingPrefix: bool, available: bool,
+    pkg: WorkPackage, available: bool,
     calls: List[CodeCall], anchor: int, byteFault: str, gasMode: str
   }
   var replayRefine: Option[Input]
   var replayRefineExpected: List[WorkExecResult]
 
-  pure val candidate: ParachainCandidate = { validationCode: { hash: { vchBytes: 1 }, len: 1 } }
+  pure val candidate: ParachainCandidate = { paraId: CoretimeParaId, validationCode: { hash: { vchBytes: 1 }, len: 1 } }
   pure def modelState(available: bool): ParachainServiceState =
     if (available) { ...emptyState,
       preimageRegistry: Map((({ hashBytes: 1 }, 1), { referencers: Set(CoretimeParaId) })) }
@@ -29,12 +29,11 @@ module fuzz {
       (input.gasMode == "child" and input.available) or input.byteFault == "candidate_empty" or
       input.byteFault == "candidate_truncated" or input.byteFault == "candidate_trailing" or
       (input.available and input.byteFault != "valid")) List(WorkErr)
-      else refine(modelState(input.available), input.pkg,
-        input.missingPrefix, input.calls, input.anchor)
+      else refine(modelState(input.available), input.pkg, input.calls, input.anchor)
   }
   pure def input(calls: List[CodeCall]): Input = {
-    pkg: { authorizedParas: List(CoretimeParaId), items: List(candidate) },
-    missingPrefix: false, available: true, calls: calls, anchor: 0, byteFault: "valid", gasMode: "normal"
+    pkg: { items: List(candidate) },
+    available: true, calls: calls, anchor: 0, byteFault: "valid", gasMode: "normal"
   }
   pure val declarations = List(SetParentHeadHash(headHash(0)), SetHead(1))
   pure val callMenu: Set[CodeCall] = Set(
@@ -51,7 +50,7 @@ module fuzz {
   action replayStep = {
     nondet para = Set(CoretimeParaId, AssetHubParaId, MkParaId(42)).oneOf()
     nondet available = Set(true, true, true, false).oneOf()
-    nondet mode = 0.to(9).oneOf()
+    nondet mode = 0.to(7).oneOf()
     nondet anchor = Set(0, 1, 100, 4294967295).oneOf()
     nondet a = callMenu.oneOf()
     nondet b = callMenu.oneOf()
@@ -67,11 +66,9 @@ module fuzz {
       else if (mode == 5) declarations.concat(range(0, count).foldl(List(),
         (acc, _) => acc.append(Send(SetKV({ key: List(1), value: List(2) })))))
       else List(a, b).concat(declarations)
-    val pkg: WorkPackage = {
-      authorizedParas: if (mode == 8) List() else if (mode == 9) List(para, para) else List(para),
-      items: if (mode == 9) List(candidate, candidate) else List(candidate)
-    }
-    invoke({ pkg: pkg, missingPrefix: mode == 7, available: available,
+    val candidateForPara = { ...candidate, paraId: para }
+    val pkg: WorkPackage = { items: if (mode == 7) List(candidateForPara, candidateForPara) else List(candidateForPara) }
+    invoke({ pkg: pkg, available: available,
       calls: calls, anchor: anchor, byteFault: "valid", gasMode: "normal" })
   }
 

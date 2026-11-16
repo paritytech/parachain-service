@@ -19,6 +19,7 @@ pub const BLOCK_SIGN_CTX: &[u8] = b"jam:parachain-service:aura:block:v1";
 pub enum BlockAuthorizationError {
 	UndecodableParams,
 	UndecodableAuthConfig,
+	ForeignPara,
 	UndecodableAuthToken,
 	BadAuthorization(aura::AuthorizationError),
 }
@@ -38,6 +39,9 @@ pub fn authorize_block<S: SignatureVerifier>(
 		.map_err(|_| BlockAuthorizationError::UndecodableAuthConfig)?;
 	let token = AuthToken::decode_all(&mut &params.token[..])
 		.map_err(|_| BlockAuthorizationError::UndecodableAuthToken)?;
+	if !config.para_ids.contains(&u32::from(params.para_id).into()) {
+		return Err(BlockAuthorizationError::ForeignPara);
+	}
 
 	token
 		.check_proof(&config, config.expected_collator_index(params.slot))

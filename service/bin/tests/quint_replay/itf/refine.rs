@@ -1,7 +1,7 @@
 //! Differential Refine replay through the real service and a scripted child PVM.
 use super::{
 	codex::Codex,
-	replay::{bounded_integer, field, integer, upward_message, variant, work_digest},
+	replay::{bounded_integer, field, integer, para_id, upward_message, variant, work_digest},
 };
 use crate::common::{work_item_skipped, work_item_with_auth_trace};
 use codec::{DecodeAll, Encode};
@@ -171,11 +171,6 @@ pub(super) fn execute_authorized(
 	fault: Option<&str>,
 ) -> Result<(Option<ParachainWorkDigest>, Option<jam_types::AuthTrace>), String> {
 	let pkg = field(input, "pkg")?;
-	let paras = field(pkg, "authorizedParas")?.as_array().ok_or("expected para list")?;
-	let paras = paras
-		.iter()
-		.map(|p| super::replay::para_id(p, codex))
-		.collect::<Result<Vec<_>, _>>()?;
 	let items = field(pkg, "items")?.as_array().ok_or("expected item list")?;
 	if !(1..=2).contains(&items.len()) {
 		return Err("refine replay supports one or two items".into());
@@ -191,7 +186,7 @@ pub(super) fn execute_authorized(
 	}
 	bounded_integer::<u32>(field(reference, "len")?, "code length")?;
 
-	let caller = paras.first().copied().unwrap_or(Codex::para_id(0)?);
+	let caller = para_id(field(&items[0], "paraId")?, codex)?;
 	let calls = field(input, "calls")?.as_array().ok_or("expected call list")?;
 	let mut script = Vec::new();
 	for call in calls {
@@ -273,24 +268,27 @@ pub(super) fn execute_authorized(
 		_ => return Err(format!("unsupported byteFault {byte_fault}")),
 	}
 	let code = validation_code_hash(&pvf);
-	let mut payload = ParachainCandidate { validation_code: code }.encode();
-	match byte_fault {
-		"candidate_empty" => payload.clear(),
-		"candidate_truncated" => {
-			payload.pop();
-		},
-		"candidate_trailing" => payload.push(0),
-		_ => {},
-	}
-	let work = (0..items.len())
-		.map(|_| refine_work_item(service, payload.clone(), vec![script.encode()]))
+	let paras = items
+		.iter()
+		.map(|item| para_id(field(item, "paraId")?, codex))
+		.collect::<Result<Vec<_>, _>>()?;
+	let work = paras
+		.iter()
+		.map(|&para_id| {
+			let mut payload = ParachainCandidate { para_id, validation_code: code }.encode();
+			match byte_fault {
+				"candidate_empty" => payload.clear(),
+				"candidate_truncated" => {
+					payload.pop();
+				},
+				"candidate_trailing" => payload.push(0),
+				_ => {},
+			}
+			refine_work_item(service, payload, vec![script.encode()])
+		})
 		.collect();
 	let available = field(input, "available")?.as_bool().ok_or("available must be boolean")?;
-	let missing = field(input, "missingPrefix")?
-		.as_bool()
-		.ok_or("missingPrefix must be boolean")?;
-	let config =
-		if missing { jam_types::AuthConfig(Default::default()) } else { good_config_for(paras) };
+	let config = good_config_for(paras);
 	let preimages: Vec<&[u8]> = if available { vec![&pvf] } else { vec![] };
 	let (engine, service_hash, mut context) = refine_args(
 		service,
@@ -332,7 +330,7 @@ pub(super) fn execute_authorized(
 	};
 	context.work_package = package.into();
 	if gas_mode == "cutoff" {
-		if !available || missing || byte_fault != "valid" || fault.is_some() {
+		if !available || byte_fault != "valid" || fault.is_some() {
 			return Err("cutoff requires available valid code and unmodified authorization".into());
 		}
 		let sample = bounded_integer::<u64>(field(input, "gasSample")?, "gas sample")?;

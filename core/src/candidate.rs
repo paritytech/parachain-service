@@ -2,19 +2,31 @@
 
 use codec::{Decode, Encode};
 
-use crate::types::ValidationCodeHash;
+use crate::types::{ParaId, ValidationCodeHash};
 
-/// Work-item payload for a parachain candidate (spec §3.2).
-///
-/// The host-side `service::refine` decodes it to look up the PVF by `validation_code`.
-///
-/// The PoV travels as **work-item extrinsic 0**, not in this payload: JAM caps the first CE 133
-/// message (the core index plus the work package, payload included) far below the size of a
-/// multi-MiB PoV. The collator therefore declares the PoV with an `ExtrinsicSpec`, and the PVF
-/// reads it back from work-item extrinsic 0 through `fetch`.
+/// Parachain work-item payload (§3.2), SCALE-compatible with the SDK candidate.
+/// The PoV is carried in extrinsic 0.
 #[derive(Encode, Decode)]
 pub struct ParachainCandidate {
-	/// Hash of the currently active validation code. Refine uses this to look up
-	/// the PVF bytecode from the preimage store.
+	pub para_id: ParaId,
 	pub validation_code: ValidationCodeHash,
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use codec::DecodeAll;
+
+	#[test]
+	fn authorizer_wire_works() {
+		let candidate =
+			ParachainCandidate { para_id: ParaId::new(42), validation_code: [7; 32].into() };
+		let encoded = candidate.encode();
+		let decoded =
+			cumulus_aura_authorizer_utils::ParachainCandidate::decode_all(&mut &encoded[..])
+				.expect("authorizer must decode service candidates");
+		assert_eq!(u32::from(decoded.para_id), 42);
+		assert_eq!(decoded.validation_code.as_ref(), &[7; 32]);
+		assert_eq!(decoded.encode(), encoded);
+	}
 }

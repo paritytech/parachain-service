@@ -109,7 +109,10 @@ fn foreign_para_errors() {
 	let blob = authorizer_blob();
 	let auth = authorization(&blob, 0, signable_block_hash(&BLOCK_HASH));
 
-	assert_eq!(check(&state(&blob, &auth), PARA + 1, &auth), Err(AuthorizeBlockError::ForeignPara));
+	assert!(matches!(
+		check(&state(&blob, &auth), PARA + 1, &auth),
+		Err(AuthorizeBlockError::Run(_))
+	));
 }
 
 #[test]

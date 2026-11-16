@@ -1178,6 +1178,7 @@ fn authorization_generated_works() {
 		"signed_context",
 		"wrong_service",
 		"para_count",
+		"wrong_para",
 		"zero_collators",
 		"zero_duration",
 		"config_empty",

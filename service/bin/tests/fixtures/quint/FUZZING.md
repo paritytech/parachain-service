@@ -212,9 +212,10 @@ Initialization uses the model's service state, empty input/effect lists, and two
 empty self-supervised foreign services (IDs 0 and 7, minimum memo gas 100 and 200).
 Minimum accumulate gas starts at 100 and follows accepted upgrades.
 
-Malformed authorizer configuration and invalid item counts are excluded because
-their model log representations cannot be mapped to Rust Refine errors. Abstract
-hashes use one length each; KV keys avoid model hash collisions. Host, transfer,
+The default combined campaign uses valid authorizer configurations and one item
+per package. The authorization profile exercises malformed configurations, and
+standalone Refine fuzzing also exercises multiple items. Abstract hashes use one
+length each; KV keys avoid model hash collisions. Host, transfer,
 and comparison limits are documented in the [fixture guide](README.md).
 Unsupported inputs and invariant failures fail replay; failing traces are not discarded.
 

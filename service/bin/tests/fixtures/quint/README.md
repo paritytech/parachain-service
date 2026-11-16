@@ -226,6 +226,8 @@ see the [fuzzing guide](FUZZING.md#outgoing-spendable-balance-boundaries).
 
 The default `fuzz.qnt` campaign retains refine inputs and runs Rust Refine before
 Rust Accumulate. `combined.qnt` and `combined/` contain end-to-end fixtures.
+The candidate carries its parachain ID; Refine uses that ID directly, while
+the authorizer checks it against the corresponding configured ID.
 `refine_fuzz.qnt` and `refine_fuzz/` retain focused standalone boundary regressions;
 `refine_bytes.qnt` separately samples empty/truncated/trailing candidate payloads and
 empty/bad-magic/truncated PVF binaries, plus structurally valid containers with
@@ -354,7 +356,7 @@ traces without that marker or history remain supported.
 `authorization.qnt` executes the real ed25519 authorizer before Refine and
 Accumulate. Its independent admission oracle covers a valid signature, corrupt
 signature/key proof, changed signed context, wrong target service, mismatched
-para count, zero collator count/slot duration, and empty/truncated/trailing
+para count or candidate ID, zero collator count/slot duration, and empty/truncated/trailing
 configuration and token encodings. Rejected packages produce no work report.
 Accepted packages pass their actual author trace and actual Refine output to
 Accumulate, including logged PVF errors, PVF traps, and later successful work.

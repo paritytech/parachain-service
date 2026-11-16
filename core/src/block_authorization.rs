@@ -36,8 +36,7 @@ pub struct BlockAuthorization {
 	pub auth_code_host: u32,
 	/// The authorizer code hash.
 	pub code_hash: [u8; 32],
-	/// The authorizer config, starting with the `Vec<ParaId>` every parachain authorizer config
-	/// starts with (§7.2).
+	/// Opaque authorizer-specific configuration.
 	pub config: Vec<u8>,
 	/// Opaque to everyone but the authorizer.
 	pub token: Vec<u8>,
@@ -51,11 +50,6 @@ impl BlockAuthorization {
 			config: AuthConfigBlob(self.config.clone()),
 		})
 	}
-
-	/// The paras the config names, `None` if it does not start with a `Vec<ParaId>`.
-	pub fn para_ids(&self) -> Option<Vec<ParaId>> {
-		Vec::<ParaId>::decode(&mut &self.config[..]).ok()
-	}
 }
 
 /// The input of the authorizer's `authorize_block_ext` entry point.
@@ -63,6 +57,8 @@ impl BlockAuthorization {
 pub struct BlockAuthorizationParams {
 	pub config: Vec<u8>,
 	pub token: Vec<u8>,
+	/// The para whose block is being authorized.
+	pub para_id: ParaId,
 	/// Hash of the block header without its seal.
 	pub block_hash: [u8; 32],
 	/// The JAM slot the authorizer selects the expected author with.
@@ -129,20 +125,5 @@ mod tests {
 		let authorizer =
 			Authorizer { code_hash: [9; 32].into(), config: AuthConfigBlob(alloc::vec![0, 1, 2]) };
 		assert_eq!(auth.authorizer_hash(), authorizer_hash(&authorizer));
-	}
-
-	#[test]
-	fn para_ids_works() {
-		let config = (alloc::vec![ParaId::from(100u32)], 5u32).encode();
-		let auth = BlockAuthorization {
-			auth_code_host: 0,
-			code_hash: [0; 32],
-			config,
-			token: alloc::vec![],
-		};
-		assert_eq!(auth.para_ids(), Some(alloc::vec![ParaId::from(100u32)]));
-
-		let auth = BlockAuthorization { config: alloc::vec![0xff], ..auth };
-		assert_eq!(auth.para_ids(), None);
 	}
 }

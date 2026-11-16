@@ -46,8 +46,8 @@ fn run_block(
 	let pvf_hash = validation_code_hash(&parachain_service_bin::frameless_pvf());
 	let block = BlockData { state: State { config, counter: 0 }, add };
 	let params = ValidationParams { parent_head: parent.encode(), block_data: block.encode() };
-	// §3.2: the payload names the code, the PoV is work-item extrinsic 0.
-	let payload = ParachainCandidate { validation_code: pvf_hash }.encode();
+	// §3.2: the payload names the para and code; the PoV is work-item extrinsic 0.
+	let payload = ParachainCandidate { para_id: para_ids[0], validation_code: pvf_hash }.encode();
 	refine_item(payload, params.encode(), para_ids)
 }
 
@@ -135,8 +135,8 @@ fn report_error_works() {
 
 #[test]
 fn legacy_pov_payload_errors() {
-	// §3.2: the payload is the code hash alone, so one still carrying the PoV is
-	// malformed, and a malformed payload panics (§4.1 step 3).
+	// §3.2: the payload contains the para ID and code hash, not the PoV.
+	// A malformed payload panics (§4.1 step 1).
 	let config = Config::Coretime;
 	let parent = genesis(config.clone());
 	let block = BlockData { state: State { config, counter: 0 }, add: 1 };
@@ -151,10 +151,10 @@ fn legacy_pov_payload_errors() {
 
 #[test]
 fn unavailable_code_errors() {
-	// §4.1 step 4: the failure names the candidate's code, so Accumulate can check
+	// §4.1 step 3: the failure names the candidate's code, so Accumulate can check
 	// it against the active code (§5.1 step 2).
 	let validation_code = ValidationCodeHash::from([7; 32]);
-	let payload = ParachainCandidate { validation_code }.encode();
+	let payload = ParachainCandidate { para_id: ParaId::new(0), validation_code }.encode();
 
 	let outcome = refine_item(payload, Vec::new(), vec![ParaId::new(0)]);
 
@@ -495,10 +495,6 @@ fn no_work_items_panicks() {
 	let _ = pj::refine(&engine, code_hash, &mut context);
 }
 
-// §4.1 step 1 / §4.2: every package-level failure panics, because none of them
-// has an authoritative `para_id` to attribute a `RefineLog` to. The panic traps
-// the PVM, so JAM sees a bare work error and there is no digest to log.
-
 /// Assert that refine trapped rather than returning a digest.
 fn expect_work_error(res: anyhow::Result<RefineOutcome>) {
 	if let Ok(outcome) = res {
@@ -508,9 +504,14 @@ fn expect_work_error(res: anyhow::Result<RefineOutcome>) {
 
 #[test]
 fn two_work_items_errors() {
+	let payload = ParachainCandidate {
+		para_id: ParaId::new(0),
+		validation_code: ValidationCodeHash::from([7; 32]),
+	}
+	.encode();
 	let work_items = vec![
-		refine_work_item(&service(), Vec::new(), vec![]),
-		refine_work_item(&service(), Vec::new(), vec![]),
+		refine_work_item(&service(), payload.clone(), vec![]),
+		refine_work_item(&service(), payload, vec![]),
 	];
 	let (engine, code_hash, mut context) = refine_args(
 		&service(),
@@ -527,12 +528,16 @@ fn two_work_items_errors() {
 }
 
 #[test]
-fn more_para_ids_than_work_items_errors() {
-	let work_items = vec![refine_work_item(&service(), Vec::new(), vec![])];
+fn candidate_identity_without_config_prefix_works() {
+	let para_id = ParaId::new(42);
+	let validation_code = ValidationCodeHash::from([7; 32]);
+	let payload = ParachainCandidate { para_id, validation_code }.encode();
+	let work_items = vec![refine_work_item(&service(), payload, vec![])];
 	let (engine, code_hash, mut context) = refine_args(
 		&service(),
 		&authorizer(),
-		good_config(2),
+		// Refine must not decode or constrain an authorizer's opaque config.
+		AuthConfig::from(vec![0xff]),
 		good_token(),
 		good_trace(),
 		work_items,
@@ -540,27 +545,16 @@ fn more_para_ids_than_work_items_errors() {
 		0,
 	);
 
-	expect_work_error(pj::refine(&engine, code_hash, &mut context));
-}
-
-#[test]
-fn less_para_ids_than_work_items_errors() {
-	let work_items = vec![
-		refine_work_item(&service(), Vec::new(), vec![]),
-		refine_work_item(&service(), Vec::new(), vec![]),
-	];
-	let (engine, code_hash, mut context) = refine_args(
-		&service(),
-		&authorizer(),
-		good_config(1),
-		good_token(),
-		good_trace(),
-		work_items,
-		&[],
-		0,
+	assert_eq!(
+		pj::refine(&engine, code_hash, &mut context)
+			.expect("candidate must decode")
+			.digest,
+		ParachainWorkDigest::Err {
+			para_id,
+			validation_code,
+			error: RefineLog::ValidationCodeLookupFailed,
+		}
 	);
-
-	expect_work_error(pj::refine(&engine, code_hash, &mut context));
 }
 
 /// Extract a RefineLog or panic.

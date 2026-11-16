@@ -4,14 +4,10 @@ use crate::{
 	pvf,
 	work_digest::{ParachainWorkDigest, RefineLog},
 };
-use alloc::vec::Vec;
-use codec::{Decode, DecodeAll};
+use codec::DecodeAll;
 use jam_pvm_common::refine::{self, auth_trace, lookup as historical_lookup};
 use jam_types::{CoreIndex, ServiceId, WorkPackageHash, WorkPayload};
-use parachain_service_core::{
-	authorization::AuthTrace,
-	types::{validation_code_hash_bytes, ParaId},
-};
+use parachain_service_core::{authorization::AuthTrace, types::validation_code_hash_bytes};
 
 pub use parachain_service_core::candidate::ParachainCandidate;
 
@@ -23,11 +19,6 @@ pub fn refine(
 	_package_hash: WorkPackageHash,
 ) -> ParachainWorkDigest {
 	let raw_auth_trace = auth_trace();
-	let raw_auth_config = refine::work_package().authorizer.config;
-
-	let Ok(para_ids) = Vec::<ParaId>::decode(&mut &raw_auth_config[..]) else {
-		panic!("The AuthConfig already passed IsAuthorized, it must be valid")
-	};
 	let Ok(_auth_trace) = AuthTrace::decode_all(&mut &raw_auth_trace[..]) else {
 		panic!("The AuthTrace was produced by IsAuthorized, it must be valid")
 	};
@@ -35,24 +26,16 @@ pub fn refine(
 	let work_items = refine::work_items_summary();
 	assert!(item_index < work_items.len(), "Out of bounds item_index is invalid per GP");
 
-	// Package-level failures are all settled before a `para_id` becomes
-	// authoritative, so none of them can name a para to log against. The two
-	// length checks below are unreachable: `is_authorized` ran first and
-	// already rejected an undecodable config (`UndecodableAuthConfig`) and a
-	// config naming a different number of paras than the package has items
-	// (`InvalidWorkItemCount`). The single-item check is the one genuine
-	// restriction here — the service supports only one-item packages (§3.2),
-	// which is_authorized does not enforce, so a multi-item package panics the
-	// whole refine invocation into a gray-paper work error (§4.2).
-	assert_eq!(work_items.len(), para_ids.len(), "AuthConfig must name one para per work item");
+	// The authorizer validates each candidate's parachain identity. Refine only
+	// supports single-item packages (§3.2); a violation traps without a digest.
 	let Ok([_work_item]): Result<&[_; 1], _> = work_items.as_slice().try_into() else {
 		panic!("Only single-item work packages are supported")
 	};
-	let para_id = para_ids[item_index];
 
 	let Ok(candidate) = ParachainCandidate::decode_all(&mut &raw_payload.0[..]) else {
-		panic!("Work item payload must decode as a ParachainCandidate (§4.1 step 3)")
+		panic!("Work item payload must decode as a ParachainCandidate (§4.1 step 1)")
 	};
+	let para_id = candidate.para_id;
 
 	let validation_code = candidate.validation_code;
 	let Some(code) = historical_lookup(&validation_code_hash_bytes(&validation_code)) else {
