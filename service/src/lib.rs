@@ -2,6 +2,10 @@
 
 extern crate alloc;
 
+// Space for nested-VM executor state.
+#[cfg(any(target_arch = "riscv32", target_arch = "riscv64"))]
+polkavm_derive::min_stack_size!(64 * 1024);
+
 use alloc::format;
 use codec::Encode;
 use jam_pvm_common::{declare_service, Service};

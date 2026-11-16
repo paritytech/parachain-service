@@ -74,9 +74,11 @@ pub fn parse_pvf(code: &[u8]) -> Result<ParsedPvf, PvfParseError> {
 	Ok(ParsedPvf { code, entry_pc: entry_pc as u64, ro_data, rw_data, memory })
 }
 
-/// Gas withheld from the inner PVM's loan: the host's `invoke` base cost `M_K` (968)
-/// and slack for instructions between reading the post-`gas` counter and invoking.
-/// The node uses `gas_costs::INVOKE` for the same base cost.
+/// Covers the 15 MiB PVF probe with 25% headroom, rounded up.
+/// Larger memory images may still exhaust Refine's outer gas.
+pub const REFINE_GAS_RESERVE: UnsignedGas = 135_000_000;
+
+/// Invoke base cost and handoff slack.
 const INVOKE_GAS_RESERVE: UnsignedGas = 2048;
 
 /// Instantiate the parsed PVF as an inner PVM and invoke `jam_validate_block()` (spec §4.2).
@@ -90,7 +92,12 @@ const INVOKE_GAS_RESERVE: UnsignedGas = 2048;
 pub fn run(
 	pvf: &ParsedPvf,
 	para_id: ParaId,
+	refine_gas_limit: UnsignedGas,
 ) -> Result<(Hash, HeadData, UpwardMessages), RefineLog> {
+	let mut gas_left = refine_gas_limit
+		.checked_sub(REFINE_GAS_RESERVE)
+		.and_then(|gas| i64::try_from(gas).ok())
+		.expect("PVF gas budget must fit after reserving Refine gas");
 	let module = refine::compile_from_bytes(&pvf.code[..])
 		.unwrap_or_else(|_| panic!("PVF inner PVM compilation failed; §4.2 whole-refine failure"));
 	let handle = refine::machine(&module, pvf.entry_pc).unwrap_or_else(|_| {
@@ -113,13 +120,8 @@ pub fn run(
 	regs[Reg::RA as usize] = polkavm::RETURN_TO_HOST;
 
 	let mut exe = ExecutorState::new(para_id, Heap::new(&pvf.memory));
-	// The first loan establishes the PVF's budget; later loans cannot replenish it.
-	let mut gas_left = i64::MAX;
-
 	let result: Result<(), RefineLog> = loop {
-		// The host charges `M_K + g_R` for an invoke, so the lent `g_R` has to leave `M_K`
-		// behind: lending the whole counter always overshoots it, which drains refine to
-		// zero without ever entering the child.
+		// Cap the loan, not validation's budget.
 		let available = refine::gas()
 			.saturating_sub(INVOKE_GAS_RESERVE)
 			.min(i64::MAX as u64) as i64;
@@ -127,7 +129,7 @@ pub fn run(
 		let (outcome, remaining, out_regs) = refine::invoke(&handle, lent, regs)
 			.unwrap_or_else(|_| panic!("PVF inner PVM invoke failed; §4.2 whole-refine failure"));
 		regs = out_regs;
-		gas_left = remaining;
+		gas_left = gas_left.saturating_sub(lent.saturating_sub(remaining));
 		let tag = match outcome {
 			InvokeOutcome::Halt => "halt",
 			InvokeOutcome::HostCallFault(_) => "host",

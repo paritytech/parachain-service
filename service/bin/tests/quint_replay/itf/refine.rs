@@ -9,6 +9,7 @@ use jam_node::vm::{RefineCallContext, Storage};
 use jam_std_common::hash_raw;
 use jam_types::AccumulateItem;
 use parachain_service::{
+	pvf::pvm::REFINE_GAS_RESERVE,
 	refine::ParachainCandidate,
 	work_digest::{validation_code_hash, ParachainWorkDigest},
 };
@@ -302,7 +303,7 @@ pub(super) fn execute_authorized(
 	);
 	match gas_mode {
 		"zero" => context.gas = 0,
-		"child" | "funded" => context.gas = 1_000_000,
+		"child" | "funded" => context.gas = REFINE_GAS_RESERVE + 10_000_000,
 		_ => {},
 	}
 	// The immutable package must be rebuilt after changing its lookup anchor.
@@ -310,6 +311,9 @@ pub(super) fn execute_authorized(
 	let mut package: jam_types::WorkPackage = jam_codec::Decode::decode(&mut &encoded[..])
 		.map_err(|e| format!("package decode: {e:?}"))?;
 	package.context.lookup_anchor_slot = bounded_integer(field(input, "anchor")?, "anchor")?;
+	for item in package.items.iter_mut() {
+		item.refine_gas_limit = context.gas;
+	}
 	let auth = if let Some(fault) = fault {
 		let Some(trace) = super::authorization::authorize(&mut package, fault)? else {
 			return Ok((None, None));
@@ -350,6 +354,13 @@ pub(super) fn execute_authorized(
 			return Err("cutoff control must produce a successful digest with nonzero gas".into());
 		}
 		context.gas = (((used - 1) as u128 * sample as u128) / 1_000_000) as u64;
+		let encoded = jam_codec::Encode::encode(&context.work_package);
+		let mut package: jam_types::WorkPackage = jam_codec::Decode::decode(&mut &encoded[..])
+			.map_err(|e| format!("package decode: {e:?}"))?;
+		for item in package.items.iter_mut() {
+			item.refine_gas_limit = context.gas;
+		}
+		context.work_package = package.into();
 	}
 	let (actual, _, _) = engine.refine(service_hash, RefineCallContext::from(&mut context));
 	match actual {

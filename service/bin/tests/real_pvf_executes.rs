@@ -26,7 +26,10 @@ use codec::{Decode, Encode};
 use frameless::{blake2_256, hash_state, BlockData, Config, HeadData, State, ValidationParams};
 use jam_types::{InvokeOutcomeCode, SimpleResultCode};
 use jam_pvm_common::refine::{self, InstanceHandle, ModuleHandle};
-use parachain_service::pvf::{executor::{ExecutorState, Heap}, pvm::{parse_pvf, run}};
+use parachain_service::pvf::{
+	executor::{host_call_gas_cost, ExecutorState, Heap},
+	pvm::{parse_pvf, run, REFINE_GAS_RESERVE},
+};
 use parachain_service_core::{host_call::HostCall, types::ParaId, upward_message::UpwardMessages};
 use polkavm::{
 	program::InstructionSet, ArcBytes, GasMeteringKind, InterruptKind, MemoryProtection,
@@ -492,8 +495,9 @@ fn real_runtime_executes_as_child_pvf() {
 		vm.gas_remaining = 1_000_000_000;
 	});
 
-	let outcome =
-		std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(&parsed, ParaId::new(0))));
+	let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+		run(&parsed, ParaId::new(0), 1_000_000_000)
+	}));
 
 	with_vm(|vm| {
 		assert!(vm.modules.is_empty(), "compiled module must be expunged");
@@ -570,7 +574,7 @@ impl NestedHarness {
 		refine::zero(&caller, TEST_ADDR / 4096, 32, jam_types::PageMode::ReadWrite)
 			.expect("outer writable memory");
 		let heap = with_vm(|vm| Heap::new(vm.instances.get(&caller.id()).unwrap().module().memory_map()));
-		Self { executor: ExecutorState::new(ParaId::new(0), heap), caller, _module: module, gas: 10_000_000 }
+		Self { executor: ExecutorState::new(ParaId::new(0), heap), caller, _module: module, gas: 100_000_000 }
 	}
 
 	fn write(&self, address: u64, bytes: &[u8]) {
@@ -710,7 +714,7 @@ fn nested_invalid_ranges_and_forged_handles_errors() {
 	let result = h.invoke(outer);
 	assert_eq!(result[A0], who);
 	assert_eq!(result[A1], TEST_ADDR + 0x10000);
-	assert_eq!(before - h.gas, 978);
+	assert_eq!(before - h.gas, host_call_gas_cost(&HostCall::Invoke) + 978);
 	assert_eq!(h.read(TEST_ADDR + 0x10000, 112), args_before);
 	for call in [HostCall::Peek, HostCall::Poke] {
 		let trapped = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -758,13 +762,13 @@ fn nested_invoke_gas_and_outcomes_works() {
 	assert_eq!(h.invoke(vm)[A0], InvokeOutcomeCode::Halt as u64);
 	let returned = i64::from_le_bytes(h.read(TEST_ADDR + 0x10000, 8).try_into().unwrap());
 	assert!((0..100_000).contains(&returned));
-	assert_eq!(before - h.gas, 968 + 100_000 - returned);
+	assert_eq!(before - h.gas, host_call_gas_cost(&HostCall::Invoke) + 968 + 100_000 - returned);
 	h.args(100_000, polkavm::RETURN_TO_HOST);
 	let before = h.gas;
 	assert_eq!(h.invoke(u64::MAX)[A0], SimpleResultCode::IndexUnknown as u64);
-	assert_eq!(before - h.gas, 968 + 100_000);
+	assert_eq!(before - h.gas, host_call_gas_cost(&HostCall::Invoke) + 968 + 100_000);
 	h.args(100_000, polkavm::RETURN_TO_HOST);
-	h.gas = 968 + 100_000 - 1;
+	h.gas = host_call_gas_cost(&HostCall::Invoke) + 968 + 100_000 - 1;
 	let trapped = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| h.invoke(vm)));
 	assert!(trapped.is_err());
 	assert_eq!(h.gas, 0);
@@ -820,19 +824,31 @@ fn nested_invoke_through_pvf_run_preserves_budget_works() {
 		rw_data: ArcBytes::from(data.as_slice()),
 		memory,
 	};
-	with_vm(|vm| {
-		vm.gas_remaining = 1_000_000;
-		vm.invocations.clear();
-	});
-	// This tiny PVF deliberately omits the mandatory head declarations.
-	assert!(run(&pvf, ParaId::new(0)).is_err());
-	with_vm(|vm| {
-		let outer = vm.invocations[0].0;
-		let outer_runs: Vec<_> = vm.invocations.iter().filter(|entry| entry.0 == outer).collect();
-		assert_eq!(outer_runs.len(), 4, "compile, machine, invoke, then halt");
-		assert_eq!(vm.invocations.len(), 5, "nested invoke must actually run its child");
-		assert!(outer_runs[1].1 <= outer_runs[0].2);
-		assert!(outer_runs[2].1 <= outer_runs[1].2);
-		assert!(outer_runs[3].1 <= outer_runs[2].2 - 968, "nested invocation debit survives PVF resume");
-	});
+	for outer_gas in [REFINE_GAS_RESERVE + 1_000_000, 800_000] {
+		with_vm(|vm| {
+			vm.gas_remaining = outer_gas as i64;
+			vm.invocations.clear();
+		});
+		// Deliberately omits mandatory head declarations.
+		assert!(run(&pvf, ParaId::new(0), REFINE_GAS_RESERVE + 1_000_000).is_err());
+		with_vm(|vm| {
+			let outer = vm.invocations[0].0;
+			let outer_runs: Vec<_> =
+				vm.invocations.iter().filter(|entry| entry.0 == outer).collect();
+			assert_eq!(outer_runs.len(), 4, "compile, machine, invoke, then halt");
+			assert_eq!(vm.invocations.len(), 5, "nested invoke must actually run its child");
+			let nested = vm.invocations.iter().find(|entry| entry.0 != outer).unwrap();
+			let mut budget = 1_000_000;
+			for (index, (_, lent, remaining)) in outer_runs.iter().enumerate() {
+				assert_eq!(*lent, budget.min(outer_gas as i64 - 2048));
+				budget -= lent - remaining;
+				if let Some(call) = [HostCall::Compile, HostCall::Machine, HostCall::Invoke].get(index) {
+					budget -= host_call_gas_cost(call);
+				}
+				if index == 2 {
+					budget -= 968 + nested.1 - nested.2;
+				}
+			}
+		});
+	}
 }

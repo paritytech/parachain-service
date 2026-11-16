@@ -145,7 +145,8 @@ fn test_handle(id: u64) -> InstanceHandle {
 fn grow(exe: &mut ExecutorState, handle: u64, pages: u64) -> u64 {
 	let mut regs = [0u64; 13];
 	regs[A0] = pages;
-	exe.dispatch(&test_handle(handle), HostCall::GrowHeap as u64, &mut 0, &mut regs)
+	let mut gas = i64::MAX;
+	exe.dispatch(&test_handle(handle), HostCall::GrowHeap as u64, &mut gas, &mut regs)
 		.expect("ok");
 	regs[A0]
 }
@@ -221,7 +222,8 @@ fn log_hostcalls_100_and_204_share_the_abi() {
 		regs[A2] = target.len() as u64;
 		regs[A3] = TEXT_PTR;
 		regs[A4] = text.len() as u64;
-		exe.dispatch(&handle, index, &mut 0, &mut regs)
+		let mut gas = i64::MAX;
+		exe.dispatch(&handle, index, &mut gas, &mut regs)
 			.expect("index 100/204 is a known log host call");
 		assert_eq!(regs[A0], 1, "log has no return value; A0 is untouched");
 	}

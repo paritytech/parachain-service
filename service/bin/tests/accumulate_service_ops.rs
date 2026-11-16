@@ -228,6 +228,7 @@ fn create_id_taken_errors() {
 	// left untouched.
 	let storage = ah_storage_with(WANTED_ID);
 	let taken = storage.service(WANTED_ID).expect("seeded");
+	let balance = storage.service(SVC).expect("caller exists").balance;
 	let msgs = vec![UpwardMessage::CreateService(create_args(Some(WANTED_ID)))];
 
 	let (logs, storage) = replay(storage, msgs);
@@ -240,6 +241,7 @@ fn create_id_taken_errors() {
 		}]
 	);
 	assert_eq!(storage.service(WANTED_ID).expect("untouched").code_hash, taken.code_hash);
+	assert_eq!(storage.service(SVC).expect("caller exists").balance, balance);
 }
 
 #[test]

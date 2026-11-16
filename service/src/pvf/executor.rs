@@ -37,6 +37,32 @@ use polkavm::Reg;
 /// Returned in `A0` by buffer-returning calls when the value does not exist.
 pub const ABSENT: u64 = u64::MAX;
 
+/// Fixed costs calibrated by `refine_host_gas`, with 25% headroom.
+/// Buffer samples cover 40 KiB fetches/messages and 64 KiB VM copies;
+/// larger inputs may still exhaust Refine's outer gas.
+pub const fn host_call_gas_cost(call: &HostCall) -> SignedGas {
+	match call {
+		HostCall::Gas => 23_000,
+		HostCall::GrowHeap => 27_000,
+		HostCall::Fetch => 221_000,
+		HostCall::HistoricalLookup => 218_000,
+		HostCall::Compile => 117_000,
+		HostCall::Machine => 27_000,
+		HostCall::Peek => 377_000,
+		HostCall::Poke => 331_000,
+		HostCall::Pages => 27_000,
+		HostCall::Invoke => 28_000,
+		HostCall::Expunge => 25_000,
+		HostCall::Export => 50_000,
+		HostCall::SetParentHeadHash => 62_000,
+		HostCall::SetHead => 81_000,
+		HostCall::SendUpwardMessage => 936_000,
+		HostCall::JamLog | HostCall::Log => 301_000,
+		// Total error-path cost avoids negative differential measurements.
+		HostCall::ReportError => 1_350_000,
+	}
+}
+
 /// Caps on what one `log` host call may copy out of the child, so a malformed guest
 /// cannot force an unbounded peek on a diagnostics path.
 const MAX_LOG_TARGET: u64 = 128;
@@ -166,6 +192,13 @@ impl ExecutorState {
 			// refine invocation (§4.2).
 			panic!("PVF invoked unknown host call {index}; §4.2 whole-refine failure")
 		};
+		*gas_left = gas_left
+			.checked_sub(host_call_gas_cost(&call))
+			.filter(|left| *left >= 0)
+			.unwrap_or_else(|| {
+				*gas_left = 0;
+				panic!("PVF host call out of gas")
+			});
 		jam_pvm_common::info!(
 			"PVF dispatch probe: call={} a0={:#x} a1={:#x}",
 			index,

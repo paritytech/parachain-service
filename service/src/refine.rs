@@ -28,7 +28,7 @@ pub fn refine(
 
 	// The authorizer validates each candidate's parachain identity. Refine only
 	// supports single-item packages (§3.2); a violation traps without a digest.
-	let Ok([_work_item]): Result<&[_; 1], _> = work_items.as_slice().try_into() else {
+	let Ok([work_item]): Result<&[_; 1], _> = work_items.as_slice().try_into() else {
 		panic!("Only single-item work packages are supported")
 	};
 
@@ -51,10 +51,11 @@ pub fn refine(
 	let Ok(parsed) = pvf::pvm::parse_pvf(&code) else {
 		panic!("PVF code could not be parsed as a PVM program; §4.2 whole-refine failure")
 	};
-	let (parent_head_hash, head_data, upward_messages) = match pvf::pvm::run(&parsed, para_id) {
-		Ok(ok) => ok,
-		Err(error) => return ParachainWorkDigest::Err { para_id, validation_code, error },
-	};
+	let (parent_head_hash, head_data, upward_messages) =
+		match pvf::pvm::run(&parsed, para_id, work_item.refine_gas_limit) {
+			Ok(ok) => ok,
+			Err(error) => return ParachainWorkDigest::Err { para_id, validation_code, error },
+		};
 
 	ParachainWorkDigest::Ok {
 		para_id,
