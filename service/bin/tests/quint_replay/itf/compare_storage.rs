@@ -46,6 +46,8 @@ pub fn state(
 		return Err(format!("frame {frame}: svc.pendingAssignCores differs"));
 	}
 	allow(storage_key(Tag::PendingAssignCores, &()));
+	// Its value is checked against the independent checkpoint oracle in replay.
+	allow(storage_key(Tag::LastAccumulate, &()));
 	for (core, entry) in map_entries(field(svc, "pendingAssigns")?)? {
 		let core = u16::try_from(integer(core)?).map_err(|_| "core out of range")?;
 		let expected = super::assignments::pending(entry)?;

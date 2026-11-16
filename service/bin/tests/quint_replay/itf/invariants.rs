@@ -90,9 +90,7 @@ pub fn state(
 	state_at(storage, current, codex, frame, now)
 }
 
-/// Fired assignments must be re-armed in the future relative to the last
-/// completed always-accumulate phase. Rollback (and later external provision)
-/// cannot advance this watermark; all other state predicates still run normally.
+/// Check state against the last checkpointed invocation slot.
 pub fn state_at(
 	storage: &Storage,
 	current: &Value,
@@ -100,6 +98,8 @@ pub fn state_at(
 	frame: usize,
 	now: u32,
 ) -> Result<(), String> {
+	let last = read::<u32>(storage, &storage_key(Tag::LastAccumulate, &()))?.unwrap_or(0);
+	check(last <= now, "last_accumulate_not_future", frame, (last, now))?;
 	let mut paras = BTreeMap::new();
 	for p in codex.paras() {
 		if let Some(info) = read::<ParaInfo>(storage, &storage_key(Tag::Parachains, &p))? {
@@ -243,20 +243,6 @@ pub fn state_at(
 		frame,
 		&due,
 	)?;
-	// A due entry may stay cached when the gas ran out before reaching it, but
-	// one whose assign fired is dropped or re-armed into the future (§5.1).
-	for call in field(current, "lastStepAssigns")?
-		.as_array()
-		.ok_or("lastStepAssigns must be a list")?
-	{
-		let core = bounded_integer::<u16>(field(call, "core")?, "assigned core")?;
-		check(
-			due.iter().all(|(c, slot)| *c != core || *slot > now),
-			"fired_assign_not_left_due",
-			frame,
-			core,
-		)?;
-	}
 	for core in 0..CORE_COUNT as u16 {
 		let pending: Option<PendingAssign> =
 			read(storage, &storage_key(Tag::PendingAssigns, &core))?;
@@ -400,7 +386,12 @@ fn storage_domain(
 	for core in 0..CORE_COUNT as u16 {
 		allow(storage_key(Tag::PendingAssigns, &core));
 	}
-	for tag in [Tag::PendingAssignCores, Tag::StagedValidatorKeys, Tag::IncomingTransferBuckets] {
+	for tag in [
+		Tag::PendingAssignCores,
+		Tag::StagedValidatorKeys,
+		Tag::IncomingTransferBuckets,
+		Tag::LastAccumulate,
+	] {
 		allow(storage_key(tag, &()));
 	}
 	if let Some(e) = endpoints {

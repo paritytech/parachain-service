@@ -19,14 +19,8 @@ pub fn seed(storage: &mut Storage, frame: &Value, codex: &mut Codex) -> Result<(
 			head_data: Codex::head(integer(field(info_value, "headData")?)?)?,
 			validation_code: active_validation_code,
 			announced_upgrade,
-			total_state_balance: bounded_integer::<u64>(
-				field(info_value, "totalStateBalance")?,
-				"totalStateBalance",
-			)?,
-			used_state_balance: bounded_integer::<u64>(
-				field(info_value, "usedStateBalance")?,
-				"usedStateBalance",
-			)?,
+			total_state_balance: model_state_balance(info_value, "totalStateBalance", para)?,
+			used_state_balance: model_state_balance(info_value, "usedStateBalance", para)?,
 			is_deregistering: boolean(field(info_value, "isDeregistering")?)?,
 		};
 		set_state(storage, &storage_key(Tag::Parachains, &para), &info);
@@ -66,11 +60,29 @@ pub fn seed(storage: &mut Storage, frame: &Value, codex: &mut Codex) -> Result<(
 	if !staged.is_empty() {
 		set_state(storage, &storage_key(Tag::StagedValidatorKeys, &()), &staged);
 	}
+	let last = frame.get("lastAccumulate")
+		.map(|value| bounded_integer::<u32>(value, "lastAccumulate"))
+		.transpose()?
+		.unwrap_or(0);
+	if last != 0 {
+		set_state(storage, &storage_key(Tag::LastAccumulate, &()), &last);
+	}
 	super::assignments::seed(storage, field(frame, "svc")?)?;
 	super::outgoing::seed(storage, frame)?;
 	super::service_upgrade::seed(storage, frame)?;
 	storage.commit();
 	Ok(())
+}
+
+// Preserve free balance across the extra singleton reservation.
+pub fn model_state_balance(
+	value: &Value,
+	field_name: &str,
+	para: parachain_service_core::types::ParaId,
+) -> Result<u64, String> {
+	let balance = bounded_integer::<u64>(field(value, field_name)?, field_name)?;
+	let reservation = if para == parachain_service_core::types::ASSET_HUB_PARA_ID { 49 } else { 0 };
+	balance.checked_add(reservation).ok_or_else(|| format!("{field_name} out of range"))
 }
 
 /// Decode an `Option<ValidationCodeRef>` variant. Fixtures predating the

@@ -33,6 +33,7 @@ pub enum Tag {
 	IncomingTransfers = 0x06,
 	IncomingTransferBuckets = 0x07,
 	KeyValueStorage = 0x08,
+	LastAccumulate = 0x09,
 }
 
 /// The full JAM storage key for a map entry: `[tag] || SCALE(key)`.

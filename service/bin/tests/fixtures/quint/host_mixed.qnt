@@ -79,7 +79,7 @@ module host_mixed {
   // An unprovided solicitation raises the private charge without allocating a
   // gigabyte of bytes. The next KV write crosses SCALE's 2^30 boundary.
   action chargeBoundary = normal(AssetHubParaId, List(solicit(888,
-    1073741823 - svc.paraInfo(AssetHubParaId).usedStateBalance - 187)))
+    1073741823 - 49 - svc.paraInfo(AssetHubParaId).usedStateBalance - 187)))
   action fundCharge = normal(CoretimeParaId, List(ParachainSetStateBalance({
     paraId: AssetHubParaId, newTotal: 2147483648 })))
   action chargeWrite(allowance: int, len: int, stop: int): bool =

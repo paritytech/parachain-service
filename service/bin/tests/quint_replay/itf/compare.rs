@@ -37,18 +37,12 @@ pub fn state(
 			(
 				"totalStateBalance",
 				actual.total_state_balance ==
-					bounded_integer::<u64>(
-						field(value, "totalStateBalance")?,
-						"totalStateBalance",
-					)?,
+					super::seed::model_state_balance(value, "totalStateBalance", para)?,
 			),
 			(
 				"usedStateBalance",
 				actual.used_state_balance ==
-					bounded_integer::<u64>(
-						field(value, "usedStateBalance")?,
-						"usedStateBalance",
-					)?,
+					super::seed::model_state_balance(value, "usedStateBalance", para)?,
 			),
 			(
 				"isDeregistering",

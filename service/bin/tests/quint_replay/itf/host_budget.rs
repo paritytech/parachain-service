@@ -64,7 +64,10 @@ pub fn prepare(storage: &mut Storage, frame: &Value) -> Result<Option<i128>, Str
 	}
 	let allowance = bounded_integer::<u64>(value, "host budget")?;
 	let mut service = storage.service(MOCK_SERVICE_ID).ok_or("missing host-budget service")?;
-	let balance = service.threshold().checked_add(allowance).ok_or("host budget overflow")?;
+	let reserve = super::storage_budget::marker_reserve(storage)?;
+	let balance = service.threshold().checked_add(allowance)
+		.and_then(|balance| balance.checked_add(reserve))
+		.ok_or("host budget overflow")?;
 	let offset = i128::from(service.balance) - i128::from(balance);
 	service.balance = balance;
 	storage.set_service(MOCK_SERVICE_ID, &service);
@@ -80,7 +83,9 @@ pub fn finish(
 ) -> Result<(), String> {
 	let Some(offset) = offset else { return Ok(()) };
 	let mut service = storage.service(MOCK_SERVICE_ID).ok_or("missing host-budget service")?;
-	let expected = bounded_integer::<u64>(field(frame, "replayHostFree")?, "host free balance")?;
+	let expected = bounded_integer::<u64>(field(frame, "replayHostFree")?, "host free balance")?
+		.checked_add(super::storage_budget::marker_reserve(storage)?)
+		.ok_or("host free balance overflow")?;
 	if service.balance < service.threshold() || service.free() != expected {
 		return Err(format!(
 			"frame {index}: mixed host free balance differs: expected {expected}, actual {}",

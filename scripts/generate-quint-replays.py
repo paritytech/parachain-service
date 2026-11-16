@@ -15,7 +15,7 @@ def main():
     version = subprocess.check_output(["quint", "--version"], text=True).strip()
     if version != "0.32.0":
         raise SystemExit(f"Expected Quint 0.32.0, found {version}")
-    for source in ["authorization", "combined", "host_calls", "refine_fuzz", "refine_errors", "blocks", "upgrades", "log_pruning", "kv", "balances", "lifecycle", "assignments", "validator_keys", "designation", "outgoing", "outgoing_boundaries", "self_payments", "service_upgrades", "mixed", "gas", "storage", "storage_recovery", "code_storage", "code_recovery", "host_mixed", "services", "service_preimages", "service_management", "panic_recovery", "due_flush", "pre_checkpoint", "final_checkpoint"]:
+    for source in ["authorization", "combined", "host_calls", "refine_fuzz", "refine_errors", "blocks", "upgrades", "log_pruning", "kv", "balances", "lifecycle", "assignments", "validator_keys", "designation", "outgoing", "outgoing_boundaries", "self_payments", "service_upgrades", "mixed", "gas", "storage", "storage_recovery", "code_storage", "code_recovery", "host_mixed", "services", "service_preimages", "service_management", "panic_recovery", "due_flush", "pre_checkpoint", "final_checkpoint", "last_accumulate"]:
         generate(source)
 
 

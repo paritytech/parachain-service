@@ -221,7 +221,7 @@ module fuzz {
     limits: List[int], allowance: int, interrupt: int): bool =
     hostWithRefine(workResults(packages), slot, incoming, limits, allowance, interrupt, refineInputs(packages))
 
-  action incoming = {
+  action incoming(initial: bool): bool = {
     nondet sender = oneOf(Set(MkServiceId(0), MkServiceId(3), MkServiceId(7)))
     nondet amount = oneOf(Set(0, IncomingTransferEntryFootprint - 1,
       IncomingTransferEntryFootprint, IncomingTransferEntryFootprint + 1, 10000))
@@ -230,7 +230,7 @@ module fuzz {
     val transfers = range(0, count).foldl(List(), (acc, i) => acc.append({
       source: sender, amount: amount, toSupervisorBalance: false, memo: memo + i
     }))
-    recordIncoming(transfers)
+    recordIncoming(transfers, initial)
   }
 
   // Give key chunks their own action so they regularly reach Accumulate,
@@ -456,20 +456,4 @@ module fuzz {
         gasCandidate("funded", 0, parent), gasCandidate(mode, sample, parent + 1)), now + 1) }
   }
 
-  action replayStep = any {
-    preCheckpointBlock,
-    finalCheckpointBlock,
-    servicesBlock,
-    hostBlock,
-    checkpointBlock,
-    panicBlock,
-    block,
-    all { provisionPreimage, noTransfers, noDesignation, noOutgoing, keepUpgradeGas, noGas },
-    all { incoming, noDesignation, noOutgoing, keepUpgradeGas, noGas },
-    all { refinedLifecycleBlock, noTransfers, noDesignation, noOutgoing, keepUpgradeGas },
-    all { refinedAssignmentBlock, noTransfers, noDesignation, noOutgoing, keepUpgradeGas },
-    validatorKeysBlock,
-    outgoingBlock,
-    serviceUpgradeBlock
-  }
 }

@@ -48,27 +48,19 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 			}
 		},
 		"StateBalanceUpdateRejected" => {
+			let para = para_id(field(value, "paraId")?, codex)?;
 			let (reason, payload) = variant(field(value, "reason")?)?;
 			let reason = match reason {
 				"BelowUsed" => StateBalanceRejection::BelowUsed {
-					current_total: Compact(bounded_integer::<u64>(
-						field(payload, "currentTotal")?,
-						"currentTotal",
-					)?),
-					current_used: Compact(bounded_integer::<u64>(
-						field(payload, "currentUsed")?,
-						"currentUsed",
-					)?),
+					current_total: Compact(super::seed::model_state_balance(payload, "currentTotal", para)?),
+					current_used: Compact(super::seed::model_state_balance(payload, "currentUsed", para)?),
 				},
 				"ParachainIsDeregistering" => StateBalanceRejection::ParachainIsDeregistering,
 				other => return Err(format!("unsupported state balance rejection {other}")),
 			};
 			Ok(AccumulateLog::StateBalanceUpdateRejected {
-				para_id: para_id(field(value, "paraId")?, codex)?,
-				attempted: Compact(bounded_integer::<u64>(
-					field(value, "attempted")?,
-					"attempted",
-				)?),
+				para_id: para,
+				attempted: Compact(super::seed::model_state_balance(value, "attempted", para)?),
 				reason,
 			})
 		},
@@ -180,5 +172,37 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 			Ok(AccumulateLog::ForgetAgainAt { target, hash, len: Compact(len), due })
 		},
 		other => Err(format!("unsupported accumulate log event {other}")),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use serde_json::json;
+
+	#[test]
+	fn asset_hub_balance_rejection_includes_reservation() {
+		let value = json!({
+			"tag": "StateBalanceUpdateRejected",
+			"value": {
+				"paraId": { "tag": "MkParaId", "value": { "#bigint": "2" } },
+				"attempted": { "#bigint": "100" },
+				"reason": { "tag": "BelowUsed", "value": {
+					"currentTotal": { "#bigint": "200" },
+					"currentUsed": { "#bigint": "150" }
+				} }
+			}
+		});
+		assert!(matches!(
+			accumulate_log(&value, &mut Codex::default()).unwrap(),
+			AccumulateLog::StateBalanceUpdateRejected {
+				attempted: Compact(149),
+				reason: StateBalanceRejection::BelowUsed {
+					current_total: Compact(249),
+					current_used: Compact(199),
+				},
+				..
+			}
+		));
 	}
 }

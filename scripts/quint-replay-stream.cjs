@@ -56,7 +56,7 @@ async function main() {
       throw new Error(`seed ${seed}: simulation failed or stopped early (${outcome.status})`);
     // Strip only ITF metadata; preserve all generated model values.
     // The default campaign must never silently fall back to supplied digests.
-    if (['fuzz.qnt', 'refine_gas_pipeline.qnt'].includes(path.basename(input))) trace.replayRefineRequired = true;
+    if (['fuzz_replay.qnt', 'refine_gas_pipeline.qnt'].includes(path.basename(input))) trace.replayRefineRequired = true;
     if (path.basename(input) === 'authorization_fuzz.qnt') {
       trace.replayRefineRequired = true;
       trace.replayAuthorizationRequired = true;

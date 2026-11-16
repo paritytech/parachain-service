@@ -56,7 +56,7 @@ The replay test also accepts an ITF document or a stream envelope on stdin:
 
 ```sh
 node scripts/quint-replay-stream.cjs \
-  service/bin/tests/fixtures/quint/fuzz.qnt 1 1 1 10 |
+  service/bin/tests/fixtures/quint/fuzz_replay.qnt 1 1 1 10 fuzz_replay |
   cargo test -p parachain-service-bin --test quint_replay \
     fuzz::replay_input_works -- --ignored --nocapture
 ```

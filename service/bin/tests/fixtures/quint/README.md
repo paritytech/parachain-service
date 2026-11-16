@@ -83,6 +83,14 @@ JAM balances, installed code lengths, and upgrade gas-setting mismatches are rej
   flushing, carry-over, rewrites, and rejection log order. Interrupted replay
   invocations select a zero assignment budget when no allowance remains;
   rollback before the first checkpoint retains no assignment effects.
+- The pinned state lacks `lastAccumulate`. Replay extends legacy traces with an
+  independently computed checkpoint watermark and compares the singleton on
+  every frame; explicitly supplied values must agree. The fuzz wrapper carries
+  whether the current slot's checkpoint survived rollback, including across
+  preimage provision, so repeated incoming calls skip only the initial flush.
+  The local balance adapter adds the 49-unit Asset Hub reservation absent from
+  the pin, independently of whether the singleton has been written yet.
+
 
 - Incoming-transfer replay requires explicit `replayIncoming` operands and an
   initially empty queue. Frames may carry arrivals and work reports together;

@@ -32,7 +32,7 @@ module kv_charge_fuzz {
   // Split the reservation into u32-sized preimages with distinct hashes.
   // Each request charges 187 + len; distribute the remainder one unit per request.
   val requestCount = if (chargeWidth <= 4294967296) 1 else 256
-  val reservation = chargeWidth - 1 - svc.paraInfo(AssetHubParaId).usedStateBalance
+  val reservation = chargeWidth - 1 - 49 - svc.paraInfo(AssetHubParaId).usedStateBalance
   val requestCharge = reservation / requestCount
   val requests = range(0, requestCount).foldl(List(), (list, i) =>
     list.append(solicit(10000 + i,

@@ -1,6 +1,6 @@
 //! `accumulate` entry point of the parachain service (spec §5.1).
 //!
-//! The work runs in three phases, in order: due authorizer-queue flushes,
+//! The work runs in three phases, in order: first-in-slot authorizer-queue flushes,
 //! incoming-transfer processing, and per-work-package work. Each phase is paid
 //! from its own gas: the due assigns from the always-accumulate allowance, each
 //! transfer from the gas it carries, and each work-report from the gas it
@@ -19,7 +19,10 @@ pub mod transfers;
 pub mod upward;
 pub mod validator_keys;
 
-use crate::{head_commitment::HeadTracker, state::log::ParachainLogs};
+use crate::{
+	head_commitment::HeadTracker,
+	state::{self, log::ParachainLogs, Tag},
+};
 use jam_pvm_common::accumulate::{accumulate_items, checkpoint, gas, yield_hash};
 use jam_types::{AccumulateItem, Hash, ServiceId, Slot, UnsignedGas};
 use parachain_service_core::types::CORETIME_PARA_ID;
@@ -37,22 +40,20 @@ pub fn accumulate(
 	// build the commitment `accumulate` returns.
 	let mut heads = HeadTracker::new();
 
-	// JAM's gas for this invocation is the always-accumulate allowance plus the
-	// gas each work-report and incoming transfer brought along, so whatever the
-	// items did not bring is the allowance.
-	let declared = items.iter().fold(0 as UnsignedGas, |sum, item| {
-		sum.saturating_add(match item {
-			AccumulateItem::WorkItem(record) => record.gas_limit,
-			AccumulateItem::Transfer(transfer) => transfer.gas_limit,
-		})
-	});
-	let allowance = gas().saturating_sub(declared);
-
-	// Phase 1: always-accumulate — flush the due authorizer-queue assigns the
-	// allowance pays for, then checkpoint so running out of gas later cannot undo
-	// the flush (§5.1).
-	flush_due_assigns(now, service_id, assigns::budget(allowance));
-	checkpoint();
+	// Phase 1: only the first invocation receives the allowance.
+	if now > state::read_singleton::<Slot>(Tag::LastAccumulate).unwrap_or_default() {
+		let declared = items.iter().fold(0 as UnsignedGas, |sum, item| {
+			sum.saturating_add(match item {
+				AccumulateItem::WorkItem(record) => record.gas_limit,
+				AccumulateItem::Transfer(transfer) => transfer.gas_limit,
+			})
+		});
+		let allowance = gas().saturating_sub(declared);
+		flush_due_assigns(now, service_id, assigns::budget(allowance));
+		state::write_singleton(Tag::LastAccumulate, &now)
+			.expect("last_accumulate is covered by Asset Hub's baseline");
+		checkpoint();
+	}
 
 	// Phase 2: incoming-transfer processing (§5.1). JAM already credited the
 	// balances unconditionally; recording is best effort. Transfers are
