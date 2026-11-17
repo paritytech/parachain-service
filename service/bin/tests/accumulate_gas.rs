@@ -63,7 +63,7 @@ mod gas {
 	pub const DEST_HANDLER_PER_TRANSFER: u64 = 17_301;
 	/// Gas for one Ed25519 authorization.
 	/// Re-measured with the pinned `nightly-2026-08-31` toolchain.
-	pub const IS_AUTHORIZED_ED25519: u64 = 4_056_822;
+	pub const IS_AUTHORIZED_ED25519: u64 = 4_018_278;
 }
 
 /// A report admitted by the gas gate must leave 20% execution headroom.
