@@ -43,14 +43,14 @@ module balances {
   // Each invocation closes its tail bucket. Cross both the bucket capacity
   // and the reservation, then exercise dropped and self-funded arrivals.
   run incoming_boundaries_works = start
-    .then(recordIncoming(batch(MaxTransfersPerBucket + 1, 0), false))
-    .then(recordIncoming(batch(MaxIncomingTransfers - MaxTransfersPerBucket - 2, 0), false))
+    .then(recordIncoming(batch(MaxTransfersPerBucket + 1, 0)))
+    .then(recordIncoming(batch(MaxIncomingTransfers - MaxTransfersPerBucket - 2, 0)))
     .then(core(List(total(AssetHubParaId, svc.paraInfo(AssetHubParaId).usedStateBalance))))
     .then(recordIncoming(List(transfer(0, 10),
       transfer(IncomingTransferEntryFootprint - 1, 11),
       transfer(IncomingTransferEntryFootprint, 12),
-      transfer(IncomingTransferEntryFootprint + 1, 13)), false))
-    .then(recordIncoming(List(transfer(0, 14)), false))
+      transfer(IncomingTransferEntryFootprint + 1, 13))))
+    .then(recordIncoming(List(transfer(0, 14))))
     .then(core(List(total(AssetHubParaId, svc.paraInfo(AssetHubParaId).usedStateBalance - 1))))
     .then(hub(List(SetKV({ key: List(1), value: List(1) }))))
 }

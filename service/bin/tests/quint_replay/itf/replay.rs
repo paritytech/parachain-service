@@ -27,11 +27,11 @@ pub fn trace(json: &str) -> Result<(), String> {
 #[cfg(test)]
 mod last_accumulate_tests {
 	use super::*;
-	use serde_json::json;
 
 	#[test]
 	fn generated_same_slot_works() {
 		for fixture in [
+			include_str!("../../fixtures/quint/last_accumulate/slot_zero_works.itf.json"),
 			include_str!("../../fixtures/quint/last_accumulate/same_slot_works.itf.json"),
 			include_str!("../../fixtures/quint/last_accumulate/incoming_same_slot_works.itf.json"),
 			include_str!("../../fixtures/quint/last_accumulate/incoming_after_rollback_works.itf.json"),
@@ -39,79 +39,6 @@ mod last_accumulate_tests {
 			trace(fixture).unwrap();
 		}
 	}
-
-	fn with_watermarks(fixture: &str, watermarks: &[u32]) -> Value {
-		let mut trace: Value = serde_json::from_str(fixture).unwrap();
-		let states = trace["states"].as_array_mut().unwrap();
-		assert_eq!(states.len(), watermarks.len());
-		for (state, last) in states.iter_mut().zip(watermarks) {
-			state["lastAccumulate"] = json!({ "#bigint": last.to_string() });
-		}
-		trace
-	}
-
-	#[test]
-	fn checkpoint_watermark_and_rollback_works() {
-		let mut trace = with_watermarks(
-			include_str!("../../fixtures/quint/pre_checkpoint/repeated_works.itf.json"),
-			&[0, 1, 1, 1, 4],
-		);
-		document_trace(&trace).unwrap();
-		trace["states"][2]["lastAccumulate"] = json!({ "#bigint": "2" });
-		assert!(document_trace(&trace).unwrap_err().contains("checkpoint watermark"));
-
-		let mut trace = with_watermarks(
-			include_str!("../../fixtures/quint/panic_recovery/assignment_checkpoint_works.itf.json"),
-			&[0, 1, 2, 3],
-		);
-		document_trace(&trace).unwrap();
-		trace["states"][2]["lastAccumulate"] = json!({ "#bigint": "1" });
-		assert!(document_trace(&trace).unwrap_err().contains("checkpoint watermark"));
-	}
-
-	#[test]
-	fn missing_watermark_in_profile_errors() {
-		let mut trace = with_watermarks(
-			include_str!("../../fixtures/quint/pre_checkpoint/repeated_works.itf.json"),
-			&[0, 1, 1, 1, 4],
-		);
-		trace["states"][1].as_object_mut().unwrap().remove("lastAccumulate");
-		assert!(document_trace(&trace).unwrap_err().contains("present in every frame"));
-	}
-}
-
-fn compare_model_last_accumulate(frame: &Value, expected: u32, index: usize) -> Result<(), String> {
-	if let Some(value) = frame.get("lastAccumulate") {
-		let actual = bounded_integer::<u32>(value, "lastAccumulate")?;
-		if actual != expected {
-			return Err(format!("frame {index}: model lastAccumulate {actual} differs from checkpoint watermark {expected}"));
-		}
-	}
-	if let Some(value) = frame.get("replaySlotSettled") {
-		let settled = boolean(value)?;
-		let now = bounded_integer::<u32>(field(frame, "now")?, "now")?;
-		if settled != (now <= expected) {
-			return Err(format!("frame {index}: replaySlotSettled disagrees with checkpoint watermark"));
-		}
-	}
-	Ok(())
-}
-
-fn compare_last_accumulate(
-	storage: &Storage,
-	frame: &Value,
-	expected: u32,
-	index: usize,
-) -> Result<(), String> {
-	compare_model_last_accumulate(frame, expected, index)?;
-	let key = parachain_service::state::storage_key(
-		parachain_service::state::Tag::LastAccumulate, &(),
-	);
-	let actual = super::invariants::read::<u32>(storage, &key)?.unwrap_or(0);
-	if actual != expected {
-		return Err(format!("frame {index}: lastAccumulate differs; Rust={actual}, model={expected}"));
-	}
-	Ok(())
 }
 
 /// Replay an already parsed trace, avoiding a serialize/parse round trip for streams.
@@ -164,21 +91,6 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 				.into(),
 		);
 	}
-	// The pinned model predates this singleton. Extend its trace with an
-	// independent checkpoint watermark; explicit model values remain mandatory
-	// in every frame when supplied and are checked against that transition.
-	let watermark_profile = first.get("lastAccumulate").is_some();
-	if states.iter().any(|state| state.get("lastAccumulate").is_some() != watermark_profile) {
-		return Err("lastAccumulate must be present in every frame or none".into());
-	}
-	let settled_profile = first.get("replaySlotSettled").is_some();
-	if states.iter().any(|state| state.get("replaySlotSettled").is_some() != settled_profile) {
-		return Err("replaySlotSettled must be present in every frame or none".into());
-	}
-	let mut last_accumulate = first.get("lastAccumulate")
-		.map(|value| bounded_integer::<u32>(value, "lastAccumulate"))
-		.transpose()?
-		.unwrap_or(0);
 	let mut invariant_errors = Vec::new();
 	let mut codex = Codex::default();
 	let mut seeded = Ok(());
@@ -187,14 +99,12 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 	super::storage_budget::prepare(&mut storage, first)?;
 	super::storage_budget::compare(&storage, first, 0)?;
 	compare::state(&storage, first, &mut codex, 0)?;
-	compare_last_accumulate(&storage, first, last_accumulate, 0)?;
 	if let Err(error) = super::invariants::state(&storage, first, &mut codex, 0) {
 		invariant_errors.push(error);
 	}
 	super::outgoing::compare(first, &jam_node::vm::StateMutations::new(0), 0)?;
 	super::outgoing::balances(&storage, first, 0)?;
 	let mut privileges = super::assignments::initial_privileges(storage.clone());
-	let mut settled_slot = bounded_integer::<u32>(field(first, "now")?, "now")?;
 
 	for (index, pair) in states.windows(2).enumerate() {
 		let frame = index + 1;
@@ -203,13 +113,6 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 		let mut output = None;
 		let mut host_offset = None;
 		let kind = classify(&pair[0], &pair[1])?;
-		if matches!(kind, FrameKind::Block | FrameKind::IncomingTransfer) &&
-			!super::gas::before_checkpoint(&pair[1])?
-		{
-			let slot = bounded_integer::<u32>(field(&pair[1], "now")?, "now")?;
-			last_accumulate = last_accumulate.max(slot);
-		}
-		compare_model_last_accumulate(&pair[1], last_accumulate, frame)?;
 		if (super::instruction_gas::enabled(&pair[1]) ||
 			super::instruction_gas::due_flush_enabled(&pair[1]) ||
 			super::gas::before_checkpoint(&pair[1])?) &&
@@ -219,9 +122,9 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 		}
 		match kind {
 			FrameKind::Noop => {
-				compare_last_accumulate(&storage, &pair[1], last_accumulate, frame)?;
+				compare::state(&storage, &pair[1], &mut codex, frame)?;
 				if let Err(error) =
-					super::invariants::state_at(&storage, &pair[1], &mut codex, frame, settled_slot)
+					super::invariants::state(&storage, &pair[1], &mut codex, frame)
 				{
 					invariant_errors.push(error);
 				}
@@ -319,17 +222,11 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 				storage = next;
 			},
 		}
-		if matches!(kind, FrameKind::Block | FrameKind::IncomingTransfer) &&
-			!super::gas::before_checkpoint(&pair[1])?
-		{
-			settled_slot = bounded_integer(field(&pair[1], "now")?, "now")?;
-		}
 		super::host_budget::finish(&mut storage, &pair[1], host_offset, frame)?;
-		compare_last_accumulate(&storage, &pair[1], last_accumulate, frame)?;
 		compare::state(&storage, &pair[1], &mut codex, frame)?;
 		super::storage_budget::compare(&storage, &pair[1], frame)?;
 		if let Err(error) =
-			super::invariants::state_at(&storage, &pair[1], &mut codex, frame, settled_slot)
+			super::invariants::state(&storage, &pair[1], &mut codex, frame)
 		{
 			invariant_errors.push(error);
 		}
@@ -526,7 +423,7 @@ pub(super) fn upward_message(
 			let para_id = para_id(field(value, "paraId")?, codex)?;
 			Ok(UpwardMessage::ParachainSetStateBalance {
 				para_id,
-				new_total: Compact(super::seed::model_state_balance(value, "newTotal", para_id)?),
+				new_total: Compact(bounded_integer(field(value, "newTotal")?, "newTotal")?),
 			})
 		},
 		"ParachainSetHead" => Ok(UpwardMessage::ParachainSetHead {

@@ -32,7 +32,7 @@ fn generator(seed: u64, stride: u64, count: u64, steps: u64) -> Command {
 
 fn generator_profile(profile: &str, seed: u64, stride: u64, count: u64, steps: u64) -> Command {
 	let input = match profile {
-		"fuzz" => "service/bin/tests/fixtures/quint/fuzz_replay.qnt",
+		"fuzz" => "service/bin/tests/fixtures/quint/fuzz.qnt",
 		"refine_gas" => "service/bin/tests/fixtures/quint/refine_gas_pipeline.qnt",
 		"authorization" => "service/bin/tests/fixtures/quint/authorization_fuzz.qnt",
 		"designation" => "service/bin/tests/fixtures/quint/designation_fuzz.qnt",
@@ -55,7 +55,7 @@ fn generator_profile(profile: &str, seed: u64, stride: u64, count: u64, steps: u
 		&steps.to_string(),
 	]);
 	if profile == "fuzz" {
-		command.arg("fuzz_replay");
+		command.arg("fuzz");
 	} else if profile == "refine_gas" {
 		command.arg("gas_pipeline");
 	} else if profile == "kv_charge" {
@@ -288,7 +288,7 @@ fn stream_matches_cli_works() {
 			.current_dir(root())
 			.args([
 				"run",
-				"service/bin/tests/fixtures/quint/fuzz_replay.qnt",
+				"service/bin/tests/fixtures/quint/fuzz.qnt",
 				"--init",
 				"replayInit",
 				"--step",
@@ -1226,7 +1226,7 @@ fn kv_charge_generated_works() {
 				.iter()
 				.find(|entry| entry[0]["value"]["#bigint"] == "2")
 				.unwrap();
-			integer(&info[1], "usedStateBalance") + 49
+			integer(&info[1], "usedStateBalance")
 		};
 		let boundary = integer(&states[0], "chargeWidth");
 		let growth = integer(&states[0], "chargeGrowth") +

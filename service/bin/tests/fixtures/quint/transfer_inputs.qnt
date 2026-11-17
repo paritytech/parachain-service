@@ -8,9 +8,8 @@ module transfer_inputs {
 
   var replayIncoming: List[IncomingTransfer]
   action noTransfers = replayIncoming' = List()
-  // `initial` is true only when this slot's initial checkpoint has not run.
-  action recordIncoming(transfers: List[IncomingTransfer], initial: bool): bool = {
-    val budget = { flush: if (initial) CoreCount else 0, end: CoreCount }
+  action recordIncoming(transfers: List[IncomingTransfer]): bool = {
+    val budget = { flush: CoreCount, end: CoreCount }
     val out = accumulateTransfers(svc, now, transfers, budget)
     all {
     replayIncoming' = transfers,

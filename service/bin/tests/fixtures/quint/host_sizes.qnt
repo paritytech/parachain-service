@@ -13,25 +13,16 @@ module host_sizes {
     + (if (pi.validationCode == None) 1 else 37)
     + (if (pi.announcedUpgrade == None) 1 else 37)
     + scaleCompact(pi.totalStateBalance) + scaleCompact(pi.usedStateBalance) + 1
-  // The pinned state omits the Asset Hub's singleton reservation. It changes
-  // SCALE widths even though it is a constant in the abstract balance model.
-  pure def paraBytesFor(p: ParaId, pi: ParaInfo): int = {
-    val reserve = if (p == AssetHubParaId) 49 else 0
-    paraBytes({ ...pi, usedStateBalance: pi.usedStateBalance + reserve,
-      totalStateBalance: pi.totalStateBalance + reserve })
-  }
   pure def accBytes(log: AccumulateLog): int = 1 + match log {
     | InsufficientStateBalance(reason) => 1 + match reason {
       | FromSolicit(p) => 32 + scaleCompact(p.len)
       | FromSetKV(_) => 32
     }
-    | StateBalanceUpdateRejected(p) => {
-      val reserve = if (p.paraId == AssetHubParaId) 49 else 0
-      4 + scaleCompact(p.attempted + reserve) + 1 + match p.reason {
-        | BelowUsed(b) => scaleCompact(b.currentTotal + reserve) + scaleCompact(b.currentUsed + reserve)
+    | StateBalanceUpdateRejected(p) =>
+      4 + scaleCompact(p.attempted) + 1 + match p.reason {
+        | BelowUsed(b) => scaleCompact(b.currentTotal) + scaleCompact(b.currentUsed)
         | _ => 0
       }
-    }
     | DesignateRejected(p) => scaleCompact(p.len)
     | ServiceUpgradePreimageMissing(_) => 32
     | CodeUpgradeNotAvailable(p) => 32 + scaleCompact(p.len)
@@ -60,7 +51,7 @@ module host_sizes {
   pure def logBytes(log: List[(Timeslot, LogEntry)]): int =
     scaleCompact(log.length()) + log.foldl(0, (n, e) => n + 4 + entryBytes(e._2))
   pure def hostCost(s: ParachainServiceState): int = {
-    val paras = s.parachains.keys().fold(0, (n, p) => n + storeCost(5, paraBytesFor(p, s.paraInfo(p))))
+    val paras = s.parachains.keys().fold(0, (n, p) => n + storeCost(5, paraBytes(s.paraInfo(p))))
     val kv = s.keyValueStorage.keys().fold(0, (n, k) =>
       n + storeCost(5 + k._2.length(), s.keyValueStorage.get(k).length()))
     val logs = s.parachainLog.keys().fold(0, (n, p) => n + storeCost(5, logBytes(s.paraLog(p))))

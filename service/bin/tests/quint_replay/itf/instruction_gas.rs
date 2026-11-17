@@ -103,8 +103,8 @@ fn phase_checkpoints(context: &AccumulateCallContext<'_>) -> Result<usize, Strin
 	let key = parachain_service::state::storage_key(
 		parachain_service::state::Tag::LastAccumulate, &(),
 	);
-	let last = super::invariants::read::<u32>(&context.storage, &key)?.unwrap_or(0);
-	Ok(usize::from(context.slot > last) +
+	let last = super::invariants::read::<u32>(&context.storage, &key)?;
+	Ok(usize::from(last.is_none_or(|last| context.slot > last)) +
 		usize::from(context.items.iter().any(|item| matches!(item, AccumulateItem::Transfer(_)))))
 }
 
@@ -169,7 +169,8 @@ pub fn due_flush_cutoff(
 		let key = parachain_service::state::storage_key(
 			parachain_service::state::Tag::LastAccumulate, &(),
 		);
-		context.slot > super::invariants::read::<u32>(&context.storage, &key)?.unwrap_or(0)
+		super::invariants::read::<u32>(&context.storage, &key)?
+			.is_none_or(|last| context.slot > last)
 	};
 	let (start, end) = if initial {
 		if !initial_flush {
@@ -423,5 +424,17 @@ mod tests {
 		assert_eq!(phase_checkpoints(&context).unwrap(), 0);
 		let context = parachain_service_bin::mock::accumulate_context(storage, Vec::new(), 8);
 		assert_eq!(phase_checkpoints(&context).unwrap(), 1);
+	}
+
+	#[test]
+	fn first_slot_zero_has_initial_checkpoint() {
+		let storage = fresh_storage(|_| {});
+		let context = parachain_service_bin::mock::accumulate_context(storage, Vec::new(), 0);
+		assert_eq!(phase_checkpoints(&context).unwrap(), 1);
+		let storage = fresh_storage(|storage| {
+			set_state(storage, &storage_key(Tag::LastAccumulate, &()), &0u32);
+		});
+		let context = parachain_service_bin::mock::accumulate_context(storage, Vec::new(), 0);
+		assert_eq!(phase_checkpoints(&context).unwrap(), 0);
 	}
 }

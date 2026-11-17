@@ -427,6 +427,19 @@ fn handed_away_core_flush_log_order_works() {
 }
 
 #[test]
+fn first_slot_zero_works() {
+	let (_, storage, _) = run_block_with_gas(
+		ct_storage(),
+		vec![],
+		0,
+		privileges_with_assign(99),
+		Some(1_000_000),
+	);
+	assert_eq!(get_state::<u32>(&storage, &storage_key(Tag::LastAccumulate, &())), Some(0));
+	assert!(dirty_cores(&storage).is_empty());
+}
+
+#[test]
 fn repeated_slot_flush_order_works() {
 	let due = NOW + 10;
 	let (_, first, _) = run_block_with_gas(

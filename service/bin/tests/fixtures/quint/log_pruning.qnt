@@ -54,7 +54,7 @@ module log_pruning {
       .then(applyWork(WorkOk(Err({ paraId: CoretimeParaId, validationCode: { vchBytes: 1 }, error: Opaque(42) }))))
       .then(applyWork(refine(svc, pkg,
         wellFormedCalls(headHash(StaleParentHead), 1, List()), 2)[0]))
-      .then(expectThat(svc == prevSvc))
+      .then(expectThat(svc == { ...prevSvc, lastAccumulate: Some(now) }))
   }
 
   run refine_log_boundary_works =

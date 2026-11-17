@@ -89,7 +89,7 @@ impl ParachainServiceSpec {
 		// explicitly because jam-chainspec's own `new` default is `MinimumPlus(0)`.
 		let balance = self.balance.unwrap_or(Balance::MAX);
 		let mut service = GenesisService::new(self.code).balance(balance);
-		// Global singletons start absent; last_accumulate therefore reads as slot 0.
+		// An absent last_accumulate marks a service that has never accumulated.
 
 		// Deterministic output: paras run in ParaId order, whatever the insertion
 		// order, and two specs for one id are a bug — the later `ParaInfo` row would

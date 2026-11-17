@@ -39,13 +39,7 @@ module invocation_inputs {
 
   action invocationWithRefine(packages: List[WorkResult], slot: Timeslot,
     incoming: List[IncomingTransfer], limits: List[int], interrupt: int, panic: bool,
-    inputs: Option[List[RefineInput]]): bool =
-    invocationWithRefineAtWatermark(packages, slot, incoming, limits, interrupt, panic, inputs, now)
-
-  // `last` is checkpointed state, not the most recently attempted slot.
-  action invocationWithRefineAtWatermark(packages: List[WorkResult], slot: Timeslot,
-    incoming: List[IncomingTransfer], limits: List[int], interrupt: int, panic: bool,
-    inputs: Option[List[RefineInput]], last: Timeslot): bool = {
+    inputs: Option[List[RefineInput]]): bool = {
     val applied = range(0, packages.length()).foldl(List(), (acc, i) =>
       if ((interrupt < 0 or i < interrupt) and limits[i] >= reportGas(packages[i]))
         acc.append(packages[i]) else acc)
@@ -58,7 +52,7 @@ module invocation_inputs {
     // invocation between incoming transfers and work reports.
     val prefix = accumulateBlockBudgeted(svc, slot, List(), solicitedSet,
       FixedCodeLen, List(), foreignServices,
-      { ...assignBudget, flush: if (slot > last) assignBudget.flush else 0, end: 0 }, Never)
+      { ...assignBudget, end: 0 }, Never)
     val arrived = applyIncomingTransfers(prefix.state, incoming)
     val out = replayAll(arrived, solicitedSet, List(), FixedCodeLen,
       slot, applied, foreignServices)

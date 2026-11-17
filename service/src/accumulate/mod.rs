@@ -41,7 +41,7 @@ pub fn accumulate(
 	let mut heads = HeadTracker::new();
 
 	// Phase 1: only the first invocation receives the allowance.
-	if now > state::read_singleton::<Slot>(Tag::LastAccumulate).unwrap_or_default() {
+	if state::read_singleton::<Slot>(Tag::LastAccumulate).is_none_or(|last| now > last) {
 		let declared = items.iter().fold(0 as UnsignedGas, |sum, item| {
 			sum.saturating_add(match item {
 				AccumulateItem::WorkItem(record) => record.gas_limit,

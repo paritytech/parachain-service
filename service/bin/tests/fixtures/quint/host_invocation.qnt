@@ -67,7 +67,7 @@ module host_invocation {
         val delta = if (existing) kv.value.length() - before.keyValueStorage.get((caller, kv.key)).length()
           else kvEntryFootprint(kv.key.length(), kv.value.length())
         val charged = { ...pi, usedStateBalance: pi.usedStateBalance + delta }
-        val piGrowth = paraBytesFor(caller, charged) - paraBytesFor(caller, pi)
+        val piGrowth = paraBytes(charged) - paraBytes(pi)
         val storageGrowth = if (existing) delta else storeCost(5 + kv.key.length(), kv.value.length())
         // The private reservation check precedes both host writes. The charged
         // ParaInfo write precedes KV, and must also fit at that intermediate point.
