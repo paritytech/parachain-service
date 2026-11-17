@@ -95,7 +95,7 @@ module storage_inputs {
     else {
       val called = { ...h, state: h.state.recordAssigner(core, assigner.optionGetOr(ParachainServiceId)),
         assigns: h.assigns.append({ core: core, assigner: assigner.optionGetOr(ParachainServiceId),
-          queue: assignQueueFor(queue, due) }) }
+          queue: assignQueueFor(queue, slot) }) }
       if (fillsDirectly(queue.length())) {
         val cleared = { ...called.state, pendingAssigns: called.state.pendingAssigns.mapRemove(core),
           pendingAssignCores: called.state.pendingAssignCores.mapRemove(core) }
@@ -115,8 +115,8 @@ module storage_inputs {
     { ...h, state: proposed, free: h.free - hostCost(proposed) + hostCost(h.state)
         + nominalDelta - indexCost + oldCost(h, 3), sizes: if (indexCost == 0) h.sizes else h.sizes.put(3, indexCost) }
   }
-  pure def dueAssignments(h: Host, slot: int): Host = {
-    val flushed = applyDueAssigns(h.state, slot, FullAssignBudget.flush)
+  pure def dueAssignments(h: Host, slot: int, budget: int): Host = {
+    val flushed = alwaysAccumulateFlush(h.state, slot, budget)
     { ...assignmentState(h, flushed.state), assigns: h.assigns.concat(flushed.assigns) }
   }
 

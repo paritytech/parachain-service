@@ -248,9 +248,9 @@ fn written(mutations: &jam_node::vm::StateMutations) -> Vec<AuthorizerHash> {
 }
 
 /// §7.1: JAM reads entry `t % 80` at slot `t`, which must hold hash `t % len` of
-/// the set, for the 80 slots from `due` on.
-fn assert_covers(queue: &[AuthorizerHash], set: &[AuthorizerHash], due: u32) {
-	for slot in due..due + 80 {
+/// the set, for the 80 slots from `applied` on.
+fn assert_covers(queue: &[AuthorizerHash], set: &[AuthorizerHash], applied: u32) {
+	for slot in applied..applied + 80 {
 		assert_eq!(queue[slot as usize % 80], set[slot as usize % set.len()], "slot {slot}");
 	}
 }
@@ -299,9 +299,8 @@ fn design_example_works() {
 
 #[test]
 fn late_flush_rearms_from_due_works() {
-	// §7.1: a rewrite carried over past its due slot is still laid out for, and
-	// re-armed from, the slot it was due at.
-	for (late, written_due, next_due) in [(15, 10, 90), (200, 90, 170)] {
+	// Layout starts at the application slot; re-arming still follows the due slot.
+	for (late, next_due) in [(15, 90), (200, 170)] {
 		let queue = vec![HASH_A, HASH_B, HASH_A];
 		let msg = assign_msg(queue.clone(), NOW + 10);
 		let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
@@ -310,9 +309,20 @@ fn late_flush_rearms_from_due_works() {
 		// Even after both flushes, a sufficiently late assignment can remain due.
 		let (_, storage, mutations) = accumulate_block(cached, vec![], NOW + late);
 
-		assert_covers(&written(&mutations), &queue, NOW + written_due);
+		assert_covers(&written(&mutations), &queue, NOW + late);
 		assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, NOW + next_due)]);
 	}
+}
+
+#[test]
+fn late_inline_rearms_from_due_works() {
+	let queue = vec![HASH_A, HASH_B, HASH_A];
+	let msg = assign_msg(queue.clone(), NOW - 5);
+	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
+	let (_, storage, mutations) = accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
+
+	assert_covers(&written(&mutations), &queue, NOW);
+	assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, NOW + 75)]);
 }
 
 #[test]
