@@ -90,7 +90,7 @@ fn changed_supervisor_errors() {
 fn invalid_storage_key_errors() {
 	let mut trace: Value = serde_json::from_str(REFUSALS).unwrap();
 	trace["states"][1]["lastStepWorkResults"][0]["result"]["value"]["value"]["upwardMessages"][0]
-		["value"]["key"][0] = json!({"#bigint":"256"});
+		["value"]["keys"][0][0] = json!({"#bigint":"256"});
 	assert!(replay::document_trace(&trace).unwrap_err().contains("byte"));
 }
 

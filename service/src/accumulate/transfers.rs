@@ -12,11 +12,11 @@ use crate::{
 	state_balance::{reattribute_transfer_queue, transfer_covers_own_slot},
 };
 use alloc::vec::Vec;
-use jam_pvm_common::accumulate::{service_info, transfer};
+use jam_pvm_common::accumulate::{my_info, service_info, transfer};
 use jam_types::{Memo as JamMemo, TransferRecord};
 use parachain_service_core::{
-	types::{BucketId, ServiceId},
-	upward_message::TransferOutArgs,
+	types::{Balance, BucketId, ServiceId},
+	upward_message::{TransferAmount, TransferOutArgs},
 };
 
 /// §5.1 incoming-transfer processing. JAM credited the balances before this
@@ -144,52 +144,80 @@ pub fn clean_up_buckets_up_to(bucket_id: BucketId) {
 /// empty. What needs more is refused: a plain move to anything but its own other
 /// balance, and a non-zero credit to a supervisor balance (D-11).
 /// FIXME: revisit once the host exposes a GP >= 0.8 `transfer`.
+///
+/// A `TransferAmount::Max` that goes through logs the moved amount in
+/// `TransferredAmount`.
 pub fn transfer_out(service_id: ServiceId, args: TransferOutArgs, logs: &mut Vec<AccumulateLog>) {
+	let id = args.id;
+	let is_max = matches!(args.amount, TransferAmount::Max(_));
+	match replay_transfer_out(service_id, args) {
+		Ok(amount) if is_max => {
+			logs.push(AccumulateLog::TransferredAmount { id, amount: amount.into() })
+		},
+		Ok(_) => {},
+		Err(error) => logs.push(AccumulateLog::TransferFailed { id, error }),
+	}
+}
+
+/// The JAM `transfer` behind [`transfer_out`], returning the moved amount.
+fn replay_transfer_out(
+	service_id: ServiceId,
+	args: TransferOutArgs,
+) -> Result<Balance, TransferError> {
 	let TransferOutArgs {
 		source,
 		dest,
 		amount,
-		id,
+		id: _,
 		source_supervisor_balance,
 		dest_supervisor_balance,
 		deferred,
 	} = args;
-	let mut fail = |error| logs.push(AccumulateLog::TransferFailed { id, error });
 
 	let foreign_source = source.filter(|&source| source != service_id);
 	if foreign_source.is_some_and(|source| service_info(source).is_none()) {
-		return fail(TransferError::UnknownSource);
+		return Err(TransferError::UnknownSource);
 	}
 	let Some(dest_info) = service_info(dest) else {
-		return fail(TransferError::UnknownDestination);
+		return Err(TransferError::UnknownDestination);
 	};
 	if foreign_source.is_some() {
-		return fail(TransferError::SourceNotSupervised);
+		return Err(TransferError::SourceNotSupervised);
 	}
-	let moves = amount.0 > 0;
+	let amount = match amount {
+		TransferAmount::Exact(amount) => amount.0,
+		// §5.1: `min(cap, selected_balance, balance + supervisor_balance - threshold)`,
+		// with the always-empty supervisor balance of this host.
+		TransferAmount::Max(cap) => {
+			let info = my_info();
+			let selected = if source_supervisor_balance { 0 } else { info.balance };
+			cap.0.min(selected).min(info.balance.saturating_sub(info.threshold))
+		},
+	};
+	let moves = amount > 0;
 	let Some((memo, gas)) = deferred else {
 		if dest != service_id || source_supervisor_balance == dest_supervisor_balance {
-			return fail(TransferError::DestinationNotSupervised);
+			return Err(TransferError::DestinationNotSupervised);
 		}
 		if moves {
-			fail(if source_supervisor_balance {
+			return Err(if source_supervisor_balance {
 				TransferError::InsufficientServiceBalance
 			} else {
 				TransferError::DestinationNotSupervised
 			});
 		}
-		return;
+		return Ok(amount);
 	};
 	if gas < dest_info.min_memo_gas {
-		return fail(TransferError::GasBelowDestinationMinimum);
+		return Err(TransferError::GasBelowDestinationMinimum);
 	}
 	if moves && source_supervisor_balance {
-		return fail(TransferError::InsufficientServiceBalance);
+		return Err(TransferError::InsufficientServiceBalance);
 	}
 	if moves && dest_supervisor_balance {
-		return fail(TransferError::DestinationNotSupervised);
+		return Err(TransferError::DestinationNotSupervised);
 	}
-	if transfer(dest, amount.0, gas, &JamMemo(memo)).is_err() {
-		fail(TransferError::InsufficientServiceBalance);
-	}
+	transfer(dest, amount, gas, &JamMemo(memo))
+		.map(|_| amount)
+		.map_err(|_| TransferError::InsufficientServiceBalance)
 }

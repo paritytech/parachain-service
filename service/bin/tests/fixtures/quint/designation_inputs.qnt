@@ -52,11 +52,12 @@ module designation_inputs {
   action designationBlock(allowed: bool, messages: List[UpwardMessage]): bool = {
     val slot = now + 1
     val wr = work(AssetHubParaId, svc.paraInfo(AssetHubParaId).headData, messages)
-    val plain = accumulateOnePackage(svc, wr, solicitedSet, List(), FixedCodeLen, slot, foreignServices)
+    val flushed = alwaysAccumulateFlush(svc, slot, FullAssignBudget.flush)
+    val plain = accumulateOnePackage(flushed.state, wr, solicitedSet, List(), FixedCodeLen, slot, foreignServices)
     val out = match wr.result {
       | WorkOk(digest) => match digest {
         | Ok(ok) => {
-          val pre = accumulateOkPrefix(svc, ok, FixedCodeLen, slot)
+          val pre = accumulateOkPrefix(flushed.state, ok, FixedCodeLen, slot)
           val base: AccumulateOutcome = { state: pre.state, foreign: foreignServices,
             jamDesignate: List(), preimageOps: List(), jamAssigns: List(), logs: pre.logs }
           val applied = messages.foldl(base, (a, m) => applyPrivilege(a, ok.paraId, slot, ok.lookupAnchor, m, allowed))
@@ -72,7 +73,7 @@ module designation_inputs {
       replayCanDesignate' = allowed, replayDesignate' = out.jamDesignate,
       jamStagingSet' = if (out.jamDesignate == List()) jamStagingSet else out.jamDesignate,
       solicitedSet' = solicitedSet, foreignServices' = foreignServices,
-      lastStepWorkResults' = List(wr), lastStepAssigns' = List(), lastStepAssignBudget' = FullAssignBudget, lastStepOutOfGas' = Never,
+      lastStepWorkResults' = List(wr), lastStepAssigns' = flushed.assigns, lastStepAssignBudget' = FullAssignBudget, lastStepOutOfGas' = Never,
       lastHeadRoot' = headCommitment(svc, out.state),
       logPrunedBelow' = match plain.logPruned {
         | None => logPrunedBelow | Some(p) => logPrunedBelow.put(p._1, p._2)

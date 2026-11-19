@@ -96,7 +96,7 @@ pub fn create(args: CreateServiceArgs, logs: &mut Vec<AccumulateLog>) {
 		len,
 		min_item_gas,
 		min_memo_gas,
-		id,
+		message_id,
 		desired_id,
 		source_supervisor_balance,
 		new_supervisor_balance,
@@ -109,7 +109,7 @@ pub fn create(args: CreateServiceArgs, logs: &mut Vec<AccumulateLog>) {
 	// (D-13).
 	if source_supervisor_balance || new_supervisor_balance {
 		logs.push(AccumulateLog::ServiceCreation {
-			id,
+			message_id,
 			result: ServiceCreationResult::CannotAfford,
 		});
 		return;
@@ -132,5 +132,5 @@ pub fn create(args: CreateServiceArgs, logs: &mut Vec<AccumulateLog>) {
 		// back, so neither can its memory checks.
 		Err(_) => ServiceCreationResult::CannotAfford,
 	};
-	logs.push(AccumulateLog::ServiceCreation { id, result });
+	logs.push(AccumulateLog::ServiceCreation { message_id, result });
 }

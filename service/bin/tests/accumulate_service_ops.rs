@@ -43,7 +43,7 @@ fn create_args(desired_id: Option<ServiceId>) -> CreateServiceArgs {
 		len: (AH_CODE.len() as u32).into(),
 		min_item_gas: 100,
 		min_memo_gas: 100,
-		id: 77.into(),
+		message_id: 77.into(),
 		desired_id,
 		source_supervisor_balance: false,
 		new_supervisor_balance: false,
@@ -53,13 +53,16 @@ fn create_args(desired_id: Option<ServiceId>) -> CreateServiceArgs {
 /// Every §6.5 message naming `service`, in design-doc order.
 fn all_ops(service: ServiceId) -> Vec<UpwardMessage> {
 	vec![
-		UpwardMessage::Forget { target: Target::Service(service), hash: [9; 32], len: 1024.into() },
+		UpwardMessage::Forget {
+			target: Target::Service(service),
+			preimages: vec![([9; 32], 1024.into())],
+		},
 		UpwardMessage::Solicit {
 			target: Target::Service(service),
 			hash: [9; 32],
 			len: 1024.into(),
 		},
-		UpwardMessage::RemoveServiceStorage { service, key: vec![1, 2] },
+		UpwardMessage::RemoveServiceStorage { service, keys: vec![vec![1, 2]] },
 		UpwardMessage::EjectService { service },
 		UpwardMessage::SetServiceSupervisor { service, new_supervisor: service },
 		UpwardMessage::UpgradeService {
@@ -193,12 +196,14 @@ fn create_works() {
 
 	let (logs, storage) = replay(ah_storage(), msgs);
 
-	let [AccumulateLog::ServiceCreation { id, result: ServiceCreationResult::Created(new_id) }] =
-		logs[..]
+	let [AccumulateLog::ServiceCreation {
+		message_id,
+		result: ServiceCreationResult::Created(new_id),
+	}] = logs[..]
 	else {
 		panic!("expected a successful ServiceCreation, got {logs:?}")
 	};
-	assert_eq!(id.0, 77, "the caller's own handle is echoed back");
+	assert_eq!(message_id.0, 77, "the caller's own handle is echoed back");
 	let created = storage.service(new_id).expect("JAM created the service");
 	assert_eq!(created.parent_service, SVC);
 	assert_eq!(created.code_hash.0, jam_std_common::hash_raw(AH_CODE));
@@ -215,7 +220,7 @@ fn create_desired_id_works() {
 	assert_eq!(
 		logs,
 		vec![AccumulateLog::ServiceCreation {
-			id: 77.into(),
+			message_id: 77.into(),
 			result: ServiceCreationResult::Created(WANTED_ID)
 		}]
 	);
@@ -236,7 +241,7 @@ fn create_id_taken_errors() {
 	assert_eq!(
 		logs,
 		vec![AccumulateLog::ServiceCreation {
-			id: 77.into(),
+			message_id: 77.into(),
 			result: ServiceCreationResult::IdTaken
 		}]
 	);
@@ -257,7 +262,7 @@ fn create_supervisor_balance_errors() {
 		assert_eq!(
 			logs,
 			vec![AccumulateLog::ServiceCreation {
-				id: 77.into(),
+				message_id: 77.into(),
 				result: ServiceCreationResult::CannotAfford
 			}]
 		);

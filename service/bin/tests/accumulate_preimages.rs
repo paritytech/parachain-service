@@ -109,8 +109,7 @@ fn forget_unprovided_works() {
 
 	let msg = UpwardMessage::Forget {
 		target: Target::Parachain(PARA),
-		hash: blob_hash(),
-		len: blob_len().into(),
+		preimages: vec![(blob_hash(), blob_len().into())],
 	};
 	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![msg], 0);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
@@ -126,6 +125,29 @@ fn forget_unprovided_works() {
 }
 
 #[test]
+fn forget_batch_works() {
+	// §6.1: each `(hash, len)` is handled on its own, in order; refusing the active
+	// code does not stop the next entry from dropping.
+	let storage = solicited_storage();
+	let cref = code_ref(CODE);
+	let code_hash = validation_code_hash_bytes(&cref.hash);
+
+	let msg = UpwardMessage::Forget {
+		target: Target::Parachain(PARA),
+		preimages: vec![(code_hash, cref.len.into()), (blob_hash(), blob_len().into())],
+	};
+	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![msg], 0);
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
+
+	assert!(registry_entry(&storage, code_ref(BLOB)).is_none());
+	assert!(registry_entry(&storage, cref).is_some_and(|e| e.referencers.contains(&PARA)));
+	assert_eq!(
+		accumulate_logs(&storage, PARA),
+		vec![AccumulateLog::CanNotRemoveCode { hash: code_hash, len: cref.len.into() }]
+	);
+}
+
+#[test]
 fn forget_provided_works() {
 	// §6.1 two-step forget: the first forget of a provided preimage only
 	// unrequests — referencer retained, still charged, follow-up logged. The
@@ -137,8 +159,7 @@ fn forget_provided_works() {
 
 	let msg = UpwardMessage::Forget {
 		target: Target::Parachain(PARA),
-		hash: blob_hash(),
-		len: blob_len().into(),
+		preimages: vec![(blob_hash(), blob_len().into())],
 	};
 	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![msg], 0);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
@@ -153,8 +174,7 @@ fn forget_provided_works() {
 	// Second forget, strictly past the turnaround: expunged and refunded.
 	let msg = UpwardMessage::Forget {
 		target: Target::Parachain(PARA),
-		hash: blob_hash(),
-		len: blob_len().into(),
+		preimages: vec![(blob_hash(), blob_len().into())],
 	};
 	let digest = ok_digest(PARA, CODE, b"head-2", b"head-3", vec![msg], 0);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], due + 2);
@@ -175,8 +195,7 @@ fn forget_before_due_works() {
 
 	let msg = UpwardMessage::Forget {
 		target: Target::Parachain(PARA),
-		hash: blob_hash(),
-		len: blob_len().into(),
+		preimages: vec![(blob_hash(), blob_len().into())],
 	};
 	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![msg], 0);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
@@ -184,8 +203,7 @@ fn forget_before_due_works() {
 	// Too early: the retry must be rejected without state change.
 	let msg = UpwardMessage::Forget {
 		target: Target::Parachain(PARA),
-		hash: blob_hash(),
-		len: blob_len().into(),
+		preimages: vec![(blob_hash(), blob_len().into())],
 	};
 	let digest = ok_digest(PARA, CODE, b"head-2", b"head-3", vec![msg], 0);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 2);
@@ -231,8 +249,7 @@ fn shared_referencer_leaves_works() {
 	// PARA leaves; OTHER remains.
 	let msg = UpwardMessage::Forget {
 		target: Target::Parachain(PARA),
-		hash: blob_hash(),
-		len: blob_len().into(),
+		preimages: vec![(blob_hash(), blob_len().into())],
 	};
 	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![msg], 0);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 1);
@@ -261,8 +278,7 @@ fn solicit(para: ParaId) -> UpwardMessage {
 fn forget(para: ParaId) -> UpwardMessage {
 	UpwardMessage::Forget {
 		target: Target::Parachain(para),
-		hash: blob_hash(),
-		len: blob_len().into(),
+		preimages: vec![(blob_hash(), blob_len().into())],
 	}
 }
 
@@ -424,8 +440,7 @@ fn forget_active_code_refused_works() {
 
 	let forget = UpwardMessage::Forget {
 		target: Target::Parachain(PARA),
-		hash: validation_code_hash_bytes(&cref.hash),
-		len: cref.len.into(),
+		preimages: vec![(validation_code_hash_bytes(&cref.hash), cref.len.into())],
 	};
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![forget], 0);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
@@ -470,8 +485,7 @@ fn forget_announced_code_refused_works() {
 
 	let forget = UpwardMessage::Forget {
 		target: Target::Parachain(PARA),
-		hash: validation_code_hash_bytes(&new_ref.hash),
-		len: new_ref.len.into(),
+		preimages: vec![(validation_code_hash_bytes(&new_ref.hash), new_ref.len.into())],
 	};
 	let digest = ok_digest(PARA, CODE, b"head-2", b"head-3", vec![forget], 0);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 2);
@@ -529,8 +543,7 @@ fn forget_running_service_code_works() {
 		let before = para_info(&storage, ASSET_HUB_PARA_ID).unwrap().used_state_balance;
 		let forget = |reference: ValidationCodeRef| UpwardMessage::Forget {
 			target: Target::Parachain(ASSET_HUB_PARA_ID),
-			hash: validation_code_hash_bytes(&reference.hash),
-			len: reference.len.into(),
+			preimages: vec![(validation_code_hash_bytes(&reference.hash), reference.len.into())],
 		};
 		let digest = ok_digest(
 			origin,

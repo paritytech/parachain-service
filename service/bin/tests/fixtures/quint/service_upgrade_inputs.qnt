@@ -15,8 +15,8 @@ module service_upgrade_inputs {
     msgs.union(Set(
       Solicit({ target: Parachain(AssetHubParaId), hash: hash, len: ServiceCodeLen }),
       Solicit({ target: Parachain(CoretimeParaId), hash: hash, len: ServiceCodeLen }),
-      Forget({ target: Parachain(AssetHubParaId), hash: hash, len: ServiceCodeLen }),
-      Forget({ target: Parachain(CoretimeParaId), hash: hash, len: ServiceCodeLen }),
+      Forget({ target: Parachain(AssetHubParaId), preimages: List((hash, ServiceCodeLen)) }),
+      Forget({ target: Parachain(CoretimeParaId), preimages: List((hash, ServiceCodeLen)) }),
       upgrade(hash, 0, 0), upgrade(hash, 100, 200), upgrade(hash, 123456, 789),
       UpgradeService({ service: None, codeHash: hash, len: ServiceCodeLen + 1, minAccGas: 55, minMemoGas: 66 })
     )))

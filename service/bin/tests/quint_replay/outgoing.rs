@@ -14,6 +14,12 @@ fn zero_amount_works() {
 }
 
 #[test]
+fn max_amount_works() {
+	replay::trace(include_str!("../fixtures/quint/outgoing/max_amount_works.itf.json"))
+		.expect("outgoing effects, balances, and logs should match Quint");
+}
+
+#[test]
 fn refusal_order_works() {
 	replay::trace(include_str!("../fixtures/quint/outgoing/refusal_order_works.itf.json"))
 		.expect("outgoing effects, balances, and logs should match Quint");

@@ -37,7 +37,7 @@ and `just quint-compact` before committing.
 | KV operations | Overwrite, empty keys/values rejected at Refine, values crossing 64 bytes without a length prefix, refunds, delegated and unauthorized removal, failed reservations, and stale candidates |
 | Mixed invocations | Arrivals and accepted/rejected reports in one call, bucket rollover, due assignments, and incoming credit funding an outgoing payment |
 | Balances and incoming transfers | Allowance boundaries, authorization, reservations/refunds, queue packing and rollover, admission/drop at the reservation limit, and Asset Hub charges |
-| Outgoing transfers | Ordered deferred records (source, destination, amount, memo, gas), zero amounts, repeated IDs, all refusal reasons, gas boundaries, rejected work, persistent debits, and service balances |
+| Outgoing transfers | Ordered deferred records (source, destination, amount, memo, gas), zero and `Max` amounts, repeated IDs, all refusal reasons, gas boundaries, rejected work, persistent debits, and service balances |
 | Lifecycle | Registration thresholds and repeated funding, unauthorized calls, forced head/code changes, cleanup refusal with extra storage, delayed cleanup, and re-registration |
 | Assignments | Immediate/delayed execution, due-slot boundaries, slot-ordered queue layout and rewrites, repeated replacements, authorization, invalid queues, handoffs, a cached assign rejected after a handoff, pending storage, and final JAM queues/privileges |
 | Validator keys | Chunk staging, seeded buffers, full-size designation, same-set re-designation, empty aborts, invalid lengths, overflow, authorization, stale work, and final designation across multiple work packages |
@@ -125,7 +125,9 @@ JAM balances, installed code lengths, and upgrade gas-setting mismatches are rej
   little-endian prefix padded to 128 bytes.
   The generated domain covers small deferred payments to foreign services,
   zero payments (including an empty source supervisor balance), definite
-  overdrafts, and host-compatible refusals. It excludes successful supervision
+  overdrafts, `Max` amounts capped below the spendable balance, and
+  host-compatible refusals. `replayTransfers` records a successful `Max` as the
+  `Exact` amount its `TransferredAmount` log reports. It excludes successful supervision
   operations and nonzero supervisor credits. A separate `self_payment` profile
   models deferred self-credit after the sender invocation.
   Unsupported outcomes and mismatches fail explicitly.
@@ -153,7 +155,7 @@ JAM balances, installed code lengths, and upgrade gas-setting mismatches are rej
 - Accumulate-log decoding supports `ForgetAgainAt`, `StateBalanceUpdateRejected`,
   `TooMuchStateHeld`, `InvalidCodeHashAcc`, `CodeUpgradeNotAvailable`,
   `CodeUpgradeNotAnnounced`, `CanNotRemoveCode`, `CoreNotAssignable`,
-  `DesignateRejected`, `StagedValidatorKeysOverflow`, `TransferFailed` (all six reasons),
+  `DesignateRejected`, `StagedValidatorKeysOverflow`, `TransferFailed` (all six reasons), `TransferredAmount`,
   `ServiceUpgradePreimageMissing`, and
   `InsufficientStateBalance` from `FromSolicit` or `FromSetKV`; other events fail explicitly.
 - `Solicit` and `Forget` support explicit parachain targets, including delegated

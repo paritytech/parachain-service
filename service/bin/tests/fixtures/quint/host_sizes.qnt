@@ -30,6 +30,7 @@ module host_sizes {
     | CanNotRemoveCode(p) => 32 + scaleCompact(p.len)
     | CoreNotAssignable(_) => 2
     | TransferFailed(p) => scaleCompact(p.id) + 1
+    | TransferredAmount(p) => scaleCompact(p.id) + scaleCompact(p.amount)
     | ForgetAgainAt(p) => 5 + 32 + scaleCompact(p.len) + 4
     | ServiceForgetNotRequested(p) => 36 + scaleCompact(p.len)
     | ServiceKeyNotFound(_) => 36
@@ -37,7 +38,7 @@ module host_sizes {
     | ServiceEjectFailed(_) => 5
     | ServiceEjected(p) => 4 + scaleCompact(p.credited)
     | ServiceSupervisorFailed(_) => 5
-    | ServiceCreation(p) => scaleCompact(p.id) + 1 + match p.result {
+    | ServiceCreation(p) => scaleCompact(p.messageId) + 1 + match p.result {
       | Created(_) => 4 | _ => 0
     }
     | _ => 0

@@ -53,6 +53,13 @@ module outgoing_replay {
   run zero_amount_works = start
     .then(hub(TransferOut(transfer(0, 0, 0, 100))))
     .then(check(replayTransfers.length() == 1 and svc.jamAccount.balance == TotalSupply))
+  // A `Max` below the spendable balance moves its cap; from the empty supervisor
+  // balance it moves zero. Both still hand JAM a deferred transfer.
+  run max_amount_works = start
+    .then(hub(TransferOut({ ...transfer(7, 0, 1, 200), amount: Max(55) })))
+    .then(hub(TransferOut({ ...transfer(0, 0, 2, 100), amount: Max(100),
+      sourceSupervisorBalance: true })))
+    .then(check(svc.jamAccount.balance == TotalSupply - 55 and replayTransfers.length() == 1))
   run refusal_order_works = start
     .then(hub(TransferOut({ ...transfer(99, 100, 1, 0), source: Some(MkServiceId(98)) })))
     .then(hub(TransferOut({ ...transfer(99, 100, 2, 0), source: Some(MkServiceId(7)) })))

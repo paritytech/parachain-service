@@ -560,7 +560,7 @@ fn services_generated_works() {
 	let mut interrupted_creation = false;
 	let mut refusals = std::collections::BTreeSet::new();
 	// Fixed seeds reach creation recovery and all five reachable refusal classes.
-	for seed in [31, 3665526, 628374, 1361477, 4084431] {
+	for seed in [162, 803] {
 		let stream = generator(seed, 1, 1, 50).output().expect("service generator");
 		assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
 		let line = String::from_utf8(stream.stdout).unwrap();
@@ -596,7 +596,7 @@ fn services_generated_works() {
 #[test]
 #[ignore = "checks service preimage refusals in default replay fuzzing; requires Node and Quint 0.32.0"]
 fn service_preimages_generated_works() {
-	let stream = generator(1, 2, 2, 50).output().expect("service preimage generator");
+	let stream = generator(1035, 1, 1, 50).output().expect("service preimage generator");
 	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
 	let mut refusals = std::collections::BTreeSet::new();
 	for line in stream.stdout.split(|b| *b == b'\n').filter(|line| !line.is_empty()) {
@@ -622,9 +622,9 @@ fn service_preimages_generated_works() {
 #[ignore = "checks service management refusals in default replay fuzzing; requires Node and Quint 0.32.0"]
 fn service_management_generated_works() {
 	let mut refusals = std::collections::BTreeSet::new();
-	// These seeds reach all three handoff errors; storage removal on an
+	// This seed reaches all three handoff errors; storage removal on an
 	// unsupervised service is a silent no-op (§6.5).
-	for seed in [1, 4, 9] {
+	for seed in [1271] {
 		let stream = generator(seed, 1, 1, 50).output().expect("service management generator");
 		assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
 		for line in stream.stdout.split(|b| *b == b'\n').filter(|line| !line.is_empty()) {
@@ -831,7 +831,8 @@ fn mixed_head_queue_generated_works() {
 			head_recovery |=
 				active && recovery && !s["replayHostFailedHeads"].as_array().unwrap().is_empty();
 			queue_recovery |= active &&
-				recovery && !s["replayIncoming"].as_array().unwrap().is_empty() &&
+				recovery &&
+				!s["replayIncoming"].as_array().unwrap().is_empty() &&
 				s["svc"]["incomingTransfers"] == s["prevSvc"]["incomingTransfers"];
 			capacity |= active && s["replayIncoming"].as_array().unwrap().len() > 1024;
 			resumed |= pair[0]["replayHostBudget"]["#bigint"] != "-1" && !active;
@@ -937,7 +938,8 @@ fn designation_privilege_generated_works() {
 				denied && s["svc"]["parachainLog"].to_string().contains("DesignateRejected");
 			staged |= denied && !s["svc"]["stagedValidatorKeys"].as_array().unwrap().is_empty();
 			resumed |= pair[0]["replayCanDesignate"] == false &&
-				!denied && !s["replayDesignate"].as_array().unwrap().is_empty();
+				!denied &&
+				!s["replayDesignate"].as_array().unwrap().is_empty();
 		}
 		if let Err(error) = replay::document_trace(&envelope["trace"]) {
 			let path = preserve(&envelope, &error).unwrap();

@@ -69,27 +69,10 @@ pub fn apply(
 
 		UpwardMessage::CreateService(args) => foreign_services::create(args, logs),
 
-		UpwardMessage::Forget { target: Target::Parachain(para_id), hash, len } => {
-			// §5.4: expunging the running service code would prevent future accumulation.
-			if para_id == ASSET_HUB_PARA_ID && is_service_code(&hash, len.0) {
-				logs.push(AccumulateLog::CanNotRemoveCode { hash, len: len.0.into() });
-				return;
+		UpwardMessage::Forget { target: Target::Parachain(para_id), preimages } => {
+			for (hash, len) in preimages {
+				forget_preimage(now, para_id, hash, len.0, logs);
 			}
-			// `para_id` names whose reference is released (Coretime may name any
-			// para, §6.4); a dead target is a no-op.
-			let Some(pi) = Parachains::get(para_id) else { return };
-			// The target's active or announced validation code: the forget is
-			// refused, so the referencer and the balance both stay (§5.2). This
-			// is what stops a forced call from stripping running validation code.
-			let is_validation_code =
-				pi.validation_code.as_ref().is_some_and(|vc| vc.is(&hash, len.0)) ||
-					pi.announced_upgrade.as_ref().is_some_and(|vc| vc.is(&hash, len.0));
-			if is_validation_code {
-				logs.push(AccumulateLog::CanNotRemoveCode { hash, len: len.0.into() });
-				return;
-			}
-			let out = state_balance::remove_referencer(para_id, &hash, len.0, now);
-			logs.extend(out.log);
 		},
 
 		UpwardMessage::SetKV { key, value } => {
@@ -157,6 +140,35 @@ pub fn apply(
 			management::set_state_balance(para_id, new_total.0, logs, heads)
 		},
 	}
+}
+
+/// Release one `(hash, len)` entry of a `Forget` targeting `para_id` (§6.1).
+fn forget_preimage(
+	now: Slot,
+	para_id: ParaId,
+	hash: Hash,
+	len: u32,
+	logs: &mut Vec<AccumulateLog>,
+) {
+	// §5.4: expunging the running service code would prevent future accumulation.
+	if para_id == ASSET_HUB_PARA_ID && is_service_code(&hash, len) {
+		logs.push(AccumulateLog::CanNotRemoveCode { hash, len: len.into() });
+		return;
+	}
+	// `para_id` names whose reference is released (Coretime may name any
+	// para, §6.4); a dead target is a no-op.
+	let Some(pi) = Parachains::get(para_id) else { return };
+	// The target's active or announced validation code: the forget is
+	// refused, so the referencer and the balance both stay (§5.2). This
+	// is what stops a forced call from stripping running validation code.
+	let is_validation_code = pi.validation_code.as_ref().is_some_and(|vc| vc.is(&hash, len)) ||
+		pi.announced_upgrade.as_ref().is_some_and(|vc| vc.is(&hash, len));
+	if is_validation_code {
+		logs.push(AccumulateLog::CanNotRemoveCode { hash, len: len.into() });
+		return;
+	}
+	let out = state_balance::remove_referencer(para_id, &hash, len, now);
+	logs.extend(out.log);
 }
 
 /// Whether `(hash, len)` names this service's own running code. Its length is

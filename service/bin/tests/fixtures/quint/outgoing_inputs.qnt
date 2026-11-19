@@ -25,16 +25,30 @@ module outgoing_inputs {
       MkServiceId(7) -> destination(MkServiceId(7), 200)), noOutgoing
   }
   pure def transfer(dest: int, amount: int, id: int, gas: int): TransferOutArgs = {
-    source: None, dest: MkServiceId(dest), amount: amount, id: id,
+    source: None, dest: MkServiceId(dest), amount: Exact(amount), id: id,
     sourceSupervisorBalance: false, destSupervisorBalance: false,
     deferred: Some((id, gas))
   }
+  pure def amountOf(a: TransferAmount): int = match a { | Exact(n) => n | Max(n) => n }
+  // A successful transfer as JAM records it, with a `Max` resolved to the
+  // `TransferredAmount` it logged; None when refused.
+  pure def transferred(t: TransferOutArgs, before: List[AccumulateLog],
+    after: List[AccumulateLog]): Option[TransferOutArgs] =
+    if (after.length() == before.length()) match t.amount {
+      | Exact(_) => Some(t)
+      | Max(_) => None
+    } else match after[after.length() - 1] {
+      | TransferredAmount(p) => Some({ ...t, amount: Exact(p.amount) })
+      | _ => None
+    }
   // Deliberately stay away from the model's conservative threshold approximation.
-  // Small payments and TotalSupply exercise success and definite overdraft.
+  // Small payments and TotalSupply exercise success and definite overdraft; small
+  // `Max` caps move exactly the cap.
   pure val outgoingMessages: Set[UpwardMessage] = Set(0, 7, 99).fold(Set(), (msgs, dest) =>
     Set(0, 100, TotalSupply).fold(msgs, (acc, amount) =>
       Set(99, 100, 199, 200).fold(acc, (out, gas) => out.union(Set(
         TransferOut(transfer(dest, amount, gas, gas)),
+        TransferOut({ ...transfer(dest, amount, gas, gas), amount: Max(if (amount == TotalSupply) 1 else amount) }),
         TransferOut({ ...transfer(dest, amount, gas, gas), source: Some(ParachainServiceId) }),
         TransferOut({ ...transfer(dest, amount, gas, gas), source: Some(MkServiceId(7)) }),
         TransferOut({ ...transfer(dest, amount, gas, gas), source: Some(MkServiceId(99)) }),
@@ -75,8 +89,11 @@ module outgoing_inputs {
                     val fresh = applied.foreign.keys().exclude(m.acc.foreign.keys())
                     { ...m.effects, creations: fresh.fold(m.effects.creations, (list, id) => list.append({ service: id, args: c })) }
                   }
-                  | TransferOut(t) => if (success and t.deferred != None)
-                    { ...m.effects, transfers: m.effects.transfers.append(t) } else m.effects
+                  | TransferOut(t) => match transferred(t, m.acc.logs, applied.logs) {
+                    | Some(d) => if (d.deferred != None)
+                      { ...m.effects, transfers: m.effects.transfers.append(d) } else m.effects
+                    | None => m.effects
+                  }
                   | UpgradeService(u) => if (success)
                     { ...m.effects, minAccGas: Some(u.minAccGas) } else m.effects
                   | _ => m.effects

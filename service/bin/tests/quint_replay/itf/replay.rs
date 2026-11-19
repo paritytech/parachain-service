@@ -5,7 +5,7 @@ use jam_types::AccumulateItem;
 use parachain_service::work_digest::ParachainWorkDigest;
 use parachain_service_bin::mock::MOCK_SERVICE_ID;
 use parachain_service_core::{
-	types::ParaId,
+	types::{Hash, ParaId},
 	upward_message::{CodeUpgradePhase, Target, UpwardMessage},
 };
 use serde_json::Value;
@@ -34,7 +34,9 @@ mod last_accumulate_tests {
 			include_str!("../../fixtures/quint/last_accumulate/slot_zero_works.itf.json"),
 			include_str!("../../fixtures/quint/last_accumulate/same_slot_works.itf.json"),
 			include_str!("../../fixtures/quint/last_accumulate/incoming_same_slot_works.itf.json"),
-			include_str!("../../fixtures/quint/last_accumulate/incoming_after_rollback_works.itf.json"),
+			include_str!(
+				"../../fixtures/quint/last_accumulate/incoming_after_rollback_works.itf.json"
+			),
 		] {
 			trace(fixture).unwrap();
 		}
@@ -123,8 +125,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 		match kind {
 			FrameKind::Noop => {
 				compare::state(&storage, &pair[1], &mut codex, frame)?;
-				if let Err(error) =
-					super::invariants::state(&storage, &pair[1], &mut codex, frame)
+				if let Err(error) = super::invariants::state(&storage, &pair[1], &mut codex, frame)
 				{
 					invariant_errors.push(error);
 				}
@@ -225,9 +226,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 		super::host_budget::finish(&mut storage, &pair[1], host_offset, frame)?;
 		compare::state(&storage, &pair[1], &mut codex, frame)?;
 		super::storage_budget::compare(&storage, &pair[1], frame)?;
-		if let Err(error) =
-			super::invariants::state(&storage, &pair[1], &mut codex, frame)
-		{
+		if let Err(error) = super::invariants::state(&storage, &pair[1], &mut codex, frame) {
 			invariant_errors.push(error);
 		}
 		if let Some((yielded, mutations)) = output {
@@ -343,6 +342,12 @@ fn digest_ok(value: &Value, codex: &mut Codex) -> Result<ParachainWorkDigest, St
 	})
 }
 
+/// An abstract `(hash, len)` preimage reference, mapped through `codex`.
+fn preimage(hash: &Value, len: &Value, codex: &mut Codex) -> Result<(Hash, Compact<u32>), String> {
+	let len = u32::try_from(integer(len)?).map_err(|_| "preimage length out of range")?;
+	Ok((codex.hash(integer(field(hash, "hashBytes")?)?, len)?, Compact(len)))
+}
+
 pub(super) fn upward_message(
 	value: &Value,
 	caller: ParaId,
@@ -351,9 +356,6 @@ pub(super) fn upward_message(
 	let (tag, value) = variant(value)?;
 	match tag {
 		"Solicit" | "Forget" => {
-			let len = u32::try_from(integer(field(value, "len")?)?)
-				.map_err(|_| "preimage length out of range")?;
-			let hash = codex.hash(integer(field(field(value, "hash")?, "hashBytes")?)?, len)?;
 			let target = if let Some(target) = value.get("target") {
 				let (kind, target) = variant(target)?;
 				match kind {
@@ -368,14 +370,29 @@ pub(super) fn upward_message(
 				Target::Parachain(para_id(field(value, "paraId")?, codex)?)
 			};
 			if tag == "Solicit" {
-				Ok(UpwardMessage::Solicit { target, hash, len: Compact(len) })
+				let (hash, len) = preimage(field(value, "hash")?, field(value, "len")?, codex)?;
+				Ok(UpwardMessage::Solicit { target, hash, len })
 			} else {
-				Ok(UpwardMessage::Forget { target, hash, len: Compact(len) })
+				let preimages = field(value, "preimages")?
+					.as_array()
+					.ok_or("forget preimages must be a list")?
+					.iter()
+					.map(|entry| match &tuple(entry)?[..] {
+						[hash, len] => preimage(hash, len, codex),
+						_ => Err("forget preimage must contain hash and length".into()),
+					})
+					.collect::<Result<_, String>>()?;
+				Ok(UpwardMessage::Forget { target, preimages })
 			}
 		},
 		"RemoveServiceStorage" => Ok(UpwardMessage::RemoveServiceStorage {
 			service: super::assignments::service_id(field(value, "service")?)?,
-			key: bytes(field(value, "key")?)?,
+			keys: field(value, "keys")?
+				.as_array()
+				.ok_or("storage keys must be a list")?
+				.iter()
+				.map(bytes)
+				.collect::<Result<_, String>>()?,
 		}),
 		"SetServiceSupervisor" => Ok(UpwardMessage::SetServiceSupervisor {
 			service: super::assignments::service_id(field(value, "service")?)?,

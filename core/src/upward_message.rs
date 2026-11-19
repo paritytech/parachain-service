@@ -43,6 +43,15 @@ pub enum Target {
 	Service(ServiceId),
 }
 
+/// How much a `TransferOut` moves (spec §5.1).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Encode, Decode)]
+pub enum TransferAmount {
+	/// Exactly this much, or nothing.
+	Exact(Compact<Balance>),
+	/// As much as `source` can spare, up to this much.
+	Max(Compact<Balance>),
+}
+
 /// Payload of `UpwardMessage::TransferOut` (spec §5.1).
 ///
 /// `source = None` means this service, matching JAM's self sentinel. The two
@@ -51,14 +60,15 @@ pub enum Target {
 /// is `None` for a plain move and `Some((memo, gas))` for a deferred transfer;
 /// the two are inseparable because JAM ignores the gas limit when no memo is
 /// supplied. `id` is caller-chosen and echoed back in
-/// `AccumulateLog::TransferFailed` so the parachain can match up the failure.
+/// `AccumulateLog::TransferFailed` and `AccumulateLog::TransferredAmount` so the
+/// parachain can match up the outcome.
 ///
 /// Field order is part of the stable upward-message SCALE ABI.
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub struct TransferOutArgs {
 	pub source: Option<ServiceId>,
 	pub dest: ServiceId,
-	pub amount: Compact<Balance>,
+	pub amount: TransferAmount,
 	pub id: Compact<u64>,
 	pub source_supervisor_balance: bool,
 	pub dest_supervisor_balance: bool,
@@ -70,8 +80,8 @@ pub struct TransferOutArgs {
 /// `desired_id` names an index in JAM's protected range, honoured only while this
 /// service holds JAM's `registrar` privilege; `None` lets JAM allocate. The two
 /// selectors choose which balance funds the new service here and which of its own
-/// balances it is funded into; `true` means the supervisor balance. `id` is the
-/// caller's own handle, echoed back in `AccumulateLog::ServiceCreation` so the
+/// balances it is funded into; `true` means the supervisor balance. `message_id`
+/// is the caller's own handle, echoed back in `AccumulateLog::ServiceCreation` so the
 /// caller can match the assigned `ServiceId` to its own record.
 ///
 /// This is carried inside a SCALE-encoded upward message passed to
@@ -82,7 +92,7 @@ pub struct CreateServiceArgs {
 	pub len: Compact<u32>,
 	pub min_item_gas: u64,
 	pub min_memo_gas: u64,
-	pub id: Compact<u64>,
+	pub message_id: Compact<u64>,
 	pub desired_id: Option<ServiceId>,
 	pub source_supervisor_balance: bool,
 	pub new_supervisor_balance: bool,
@@ -122,15 +132,15 @@ pub enum UpwardMessage {
 	/// Create a service supervised by this one, funded
 	/// from this service's balance (Asset Hub only, §6.5).
 	CreateService(CreateServiceArgs),
-	/// Release a previously solicited preimage. A
-	/// [`Target::Parachain`] names whose reference is released in this service's
-	/// own store; a para may only name itself, while the Coretime chain may name
-	/// any para (§6.1, §6.4). A [`Target::Service`] forgets in that supervised
-	/// service's store instead (Asset Hub only, §6.5).
-	Forget { target: Target, hash: Hash, len: Compact<u32> },
-	/// Delete `key` from a supervised service's
-	/// own storage (Asset Hub only, §6.5).
-	RemoveServiceStorage { service: ServiceId, key: Vec<u8> },
+	/// Release previously solicited preimages, one `(hash, len)` at a time in
+	/// order. A [`Target::Parachain`] names whose reference is released in this
+	/// service's own store; a para may only name itself, while the Coretime chain
+	/// may name any para (§6.1, §6.4). A [`Target::Service`] forgets in that
+	/// supervised service's store instead (Asset Hub only, §6.5).
+	Forget { target: Target, preimages: Vec<(Hash, Compact<u32>)> },
+	/// Delete `keys` from a supervised service's own storage, one at a time in
+	/// order (Asset Hub only, §6.5).
+	RemoveServiceStorage { service: ServiceId, keys: Vec<Vec<u8>> },
 	/// Upsert `key_value_storage[(para_id, key)] = value` (§6.1). An empty `key`
 	/// or `value` aborts Refine with `Err(RefineLog::EmptyKVKeyOrValue)`.
 	SetKV { key: Vec<u8>, value: Vec<u8> },
@@ -252,15 +262,17 @@ mod tests {
 		alloc::vec![
 			UpwardMessage::Forget {
 				target: Target::Service(VICTIM),
-				hash: [9; 32],
-				len: 1024.into(),
+				preimages: alloc::vec![([9; 32], 1024.into())],
 			},
 			UpwardMessage::Solicit {
 				target: Target::Service(VICTIM),
 				hash: [9; 32],
 				len: 1024.into(),
 			},
-			UpwardMessage::RemoveServiceStorage { service: VICTIM, key: alloc::vec![1, 2] },
+			UpwardMessage::RemoveServiceStorage {
+				service: VICTIM,
+				keys: alloc::vec![alloc::vec![1, 2]],
+			},
 			UpwardMessage::EjectService { service: VICTIM },
 			UpwardMessage::SetServiceSupervisor { service: VICTIM, new_supervisor: VICTIM },
 			UpwardMessage::CreateService(CreateServiceArgs {
@@ -268,7 +280,7 @@ mod tests {
 				len: 1024.into(),
 				min_item_gas: 0,
 				min_memo_gas: 0,
-				id: 77.into(),
+				message_id: 77.into(),
 				desired_id: None,
 				source_supervisor_balance: false,
 				new_supervisor_balance: false,
@@ -288,8 +300,7 @@ mod tests {
 		for own in [
 			UpwardMessage::Forget {
 				target: Target::Parachain(CORETIME_PARA_ID),
-				hash: [9; 32],
-				len: 1024.into(),
+				preimages: alloc::vec![([9; 32], 1024.into())],
 			},
 			UpwardMessage::Solicit {
 				target: Target::Parachain(CORETIME_PARA_ID),
@@ -310,8 +321,7 @@ mod tests {
 		for other in [
 			UpwardMessage::Forget {
 				target: Target::Parachain(ParaId::new(7)),
-				hash: [9; 32],
-				len: 1024.into(),
+				preimages: alloc::vec![([9; 32], 1024.into())],
 			},
 			UpwardMessage::Solicit {
 				target: Target::Parachain(ParaId::new(7)),

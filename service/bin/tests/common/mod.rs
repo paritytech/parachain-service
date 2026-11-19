@@ -31,7 +31,7 @@ use parachain_service_bin::mock::{accumulate_context, provide_preimage, MOCK_SER
 use parachain_service_bin::blob as service;
 use parachain_service_core::{
 	types::{Balance, BucketId, ParaId, ServiceId, Timeslot},
-	upward_message::{TransferOutArgs, UpwardMessage},
+	upward_message::{TransferAmount, TransferOutArgs, UpwardMessage},
 };
 
 pub const SVC: ServiceId = MOCK_SERVICE_ID;
@@ -49,7 +49,7 @@ pub fn transfer_out_msg(
 	UpwardMessage::TransferOut(TransferOutArgs {
 		source: None,
 		dest,
-		amount: amount.into(),
+		amount: TransferAmount::Exact(amount.into()),
 		id: id.into(),
 		source_supervisor_balance: false,
 		dest_supervisor_balance: false,

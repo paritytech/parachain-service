@@ -84,7 +84,7 @@ module upgrades {
       // Only now can the para reclaim the old code; it is available, so the
       // first forget only unrequests it.
       .then(applyHappyPath(CoretimeParaId, b, List(
-        Forget({ target: Parachain(CoretimeParaId), hash: codeA.asPreimage(), len: FixedCodeLen }))))
+        Forget({ target: Parachain(CoretimeParaId), preimages: List((codeA.asPreimage(), FixedCodeLen)) }))))
       .then(expectThat(isUnrequested(svc.preimageStatus.get(oldKey))))
   }
 
@@ -113,7 +113,7 @@ module upgrades {
           prevSvc.paraInfo(CoretimeParaId).usedStateBalance
       }))
       .then(applyHappyPath(CoretimeParaId, b, List(
-        Forget({ target: Parachain(CoretimeParaId), hash: codeA.asPreimage(), len: FixedCodeLen }))))
+        Forget({ target: Parachain(CoretimeParaId), preimages: List((codeA.asPreimage(), FixedCodeLen)) }))))
       .then(expectThat(all {
         isUnrequested(svc.preimageStatus.get(oldKey)),
         hasLog(svc, CoretimeParaId, ForgetAgainAt({ target: Parachain(CoretimeParaId),
@@ -236,7 +236,7 @@ module upgrades {
         RequestCodeUpgrade({ hash: b, len: FixedCodeLen, phase: Announcement }))))
       // Refused while announced: the reference, charge and status all stay.
       .then(applyHappyPath(CoretimeParaId, codeA, List(
-        Forget({ target: Parachain(CoretimeParaId), hash: b.asPreimage(), len: FixedCodeLen }))))
+        Forget({ target: Parachain(CoretimeParaId), preimages: List((b.asPreimage(), FixedCodeLen)) }))))
       .then(expectThat(all {
         isProvided(svc.preimageStatus.get((b.asPreimage(), FixedCodeLen))),
         svc.hasReferencer(b.asPreimage(), FixedCodeLen, CoretimeParaId),
@@ -249,7 +249,7 @@ module upgrades {
       .then(applyHappyPath(CoretimeParaId, codeA, List(
         RequestCodeUpgrade({ hash: c, len: FixedCodeLen, phase: Announcement }))))
       .then(applyHappyPath(CoretimeParaId, codeA, List(
-        Forget({ target: Parachain(CoretimeParaId), hash: b.asPreimage(), len: FixedCodeLen }))))
+        Forget({ target: Parachain(CoretimeParaId), preimages: List((b.asPreimage(), FixedCodeLen)) }))))
       .then(expectThat(all {
         announcedHashOf(svc.paraInfo(CoretimeParaId)) == Some(c),
         isUnrequested(svc.preimageStatus.get((b.asPreimage(), FixedCodeLen))),

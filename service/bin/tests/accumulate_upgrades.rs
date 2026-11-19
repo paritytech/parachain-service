@@ -61,8 +61,7 @@ fn forget_msg(code: &[u8]) -> UpwardMessage {
 	let reference = code_ref(code);
 	UpwardMessage::Forget {
 		target: Target::Parachain(PARA),
-		hash: validation_code_hash_bytes(&reference.hash),
-		len: reference.len.into(),
+		preimages: vec![(validation_code_hash_bytes(&reference.hash), reference.len.into())],
 	}
 }
 

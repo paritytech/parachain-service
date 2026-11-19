@@ -2,7 +2,7 @@
 use jam_node::vm::{StateMutations, Storage};
 use jam_types::{Memo, TransferRecord};
 use parachain_service_bin::mock::MOCK_SERVICE_ID;
-use parachain_service_core::upward_message::{TransferOutArgs, UpwardMessage};
+use parachain_service_core::upward_message::{TransferAmount, TransferOutArgs, UpwardMessage};
 use serde_json::Value;
 
 use super::{assignments::service_id, replay::*};
@@ -30,10 +30,17 @@ pub fn message(value: &Value) -> Result<UpwardMessage, String> {
 		},
 		_ => return Err("invalid deferred transfer option".into()),
 	};
+	let amount = match variant(field(value, "amount")?)? {
+		("Exact", amount) => {
+			TransferAmount::Exact(bounded_integer::<u64>(amount, "amount")?.into())
+		},
+		("Max", cap) => TransferAmount::Max(bounded_integer::<u64>(cap, "amount cap")?.into()),
+		_ => return Err("invalid transfer amount".into()),
+	};
 	Ok(UpwardMessage::TransferOut(TransferOutArgs {
 		source,
 		dest: service_id(field(value, "dest")?)?,
-		amount: bounded_integer::<u64>(field(value, "amount")?, "transfer amount")?.into(),
+		amount,
 		id: bounded_integer::<u64>(field(value, "id")?, "transfer id")?.into(),
 		source_supervisor_balance: boolean(field(value, "sourceSupervisorBalance")?)?,
 		dest_supervisor_balance: boolean(field(value, "destSupervisorBalance")?)?,
@@ -85,8 +92,12 @@ pub fn compare(current: &Value, mutations: &StateMutations, frame: usize) -> Res
 	if let Some(transfers) = current.get("replayTransfers") {
 		for value in transfers.as_array().ok_or("replayTransfers must be a list")? {
 			let UpwardMessage::TransferOut(args) = message(value)? else { unreachable!() };
+			// The observer records what a `Max` actually moved as `Exact`.
+			let TransferAmount::Exact(amount) = args.amount else {
+				return Err("replayTransfers must carry the moved amount".into());
+			};
 			if args.source.is_some_and(|id| id != MOCK_SERVICE_ID) ||
-				(args.amount.0 != 0 &&
+				(amount.0 != 0 &&
 					(args.source_supervisor_balance || args.dest_supervisor_balance))
 			{
 				return Err("successful supervised transfer is unsupported by the JAM host".into());
@@ -96,7 +107,7 @@ pub fn compare(current: &Value, mutations: &StateMutations, frame: usize) -> Res
 			expected.push(TransferRecord {
 				source: MOCK_SERVICE_ID,
 				destination: args.dest,
-				amount: args.amount.0,
+				amount: amount.0,
 				memo: Memo(memo),
 				gas_limit,
 			});
@@ -222,8 +233,9 @@ mod tests {
 	fn malformed_transfer_values_errors() {
 		let original = fixture()["states"][1]["replayTransfers"][0].clone();
 		for (path, value) in [
-			("/amount", n(-1)),
-			("/amount", n(1i128 << 64)),
+			("/amount/value", n(-1)),
+			("/amount/value", n(1i128 << 64)),
+			("/amount/tag", json!("Bad")),
 			("/id", n(-1)),
 			("/id", n(1i128 << 64)),
 			("/dest/value", n(1i128 << 32)),

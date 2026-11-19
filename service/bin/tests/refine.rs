@@ -19,7 +19,9 @@ use parachain_service_bin::{
 };
 use parachain_service_core::{
 	types::{Balance, ParaId, ServiceId, ASSET_HUB_PARA_ID, CORETIME_PARA_ID},
-	upward_message::{CreateServiceArgs, Target, TransferOutArgs, UpwardMessage, UpwardMessages},
+	upward_message::{
+		CreateServiceArgs, Target, TransferAmount, TransferOutArgs, UpwardMessage, UpwardMessages,
+	},
 };
 
 /// A deferred `TransferOut` from this service's regular balance — the only shape
@@ -28,7 +30,7 @@ fn transfer_out_args(dest: ServiceId, amount: Balance) -> TransferOutArgs {
 	TransferOutArgs {
 		source: None,
 		dest,
-		amount: amount.into(),
+		amount: TransferAmount::Exact(amount.into()),
 		id: 1.into(),
 		source_supervisor_balance: false,
 		dest_supervisor_balance: false,
@@ -201,18 +203,20 @@ fn service_op_actions() -> Vec<(MockAction, UpwardMessage)> {
 		len: 1024.into(),
 		min_item_gas: 0,
 		min_memo_gas: 0,
-		id: 77.into(),
+		message_id: 77.into(),
 		desired_id: Some(42),
 		source_supervisor_balance: false,
 		new_supervisor_balance: false,
 	};
 	vec![
 		(
-			MockAction::Forget { target: Target::Service(VICTIM), hash: [9; 32], len: 1024 },
+			MockAction::Forget {
+				target: Target::Service(VICTIM),
+				preimages: vec![([9; 32], 1024)],
+			},
 			UpwardMessage::Forget {
 				target: Target::Service(VICTIM),
-				hash: [9; 32],
-				len: 1024.into(),
+				preimages: vec![([9; 32], 1024.into())],
 			},
 		),
 		(
@@ -224,8 +228,8 @@ fn service_op_actions() -> Vec<(MockAction, UpwardMessage)> {
 			},
 		),
 		(
-			MockAction::RemoveServiceStorage { service: VICTIM, key: vec![1, 2] },
-			UpwardMessage::RemoveServiceStorage { service: VICTIM, key: vec![1, 2] },
+			MockAction::RemoveServiceStorage { service: VICTIM, keys: vec![vec![1, 2]] },
+			UpwardMessage::RemoveServiceStorage { service: VICTIM, keys: vec![vec![1, 2]] },
 		),
 		(
 			MockAction::EjectService { service: VICTIM },
@@ -274,11 +278,13 @@ fn own_para_target_from_any_chain_works() {
 	// call — only its `Service`-targeted form.
 	let cases = [
 		(
-			MockAction::Forget { target: Target::Parachain(ParaId::new(0)), hash: [9; 32], len: 8 },
+			MockAction::Forget {
+				target: Target::Parachain(ParaId::new(0)),
+				preimages: vec![([9; 32], 8)],
+			},
 			UpwardMessage::Forget {
 				target: Target::Parachain(ParaId::new(0)),
-				hash: [9; 32],
-				len: 8.into(),
+				preimages: vec![([9; 32], 8.into())],
 			},
 		),
 		(

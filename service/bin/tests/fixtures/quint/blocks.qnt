@@ -4,6 +4,7 @@ module blocks {
   import messages.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/messages"
   import state.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state"
   import accumulate.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/accumulate"
+  import refine.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/refine"
   import state_vars.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state_vars"
   import main.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/main"
 
@@ -40,8 +41,19 @@ module blocks {
   action logError(error: RefineLog, authTrace: int): bool =
     applyWork(WorkOk(Err({ paraId: CoretimeParaId, validationCode: { vchBytes: 1 }, error: error })), authTrace)
 
-  run stale_parent_candidate_rejected_works =
-    staleParentCandidateRejectedTest
+  // The pinned `applyStaleParentCandidate` skips the `lastAccumulate` watermark,
+  // so the stale candidate goes through the full block pipeline instead.
+  action staleParentCandidate = {
+    val pkg: WorkPackage = { items: List({ paraId: AssetHubParaId,
+      validationCode: { hash: { vchBytes: 2 }, len: FixedCodeLen } }) }
+    applyWork(refine(svc, pkg,
+      wellFormedCalls(headHash(StaleParentHead), StaleParentHead, List()), 0)[0], 0)
+  }
+  run stale_parent_candidate_rejected_works = init
+    .then(applyHappyPath(AssetHubParaId, { vchBytes: 2 }, List()))
+    .then(expectThat(svc.paraInfo(AssetHubParaId).headData == 1))
+    .then(staleParentCandidate)
+    .then(expectThat(svc.paraInfo(AssetHubParaId).headData == 1))
 
   run minimal_replay_works =
     init.then(candidate).then(expectThat(svc.paraInfo(CoretimeParaId).headData == 1))
@@ -54,8 +66,8 @@ module blocks {
   run ump_ordering_works = {
     val h = { hashBytes: 7 }
     pure def solicit(para: ParaId): UpwardMessage = Solicit({ target: Parachain(para), hash: h, len: 1024 })
-    val forgetHub = Forget({ target: Parachain(AssetHubParaId), hash: h, len: 1024 })
-    val forgetCore = Forget({ target: Parachain(CoretimeParaId), hash: h, len: 1024 })
+    val forgetHub = Forget({ target: Parachain(AssetHubParaId), preimages: List((h, 1024)) })
+    val forgetCore = Forget({ target: Parachain(CoretimeParaId), preimages: List((h, 1024)) })
     init
       .then(applyHappyPaths(List(
         (AssetHubParaId, { vchBytes: 2 }, List(solicit(AssetHubParaId), solicit(AssetHubParaId))),

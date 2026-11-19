@@ -7,6 +7,7 @@ module code_storage_inputs {
   import state_vars.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state_vars"
   import main.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/main"
   import state_balance.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/state_balance"
+  import accumulate.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/accumulate"
   import management.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/management"
   import code_upgrades.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/code_upgrades"
   import head_commitment.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/head_commitment"
@@ -72,11 +73,14 @@ module code_storage_inputs {
   // Select the retained prefix independently of the VM gas calibration.
   // Natural solicitation traps remain ordinary codeBlock scenarios.
   action codeRecoveryBlock(allowance: int, msg: UpwardMessage, stop: int): bool = {
-    val start = { state: svc, free: allowance, slot: now + 1, logs: List(), failure: "", trap: false }
+    // Checkpointed before the report, so only a pre-checkpoint stop loses it.
+    val flushed = alwaysAccumulateFlush(svc, now + 1, FullAssignBudget.flush)
+    val start = { state: flushed.state, free: allowance, slot: now + 1, logs: List(), failure: "", trap: false }
     val applied = codeMessage(start, msg)
     val logged = applied.state.appendAccumulateLogs(CoretimeParaId, now + 1, applied.logs)
     val saved = codeWrite(applied, logged, applied.failure)
-    val out = if (applied.trap or stop == -2 or stop == 0) start else saved
+    val out = if (stop == -2) { ...start, state: svc }
+      else if (applied.trap or stop == 0) start else saved
     val pi = svc.paraInfo(CoretimeParaId)
     val wr = { result: WorkOk(Ok({ paraId: CoretimeParaId,
       validationCode: activeCodeHashOr(pi, { vchBytes: 0 }),
@@ -85,7 +89,8 @@ module code_storage_inputs {
     all {
       stop == -1 or not(applied.trap),
       svc' = out.state, prevSvc' = svc, now' = now + 1,
-      lastStepWorkResults' = List(wr), lastStepAssigns' = List(), lastStepAssignBudget' = FullAssignBudget,
+      lastStepWorkResults' = List(wr), lastStepAssigns' = if (stop == -2) List() else flushed.assigns,
+      lastStepAssignBudget' = FullAssignBudget,
       // A host trap restores the same checkpoint as running out of gas there.
       lastStepOutOfGas' = if (applied.trap or stop == 0) InPackage(0) else if (stop < 0) Never else InLateAssigns,
       // A stopped invocation keeps the root yielded at its last checkpoint (§5.5).

@@ -83,9 +83,9 @@ module log_pruning {
       .then(provide(first, len))
       .then(provide(second, len))
       .then(applyHappyPath(CoretimeParaId, { vchBytes: 1 }, List(
-        Forget({ target: Parachain(CoretimeParaId), hash: first, len: len }))))
+        Forget({ target: Parachain(CoretimeParaId), preimages: List((first, len)) }))))
       .then(applyHappyPath(CoretimeParaId, { vchBytes: 1 }, List(
-        Forget({ target: Parachain(CoretimeParaId), hash: second, len: len }))))
+        Forget({ target: Parachain(CoretimeParaId), preimages: List((second, len)) }))))
       .then(expectThat(all {
         svc.parachainLog.get(CoretimeParaId) == List(
           (3, Accumulate(List(ForgetAgainAt({ target: Parachain(CoretimeParaId), hash: first, len: len, due: 3 + ExpungePeriod })))),

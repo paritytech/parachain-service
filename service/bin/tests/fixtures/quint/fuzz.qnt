@@ -99,16 +99,16 @@ module fuzz {
       RequestCodeUpgrade({ hash: activeCodeHashOr(s.paraInfo(para), NoCodeHash), len: FixedCodeLen, phase: Apply }),
       Solicit({ target: Parachain(para), hash: { hashBytes: 777 }, len: FixedCodeLen }),
       Solicit({ target: Parachain(para), hash: { hashBytes: 778 }, len: FixedCodeLen }),
-      Forget({ target: Parachain(para), hash: { hashBytes: 777 }, len: FixedCodeLen }),
-      Forget({ target: Parachain(para), hash: { hashBytes: 778 }, len: FixedCodeLen }),
+      Forget({ target: Parachain(para), preimages: List(({ hashBytes: 777 }, FixedCodeLen)) }),
+      Forget({ target: Parachain(para), preimages: List(({ hashBytes: 778 }, FixedCodeLen)) }),
       Solicit({ target: Parachain(para), hash: { hashBytes: 7 }, len: 1024 }),
       Solicit({ target: Parachain(para), hash: { hashBytes: 8 }, len: 1024 }),
-      Forget({ target: Parachain(para), hash: { hashBytes: 7 }, len: 1024 }),
-      Forget({ target: Parachain(para), hash: { hashBytes: 8 }, len: 1024 }),
+      Forget({ target: Parachain(para), preimages: List(({ hashBytes: 7 }, 1024)) }),
+      Forget({ target: Parachain(para), preimages: List(({ hashBytes: 8 }, 1024)) }),
       Solicit({ target: Parachain(para), hash: code, len: FixedCodeLen }),
-      Forget({ target: Parachain(para), hash: code, len: FixedCodeLen }),
-      Forget({ target: Parachain(CoretimeParaId), hash: { hashBytes: 7 }, len: 1024 }),
-      Forget({ target: Parachain(AssetHubParaId), hash: { hashBytes: 7 }, len: 1024 })
+      Forget({ target: Parachain(para), preimages: List((code, FixedCodeLen)) }),
+      Forget({ target: Parachain(CoretimeParaId), preimages: List(({ hashBytes: 7 }, 1024)) }),
+      Forget({ target: Parachain(AssetHubParaId), preimages: List(({ hashBytes: 7 }, 1024)) })
     ))
   }
 
@@ -139,7 +139,7 @@ module fuzz {
     nondet numMsgs3 = oneOf(Set(0, 1, 2, 3, 4))
     // Sample message pools only for messages in selected packages.
     // Unused draws use a cheap singleton and are discarded below.
-    val unusedMessage = Forget({ target: Parachain(para1), hash: { hashBytes: 7 }, len: 1024 })
+    val unusedMessage = Forget({ target: Parachain(para1), preimages: List(({ hashBytes: 7 }, 1024)) })
     val messagePool1 = replayMessages(svc, para1, slot)
     val messagePool2 = replayMessages(svc, para2, slot)
     val messagePool3 = replayMessages(svc, para3, slot)
@@ -335,8 +335,8 @@ module fuzz {
     RemoveKV({ paraId: AssetHubParaId, key: List(81) }),
     RemoveKV({ paraId: AssetHubParaId, key: List(82) }),
     CleanUpBucketsUpTo(nextBucketId(s)),
-    Forget({ target: Parachain(AssetHubParaId), hash: { hashBytes: 7 }, len: 1024 }),
-    Forget({ target: Parachain(AssetHubParaId), hash: { hashBytes: 777 }, len: FixedCodeLen }),
+    Forget({ target: Parachain(AssetHubParaId), preimages: List(({ hashBytes: 7 }, 1024)) }),
+    Forget({ target: Parachain(AssetHubParaId), preimages: List(({ hashBytes: 777 }, FixedCodeLen)) }),
     RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen, phase: Announcement }),
     RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen, phase: Apply }),
     CreateService(createArgs(None, 77)),
