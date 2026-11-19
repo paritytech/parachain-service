@@ -37,7 +37,7 @@ cargo-jam-build = { workspace = true }
 blake2b_simd = { workspace = true, optional = true }
 ed25519-dalek = { workspace = true, optional = true }
 executor = { workspace = true, optional = true }
-jam-node = { path = "../../../polkajam2/crates/node", default-features = false, features = ["hazmat"], optional = true }
+jam-node = { git = "ssh://git@github.com/paritytech/polkajam.git", branch = "mku-jam-collator-poc-2", default-features = false, features = ["hazmat"], optional = true }
 jam-std-common = { workspace = true, optional = true }
 parachain-authorizer = { workspace = true, optional = true }
 parachain-service-core = { workspace = true, optional = true }
@@ -55,7 +55,7 @@ tiny-keccak = { workspace = true }
 parachain-service = { workspace = true, features = ["test-utils", "std"] }
 frameless = { workspace = true }
 anyhow = "1" # TODO pull up to workspace
-parachain-service-core = { workspace = true, features = ["authorize-block"] }
+parachain-service-core = { workspace = true }
 serde_json = "1"
 # The real-PVF test (`tests/real_pvf_executes.rs`) drives the inner PVM with the
 # same polkavm 0.36 the service pins, plus the JAM invoke/outcome types for the

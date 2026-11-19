@@ -11,9 +11,6 @@
 //! verify` is this function), and sp-core costs 2.4 kB of a 64,000-byte ceiling for it.
 //! `authorizer-sr25519-experiment/README.md` has both measurements.
 
-extern crate alloc;
-
-use alloc::vec::Vec;
 use jam_types::{AuthTrace, CoreIndex};
 use parachain_authorizer::aura::{CollatorKey, CollatorSignature, SignatureVerifier};
 
@@ -59,16 +56,10 @@ impl SignatureVerifier for Sr25519 {
 }
 
 pub struct ParachainAuthorizer;
-jam_pvm_common::declare_authorizer!(ParachainAuthorizer, block = ParachainAuthorizer);
+jam_pvm_common::declare_authorizer!(ParachainAuthorizer);
 
 impl jam_pvm_common::Authorizer for ParachainAuthorizer {
 	fn is_authorized(core: CoreIndex) -> AuthTrace {
 		parachain_authorizer::authorize::<Sr25519>(core)
-	}
-}
-
-impl jam_pvm_common::BlockAuthorizer for ParachainAuthorizer {
-	fn authorize_block(input: &[u8]) -> Vec<u8> {
-		parachain_authorizer::authorize_block::<Sr25519>(input)
 	}
 }

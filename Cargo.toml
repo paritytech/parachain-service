@@ -36,17 +36,16 @@ unexpected_cfgs = { level = "warn", check-cfg = [] }
 # polkadot-sdk tree (cumulus) resolves it to its own copy and cannot hold a second path crate tree.
 cumulus-aura-authorizer-utils = { version = "0.1.0", default-features = false }
 polkadot-parachain-primitives = { version = "23.0.0", default-features = false }
-jam-types = { path = "../polkajam2/crates/jam-types", default-features = false }
+jam-types = { git = "ssh://git@github.com/paritytech/polkajam.git", branch = "mku-jam-collator-poc-2", default-features = false }
 jam-codec = { version = "0.1.1", default-features = false, features = ["derive"] }
-jam-pvm-common = { path = "../polkajam2/crates/jam-pvm-common", default-features = false }
-jam-program-blob-common = { path = "../polkajam2/crates/jam-program-blob/common", default-features = false }
-jam-std-common = { path = "../polkajam2/crates/jam-std-common" }
-jam-null-authorizer-bin = { path = "../polkajam2/services/null-authorizer-bin" }
-jam-bootstrap-service-common = { path = "../polkajam2/services/bootstrap-service/common", features = ["std"] }
-# Unpublished Polkajam crates remain vendored.
-polkajam-trie = { package = "trie", path = "../polkajam2/crates/trie" }
-cargo-jam-build = { path = "../polkajam2/crates/cargo-jam-build" }
-jam-chainspec = { path = "../polkajam2/crates/jam-chainspec" }
+jam-pvm-common = { git = "ssh://git@github.com/paritytech/polkajam.git", branch = "mku-jam-collator-poc-2", default-features = false }
+jam-std-common = { git = "ssh://git@github.com/paritytech/polkajam.git", branch = "mku-jam-collator-poc-2" }
+jam-null-authorizer-bin = { git = "ssh://git@github.com/paritytech/polkajam.git", branch = "mku-jam-collator-poc-2" }
+jam-bootstrap-service-common = { git = "ssh://git@github.com/paritytech/polkajam.git", branch = "mku-jam-collator-poc-2", features = ["std"] }
+# Unpublished Polkajam crates, from the same git branch.
+polkajam-trie = { package = "trie", git = "ssh://git@github.com/paritytech/polkajam.git", branch = "mku-jam-collator-poc-2" }
+cargo-jam-build = { git = "ssh://git@github.com/paritytech/polkajam.git", branch = "mku-jam-collator-poc-2" }
+jam-chainspec = { git = "ssh://git@github.com/paritytech/polkajam.git", branch = "mku-jam-collator-poc-2" }
 sp-core = { path = "vendor/polkadot-sdk-companion/substrate/primitives/core", default-features = false }
 sp-keystore = { path = "vendor/polkadot-sdk-companion/substrate/primitives/keystore" }
 async-stream = "0.3"
@@ -96,12 +95,8 @@ sp-io = { version = "30.0.0", default-features = false }
 # Use the same JAM types for the service and the SDK AURA utilities.
 [patch.crates-io]
 cumulus-aura-authorizer-utils = { path = "vendor/polkadot-sdk-companion/cumulus/jam/aura-authorizer-utils" }
-jam-types = { path = "../polkajam2/crates/jam-types" }
+jam-types = { git = "ssh://git@github.com/paritytech/polkajam.git", branch = "mku-jam-collator-poc-2" }
 sp-io = { path = "vendor/polkadot-sdk-companion/substrate/primitives/io" }
-
-[patch."ssh://git@github.com/paritytech/polkajam.git"]
-jam-std-common = { path = "../polkajam2/crates/jam-std-common" }
-jam-types = { path = "../polkajam2/crates/jam-types" }
 
 # Optimized host tests and fuzzing with runtime correctness checks retained.
 [profile.testnet]
