@@ -43,7 +43,7 @@ module fuzz {
     val start: Host = { state: svc, free: budget, logs: replayStorageLogs,
       sizes: replayStorageSizes, failed: List(), failedMessages: List(), assignmentFailure: "", assigns: List() }
     val arrived = if (stop == -2) { ...start, free: budget + incoming.foldl(0, (n, t) => n + t.amount) }
-      else arrivals(if (stop == -1) dueAssignments(start, slot) else start, incoming, slot)
+      else arrivals(dueAssignments(start, slot, if (stop == -1) FullAssignBudget.flush else 0), incoming, slot)
     val end = if (stop == -2) 0 else if (stop == -1) packages.length() else stop
     val out = range(0, end).foldl(arrived, (a, i) => report(a, packages[i], i, slot))
     all {

@@ -54,7 +54,9 @@ fn generator_profile(profile: &str, seed: u64, stride: u64, count: u64, steps: u
 		&count.to_string(),
 		&steps.to_string(),
 	]);
-	if profile == "refine_gas" {
+	if profile == "fuzz" {
+		command.arg("fuzz");
+	} else if profile == "refine_gas" {
 		command.arg("gas_pipeline");
 	} else if profile == "kv_charge" {
 		command.arg("kv_charge_fuzz");
@@ -1178,6 +1180,7 @@ fn authorization_generated_works() {
 		"signed_context",
 		"wrong_service",
 		"para_count",
+		"wrong_para",
 		"zero_collators",
 		"zero_duration",
 		"config_empty",

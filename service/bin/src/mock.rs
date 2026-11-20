@@ -13,7 +13,7 @@ use jam_types::{
 	WorkPackage, WorkPayload,
 };
 use parachain_authorizer::{aura, aura::build_collator_proof};
-use parachain_service_core::types::ParaId;
+use parachain_service_core::{candidate::ParachainCandidate, types::ParaId};
 use primitive_types::H256;
 
 const SERVICE_ID: ServiceId = 0;
@@ -35,8 +35,7 @@ pub fn collator_leaf_hash(key: &[u8; 32]) -> H256 {
 	H256::from_slice(&blake2b_32(key))
 }
 
-/// An authorizer config whose `ParaId` prefix authorizes `para_ids` packages,
-/// numbering the paras `0..n`.
+/// An AURA authorizer config authorizing `para_ids` work items, numbering the paras `0..n`.
 pub fn good_config(para_ids: usize) -> AuthConfig {
 	let ids = (0..para_ids).map(|i| ParaId::new(i as u32)).collect::<Vec<_>>();
 	good_config_for(ids)
@@ -196,13 +195,19 @@ pub fn make_wrong_collator_index_args(
 /// `n` minimal work items addressed to the parachain service.
 pub fn work_items(n: usize) -> Vec<WorkItem> {
 	(0..n)
-		.map(|_| WorkItem {
+		.map(|i| WorkItem {
 			service: SERVICE_ID,
 			code_hash: CodeHash::zero(),
 			refine_gas_limit: 0,
 			accumulate_gas_limit: 0,
 			export_count: 0,
-			payload: Default::default(),
+			payload: WorkPayload(
+				ParachainCandidate {
+					para_id: ParaId::new(i as u32),
+					validation_code: [0; 32].into(),
+				}
+				.encode(),
+			),
 			import_segments: Default::default(),
 			extrinsics: Default::default(),
 		})
@@ -255,6 +260,7 @@ pub fn refine_args(
 		provide_preimage(&mut storage, blob);
 	}
 
+	let prior_output_len = auth_trace.len() as u32;
 	let context = RefineCallContextOwned {
 		storage,
 		core: 0,
@@ -267,11 +273,10 @@ pub fn refine_args(
 			.map(|per_item| per_item.into_iter().map(Into::into).collect())
 			.collect(),
 		export_counter: 0,
-		max_exports: 0,
 		exports: Vec::new(),
 		work_package: package.into(),
 		work_item_index,
-		output_len: 0,
+		prior_output_len,
 		engine: engine(),
 	};
 

@@ -9,7 +9,8 @@ module transfer_inputs {
   var replayIncoming: List[IncomingTransfer]
   action noTransfers = replayIncoming' = List()
   action recordIncoming(transfers: List[IncomingTransfer]): bool = {
-    val out = accumulateTransfers(svc, now, transfers, FullAssignBudget)
+    val budget = { flush: CoreCount, end: CoreCount }
+    val out = accumulateTransfers(svc, now, transfers, budget)
     all {
     replayIncoming' = transfers,
     svc' = out.state,
@@ -19,7 +20,7 @@ module transfer_inputs {
     prevSvc' = svc,
     lastStepWorkResults' = List(),
     lastStepAssigns' = out.assigns,
-    lastStepAssignBudget' = FullAssignBudget,
+    lastStepAssignBudget' = budget,
     lastStepOutOfGas' = Never,
     lastHeadRoot' = None,
     foreignServices' = foreignServices,

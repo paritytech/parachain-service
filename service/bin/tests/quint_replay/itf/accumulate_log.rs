@@ -48,27 +48,19 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 			}
 		},
 		"StateBalanceUpdateRejected" => {
+			let para = para_id(field(value, "paraId")?, codex)?;
 			let (reason, payload) = variant(field(value, "reason")?)?;
 			let reason = match reason {
 				"BelowUsed" => StateBalanceRejection::BelowUsed {
-					current_total: Compact(bounded_integer::<u64>(
-						field(payload, "currentTotal")?,
-						"currentTotal",
-					)?),
-					current_used: Compact(bounded_integer::<u64>(
-						field(payload, "currentUsed")?,
-						"currentUsed",
-					)?),
+					current_total: Compact(bounded_integer(field(payload, "currentTotal")?, "currentTotal")?),
+					current_used: Compact(bounded_integer(field(payload, "currentUsed")?, "currentUsed")?),
 				},
 				"ParachainIsDeregistering" => StateBalanceRejection::ParachainIsDeregistering,
 				other => return Err(format!("unsupported state balance rejection {other}")),
 			};
 			Ok(AccumulateLog::StateBalanceUpdateRejected {
-				para_id: para_id(field(value, "paraId")?, codex)?,
-				attempted: Compact(bounded_integer::<u64>(
-					field(value, "attempted")?,
-					"attempted",
-				)?),
+				para_id: para,
+				attempted: Compact(bounded_integer(field(value, "attempted")?, "attempted")?),
 				reason,
 			})
 		},

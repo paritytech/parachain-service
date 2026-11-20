@@ -17,14 +17,8 @@ Refine must enforce restricted host functions (§4.3) but is stateless, so it ca
 the privileged ParaIds from service storage. The PoC hard-codes
 `ASSET_HUB_PARA_ID` and `CORETIME_PARA_ID` in `service-interface`.
 
-Alternative considered: carry a per-item role (Normal/AssetHub/Coretime) in the enforced
-authorizer-config prefix (§3.2), which is Coretime-committed via the `assign` flow — no
-hardcoding, governable, but a spec change to the prefix shape and a policy obligation on
-Coretime to never mark a non-privileged para as privileged.
-
-**Spec feedback**: the design must state where the privileged-para identity lives. Both
-options should be listed; constants require a service self-upgrade to migrate Asset Hub or
-Coretime to a new ParaId.
+**Spec feedback**: the design must state where the privileged-para identity lives.
+Constants require a service self-upgrade to migrate Asset Hub or Coretime to a new ParaId.
 
 ## D-5: the parent-head check's `hash(head_data)` is blake2b-256
 

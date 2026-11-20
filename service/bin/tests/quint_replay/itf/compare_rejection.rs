@@ -73,6 +73,25 @@ fn deregistering_errors() {
 }
 
 #[test]
+fn last_accumulate_none_and_zero_are_distinct() {
+	for (expected, other) in [
+		(json!({"tag": "None", "value": {"#tup": []}}),
+		 json!({"tag": "Some", "value": {"#bigint": "0"}})),
+		(json!({"tag": "Some", "value": {"#bigint": "0"}}),
+		 json!({"tag": "None", "value": {"#tup": []}})),
+	] {
+		let mut frame = frame();
+		frame["svc"]["lastAccumulate"] = expected;
+		let mut codex = Codex::default();
+		let storage = fresh_storage(|storage| seed::seed(storage, &frame, &mut codex).unwrap());
+		compare::state(&storage, &frame, &mut codex, 0).unwrap();
+		frame["svc"]["lastAccumulate"] = other;
+		assert!(compare::state(&storage, &frame, &mut codex, 1)
+			.unwrap_err().contains("svc.lastAccumulate differs"));
+	}
+}
+
+#[test]
 fn parachain_log_order_errors() {
 	let mut trace: Value = serde_json::from_str(include_str!(
 		"../../fixtures/quint/refine_errors/mixed_errors_preserve_log_works.itf.json"

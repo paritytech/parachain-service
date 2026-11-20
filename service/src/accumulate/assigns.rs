@@ -32,7 +32,7 @@ pub fn schedule(
 		return;
 	}
 	if jam_slot <= now {
-		match jam_assign(service_id, core, &queue, new_assigner, jam_slot) {
+		match jam_assign(service_id, core, &queue, new_assigner, now) {
 			Ok(()) => settle_after_assign(core, queue, new_assigner, jam_slot),
 			// The core was handed away: nothing is scheduled, and any entry still
 			// cached for it is dropped (§7.1).
@@ -102,7 +102,7 @@ pub fn apply_due_assigns(
 	next.retain(|entry| !due.contains(entry));
 	for (core, jam_slot) in due {
 		let entry = PendingAssigns::get(core).expect("dirty index names cached entries; qed");
-		match jam_assign(service_id, core, &entry.queue, entry.assigner, jam_slot) {
+		match jam_assign(service_id, core, &entry.queue, entry.assigner, now) {
 			Ok(()) if fills_directly(entry.queue.len()) => PendingAssigns::remove(core),
 			// The set stays cached as sent and is rewritten 80 slots after this one was
 			// due, even when it is applied late (§7.1).
@@ -157,10 +157,10 @@ fn fills_directly(queue_len: usize) -> bool {
 	auth_queue_len() % queue_len == 0
 }
 
-/// Call JAM `assign(core, queue, assigner)` for an assign due at `due`. JAM adds
+/// Call JAM `assign(core, queue, assigner)` at slot `applied`. JAM adds
 /// entry `t % 80` to the pool at slot `t`, and slot `t` gets hash `t % len` of
-/// the set, so the slots `due` to `due + 79` are written into entries `due % 80`
-/// onwards, wrapping to entry 0 (§7.1, DECISIONS.md D-7). A set that tiles the
+/// the set, so slots `applied` to `applied + 79` start at entry `applied % 80`,
+/// wrapping to entry 0 (§7.1, DECISIONS.md D-7). A set that tiles the
 /// 80 entries comes out as `queue` repeated from entry 0. A cached `assigner` of
 /// `None` resolves to this service — JAM always writes one. JAM answers
 /// `ActionInvalid` once this service is no longer the core's assigner.
@@ -169,18 +169,17 @@ fn jam_assign(
 	core: CoreIndex,
 	queue: &[AuthorizerHash],
 	assigner: Option<ServiceId>,
-	due: Timeslot,
+	applied: Timeslot,
 ) -> Result<(), ApiError> {
 	let target_len = auth_queue_len() as u64;
 	let len = queue.len() as u64;
-	// Entry `due % 80` holds slot `due`; the entries before it hold the slots
-	// after `due + 80 - due % 80`, so entry 0 holds that slot.
-	let first_entry = due as u64 % target_len;
-	let mut hash = ((due as u64 + (target_len - first_entry) % target_len) % len) as usize;
+	// Entry `applied % 80` holds the current slot; earlier entries cover the wrap.
+	let first_entry = applied as u64 % target_len;
+	let mut hash = ((applied as u64 + (target_len - first_entry) % target_len) % len) as usize;
 	let expanded: Vec<JamAuthorizerHash> = (0..target_len)
 		.map(|entry| {
 			if entry == first_entry {
-				hash = (due as u64 % len) as usize;
+				hash = (applied as u64 % len) as usize;
 			}
 			let authorizer = JamAuthorizerHash(queue[hash]);
 			hash = if hash + 1 == queue.len() { 0 } else { hash + 1 };

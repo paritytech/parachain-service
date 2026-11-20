@@ -329,7 +329,7 @@ module upgrades {
         RequestCodeUpgrade({ hash: b, len: FixedCodeLen, phase: Announcement }))))
       .then(workErrorAt(now + MaxLookupAge))
       .then(expectThat(all {
-        svc == prevSvc,
+        svc == { ...prevSvc, lastAccumulate: Some(now) },
         announcedHashOf(svc.paraInfo(CoretimeParaId)) == Some(b)
       }))
       .then(applyHappyPath(CoretimeParaId, codeA, List(

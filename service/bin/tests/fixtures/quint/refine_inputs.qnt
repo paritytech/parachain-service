@@ -5,7 +5,7 @@ module refine_inputs {
   import refine.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/refine"
   type RefineInput = {
     pkg: WorkPackage, calls: List[CodeCall], anchor: int,
-    available: bool, missingPrefix: bool, skip: bool, byteFault: str, gasMode: str, gasSample: int
+    available: bool, skip: bool, byteFault: str, gasMode: str, gasSample: int
   }
   type RefinedWork = { input: RefineInput, work: WorkResult }
   // None is reserved for historical/accumulate-only fixture actions.

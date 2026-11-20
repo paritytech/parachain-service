@@ -38,7 +38,7 @@ module authorization {
     .then(authorizeBlock(List("valid"), 4))
     .then(authorizeBlock(List("valid"), 0))
   run rejected_works = authInit.then(authorizeBlock(List(
-    "signature", "proof", "signed_context", "wrong_service", "para_count",
+    "signature", "proof", "signed_context", "wrong_service", "para_count", "wrong_para",
     "zero_collators", "zero_duration", "config_empty", "config_truncated",
     "config_trailing", "token_empty", "token_truncated", "token_trailing"), 0))
     .then(authorizeBlock(List("signature", "valid", "token_trailing"), 0))

@@ -51,7 +51,8 @@ module invocation_inputs {
     // Evaluate the pinned phases in runtime order, without inserting a second
     // invocation between incoming transfers and work reports.
     val prefix = accumulateBlockBudgeted(svc, slot, List(), solicitedSet,
-      FixedCodeLen, List(), foreignServices, { ...assignBudget, end: 0 }, Never)
+      FixedCodeLen, List(), foreignServices,
+      { ...assignBudget, end: 0 }, Never)
     val arrived = applyIncomingTransfers(prefix.state, incoming)
     val out = replayAll(arrived, solicitedSet, List(), FixedCodeLen,
       slot, applied, foreignServices)

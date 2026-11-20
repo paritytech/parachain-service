@@ -28,10 +28,9 @@ module designation_inputs {
   }
   def work(p: ParaId, parent: int, msgs: List[UpwardMessage]): WorkResult = {
     val h = if (p == AssetHubParaId) 2 else 1
-    val pkg: WorkPackage = { authorizedParas: List(p),
-      items: List({ validationCode: { hash: { vchBytes: h }, len: FixedCodeLen } }) }
+    val pkg: WorkPackage = { items: List({ paraId: p, validationCode: { hash: { vchBytes: h }, len: FixedCodeLen } }) }
     val calls = List(SetParentHeadHash(headHash(parent)), SetHead(parent + 1)).concat(sends(msgs))
-    { result: refine(svc, pkg, false, calls, now)[0], authTrace: 0 }
+    { result: refine(svc, pkg, calls, now)[0], authTrace: 0 }
   }
   // The pin models valid key counts but assumes designation privilege.
   // Preserve its staging/length semantics, replacing only a successful host

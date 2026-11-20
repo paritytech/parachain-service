@@ -16,6 +16,10 @@ ci: fmt-check check build lint
 vendor:
 	git submodule update --init
 
+# Verify indexed submodule commits are available on GitHub.
+check-submodules-pushed:
+	python3 scripts/check-submodules-pushed.py
+
 # Short for fmt
 f: fmt
 # Format the code

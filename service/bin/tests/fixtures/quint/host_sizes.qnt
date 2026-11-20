@@ -18,10 +18,11 @@ module host_sizes {
       | FromSolicit(p) => 32 + scaleCompact(p.len)
       | FromSetKV(_) => 32
     }
-    | StateBalanceUpdateRejected(p) => 4 + scaleCompact(p.attempted) + 1 + match p.reason {
-      | BelowUsed(b) => scaleCompact(b.currentTotal) + scaleCompact(b.currentUsed)
-      | _ => 0
-    }
+    | StateBalanceUpdateRejected(p) =>
+      4 + scaleCompact(p.attempted) + 1 + match p.reason {
+        | BelowUsed(b) => scaleCompact(b.currentTotal) + scaleCompact(b.currentUsed)
+        | _ => 0
+      }
     | DesignateRejected(p) => scaleCompact(p.len)
     | ServiceUpgradePreimageMissing(_) => 32
     | CodeUpgradeNotAvailable(p) => 32 + scaleCompact(p.len)

@@ -13,7 +13,7 @@ use parachain_service::{
 	work_digest::{validation_code_hash, ValidationCodeRef},
 };
 use parachain_service_core::{
-	types::{HeadData, ParaId, MAX_HEAD_DATA_SIZE},
+	types::{HeadData, ParaId, ASSET_HUB_PARA_ID, MAX_HEAD_DATA_SIZE},
 	PARACHAIN_SERVICE_ID,
 };
 use primitive_types::H256;
@@ -90,6 +90,20 @@ fn registered_para_layout() {
 		baseline_for(ParaId::new(3)) + preimage_footprint(CODE.len() as u32)
 	);
 	assert!(!info.is_deregistering);
+}
+
+#[test]
+fn asset_hub_genesis_reservation_works() {
+	let service = ParachainServiceSpec::new(PARACHAIN_SERVICE_ID, SERVICE_CODE)
+		.parachain(ParachainSpec::new(ASSET_HUB_PARA_ID))
+		.build()
+		.expect("a small spec builds; qed");
+
+	assert_eq!(
+		para_info_entry(&service, ASSET_HUB_PARA_ID).used_state_balance,
+		baseline_for(ASSET_HUB_PARA_ID)
+	);
+	assert!(!service.storage.contains_key(&storage_key(Tag::LastAccumulate, &())));
 }
 
 #[test]

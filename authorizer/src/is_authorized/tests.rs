@@ -3,7 +3,7 @@
 
 use crate::aura::{
 	build_collator_proof, signable_work_package_hash, AuthConfig, AuthToken, AuthorizationError,
-	CollatorKey, CollatorSignature, ConfigError, TokenError,
+	CandidateError, CollatorKey, CollatorSignature, ConfigError, TokenError,
 };
 use codec::{DecodeAll as _, Encode};
 use jam_types::{
@@ -13,10 +13,7 @@ use jam_types::{
 use parachain_authorizer_ed25519::Ed25519;
 use parachain_authorizer_sr25519::Sr25519;
 use parachain_service_core::{
-	authorization::AuthTrace,
-	types::ParaId,
-	upward_message::{UpwardMessage, UpwardMessages},
-	PARACHAIN_SERVICE_ID,
+	authorization::AuthTrace, candidate::ParachainCandidate, types::ParaId, PARACHAIN_SERVICE_ID,
 };
 use primitive_types::H256;
 
@@ -155,22 +152,18 @@ fn package(anchor_byte: u8, slot: Slot, payload: Vec<u8>) -> WorkPackage {
 	}
 }
 
-/// A parachain block, as far as the authorizer is concerned: any payload at all.
+/// A parachain block carries a candidate with para ID zero.
 fn block(anchor_byte: u8, slot: Slot) -> WorkPackage {
-	package(anchor_byte, slot, b"contract".to_vec())
+	let candidate =
+		ParachainCandidate { para_id: ParaId::new(0), validation_code: [0; 32].into() };
+	package(anchor_byte, slot, candidate.encode())
 }
 
-/// The package a core assignment rides in: the upward messages *are* the payload.
+/// A distinct candidate payload for testing the package signature binding.
 fn controlling(anchor_byte: u8, slot: Slot) -> WorkPackage {
-	let messages: UpwardMessages = vec![UpwardMessage::AssignCore {
-		core: 1,
-		queue: vec![[0xcd; 32]],
-		new_assigner: None,
-		jam_slot: 0,
-	}]
-	.try_into()
-	.expect("one message is within the digest bound; qed");
-	package(anchor_byte, slot, messages.encode())
+	let candidate =
+		ParachainCandidate { para_id: ParaId::new(0), validation_code: [0xcd; 32].into() };
+	package(anchor_byte, slot, candidate.encode())
 }
 
 /// Run the decision the guest runs, under `scheme`'s verifier.
@@ -303,10 +296,7 @@ fn newer_context_fields_errors() {
 	}
 }
 
-/// A core assignment now travels in a work item, so the package hash covers it: a signature
-/// cannot be lifted from an innocent package onto one that reassigns a core. Phase 6 bound the
-/// command into the signing payload by hand because it lived outside the hash; this is that
-/// property, held by the hash itself.
+/// A signature cannot be lifted from one valid candidate onto another.
 #[test]
 fn a_signature_does_not_carry_over_to_another_payload_works() {
 	for scheme in [Scheme::Ed25519, Scheme::Sr25519] {
@@ -318,7 +308,7 @@ fn a_signature_does_not_carry_over_to_another_payload_works() {
 		assert!(admits(scheme, &config, token, &signed), "{scheme:?}: rejected on its own package");
 		assert!(
 			!admits(scheme, &config, token, &controlling(1, 0)),
-			"{scheme:?}: an innocent package's signature authorized a core assignment"
+			"{scheme:?}: a signature authorized a different candidate"
 		);
 	}
 }
@@ -338,7 +328,7 @@ fn a_parked_core_admits_no_ordinary_package_works() {
 			authorize_under(scheme, &parked, token, &package),
 			Err(AuthorizationError::BadConfig(ConfigError::InvalidWorkItemCount))
 		));
-		// Nor does putting an assignment in it help without the privilege to run one.
+		// A different candidate is no more admissible without an assignment.
 		let control = controlling(1, 0);
 		assert!(matches!(
 			authorize_under(scheme, &parked, &collators.tokens(&control)[0], &control),
@@ -378,7 +368,7 @@ fn unsigned_sentinel_errors() {
 	}
 }
 
-/// Assigned cores are unaffected by any of the above: their behaviour is exactly what it was.
+/// An assigned core still rejects a package with too few items.
 #[test]
 fn an_assigned_core_still_counts_items_works() {
 	for scheme in [Scheme::Ed25519, Scheme::Sr25519] {
@@ -395,5 +385,41 @@ fn an_assigned_core_still_counts_items_works() {
 			),
 			Err(AuthorizationError::BadConfig(ConfigError::InvalidWorkItemCount))
 		));
+	}
+}
+
+#[test]
+fn candidate_binding_errors() {
+	for scheme in [Scheme::Ed25519, Scheme::Sr25519] {
+		let collators = Collators::new(scheme, &["//Alice"]);
+		let config = collators.config(vec![ParaId::new(0)]);
+		let mut package = block(1, 0);
+		for (payload, service, expected) in [
+			(
+				ParachainCandidate { para_id: ParaId::new(1), validation_code: [0; 32].into() }
+					.encode(),
+				PARACHAIN_SERVICE_ID,
+				ConfigError::Candidate(CandidateError::InvalidParaId),
+			),
+			(
+				vec![0; 4],
+				PARACHAIN_SERVICE_ID,
+				ConfigError::Candidate(CandidateError::Undecodable),
+			),
+			(
+				ParachainCandidate { para_id: ParaId::new(0), validation_code: [0; 32].into() }
+					.encode(),
+				PARACHAIN_SERVICE_ID + 1,
+				ConfigError::InvalidWorkItemService,
+			),
+		] {
+			package.items[0].payload = WorkPayload(payload);
+			package.items[0].service = service;
+			let token = &collators.tokens(&package)[0];
+			assert!(matches!(
+				authorize_under(scheme, &config, token, &package),
+				Err(AuthorizationError::BadConfig(error)) if error == expected
+			));
+		}
 	}
 }

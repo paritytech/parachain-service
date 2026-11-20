@@ -32,6 +32,7 @@ pub(super) fn authorize(
 	match fault {
 		"wrong_service" => config.parachain_service = MOCK_SERVICE_ID + 1,
 		"para_count" => config.para_ids.clear(),
+		"wrong_para" => config.para_ids[0] = u32::MAX.into(),
 		_ => {},
 	}
 	package.authorizer.config.0 = config.encode();
@@ -55,8 +56,9 @@ pub(super) fn authorize(
 	}
 	package.authorization.0 = token.encode();
 	match fault {
-		"valid" | "signature" | "proof" | "wrong_service" | "para_count" | "zero_collators" |
-		"zero_duration" | "trace_empty" | "trace_trailing" | "trace_truncated" => {},
+		"valid" | "signature" | "proof" | "wrong_service" | "para_count" | "wrong_para" |
+		"zero_collators" | "zero_duration" | "trace_empty" | "trace_trailing" |
+		"trace_truncated" => {},
 		"config_empty" => package.authorizer.config.0.clear(),
 		"config_truncated" => {
 			package.authorizer.config.0.pop();

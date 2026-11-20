@@ -1,8 +1,7 @@
 //! `is_authorized` entry-point tests.
 //!
-//! The authorized `ParaId`s are sourced from the authorizer **config** (pinned by
-//! the Coretime chain), not from the per-package authorization token: the service
-//! requires every authorizer config to begin with a `Vec<ParaId>` (spec §3.2, §7.2).
+//! The AURA config binds each item's candidate `para_id` to its authorized ID.
+//! Refine consumes the checked candidate identity without interpreting that config.
 
 use executor::pj;
 
@@ -23,6 +22,32 @@ fn trivial_works() {
 	let (engine, package, storage) = is_authorized_args(&authorizer(), config, token, items);
 	pj::is_authorized(&engine, &package, 0, &storage)
 		.expect("is_authorized should run to completion (not trap)");
+}
+
+#[test]
+fn unauthorized_candidate_errors() {
+	let items = work_items(1);
+	// A valid collator signature does not authorize a different parachain.
+	let (config, token, _) = make_auth(&authorizer(), vec![ParaId::new(42)], &items);
+	let (engine, package, storage) = is_authorized_args(&authorizer(), config, token, items);
+	pj::is_authorized(&engine, &package, 0, &storage)
+		.expect_err("candidate para must match the config");
+}
+
+#[test]
+fn malformed_candidate_errors() {
+	let valid_payload = work_items(1)[0].payload.0.clone();
+	let mut trailing = valid_payload.clone();
+	trailing.push(0);
+	for payload in [Vec::new(), valid_payload[..valid_payload.len() - 1].to_vec(), trailing] {
+		let mut items = work_items(1);
+		items[0].payload.0 = payload;
+		// Sign the malformed payload so decoding, not signature validation, rejects it.
+		let (config, token, _) = make_auth(&authorizer(), vec![ParaId::new(0)], &items);
+		let (engine, package, storage) = is_authorized_args(&authorizer(), config, token, items);
+		pj::is_authorized(&engine, &package, 0, &storage)
+			.expect_err("candidate must decode completely");
+	}
 }
 
 /// The spec of the authorizer enforces that the number of Para IDs must match the number of work

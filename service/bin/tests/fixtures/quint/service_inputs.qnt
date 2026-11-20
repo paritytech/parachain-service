@@ -73,11 +73,7 @@ module service_inputs {
         val fs = if (out.services.keys().contains(fresh) and not(acc.foreign.keys().contains(fresh)))
           out.services.put(fresh, { ...out.services.get(fresh), supervisor: fresh, supervisorCreated: slot })
           else out.services
-        // Pinned host debits before testing a protected ID collision.
-        val state = if (out.log == Some(ServiceCreation({ id: c.id, result: IdTaken })))
-          { ...out.state, jamAccount: out.state.jamAccount.debit(BaseDeposit + 2 * ItemDeposit + PreimageRequestOverhead + c.len, false) }
-          else out.state
-        { ...acc, state: state, foreign: fs, logs: acc.logs.appendOption(out.log) }
+        { ...acc, state: out.state, foreign: fs, logs: acc.logs.appendOption(out.log) }
       }
     }
     | _ => applyUpwardMessage(acc, caller, codeLen, slot, anchor, msg)

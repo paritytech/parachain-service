@@ -22,6 +22,11 @@ pub fn state(
 	frame: usize,
 ) -> Result<(), String> {
 	let svc = field(expected, "svc")?;
+	let last: Option<u32> = super::invariants::read(storage, &storage_key(Tag::LastAccumulate, &()))?;
+	let expected_last = super::seed::last_accumulate(svc)?;
+	if last != expected_last {
+		return Err(format!("frame {frame}: svc.lastAccumulate differs; Rust={last:?}, model={expected_last:?}"));
+	}
 	let mut expected_paras = BTreeSet::new();
 	for (para_value, value) in map_entries(field(field(expected, "svc")?, "parachains")?)? {
 		let para = para_id(para_value, codex)?;
@@ -37,18 +42,12 @@ pub fn state(
 			(
 				"totalStateBalance",
 				actual.total_state_balance ==
-					bounded_integer::<u64>(
-						field(value, "totalStateBalance")?,
-						"totalStateBalance",
-					)?,
+					bounded_integer::<u64>(field(value, "totalStateBalance")?, "totalStateBalance")?,
 			),
 			(
 				"usedStateBalance",
 				actual.used_state_balance ==
-					bounded_integer::<u64>(
-						field(value, "usedStateBalance")?,
-						"usedStateBalance",
-					)?,
+					bounded_integer::<u64>(field(value, "usedStateBalance")?, "usedStateBalance")?,
 			),
 			(
 				"isDeregistering",

@@ -98,10 +98,14 @@ pub fn due_flush_enabled(frame: &Value) -> bool {
 		.is_some_and(|value| value.as_str() != Some(""))
 }
 
-/// Checkpoints the service takes before the first report: one after the
-/// due-assign flush, and one after recording incoming transfers if any arrived.
-fn phase_checkpoints(context: &AccumulateCallContext<'_>) -> usize {
-	1 + usize::from(context.items.iter().any(|item| matches!(item, AccumulateItem::Transfer(_))))
+/// The initial flush and its checkpoint occur only once per increasing slot.
+fn phase_checkpoints(context: &AccumulateCallContext<'_>) -> Result<usize, String> {
+	let key = parachain_service::state::storage_key(
+		parachain_service::state::Tag::LastAccumulate, &(),
+	);
+	let last = super::invariants::read::<u32>(&context.storage, &key)?;
+	Ok(usize::from(last.is_none_or(|last| context.slot > last)) +
+		usize::from(context.items.iter().any(|item| matches!(item, AccumulateItem::Transfer(_)))))
 }
 
 pub fn due_flush_cutoff(
@@ -157,20 +161,30 @@ pub fn due_flush_cutoff(
 		.enumerate()
 		.filter_map(|(i, e)| (e == "checkpoint").then_some(i))
 		.collect();
-	let phase = phase_checkpoints(context);
+	let phase = phase_checkpoints(context)?;
 	if checkpoints.len() != results.len() + phase {
 		return Err("due-flush checkpoint count differs".into());
 	}
+	let initial_flush = {
+		let key = parachain_service::state::storage_key(
+			parachain_service::state::Tag::LastAccumulate, &(),
+		);
+		super::invariants::read::<u32>(&context.storage, &key)?
+			.is_none_or(|last| context.slot > last)
+	};
 	let (start, end) = if initial {
+		if !initial_flush {
+			return Err("initial due flush is skipped in this slot".into());
+		}
 		(0, checkpoints[0])
 	} else {
-		(checkpoints[results.len() + phase - 1] + 1, events.len())
+		(checkpoints.last().map_or(0, |index| index + 1), events.len())
 	};
 	let assignments: Vec<_> = (start..end).filter(|&i| events[i] == "assign").collect();
 	if assignments.is_empty() {
 		return Err("selected phase has no due assignment".into());
 	}
-	if !initial && events[..checkpoints[0]].iter().any(|e| e == "assign") {
+	if !initial && initial_flush && events[..checkpoints[0]].iter().any(|e| e == "assign") {
 		return Err("final-flush calibration unexpectedly flushed initial assignments".into());
 	}
 	let index = (start..end)
@@ -281,7 +295,7 @@ pub fn limit(
 		.enumerate()
 		.filter_map(|(i, e)| (e == "checkpoint").then_some(i))
 		.collect();
-	let phase = phase_checkpoints(context);
+	let phase = phase_checkpoints(context)?;
 	if checkpoints.len() != results.len() + phase {
 		return Err(format!(
 			"checkpoint count differs: expected {}, actual {}",
@@ -290,21 +304,24 @@ pub fn limit(
 		));
 	}
 	// Report `stop` runs after the last phase checkpoint and its predecessors'.
-	let reports = &checkpoints[phase - 1..];
-	let start = if before_checkpoint { 0 } else { reports[stop] + 1 };
+	let prior = phase.checked_add(stop).and_then(|n| n.checked_sub(1));
+	if !before_checkpoint && prior.is_none() {
+		return Err("selected interruption has no preceding checkpoint".into());
+	}
+	let start = if before_checkpoint { 0 } else { checkpoints[prior.unwrap()] + 1 };
 	let end = if before_checkpoint {
-		checkpoints[0]
+		*checkpoints.first().ok_or("invocation has no checkpoint")?
 	} else if after_checkpoint {
 		events.len()
 	} else {
-		reports[stop + 1]
+		checkpoints[phase + stop]
 	};
 	// The pinned checkpoint host call has only its fixed charge before taking
 	// the snapshot. Paying it proves completion even when no host calls follow
 	// (e.g. an empty invocation or unchanged heads). No recovered state is read.
 	let final_start = if after_checkpoint {
 		Some(
-			threshold(engine, context, &events, reports[stop], used)?
+			threshold(engine, context, &events, checkpoints[prior.unwrap()], used)?
 				.checked_add(jam_types::gas_costs::CHECKPOINT)
 				.ok_or("checkpoint gas overflow")?,
 		)
@@ -390,4 +407,34 @@ pub fn limit(
 		));
 	}
 	Ok(limit)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::common::{fresh_storage, set_state};
+	use parachain_service::state::{storage_key, Tag};
+
+	#[test]
+	fn same_slot_has_no_initial_checkpoint() {
+		let storage = fresh_storage(|storage| {
+			set_state(storage, &storage_key(Tag::LastAccumulate, &()), &7u32);
+		});
+		let context = parachain_service_bin::mock::accumulate_context(storage.clone(), Vec::new(), 7);
+		assert_eq!(phase_checkpoints(&context).unwrap(), 0);
+		let context = parachain_service_bin::mock::accumulate_context(storage, Vec::new(), 8);
+		assert_eq!(phase_checkpoints(&context).unwrap(), 1);
+	}
+
+	#[test]
+	fn first_slot_zero_has_initial_checkpoint() {
+		let storage = fresh_storage(|_| {});
+		let context = parachain_service_bin::mock::accumulate_context(storage, Vec::new(), 0);
+		assert_eq!(phase_checkpoints(&context).unwrap(), 1);
+		let storage = fresh_storage(|storage| {
+			set_state(storage, &storage_key(Tag::LastAccumulate, &()), &0u32);
+		});
+		let context = parachain_service_bin::mock::accumulate_context(storage, Vec::new(), 0);
+		assert_eq!(phase_checkpoints(&context).unwrap(), 0);
+	}
 }

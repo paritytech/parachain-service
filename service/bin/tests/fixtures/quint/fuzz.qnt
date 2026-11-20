@@ -32,7 +32,7 @@ module fuzz {
   action replayInit = all { noGas, outgoingInit, noTransfers, noDesignation, replayMinAccGas' = 100 }
 
   pure def activeCodeCandidate(s: ParachainServiceState, para: ParaId): ParachainCandidate =
-    { validationCode: { hash: activeCodeHashOr(s.paraInfo(para), NoCodeHash), len: FixedCodeLen } }
+    { paraId: para, validationCode: { hash: activeCodeHashOr(s.paraInfo(para), NoCodeHash), len: FixedCodeLen } }
 
   pure def replayWork(
     s: ParachainServiceState, para: ParaId, curHead: HeadData,
@@ -48,10 +48,9 @@ module fuzz {
   ): RefinedWork = {
     val announced = match s.paraInfo(para).announcedUpgrade {
       | None => activeCodeCandidate(s, para)
-      | Some(ref) => { validationCode: ref }
+      | Some(ref) => { paraId: para, validationCode: ref }
     }
     val pkg: WorkPackage = {
-      authorizedParas: List(para),
       items: List(if (mode == 6) candidate else if (mode == 8) announced
         else activeCodeCandidate(s, para))
     }
@@ -60,9 +59,9 @@ module fuzz {
     val headCalls = if (mode == 5) List() else List(SetHead(curHead + 1))
     val codeEnd = if (mode == 2) List(ReportError(42)) else if (mode == 4) List(Panic) else List()
     val calls = parentCalls.concat(headCalls).concat(sends(msgs)).concat(codeEnd)
-    val result = if (mode == 1) WorkErr else refine(s, pkg, false, calls, anchor)[0]
+    val result = if (mode == 1) WorkErr else refine(s, pkg, calls, anchor)[0]
     { work: { result: result, authTrace: auth }, input: {
-      pkg: pkg, calls: calls, anchor: anchor, missingPrefix: false,
+      pkg: pkg, calls: calls, anchor: anchor,
       available: codeAvailable(s, pkg.items[0].validationCode), skip: mode == 1, byteFault: "valid", gasMode: "normal", gasSample: 0
     } }
   }
@@ -407,9 +406,8 @@ module fuzz {
 
   action refinedLifecycleWork(p: ParaId, h: int, msgs: List[UpwardMessage], gap: int): bool = {
     val parent = if (svc.isLive(p)) svc.paraInfo(p).headData else 0
-    val pkg: WorkPackage = { authorizedParas: List(p),
-      items: List({ validationCode: { hash: { vchBytes: h }, len: FixedCodeLen } }) }
-    val input: RefineInput = { pkg: pkg, missingPrefix: false, skip: false, byteFault: "valid", gasMode: "normal", gasSample: 0,
+    val pkg: WorkPackage = { items: List({ paraId: p, validationCode: { hash: { vchBytes: h }, len: FixedCodeLen } }) }
+    val input: RefineInput = { pkg: pkg, skip: false, byteFault: "valid", gasMode: "normal", gasSample: 0,
       available: codeAvailable(svc, pkg.items[0].validationCode), anchor: now,
       calls: List(SetParentHeadHash(headHash(parent)), SetHead(parent + 1)).concat(sends(msgs)) }
     all { lifecycleWork(p, h, msgs, gap), noGasWithRefine(Some(List(input))) }
@@ -459,19 +457,13 @@ module fuzz {
   }
 
   action replayStep = any {
-    preCheckpointBlock,
-    finalCheckpointBlock,
-    servicesBlock,
-    hostBlock,
-    checkpointBlock,
-    panicBlock,
-    block,
+    preCheckpointBlock, finalCheckpointBlock, servicesBlock, hostBlock,
+    checkpointBlock, panicBlock, block,
     all { provisionPreimage, noTransfers, noDesignation, noOutgoing, keepUpgradeGas, noGas },
     all { incoming, noDesignation, noOutgoing, keepUpgradeGas, noGas },
     all { refinedLifecycleBlock, noTransfers, noDesignation, noOutgoing, keepUpgradeGas },
     all { refinedAssignmentBlock, noTransfers, noDesignation, noOutgoing, keepUpgradeGas },
-    validatorKeysBlock,
-    outgoingBlock,
-    serviceUpgradeBlock
+    validatorKeysBlock, outgoingBlock, serviceUpgradeBlock
   }
+
 }

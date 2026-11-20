@@ -12,7 +12,7 @@ workspace = true
 
 [dependencies]
 anyhow = "1"
-jam-node = { git = "ssh://git@github.com/paritytech/polkajam.git", branch = "mku-jam-collator-poc-2", default-features = false, features = ["hazmat"] }
+jam-node = { path = "../../vendor/polkajam/crates/node", default-features = false, features = ["hazmat"] }
 jam-types = { workspace = true, features = ["std"] }
 parachain-service = { workspace = true }
 codec = { workspace = true }

@@ -248,9 +248,9 @@ fn written(mutations: &jam_node::vm::StateMutations) -> Vec<AuthorizerHash> {
 }
 
 /// §7.1: JAM reads entry `t % 80` at slot `t`, which must hold hash `t % len` of
-/// the set, for the 80 slots from `due` on.
-fn assert_covers(queue: &[AuthorizerHash], set: &[AuthorizerHash], due: u32) {
-	for slot in due..due + 80 {
+/// the set, for the 80 slots from `applied` on.
+fn assert_covers(queue: &[AuthorizerHash], set: &[AuthorizerHash], applied: u32) {
+	for slot in applied..applied + 80 {
 		assert_eq!(queue[slot as usize % 80], set[slot as usize % set.len()], "slot {slot}");
 	}
 }
@@ -299,17 +299,30 @@ fn design_example_works() {
 
 #[test]
 fn late_flush_rearms_from_due_works() {
-	// §7.1: a rewrite carried over past its due slot is still laid out for, and
-	// re-armed from, the slot it was due at.
+	// Layout starts at the application slot; re-arming still follows the due slot.
+	for (late, next_due) in [(15, 90), (200, 170)] {
+		let queue = vec![HASH_A, HASH_B, HASH_A];
+		let msg = assign_msg(queue.clone(), NOW + 10);
+		let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
+		let (_, cached, _) = accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
+
+		// Even after both flushes, a sufficiently late assignment can remain due.
+		let (_, storage, mutations) = accumulate_block(cached, vec![], NOW + late);
+
+		assert_covers(&written(&mutations), &queue, NOW + late);
+		assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, NOW + next_due)]);
+	}
+}
+
+#[test]
+fn late_inline_rearms_from_due_works() {
 	let queue = vec![HASH_A, HASH_B, HASH_A];
-	let msg = assign_msg(queue.clone(), NOW + 10);
+	let msg = assign_msg(queue.clone(), NOW - 5);
 	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
-	let (_, cached, _) = accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
+	let (_, storage, mutations) = accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
 
-	let (_, storage, mutations) = accumulate_block(cached, vec![], NOW + 15);
-
-	assert_covers(&written(&mutations), &queue, NOW + 10);
-	assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, NOW + 90)]);
+	assert_covers(&written(&mutations), &queue, NOW);
+	assert_eq!(dirty_cores(&storage).to_vec(), vec![(CORE, NOW + 75)]);
 }
 
 #[test]
@@ -421,6 +434,60 @@ fn handed_away_core_flush_log_order_works() {
 	};
 	let log = para_log(&storage, CORETIME_PARA_ID);
 	assert_eq!(log[log.len().saturating_sub(2)..], [rejected(CORE), rejected(CORE + 1)]);
+}
+
+#[test]
+fn first_slot_zero_works() {
+	let (_, storage, _) = run_block_with_gas(
+		ct_storage(),
+		vec![],
+		0,
+		privileges_with_assign(99),
+		Some(1_000_000),
+	);
+	assert_eq!(get_state::<u32>(&storage, &storage_key(Tag::LastAccumulate, &())), Some(0));
+	assert!(dirty_cores(&storage).is_empty());
+}
+
+#[test]
+fn repeated_slot_flush_order_works() {
+	let due = NOW + 10;
+	let (_, first, _) = run_block_with_gas(
+		armed(&[(CORE, due)]),
+		vec![],
+		due,
+		privileges_with_assign(99),
+		Some(1_000_000),
+	);
+	assert_eq!(get_state::<u32>(&first, &storage_key(Tag::LastAccumulate, &())), Some(due));
+	assert_eq!(dirty_cores(&first).to_vec(), vec![(CORE, due)]);
+
+	for slot in [due, due + 1] {
+		// Same slot flushes after packages.
+		let other = UpwardMessage::AssignCore {
+			core: CORE + 1,
+			queue: vec![HASH_B],
+			new_assigner: None,
+			jam_slot: due,
+		};
+		let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-1", b"ct-2", vec![other], 0);
+		let (_, storage, _) = run_block_with_privileges(
+			first.clone(),
+			vec![work_item(&digest)],
+			slot,
+			privileges_with_assign(99),
+		);
+		let order = if slot == due { [CORE + 1, CORE] } else { [CORE, CORE + 1] };
+		let expected = order.map(|core| {
+			(slot, LogEntry::Accumulate {
+				entries: vec![AccumulateLog::CoreNotAssignable { core }],
+			})
+		});
+		let log = para_log(&storage, CORETIME_PARA_ID);
+		assert_eq!(log[log.len() - 2..], expected);
+		assert!(dirty_cores(&storage).is_empty());
+		assert_eq!(get_state::<u32>(&storage, &storage_key(Tag::LastAccumulate, &())), Some(slot));
+	}
 }
 
 #[test]

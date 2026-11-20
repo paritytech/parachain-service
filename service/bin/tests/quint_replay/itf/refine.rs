@@ -1,7 +1,7 @@
 //! Differential Refine replay through the real service and a scripted child PVM.
 use super::{
 	codex::Codex,
-	replay::{bounded_integer, field, integer, upward_message, variant, work_digest},
+	replay::{bounded_integer, field, integer, para_id, upward_message, variant, work_digest},
 };
 use crate::common::{work_item_skipped, work_item_with_auth_trace};
 use codec::{DecodeAll, Encode};
@@ -9,6 +9,7 @@ use jam_node::vm::{RefineCallContext, Storage};
 use jam_std_common::hash_raw;
 use jam_types::AccumulateItem;
 use parachain_service::{
+	pvf::pvm::REFINE_GAS_RESERVE,
 	refine::ParachainCandidate,
 	work_digest::{validation_code_hash, ParachainWorkDigest},
 };
@@ -171,11 +172,6 @@ pub(super) fn execute_authorized(
 	fault: Option<&str>,
 ) -> Result<(Option<ParachainWorkDigest>, Option<jam_types::AuthTrace>), String> {
 	let pkg = field(input, "pkg")?;
-	let paras = field(pkg, "authorizedParas")?.as_array().ok_or("expected para list")?;
-	let paras = paras
-		.iter()
-		.map(|p| super::replay::para_id(p, codex))
-		.collect::<Result<Vec<_>, _>>()?;
 	let items = field(pkg, "items")?.as_array().ok_or("expected item list")?;
 	if !(1..=2).contains(&items.len()) {
 		return Err("refine replay supports one or two items".into());
@@ -191,7 +187,7 @@ pub(super) fn execute_authorized(
 	}
 	bounded_integer::<u32>(field(reference, "len")?, "code length")?;
 
-	let caller = paras.first().copied().unwrap_or(Codex::para_id(0)?);
+	let caller = para_id(field(&items[0], "paraId")?, codex)?;
 	let calls = field(input, "calls")?.as_array().ok_or("expected call list")?;
 	let mut script = Vec::new();
 	for call in calls {
@@ -273,24 +269,27 @@ pub(super) fn execute_authorized(
 		_ => return Err(format!("unsupported byteFault {byte_fault}")),
 	}
 	let code = validation_code_hash(&pvf);
-	let mut payload = ParachainCandidate { validation_code: code }.encode();
-	match byte_fault {
-		"candidate_empty" => payload.clear(),
-		"candidate_truncated" => {
-			payload.pop();
-		},
-		"candidate_trailing" => payload.push(0),
-		_ => {},
-	}
-	let work = (0..items.len())
-		.map(|_| refine_work_item(service, payload.clone(), vec![script.encode()]))
+	let paras = items
+		.iter()
+		.map(|item| para_id(field(item, "paraId")?, codex))
+		.collect::<Result<Vec<_>, _>>()?;
+	let work = paras
+		.iter()
+		.map(|&para_id| {
+			let mut payload = ParachainCandidate { para_id, validation_code: code }.encode();
+			match byte_fault {
+				"candidate_empty" => payload.clear(),
+				"candidate_truncated" => {
+					payload.pop();
+				},
+				"candidate_trailing" => payload.push(0),
+				_ => {},
+			}
+			refine_work_item(service, payload, vec![script.encode()])
+		})
 		.collect();
 	let available = field(input, "available")?.as_bool().ok_or("available must be boolean")?;
-	let missing = field(input, "missingPrefix")?
-		.as_bool()
-		.ok_or("missingPrefix must be boolean")?;
-	let config =
-		if missing { jam_types::AuthConfig(Default::default()) } else { good_config_for(paras) };
+	let config = good_config_for(paras);
 	let preimages: Vec<&[u8]> = if available { vec![&pvf] } else { vec![] };
 	let (engine, service_hash, mut context) = refine_args(
 		service,
@@ -304,7 +303,7 @@ pub(super) fn execute_authorized(
 	);
 	match gas_mode {
 		"zero" => context.gas = 0,
-		"child" | "funded" => context.gas = 1_000_000,
+		"child" | "funded" => context.gas = REFINE_GAS_RESERVE + 10_000_000,
 		_ => {},
 	}
 	// The immutable package must be rebuilt after changing its lookup anchor.
@@ -312,6 +311,9 @@ pub(super) fn execute_authorized(
 	let mut package: jam_types::WorkPackage = jam_codec::Decode::decode(&mut &encoded[..])
 		.map_err(|e| format!("package decode: {e:?}"))?;
 	package.context.lookup_anchor_slot = bounded_integer(field(input, "anchor")?, "anchor")?;
+	for item in package.items.iter_mut() {
+		item.refine_gas_limit = context.gas;
+	}
 	let auth = if let Some(fault) = fault {
 		let Some(trace) = super::authorization::authorize(&mut package, fault)? else {
 			return Ok((None, None));
@@ -332,7 +334,7 @@ pub(super) fn execute_authorized(
 	};
 	context.work_package = package.into();
 	if gas_mode == "cutoff" {
-		if !available || missing || byte_fault != "valid" || fault.is_some() {
+		if !available || byte_fault != "valid" || fault.is_some() {
 			return Err("cutoff requires available valid code and unmodified authorization".into());
 		}
 		let sample = bounded_integer::<u64>(field(input, "gasSample")?, "gas sample")?;
@@ -351,8 +353,14 @@ pub(super) fn execute_authorized(
 		{
 			return Err("cutoff control must produce a successful digest with nonzero gas".into());
 		}
-		context.output_len = 0;
 		context.gas = (((used - 1) as u128 * sample as u128) / 1_000_000) as u64;
+		let encoded = jam_codec::Encode::encode(&context.work_package);
+		let mut package: jam_types::WorkPackage = jam_codec::Decode::decode(&mut &encoded[..])
+			.map_err(|e| format!("package decode: {e:?}"))?;
+		for item in package.items.iter_mut() {
+			item.refine_gas_limit = context.gas;
+		}
+		context.work_package = package.into();
 	}
 	let (actual, _, _) = engine.refine(service_hash, RefineCallContext::from(&mut context));
 	match actual {

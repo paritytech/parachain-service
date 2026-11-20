@@ -3,7 +3,7 @@ module authorization_fuzz {
   action replayInit = campaign::authInit
   action replayStep = {
     val faults = Set("valid", "signature", "proof", "signed_context", "wrong_service",
-      "para_count", "zero_collators", "zero_duration", "config_empty", "config_truncated",
+      "para_count", "wrong_para", "zero_collators", "zero_duration", "config_empty", "config_truncated",
       "config_trailing", "token_empty", "token_truncated", "token_trailing",
       "trace_empty", "trace_truncated", "trace_trailing")
     nondet first = faults.oneOf()

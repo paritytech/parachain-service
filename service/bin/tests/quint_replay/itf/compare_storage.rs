@@ -46,6 +46,8 @@ pub fn state(
 		return Err(format!("frame {frame}: svc.pendingAssignCores differs"));
 	}
 	allow(storage_key(Tag::PendingAssignCores, &()));
+	// Compared with the model's singleton in compare::state.
+	allow(storage_key(Tag::LastAccumulate, &()));
 	for (core, entry) in map_entries(field(svc, "pendingAssigns")?)? {
 		let core = u16::try_from(integer(core)?).map_err(|_| "core out of range")?;
 		let expected = super::assignments::pending(entry)?;

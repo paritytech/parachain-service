@@ -24,6 +24,22 @@ pub fn trace(json: &str) -> Result<(), String> {
 	let document: Value = serde_json::from_str(json).map_err(|error| error.to_string())?;
 	document_trace(&document)
 }
+#[cfg(test)]
+mod last_accumulate_tests {
+	use super::*;
+
+	#[test]
+	fn generated_same_slot_works() {
+		for fixture in [
+			include_str!("../../fixtures/quint/last_accumulate/slot_zero_works.itf.json"),
+			include_str!("../../fixtures/quint/last_accumulate/same_slot_works.itf.json"),
+			include_str!("../../fixtures/quint/last_accumulate/incoming_same_slot_works.itf.json"),
+			include_str!("../../fixtures/quint/last_accumulate/incoming_after_rollback_works.itf.json"),
+		] {
+			trace(fixture).unwrap();
+		}
+	}
+}
 
 /// Replay an already parsed trace, avoiding a serialize/parse round trip for streams.
 pub fn document_trace(document: &Value) -> Result<(), String> {
@@ -89,7 +105,6 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 	super::outgoing::compare(first, &jam_node::vm::StateMutations::new(0), 0)?;
 	super::outgoing::balances(&storage, first, 0)?;
 	let mut privileges = super::assignments::initial_privileges(storage.clone());
-	let mut settled_slot = bounded_integer::<u32>(field(first, "now")?, "now")?;
 
 	for (index, pair) in states.windows(2).enumerate() {
 		let frame = index + 1;
@@ -107,8 +122,9 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 		}
 		match kind {
 			FrameKind::Noop => {
+				compare::state(&storage, &pair[1], &mut codex, frame)?;
 				if let Err(error) =
-					super::invariants::state_at(&storage, &pair[1], &mut codex, frame, settled_slot)
+					super::invariants::state(&storage, &pair[1], &mut codex, frame)
 				{
 					invariant_errors.push(error);
 				}
@@ -206,16 +222,11 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 				storage = next;
 			},
 		}
-		if matches!(kind, FrameKind::Block | FrameKind::IncomingTransfer) &&
-			!super::gas::before_checkpoint(&pair[1])?
-		{
-			settled_slot = bounded_integer(field(&pair[1], "now")?, "now")?;
-		}
 		super::host_budget::finish(&mut storage, &pair[1], host_offset, frame)?;
 		compare::state(&storage, &pair[1], &mut codex, frame)?;
 		super::storage_budget::compare(&storage, &pair[1], frame)?;
 		if let Err(error) =
-			super::invariants::state_at(&storage, &pair[1], &mut codex, frame, settled_slot)
+			super::invariants::state(&storage, &pair[1], &mut codex, frame)
 		{
 			invariant_errors.push(error);
 		}
@@ -408,10 +419,13 @@ pub(super) fn upward_message(
 				phase,
 			})
 		},
-		"ParachainSetStateBalance" => Ok(UpwardMessage::ParachainSetStateBalance {
-			para_id: para_id(field(value, "paraId")?, codex)?,
-			new_total: Compact(bounded_integer::<u64>(field(value, "newTotal")?, "newTotal")?),
-		}),
+		"ParachainSetStateBalance" => {
+			let para_id = para_id(field(value, "paraId")?, codex)?;
+			Ok(UpwardMessage::ParachainSetStateBalance {
+				para_id,
+				new_total: Compact(bounded_integer(field(value, "newTotal")?, "newTotal")?),
+			})
+		},
 		"ParachainSetHead" => Ok(UpwardMessage::ParachainSetHead {
 			para_id: para_id(field(value, "paraId")?, codex)?,
 			new_head: Codex::head(integer(field(value, "newHead")?)?)?,

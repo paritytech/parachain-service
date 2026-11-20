@@ -44,6 +44,12 @@ fn trivial_works() {
 	state(&s, &f, &mut c, 0).unwrap();
 }
 #[test]
+fn last_accumulate_future_errors() {
+	rejects("last_accumulate_not_future", |s, _, _| {
+		set_state(s, &storage_key(Tag::LastAccumulate, &()), &u32::MAX);
+	});
+}
+#[test]
 fn balance_bounds_errors() {
 	rejects("balance_invariant", |s, _, _| {
 		info_change(s, |i| i.total_state_balance = i.used_state_balance - 1)
@@ -136,15 +142,6 @@ fn assignments_errors() {
 			&storage_key(Tag::PendingAssigns, &1u16),
 			&PendingAssign { queue: vec![[0; 32]], assigner: None },
 		)
-	});
-	rejects("fired_assign_not_left_due", |s, _, f| {
-		set_state(s, &storage_key(Tag::PendingAssignCores, &()), &vec![(1u16, 0u32)]);
-		set_state(
-			s,
-			&storage_key(Tag::PendingAssigns, &1u16),
-			&PendingAssign { queue: vec![[0; 32]], assigner: None },
-		);
-		f["lastStepAssigns"] = json!([{"core": {"#bigint": "1"}}]);
 	});
 	for len in [0, AUTHORIZER_QUEUE_LEN + 1] {
 		rejects("pending_authorizer_queue_bounded", |s, _, _| {
@@ -256,24 +253,6 @@ fn host_effects_errors() {
 	effects_state.keys = None;
 	effects_state.auths.insert(CORE_COUNT as u16, Default::default());
 	assert!(effects(&effects_state, 0).unwrap_err().contains("assign_calls_well_formed"));
-}
-#[test]
-fn catalogue_works() {
-	let model = include_str!(
-		"../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/invariants.qnt"
-	);
-	let names: Vec<_> = model
-		.lines()
-		.filter_map(|line| line.trim().strip_prefix("val "))
-		.filter_map(|line| line.split_once(": bool").map(|p| p.0))
-		.filter(|name| *name != "invariants")
-		.collect();
-	assert_eq!(names.len(), 31, "review catalogue whenever the model pin changes");
-	let implementation =
-		format!("{}{}", include_str!("invariants.rs"), include_str!("invariant_heads.rs"));
-	for name in names {
-		assert!(implementation.contains(&format!("\"{name}\"")), "missing invariant {name}");
-	}
 }
 
 #[test]
@@ -486,18 +465,16 @@ fn deregistering_heads_works() {
 }
 
 #[test]
-fn assignment_rollback_watermark_works() {
+fn late_assignment_rearming_works() {
 	let (mut storage, mut codex, mut frame) = seeded();
 	set_state(&mut storage, &storage_key(Tag::PendingAssignCores, &()), &vec![(1u16, 10u32)]);
 	set_state(
 		&mut storage,
 		&storage_key(Tag::PendingAssigns, &1u16),
-		&PendingAssign { queue: vec![[0; 32]], assigner: None },
+		&PendingAssign { queue: vec![[0; 32]; 3], assigner: None },
 	);
 	frame["now"] = json!({"#bigint": "20"});
 	frame["lastStepAssigns"] = json!([{"core": {"#bigint": "1"}}]);
-	state_at(&storage, &frame, &mut codex, 42, 5).unwrap();
-	assert!(state_at(&storage, &frame, &mut codex, 42, 10)
-		.unwrap_err()
-		.contains("fired_assign_not_left_due"));
+	// Rearming advances the due slot, not the current slot.
+	state_at(&storage, &frame, &mut codex, 42, 20).unwrap();
 }

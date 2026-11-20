@@ -18,6 +18,7 @@
 
 use crate::{
 	constants::{AUTHORIZER_QUEUE_LEN, MAX_PVF_HEAP_SIZE},
+	pvf::nested::NestedVms,
 	work_digest::{HeadData, RefineLog, MAX_REPORT_ERROR_PAYLOAD},
 };
 use alloc::{string::String, vec::Vec};
@@ -35,6 +36,32 @@ use polkavm::Reg;
 
 /// Returned in `A0` by buffer-returning calls when the value does not exist.
 pub const ABSENT: u64 = u64::MAX;
+
+/// Fixed costs calibrated by `refine_host_gas`, with 25% headroom.
+/// Buffer samples cover 40 KiB fetches/messages and 64 KiB VM copies;
+/// larger inputs may still exhaust Refine's outer gas.
+pub const fn host_call_gas_cost(call: &HostCall) -> SignedGas {
+	match call {
+		HostCall::Gas => 23_000,
+		HostCall::GrowHeap => 27_000,
+		HostCall::Fetch => 221_000,
+		HostCall::HistoricalLookup => 218_000,
+		HostCall::Compile => 117_000,
+		HostCall::Machine => 27_000,
+		HostCall::Peek => 377_000,
+		HostCall::Poke => 331_000,
+		HostCall::Pages => 27_000,
+		HostCall::Invoke => 28_000,
+		HostCall::Expunge => 25_000,
+		HostCall::Export => 50_000,
+		HostCall::SetParentHeadHash => 62_000,
+		HostCall::SetHead => 81_000,
+		HostCall::SendUpwardMessage => 936_000,
+		HostCall::JamLog | HostCall::Log => 301_000,
+		// Total error-path cost avoids negative differential measurements.
+		HostCall::ReportError => 1_350_000,
+	}
+}
 
 /// Caps on what one `log` host call may copy out of the child, so a malformed guest
 /// cannot force an unbounded peek on a diagnostics path.
@@ -115,6 +142,8 @@ pub struct ExecutorState {
 	umps_bytes: usize,
 	/// The child's heap: break tracking + on-demand page mapping for `grow_heap`.
 	heap: Heap,
+	/// Modules and instances owned by the validation code.
+	nested: NestedVms,
 }
 
 impl ExecutorState {
@@ -127,6 +156,7 @@ impl ExecutorState {
 			set_validator_keys_called: false,
 			umps_bytes: 0,
 			heap,
+			nested: NestedVms::new(),
 		}
 	}
 
@@ -145,17 +175,16 @@ impl ExecutorState {
 		}
 	}
 
-	/// Handle one child host call. `gas_left` and `regs` are the inner PVM's gas
-	/// and registers at the fault; return-value registers are updated in place.
+	/// Handle one child host call, updating its gas budget and return registers.
 	///
 	/// Structured violations return a `RefineLog`; abnormal PVF exits (unknown
 	/// host calls, machine failures, oversized values) panic the whole refine
 	/// invocation (§4.2).
 	pub fn dispatch(
 		&mut self,
-		handle: u64,
+		handle: &refine::InstanceHandle,
 		index: u64,
-		gas_left: SignedGas,
+		gas_left: &mut SignedGas,
 		regs: &mut [u64; 13],
 	) -> Result<(), RefineLog> {
 		let Ok(call) = HostCall::try_from(index) else {
@@ -163,6 +192,13 @@ impl ExecutorState {
 			// refine invocation (§4.2).
 			panic!("PVF invoked unknown host call {index}; §4.2 whole-refine failure")
 		};
+		*gas_left = gas_left
+			.checked_sub(host_call_gas_cost(&call))
+			.filter(|left| *left >= 0)
+			.unwrap_or_else(|| {
+				*gas_left = 0;
+				panic!("PVF host call out of gas")
+			});
 		jam_pvm_common::info!(
 			"PVF dispatch probe: call={} a0={:#x} a1={:#x}",
 			index,
@@ -174,7 +210,7 @@ impl ExecutorState {
 			// --- Data access (§4.3) -------------------------------------------------
 			// The inner VM's gas, not Refine's own (§4.3).
 			HostCall::Gas => {
-				regs[A0] = gas_left as u64;
+				regs[A0] = *gas_left as u64;
 			},
 			HostCall::GrowHeap => {
 				// Child heap growth (§4.3): the guest allocator (jam-pvm-common's
@@ -254,6 +290,13 @@ impl ExecutorState {
 				relay_out(handle, full, &buf, out_ptr, cap, "historical_lookup");
 				regs[A0] = full;
 			},
+			HostCall::Compile
+			| HostCall::Machine
+			| HostCall::Peek
+			| HostCall::Poke
+			| HostCall::Pages
+			| HostCall::Invoke
+			| HostCall::Expunge => self.nested.dispatch(handle, call, gas_left, regs),
 
 			// --- Side effects (§4.3) -------------------------------------------------
 			HostCall::Export => {
@@ -311,7 +354,7 @@ impl ExecutorState {
 	/// `jam_validate_block` shows up as text instead of a bare trap at some program
 	/// counter. ABI: `(level, target_ptr, target_len, text_ptr, text_len)` in
 	/// `A0..A4`.
-	fn log(&self, handle: u64, regs: &mut [u64; 13]) {
+	fn log(&self, handle: &refine::InstanceHandle, regs: &mut [u64; 13]) {
 		let target = peek_bytes(handle, regs[A1], regs[A2].min(MAX_LOG_TARGET));
 		let message = peek_bytes(handle, regs[A3], regs[A4].min(MAX_LOG_MESSAGE));
 		let target = String::from_utf8_lossy(&target);
@@ -380,7 +423,7 @@ impl ExecutorState {
 	}
 }
 
-fn peek_bytes(handle: u64, ptr: u64, len: u64) -> Vec<u8> {
+fn peek_bytes(handle: &refine::InstanceHandle, ptr: u64, len: u64) -> Vec<u8> {
 	if len == 0 {
 		return Vec::new();
 	}
@@ -390,7 +433,14 @@ fn peek_bytes(handle: u64, ptr: u64, len: u64) -> Vec<u8> {
 
 /// Copy a forwarded JAM result into the child's buffer. `full` is JAM's return
 /// value: the untruncated length, or [`ABSENT`] when the item does not exist.
-fn relay_out(handle: u64, full: u64, buf: &[u8], out_ptr: u64, cap: u64, what: &str) {
+fn relay_out(
+	handle: &refine::InstanceHandle,
+	full: u64,
+	buf: &[u8],
+	out_ptr: u64,
+	cap: u64,
+	what: &str,
+) {
 	if full == ABSENT || cap == 0 {
 		return;
 	}
@@ -399,7 +449,7 @@ fn relay_out(handle: u64, full: u64, buf: &[u8], out_ptr: u64, cap: u64, what: &
 		.unwrap_or_else(|_| panic!("PVF `{what}` copy-out poke failed; §4.2 whole-refine failure"));
 }
 
-fn peek_hash(handle: u64, ptr: u64) -> Hash {
+fn peek_hash(handle: &refine::InstanceHandle, ptr: u64) -> Hash {
 	let bytes = peek_bytes(handle, ptr, 32);
 	bytes.try_into().expect("peeked exactly 32 bytes; qed")
 }

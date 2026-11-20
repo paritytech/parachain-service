@@ -56,14 +56,20 @@ pub fn classify(previous: &Value, current: &Value) -> Result<FrameKind, String> 
 	// normalized traces, so provision is decided by the unchanged slot and the
 	// sole `preimageStatus` change rather than by an empty work-result list.
 	let provision = now_unchanged && changed_svc_fields == BTreeSet::from(["preimageStatus"]);
-	// Only stepRefineAccumulate advances `now`, so it catches zero-package blocks too.
-	let block = !provision && (!work_results.is_empty() || !now_unchanged);
+	// Empty same-slot invocations can change only the watermark or prevSvc.
+	let empty_invocation = changed_svc_fields.is_empty() &&
+		current.get("prevSvc").is_some_and(|svc| Some(svc) == previous.get("svc"));
+	let block = !provision &&
+		(!work_results.is_empty() ||
+			!now_unchanged ||
+			changed_svc_fields == BTreeSet::from(["lastAccumulate"]) ||
+			empty_invocation);
 	let incoming = !provision &&
 		!block && work_results.is_empty() &&
 		now_unchanged &&
 		!changed_svc_fields.is_empty() &&
 		changed_svc_fields.iter().all(|field| {
-			matches!(*field, "incomingTransfers" | "incomingTransferBuckets" | "parachains")
+			matches!(*field, "incomingTransfers" | "incomingTransferBuckets" | "parachains" | "lastAccumulate")
 		});
 
 	let matches = block as u8 + provision as u8 + incoming as u8;

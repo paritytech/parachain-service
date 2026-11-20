@@ -93,6 +93,18 @@ pub fn normalize(document: &Value) -> Result<Cow<'_, Value>, String> {
 	}
 	Ok(Cow::Owned(document))
 }
+// Legacy budget models start with the free balance available after the
+// singleton exists. Fund its first write separately and account for rollback.
+pub fn marker_reserve(storage: &Storage) -> Result<u64, String> {
+	let key = parachain_service::state::storage_key(
+		parachain_service::state::Tag::LastAccumulate, &(),
+	);
+	let marker = super::invariants::read::<u32>(storage, &key)?;
+	Ok(if marker.is_some() { 0 } else {
+		jam_types::deposit_per_item() + 39 * jam_types::deposit_per_byte()
+	})
+}
+
 
 pub fn prepare(storage: &mut Storage, frame: &Value) -> Result<(), String> {
 	let Some(budget) = frame.get("replayStorageBudget") else { return Ok(()) };
@@ -100,7 +112,11 @@ pub fn prepare(storage: &mut Storage, frame: &Value) -> Result<(), String> {
 	let mut service = storage.service(MOCK_SERVICE_ID).ok_or("missing budgeted service")?;
 	// An explicit fault-environment input, relative to the current footprint.
 	// Do not patch counters or intercept write calls: exercise JAM's real FULL.
-	service.balance = service.threshold().checked_add(budget).ok_or("storage budget overflow")?;
+	let reserve = marker_reserve(storage)?;
+	service.balance = service.threshold()
+		.checked_add(budget)
+		.and_then(|balance| balance.checked_add(reserve))
+		.ok_or("storage budget overflow")?;
 	storage.set_service(MOCK_SERVICE_ID, &service);
 	storage.commit();
 	Ok(())
@@ -108,7 +124,9 @@ pub fn prepare(storage: &mut Storage, frame: &Value) -> Result<(), String> {
 
 pub fn compare(storage: &Storage, frame: &Value, index: usize) -> Result<(), String> {
 	let Some(free) = frame.get("replayStorageFree") else { return Ok(()) };
-	let expected = bounded_integer::<u64>(free, "storage free balance")?;
+	let expected = bounded_integer::<u64>(free, "storage free balance")?
+		.checked_add(marker_reserve(storage)?)
+		.ok_or("storage free balance overflow")?;
 	let service = storage.service(MOCK_SERVICE_ID).ok_or("missing budgeted service")?;
 	if service.balance < service.threshold() || service.free() != expected {
 		return Err(format!(

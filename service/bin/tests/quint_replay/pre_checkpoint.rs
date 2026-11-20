@@ -26,11 +26,11 @@ fn phase_interiors_works() {
 
 #[test]
 fn host_boundaries_works() {
-	// An exhausted pool leaves no allowance, so the due flush never reaches an
-	// `assign` (§5.1); sample around its dirty-index read instead.
+	// Incoming-transfer writes occur after the first checkpoint. Sample the
+	// dirty-index read in both scenarios to check rollback before that checkpoint.
 	for (fixture, frame, call) in [
 		(DUE, 2, "read"),
-		(include_str!("../fixtures/quint/pre_checkpoint/incoming_works.itf.json"), 1, "write"),
+		(include_str!("../fixtures/quint/pre_checkpoint/incoming_works.itf.json"), 1, "read"),
 	] {
 		for side in ["before", "after"] {
 			let mut trace: Value = serde_json::from_str(fixture).unwrap();

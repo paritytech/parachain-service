@@ -126,12 +126,15 @@ pub const ASSET_HUB_GLOBAL_ITEMS_FOOTPRINT: Balance = {
 	// + count 4. An empty queue is the key being absent, not an encoded `Option`
 	// tag, so nothing is reserved for one.
 	let transfer_buckets = ENTRY_OVERHEAD + 1 + 8 + 8 + 4;
-	// Fixed storage items: the two singletons, the endpoint pointer, one per core.
-	let fixed_items = (3 + CORE_COUNT as u64) * ITEM_DEPOSIT;
+	// last_accumulate: 34 + 1 (key) + 4 (SCALE Slot), 1 item.
+	let last_accumulate = ENTRY_OVERHEAD + 1 + 4;
+	// Fixed storage items: three singletons, the endpoint pointer, one per core.
+	let fixed_items = (4 + CORE_COUNT as u64) * ITEM_DEPOSIT;
 	staged_keys +
 		pending_assigns +
 		pending_assign_cores +
 		transfer_buckets +
+		last_accumulate +
 		fixed_items +
 		(MAX_INCOMING_TRANSFERS as u64) * INCOMING_TRANSFER_ENTRY_FOOTPRINT
 };
@@ -449,7 +452,7 @@ mod tests {
 		assert_eq!(INCOMING_TRANSFER_ENTRY_FOOTPRINT, 196);
 		assert_eq!(
 			ASSET_HUB_GLOBAL_ITEMS_FOOTPRINT,
-			1_237_307 + (MAX_INCOMING_TRANSFERS as u64) * 196
+			1_237_356 + (MAX_INCOMING_TRANSFERS as u64) * 196
 		);
 	}
 }
