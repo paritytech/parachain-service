@@ -162,7 +162,8 @@ fn retained_announcement_errors(trace_json: &str, message: &str, context: &str) 
 		.rfind(|&i| {
 			states[i]["now"] != states[i - 1]["now"] &&
 				states[i]["lastStepWorkResults"][0]["result"]["value"]["value"]["upwardMessages"]
-					[0]["tag"] == message
+					[0]["#tup"][1]["tag"] ==
+					message
 		})
 		.expect("candidate carrying the message");
 	assert_eq!(

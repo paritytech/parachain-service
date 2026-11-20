@@ -6,7 +6,7 @@ use common::*;
 use parachain_service::{
 	constants::MAX_INCOMING_TRANSFERS,
 	state::{
-		log::{AccumulateLog, LogEntry, TransferError},
+		log::{AccumulateLog, TransferError},
 		storage_key,
 		transfers::{IncomingTransferBuckets, IncomingTransfers, QueuedTransfer},
 		Tag,
@@ -26,13 +26,7 @@ fn ah_storage() -> jam_node::vm::Storage {
 }
 
 fn ah_accumulate_logs(storage: &jam_node::vm::Storage) -> Vec<AccumulateLog> {
-	para_log(storage, ASSET_HUB_PARA_ID)
-		.into_iter()
-		.flat_map(|(_, e)| match e {
-			LogEntry::Accumulate { entries } => entries,
-			LogEntry::Refine { .. } => panic!("unexpected refine entry"),
-		})
-		.collect()
+	accumulate_logs(storage, ASSET_HUB_PARA_ID)
 }
 
 #[test]
@@ -292,7 +286,7 @@ fn transfer_out_works() {
 		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
 		seed_service(s, 42, 500);
 	});
-	let msg = transfer_out_msg(42, 12345, 7, Some(([3; 128], 500)));
+	let msg = transfer_out_msg(42, 12345, Some(([3; 128], 500)));
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
 
 	let (_, storage, mutations) = accumulate_block(storage, vec![work_item(&digest)], NOW);
@@ -312,7 +306,7 @@ fn transfer_out_below_dest_minimum_errors() {
 		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
 		seed_service(s, 42, 500);
 	});
-	let msg = transfer_out_msg(42, 12345, 8, Some(([3; 128], 499)));
+	let msg = transfer_out_msg(42, 12345, Some(([3; 128], 499)));
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
 
 	let (_, storage, mutations) = accumulate_block(storage, vec![work_item(&digest)], NOW);
@@ -320,10 +314,7 @@ fn transfer_out_below_dest_minimum_errors() {
 	assert!(mutations.transfers.is_empty());
 	assert_eq!(
 		ah_accumulate_logs(&storage),
-		vec![AccumulateLog::TransferFailed {
-			id: 8.into(),
-			error: TransferError::GasBelowDestinationMinimum
-		}]
+		vec![AccumulateLog::TransferFailed { error: TransferError::GasBelowDestinationMinimum }]
 	);
 }
 
@@ -334,7 +325,7 @@ fn transfer_out_plain_move_errors() {
 		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
 		seed_service(s, 42, 500);
 	});
-	let msg = transfer_out_msg(42, 12345, 9, None);
+	let msg = transfer_out_msg(42, 12345, None);
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
 
 	let (_, storage, mutations) = accumulate_block(storage, vec![work_item(&digest)], NOW);
@@ -342,16 +333,13 @@ fn transfer_out_plain_move_errors() {
 	assert!(mutations.transfers.is_empty());
 	assert_eq!(
 		ah_accumulate_logs(&storage),
-		vec![AccumulateLog::TransferFailed {
-			id: 9.into(),
-			error: TransferError::DestinationNotSupervised
-		}]
+		vec![AccumulateLog::TransferFailed { error: TransferError::DestinationNotSupervised }]
 	);
 }
 
 #[test]
 fn transfer_out_unknown_dest_errors() {
-	let msg = transfer_out_msg(999, 12345, 3, Some(([3; 128], 500)));
+	let msg = transfer_out_msg(999, 12345, Some(([3; 128], 500)));
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![msg], 0);
 
 	let (_, storage, mutations) = accumulate_block(ah_storage(), vec![work_item(&digest)], NOW);
@@ -359,10 +347,7 @@ fn transfer_out_unknown_dest_errors() {
 	assert!(mutations.transfers.is_empty());
 	assert_eq!(
 		ah_accumulate_logs(&storage),
-		vec![AccumulateLog::TransferFailed {
-			id: 3.into(),
-			error: TransferError::UnknownDestination
-		}]
+		vec![AccumulateLog::TransferFailed { error: TransferError::UnknownDestination }]
 	);
 }
 
@@ -372,7 +357,6 @@ fn pay_42() -> TransferOutArgs {
 		source: None,
 		dest: 42,
 		amount: TransferAmount::Exact(100.into()),
-		id: 1.into(),
 		source_supervisor_balance: false,
 		dest_supervisor_balance: false,
 		deferred: Some(([3; 128], 500)),
@@ -449,7 +433,7 @@ fn transfer_out_refusal_order_errors() {
 		.into_iter()
 		.filter_map(|(args, error)| {
 			let got = replay_transfer_out(args.clone());
-			let want = (vec![AccumulateLog::TransferFailed { id: 1.into(), error }], vec![]);
+			let want = (vec![AccumulateLog::TransferFailed { error }], vec![]);
 			(got != want).then_some((args, got))
 		})
 		.collect();
@@ -495,13 +479,13 @@ fn transfer_out_max_works() {
 	// empty supervisor balance caps it at zero; both report the moved amount.
 	let (logs, amounts) = replay_max_transfers(&[
 		max_42(10),
-		TransferOutArgs { id: 2.into(), source_supervisor_balance: true, ..max_42(10) },
+		TransferOutArgs { source_supervisor_balance: true, ..max_42(10) },
 	]);
 	assert_eq!(
 		logs,
 		vec![
-			AccumulateLog::TransferredAmount { id: 1.into(), amount: 10.into() },
-			AccumulateLog::TransferredAmount { id: 2.into(), amount: 0.into() },
+			AccumulateLog::TransferredAmount { amount: 10.into() },
+			AccumulateLog::TransferredAmount { amount: 0.into() },
 		]
 	);
 	assert_eq!(amounts, vec![10, 0]);
@@ -511,8 +495,7 @@ fn transfer_out_max_works() {
 fn transfer_out_max_drains_to_threshold_works() {
 	// The first `Max` takes everything above the threshold, so the next finds nothing
 	// to spare and moves zero instead of failing.
-	let (_, amounts) =
-		replay_max_transfers(&[max_42(u64::MAX), TransferOutArgs { id: 2.into(), ..max_42(1) }]);
+	let (_, amounts) = replay_max_transfers(&[max_42(u64::MAX), max_42(1)]);
 	let [drained, 0] = amounts[..] else { panic!("unexpected transfers {amounts:?}") };
 	assert!(drained > 0, "the seeded balance has room above the threshold");
 }

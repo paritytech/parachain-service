@@ -7,8 +7,8 @@
 extern crate alloc;
 
 use crate::types::{
-	AuthorizerHash, Balance, BucketId, CoreIndex, Hash, HeadData, Memo, ParaId, ServiceId,
-	Timeslot, ValidationCodeHash, ValidationCodeRef, ValidatorKey, ASSET_HUB_PARA_ID,
+	AuthorizerHash, Balance, BucketId, CoreIndex, Hash, HeadData, Memo, MessageId, ParaId,
+	ServiceId, Timeslot, ValidationCodeHash, ValidationCodeRef, ValidatorKey, ASSET_HUB_PARA_ID,
 	CORETIME_PARA_ID,
 };
 use alloc::vec::Vec;
@@ -32,8 +32,9 @@ pub const SET_VALIDATOR_KEYS_MAX_KEYS: usize = 30;
 pub const MAX_UPWARD_MESSAGE_BYTES: usize = 40 * 1024;
 
 /// Upward messages emitted via host functions during Refine and replayed in order
-/// by Accumulate.
-pub type UpwardMessages = BoundedVec<UpwardMessage, ConstU32<MAX_UPWARD_MESSAGES_PER_DIGEST>>;
+/// by Accumulate, each paired with the [`MessageId`] it was sent with.
+pub type UpwardMessages =
+	BoundedVec<(MessageId, UpwardMessage), ConstU32<MAX_UPWARD_MESSAGES_PER_DIGEST>>;
 
 /// What a `forget` acts on: a registered parachain's share of this service's own
 /// preimage store, or a supervised service's store (§6.1, §6.5).
@@ -59,9 +60,8 @@ pub enum TransferAmount {
 /// which of `dest`'s is credited; `true` means the supervisor balance. `deferred`
 /// is `None` for a plain move and `Some((memo, gas))` for a deferred transfer;
 /// the two are inseparable because JAM ignores the gas limit when no memo is
-/// supplied. `id` is caller-chosen and echoed back in
-/// `AccumulateLog::TransferFailed` and `AccumulateLog::TransferredAmount` so the
-/// parachain can match up the outcome.
+/// supplied. The outcome is reported under the message's own `message_id`, so
+/// the parachain can match it up.
 ///
 /// Field order is part of the stable upward-message SCALE ABI.
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
@@ -69,7 +69,6 @@ pub struct TransferOutArgs {
 	pub source: Option<ServiceId>,
 	pub dest: ServiceId,
 	pub amount: TransferAmount,
-	pub id: Compact<u64>,
 	pub source_supervisor_balance: bool,
 	pub dest_supervisor_balance: bool,
 	pub deferred: Option<(Memo, u64)>,
@@ -80,9 +79,9 @@ pub struct TransferOutArgs {
 /// `desired_id` names an index in JAM's protected range, honoured only while this
 /// service holds JAM's `registrar` privilege; `None` lets JAM allocate. The two
 /// selectors choose which balance funds the new service here and which of its own
-/// balances it is funded into; `true` means the supervisor balance. `message_id`
-/// is the caller's own handle, echoed back in `AccumulateLog::ServiceCreation` so the
-/// caller can match the assigned `ServiceId` to its own record.
+/// balances it is funded into; `true` means the supervisor balance. The outcome is
+/// reported in `AccumulateLog::ServiceCreation`, tagged with the `message_id` the
+/// caller sent it with.
 ///
 /// This is carried inside a SCALE-encoded upward message passed to
 /// `send_upward_message`; there is no separate child `create_service` host call.
@@ -92,7 +91,6 @@ pub struct CreateServiceArgs {
 	pub len: Compact<u32>,
 	pub min_item_gas: u64,
 	pub min_memo_gas: u64,
-	pub message_id: Compact<u64>,
 	pub desired_id: Option<ServiceId>,
 	pub source_supervisor_balance: bool,
 	pub new_supervisor_balance: bool,
@@ -280,7 +278,6 @@ mod tests {
 				len: 1024.into(),
 				min_item_gas: 0,
 				min_memo_gas: 0,
-				message_id: 77.into(),
 				desired_id: None,
 				source_supervisor_balance: false,
 				new_supervisor_balance: false,

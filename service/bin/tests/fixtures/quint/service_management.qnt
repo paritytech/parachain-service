@@ -35,7 +35,7 @@ module service_management {
     .then(normal(operations(MkServiceId(0))))
     .then(normal(operations(ParachainServiceId)))
   run created_account_works = replayInit
-    .then(normal(List(CreateService(createArgs(Some(MkServiceId(42)), 77)))
+    .then(normal(List(CreateService(createArgs(Some(MkServiceId(42)))))
       .concat(operations(MkServiceId(42)))))
     .then(normal(operations(MkServiceId(42))))
   run unauthorized_works = replayInit.then(replayBlock(List(replayWork(svc, CoretimeParaId,

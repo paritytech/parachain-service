@@ -9,7 +9,7 @@ mod common;
 
 use common::*;
 use parachain_service::state::log::{
-	AccumulateLog, LogEntry, ServiceCreationResult, ServiceEjectError, ServiceSolicitError,
+	AccumulateLog, ServiceCreationResult, ServiceEjectError, ServiceSolicitError,
 	ServiceSupervisorError,
 };
 use parachain_service_core::{
@@ -43,7 +43,6 @@ fn create_args(desired_id: Option<ServiceId>) -> CreateServiceArgs {
 		len: (AH_CODE.len() as u32).into(),
 		min_item_gas: 100,
 		min_memo_gas: 100,
-		message_id: 77.into(),
 		desired_id,
 		source_supervisor_balance: false,
 		new_supervisor_balance: false,
@@ -75,19 +74,17 @@ fn all_ops(service: ServiceId) -> Vec<UpwardMessage> {
 	]
 }
 
-/// Replay `msgs` from Asset Hub against `storage` and return the log entries.
+/// Replay `msgs` from Asset Hub against `storage` and return the log entries
+/// with the `message_id` each was logged with.
 fn replay(
 	storage: jam_node::vm::Storage,
 	msgs: Vec<UpwardMessage>,
-) -> (Vec<AccumulateLog>, jam_node::vm::Storage) {
+) -> (Vec<(u64, AccumulateLog)>, jam_node::vm::Storage) {
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-head-1", msgs, 0);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
-	let entries = para_log(&storage, ASSET_HUB_PARA_ID)
+	let entries = accumulate_entries(&storage, ASSET_HUB_PARA_ID)
 		.into_iter()
-		.flat_map(|(_, e)| match e {
-			LogEntry::Accumulate { entries } => entries,
-			LogEntry::Refine { .. } => panic!("unexpected refine entry"),
-		})
+		.map(|(id, log)| (id.0, log))
 		.collect();
 	(entries, storage)
 }
@@ -101,18 +98,14 @@ fn unknown_service_errors() {
 	assert_eq!(
 		logs,
 		vec![
-			AccumulateLog::ServiceSolicitFailed {
-				service: GHOST,
-				error: ServiceSolicitError::UnknownService
-			},
-			AccumulateLog::ServiceEjectFailed {
-				service: GHOST,
-				error: ServiceEjectError::UnknownService
-			},
-			AccumulateLog::ServiceSupervisorFailed {
-				service: GHOST,
-				error: ServiceSupervisorError::UnknownService
-			},
+			(1, AccumulateLog::ServiceSolicitFailed { error: ServiceSolicitError::UnknownService }),
+			(3, AccumulateLog::ServiceEjectFailed { error: ServiceEjectError::UnknownService }),
+			(
+				4,
+				AccumulateLog::ServiceSupervisorFailed {
+					error: ServiceSupervisorError::UnknownService
+				}
+			),
 		]
 	);
 }
@@ -125,18 +118,14 @@ fn known_but_unsupervised_errors() {
 	assert_eq!(
 		logs,
 		vec![
-			AccumulateLog::ServiceSolicitFailed {
-				service: OTHER,
-				error: ServiceSolicitError::NotSupervised
-			},
-			AccumulateLog::ServiceEjectFailed {
-				service: OTHER,
-				error: ServiceEjectError::NotSupervised
-			},
-			AccumulateLog::ServiceSupervisorFailed {
-				service: OTHER,
-				error: ServiceSupervisorError::NotSupervised
-			},
+			(1, AccumulateLog::ServiceSolicitFailed { error: ServiceSolicitError::NotSupervised }),
+			(3, AccumulateLog::ServiceEjectFailed { error: ServiceEjectError::NotSupervised }),
+			(
+				4,
+				AccumulateLog::ServiceSupervisorFailed {
+					error: ServiceSupervisorError::NotSupervised
+				}
+			),
 		]
 	);
 }
@@ -165,10 +154,7 @@ fn eject_self_errors() {
 
 	assert_eq!(
 		logs,
-		vec![AccumulateLog::ServiceEjectFailed {
-			service: SVC,
-			error: ServiceEjectError::TargetIsSelf
-		}]
+		vec![(0, AccumulateLog::ServiceEjectFailed { error: ServiceEjectError::TargetIsSelf })]
 	);
 }
 
@@ -181,10 +167,12 @@ fn set_supervisor_unknown_new_supervisor_errors() {
 
 	assert_eq!(
 		logs,
-		vec![AccumulateLog::ServiceSupervisorFailed {
-			service: OTHER,
-			error: ServiceSupervisorError::UnknownNewSupervisor
-		}]
+		vec![(
+			0,
+			AccumulateLog::ServiceSupervisorFailed {
+				error: ServiceSupervisorError::UnknownNewSupervisor
+			}
+		)]
 	);
 }
 
@@ -196,14 +184,14 @@ fn create_works() {
 
 	let (logs, storage) = replay(ah_storage(), msgs);
 
-	let [AccumulateLog::ServiceCreation {
+	let [(
 		message_id,
-		result: ServiceCreationResult::Created(new_id),
-	}] = logs[..]
+		AccumulateLog::ServiceCreation { result: ServiceCreationResult::Created(new_id) },
+	)] = logs[..]
 	else {
 		panic!("expected a successful ServiceCreation, got {logs:?}")
 	};
-	assert_eq!(message_id.0, 77, "the caller's own handle is echoed back");
+	assert_eq!(message_id, 0, "the message's own id tags the outcome");
 	let created = storage.service(new_id).expect("JAM created the service");
 	assert_eq!(created.parent_service, SVC);
 	assert_eq!(created.code_hash.0, jam_std_common::hash_raw(AH_CODE));
@@ -219,10 +207,10 @@ fn create_desired_id_works() {
 
 	assert_eq!(
 		logs,
-		vec![AccumulateLog::ServiceCreation {
-			message_id: 77.into(),
-			result: ServiceCreationResult::Created(WANTED_ID)
-		}]
+		vec![(
+			0,
+			AccumulateLog::ServiceCreation { result: ServiceCreationResult::Created(WANTED_ID) }
+		)]
 	);
 	assert!(storage.service(WANTED_ID).is_some());
 }
@@ -240,10 +228,7 @@ fn create_id_taken_errors() {
 
 	assert_eq!(
 		logs,
-		vec![AccumulateLog::ServiceCreation {
-			message_id: 77.into(),
-			result: ServiceCreationResult::IdTaken
-		}]
+		vec![(0, AccumulateLog::ServiceCreation { result: ServiceCreationResult::IdTaken })]
 	);
 	assert_eq!(storage.service(WANTED_ID).expect("untouched").code_hash, taken.code_hash);
 	assert_eq!(storage.service(SVC).expect("caller exists").balance, balance);
@@ -261,10 +246,10 @@ fn create_supervisor_balance_errors() {
 
 		assert_eq!(
 			logs,
-			vec![AccumulateLog::ServiceCreation {
-				message_id: 77.into(),
-				result: ServiceCreationResult::CannotAfford
-			}]
+			vec![(
+				0,
+				AccumulateLog::ServiceCreation { result: ServiceCreationResult::CannotAfford }
+			)]
 		);
 	}
 }

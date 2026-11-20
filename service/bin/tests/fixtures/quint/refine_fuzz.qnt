@@ -40,12 +40,12 @@ module fuzz {
     SetParentHeadHash(headHash(0)), SetParentHeadHash(headHash(7)),
     SetHead(0), SetHead(1), SetHead(7), SetHeadOversized,
     ReportError(0), ReportError(63), ReportError(64), ReportError(1024), Panic,
-    Send(SetKV({ key: List(1), value: List(2) })),
-    Send(SetKV({ key: List(), value: List(2) })),
-    Send(RemoveKV({ paraId: CoretimeParaId, key: List() })),
-    Send(ParachainCleanUp(AssetHubParaId)),
-    Send(SetValidatorKeys({ keys: List(), isLast: false })),
-    Send(AssignCore({ core: 65535, jamSlot: 0, queue: List(), newAssigner: None }))
+    Send((0, SetKV({ key: List(1), value: List(2) }))),
+    Send((1, SetKV({ key: List(), value: List(2) }))),
+    Send((2, RemoveKV({ paraId: CoretimeParaId, key: List() }))),
+    Send((3, ParachainCleanUp(AssetHubParaId))),
+    Send((4, SetValidatorKeys({ keys: List(), isLast: false }))),
+    Send((5, AssignCore({ core: 65535, jamSlot: 0, queue: List(), newAssigner: None })))
   )
   action replayStep = {
     nondet para = Set(CoretimeParaId, AssetHubParaId, MkParaId(42)).oneOf()
@@ -61,10 +61,10 @@ module fuzz {
       else if (mode == 1) List(a, b, c)
       else if (mode == 2) declarations.concat(List(a, b, c))
       else if (mode == 3) List(a).concat(declarations).concat(List(b, c))
-      else if (mode == 4) declarations.concat(List(Send(SetKV({ key: List(1),
-        value: range(0, payloadLen).foldl(List(), (acc, _) => acc.append(2)) }))))
+      else if (mode == 4) declarations.concat(List(Send((0, SetKV({ key: List(1),
+        value: range(0, payloadLen).foldl(List(), (acc, _) => acc.append(2)) })))))
       else if (mode == 5) declarations.concat(range(0, count).foldl(List(),
-        (acc, _) => acc.append(Send(SetKV({ key: List(1), value: List(2) })))))
+        (acc, i) => acc.append(Send((i, SetKV({ key: List(1), value: List(2) }))))))
       else List(a, b).concat(declarations)
     val candidateForPara = { ...candidate, paraId: para }
     val pkg: WorkPackage = { items: if (mode == 7) List(candidateForPara, candidateForPara) else List(candidateForPara) }

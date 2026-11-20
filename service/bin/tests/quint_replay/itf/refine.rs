@@ -1,7 +1,7 @@
 //! Differential Refine replay through the real service and a scripted child PVM.
 use super::{
 	codex::Codex,
-	replay::{bounded_integer, field, integer, para_id, upward_message, variant, work_digest},
+	replay::{bounded_integer, field, integer, para_id, sent_upward_message, variant, work_digest},
 };
 use crate::common::{work_item_skipped, work_item_with_auth_trace};
 use codec::{DecodeAll, Encode};
@@ -198,7 +198,7 @@ pub(super) fn execute_authorized(
 			},
 			"SetHead" => Call::Head(Codex::head(integer(value)?)?.to_vec()),
 			"SetHeadOversized" => Call::Head(vec![0; 4097]),
-			"Send" => Call::Send(upward_message(value, caller, codex)?.encode()),
+			"Send" => Call::Send(sent_upward_message(value, caller, codex)?.encode()),
 			"ReportError" => {
 				let len = bounded_integer::<usize>(value, "error payload")?;
 				if len > 1024 {

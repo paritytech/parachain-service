@@ -28,7 +28,9 @@ pub fn validate(states: &[Value]) -> Result<(), String> {
 					reports.iter().any(|r| {
 						r.pointer("/result/value/value/upwardMessages")
 							.and_then(Value::as_array)
-							.is_some_and(|msgs| msgs.iter().any(|m| m["tag"] == "CreateService"))
+							.is_some_and(|msgs| {
+								msgs.iter().any(|m| sent_tag(m) == Some("CreateService"))
+							})
 					})
 				});
 		if creates && (!enabled || state.get("replayTransfers").is_none()) {
@@ -45,8 +47,6 @@ pub fn args(value: &Value, codex: &mut Codex) -> Result<CreateServiceArgs, Strin
 		len: len.into(),
 		min_item_gas: bounded_integer(field(value, "minItemGas")?, "creation item gas")?,
 		min_memo_gas: bounded_integer(field(value, "minMemoGas")?, "creation memo gas")?,
-		message_id: bounded_integer::<u64>(field(value, "messageId")?, "creation message id")?
-			.into(),
 		desired_id: super::assignments::assigner(field(value, "desiredId")?)?,
 		source_supervisor_balance: boolean(field(value, "sourceSupervisorBalance")?)?,
 		new_supervisor_balance: boolean(field(value, "newSupervisorBalance")?)?,

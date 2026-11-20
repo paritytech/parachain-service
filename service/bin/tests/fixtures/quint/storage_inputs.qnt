@@ -15,6 +15,8 @@ module storage_inputs {
   import management.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/management"
   import validator_keys.* from "../../../../../vendor/polkadot-sdk-quint/designs/parachain-service-on-jam/quint/validator_keys"
   import validator_key_inputs.* from "./validator_key_inputs"
+  /// A `SetKV` whose host write was refused, carrying the `MessageId` of the
+  /// upward message that caused it (§5.1).
   type StorageReason = KVWrite(int)
   type StorageLog = List[(Timeslot, List[StorageReason])]
   var replayStorageBudget: int
@@ -36,7 +38,7 @@ module storage_inputs {
     { ...h, free: h.free - footprint + oldCost(h, key), sizes: h.sizes.put(key, footprint) }
   pure def logSize(log: StorageLog): int = compact(log.length()) + log.foldl(0, (n, e) =>
     n + 4 + 1 + compact(e._2.length()) + e._2.foldl(0, (m, r) => m + match r {
-      | KVWrite(_) => 34
+      | KVWrite(id) => compact(id) + 1
     }))
   pure def saveLog(h: Host, log: StorageLog): Host = {
     val footprint = cost(5, logSize(log))
@@ -176,18 +178,18 @@ module storage_inputs {
           val headed = if (headFits) { ...pruned, state: prefix.state, free: pruned.free - delta }
             else { ...pruned, failed: pruned.failed.append(index) }
           val done = range(0, ok.upwardMessages.length()).foldl({ host: headed,
-            errors: List() }, (a, m) => match ok.upwardMessages[m] {
+            errors: List() }, (a, m) => match ok.upwardMessages[m]._2 {
               | SetKV(kv) => {
                 val key = 100 + kv.key[0]
                 val footprint = cost(5 + kv.key.length(), kv.value.length())
                 val applied = applySetKV(a.host.state, ok.paraId, kv.key, kv.value)
                 if (applied.log != None or not(fits(a.host, key, footprint)))
-                  { ...a, errors: a.errors.append(KVWrite(kv.key[0])) }
+                  { ...a, errors: a.errors.append(KVWrite(ok.upwardMessages[m]._1)) }
                 else { ...a, host: { ...write(a.host, key, footprint), state: applied.state } }
               }
               | AssignCore(p) => { ...a, host: assignment(a.host, p.core, p.queue,
                   p.newAssigner, p.jamSlot, slot, index, m) }
-              | _ => { ...a, host: metadata(a.host, ok.upwardMessages[m], index, m, slot) }
+              | _ => { ...a, host: metadata(a.host, ok.upwardMessages[m]._2, index, m, slot) }
             })
           appendLog(done.host, slot, done.errors)
         }
@@ -198,8 +200,8 @@ module storage_inputs {
   pure def storageWork(parent: int, newHead: int, key: int, len: int, anchor: int): WorkResult = {
     result: WorkOk(Ok({ paraId: AssetHubParaId, validationCode: { vchBytes: 2 },
       parentHeadHash: headHash(parent), headData: newHead, lookupAnchor: anchor,
-      upwardMessages: if (len == 0) List() else List(SetKV({ key: List(key),
-        value: range(0, len).foldl(List(), (a, _) => a.append(42)) })) })), authTrace: 0
+      upwardMessages: if (len == 0) List() else List((0, SetKV({ key: List(key),
+        value: range(0, len).foldl(List(), (a, _) => a.append(42)) }))) })), authTrace: 0
   }
   action storageInit = all { init, noTransfers, noDesignation,
     replayStorageBudget' = 0, replayStorageFree' = 0, replayStorageLogs' = List(),

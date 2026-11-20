@@ -10,11 +10,7 @@ use common::*;
 use jam_std_common::hash_raw;
 use jam_types::CodeHash;
 use parachain_service::{
-	state::{
-		log::{AccumulateLog, InsufficientBalanceReason, LogEntry},
-		preimage_registry::PreimageEntry,
-		storage_key, Tag,
-	},
+	state::{log::AccumulateLog, preimage_registry::PreimageEntry, storage_key, Tag},
 	state_balance::preimage_footprint,
 };
 use parachain_service_bin::mock::provide_preimage;
@@ -28,16 +24,6 @@ const PARA: ParaId = ParaId::new(1000);
 const CODE: &[u8] = b"para-1000-code";
 const NEW_CODE: &[u8] = b"para-1000-code-v2";
 const THIRD_CODE: &[u8] = b"para-1000-code-v3";
-
-fn accumulate_logs(storage: &jam_node::vm::Storage, para: ParaId) -> Vec<AccumulateLog> {
-	para_log(storage, para)
-		.into_iter()
-		.flat_map(|(_, e)| match e {
-			LogEntry::Accumulate { entries } => entries,
-			LogEntry::Refine { .. } => panic!("unexpected refine entry"),
-		})
-		.collect()
-}
 
 fn announce_msg(code: &[u8]) -> UpwardMessage {
 	let reference = code_ref(code);
@@ -109,13 +95,7 @@ fn announce_before_provision_errors() {
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&early)], NOW + 1);
 
 	assert_eq!(para_info(&storage, PARA).unwrap().announced_upgrade, None);
-	assert_eq!(
-		accumulate_logs(&storage, PARA),
-		vec![AccumulateLog::CodeUpgradeNotAvailable {
-			hash: validation_code_hash_bytes(&new_ref.hash),
-			len: new_ref.len.into(),
-		}]
-	);
+	assert_eq!(accumulate_logs(&storage, PARA), vec![AccumulateLog::CodeUpgradeNotAvailable]);
 
 	let timely = ok_digest(PARA, CODE, b"head-2", b"head-3", vec![announce_msg(NEW_CODE)], NOW);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&timely)], NOW + 2);
@@ -211,13 +191,7 @@ fn announcement_unavailable_errors() {
 	assert_eq!(info.announced_upgrade, None);
 	assert_eq!(info.validation_code, Some(code_ref(CODE)));
 	assert!(registry_entry(&storage, new_ref).is_some_and(|e| e.referencers.contains(&PARA)));
-	assert_eq!(
-		accumulate_logs(&storage, PARA),
-		vec![AccumulateLog::CodeUpgradeNotAvailable {
-			hash: validation_code_hash_bytes(&new_ref.hash),
-			len: new_ref.len.into()
-		}]
-	);
+	assert_eq!(accumulate_logs(&storage, PARA), vec![AccumulateLog::CodeUpgradeNotAvailable]);
 }
 
 #[test]
@@ -246,33 +220,20 @@ fn announcement_of_other_paras_code_errors() {
 	let info = para_info(&storage, PARA).unwrap();
 	assert_eq!(info.announced_upgrade, None);
 	assert_eq!(info.validation_code, Some(code_ref(CODE)));
-	assert_eq!(
-		accumulate_logs(&storage, PARA),
-		vec![AccumulateLog::CodeUpgradeNotAvailable {
-			hash: validation_code_hash_bytes(&new_ref.hash),
-			len: new_ref.len.into()
-		}]
-	);
+	assert_eq!(accumulate_logs(&storage, PARA), vec![AccumulateLog::CodeUpgradeNotAvailable]);
 }
 
 #[test]
 fn apply_without_announcement_errors() {
 	// §5.2: an `Apply` with no standing announcement is refused.
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
-	let new_ref = code_ref(NEW_CODE);
 	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", vec![apply_msg(NEW_CODE)], 0);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	let info = para_info(&storage, PARA).unwrap();
 	assert_eq!(info.validation_code, Some(code_ref(CODE)));
 	assert_eq!(info.announced_upgrade, None);
-	assert_eq!(
-		accumulate_logs(&storage, PARA),
-		vec![AccumulateLog::CodeUpgradeNotAnnounced {
-			hash: validation_code_hash_bytes(&new_ref.hash),
-			len: new_ref.len.into()
-		}]
-	);
+	assert_eq!(accumulate_logs(&storage, PARA), vec![AccumulateLog::CodeUpgradeNotAnnounced]);
 }
 
 #[test]
@@ -281,7 +242,6 @@ fn apply_mismatched_announcement_errors() {
 	// refused; the announcement is preserved.
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
 	let new_ref = code_ref(NEW_CODE);
-	let third_ref = code_ref(THIRD_CODE);
 	let storage = solicit_and_provide(storage, b"genesis", b"head-1", NEW_CODE, NOW);
 
 	let digest = ok_digest(PARA, CODE, b"head-1", b"head-2", vec![announce_msg(NEW_CODE)], 0);
@@ -292,13 +252,7 @@ fn apply_mismatched_announcement_errors() {
 	let info = para_info(&storage, PARA).unwrap();
 	assert_eq!(info.validation_code, Some(code_ref(CODE)));
 	assert_eq!(info.announced_upgrade, Some(new_ref));
-	assert_eq!(
-		accumulate_logs(&storage, PARA),
-		vec![AccumulateLog::CodeUpgradeNotAnnounced {
-			hash: validation_code_hash_bytes(&third_ref.hash),
-			len: third_ref.len.into()
-		}]
-	);
+	assert_eq!(accumulate_logs(&storage, PARA), vec![AccumulateLog::CodeUpgradeNotAnnounced]);
 }
 
 #[test]
@@ -423,15 +377,7 @@ fn insufficient_balance_preserves_announcement_works() {
 	let digest = ok_digest(PARA, CODE, b"head-2", b"head-3", vec![msg], 0);
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW + 2);
 	assert!(registry_entry(&storage, third_ref).is_none());
-	assert_eq!(
-		accumulate_logs(&storage, PARA),
-		vec![AccumulateLog::InsufficientStateBalance {
-			reason: InsufficientBalanceReason::Solicit {
-				hash: validation_code_hash_bytes(&third_ref.hash),
-				len: third_ref.len.into()
-			}
-		}]
-	);
+	assert_eq!(accumulate_logs(&storage, PARA), vec![AccumulateLog::InsufficientStateBalance]);
 
 	// Announcing the unaffordable code is then rejected as unavailable.
 	let digest = ok_digest(PARA, CODE, b"head-3", b"head-4", vec![announce_msg(THIRD_CODE)], 0);
@@ -441,18 +387,7 @@ fn insufficient_balance_preserves_announcement_works() {
 	assert_eq!(info.announced_upgrade, Some(new_ref), "standing announcement preserved");
 	assert_eq!(
 		accumulate_logs(&storage, PARA),
-		vec![
-			AccumulateLog::InsufficientStateBalance {
-				reason: InsufficientBalanceReason::Solicit {
-					hash: validation_code_hash_bytes(&third_ref.hash),
-					len: third_ref.len.into()
-				}
-			},
-			AccumulateLog::CodeUpgradeNotAvailable {
-				hash: validation_code_hash_bytes(&third_ref.hash),
-				len: third_ref.len.into()
-			},
-		]
+		vec![AccumulateLog::InsufficientStateBalance, AccumulateLog::CodeUpgradeNotAvailable]
 	);
 }
 
@@ -474,7 +409,7 @@ fn service_upgrade_missing_preimage_errors() {
 
 	assert_eq!(
 		accumulate_logs(&storage, ASSET_HUB_PARA_ID),
-		vec![AccumulateLog::ServiceUpgradePreimageMissing { code_hash: [0xEE; 32] }]
+		vec![AccumulateLog::ServiceUpgradePreimageMissing]
 	);
 }
 
@@ -589,7 +524,7 @@ fn upgrade_service(storage: jam_node::vm::Storage, len: u32) -> (Vec<AccumulateL
 }
 
 fn preimage_missing() -> Vec<AccumulateLog> {
-	vec![AccumulateLog::ServiceUpgradePreimageMissing { code_hash: hash_raw(NEW_SERVICE_CODE) }]
+	vec![AccumulateLog::ServiceUpgradePreimageMissing]
 }
 
 #[test]

@@ -22,9 +22,9 @@ module service_inputs {
     MkServiceId(start.to(start + fs.keys().size()).filter(i => not(fs.keys().contains(MkServiceId(i))))
       .fold(start + fs.keys().size(), (n, i) => if (i < n) i else n))
   }
-  pure def createArgs(desired: Option[ServiceId], messageId: int): CreateServiceArgs = {
+  pure def createArgs(desired: Option[ServiceId]): CreateServiceArgs = {
     codeHash: { hashBytes: 8801 }, len: 1024, minItemGas: 123, minMemoGas: 200,
-    messageId: messageId, desiredId: desired, sourceSupervisorBalance: false, newSupervisorBalance: false
+    desiredId: desired, sourceSupervisorBalance: false, newSupervisorBalance: false
   }
   pure def serviceMessages(fs: ForeignServices): Set[UpwardMessage] = {
     val targets = fs.keys().union(Set(ParachainServiceId, MkServiceId(99)))
@@ -32,11 +32,11 @@ module service_inputs {
       targets.fold(Set(), (msgs, id) => msgs.union(Set(serviceSolicit(id), serviceForget(id), serviceRemove(id))
         .union(targets.map(u => serviceSupervisor(id, u))))))
     .union(Set(
-      CreateService(createArgs(None, 77)),
-      CreateService(createArgs(Some(MkServiceId(42)), 77)),
-      CreateService(createArgs(Some(MkServiceId(70000)), 78)),
-      CreateService({ ...createArgs(None, 79), sourceSupervisorBalance: true }),
-      CreateService({ ...createArgs(None, 80), newSupervisorBalance: true })
+      CreateService(createArgs(None)),
+      CreateService(createArgs(Some(MkServiceId(42)))),
+      CreateService(createArgs(Some(MkServiceId(70000)))),
+      CreateService({ ...createArgs(None), sourceSupervisorBalance: true }),
+      CreateService({ ...createArgs(None), newSupervisorBalance: true })
     ))
   }
   // Use the creation code request as well as absent requests on seeded accounts.
@@ -49,20 +49,20 @@ module service_inputs {
   pure def serviceSupervisor(id: ServiceId, successor: ServiceId): UpwardMessage =
     SetServiceSupervisor({ service: id, newSupervisor: successor })
   pure def replayApplyBase(acc: AccumulateOutcome, caller: ParaId, codeLen: int,
-    slot: int, anchor: int, msg: UpwardMessage): AccumulateOutcome = match msg {
+    slot: int, anchor: int, id: MessageId, msg: UpwardMessage): AccumulateOutcome = match msg {
     // The pin looks only in foreignServices, which excludes this service.
     // The host knows self exists, but still exposes no supervision capability.
     | Solicit(p) => if (p.target == Service(ParachainServiceId))
-        { ...acc, logs: acc.logs.append(ServiceSolicitFailed({ service: ParachainServiceId, error: SolicitNotSupervised })) }
-      else applyUpwardMessage(acc, caller, codeLen, slot, anchor, msg)
+        { ...acc, logs: acc.logs.append((id, ServiceSolicitFailed({ error: SolicitNotSupervised }))) }
+      else applyUpwardMessage(acc, caller, codeLen, slot, anchor, id, msg)
     | SetServiceSupervisor(p) => if (p.service == ParachainServiceId)
-        { ...acc, logs: acc.logs.append(ServiceSupervisorFailed({ service: p.service,
+        { ...acc, logs: acc.logs.append((id, ServiceSupervisorFailed({
           error: if (p.newSupervisor == ParachainServiceId or acc.foreign.keys().contains(p.newSupervisor))
-            HandoffNotSupervised else HandoffUnknownNewSupervisor })) }
-      else applyUpwardMessage(acc, caller, codeLen, slot, anchor, msg)
+            HandoffNotSupervised else HandoffUnknownNewSupervisor }))) }
+      else applyUpwardMessage(acc, caller, codeLen, slot, anchor, id, msg)
     | CreateService(c) => {
       if (c.sourceSupervisorBalance or c.newSupervisorBalance)
-        { ...acc, logs: acc.logs.append(ServiceCreation({ messageId: c.messageId, result: CannotAfford })) }
+        { ...acc, logs: acc.logs.append((id, ServiceCreation({ result: CannotAfford }))) }
       else {
         val fresh = match c.desiredId {
           | Some(id) => match id { | MkServiceId(i) => if (i < MinPublicServiceIndex) id else publicId(acc.foreign, slot) | _ => publicId(acc.foreign, slot) }
@@ -73,15 +73,15 @@ module service_inputs {
         val fs = if (out.services.keys().contains(fresh) and not(acc.foreign.keys().contains(fresh)))
           out.services.put(fresh, { ...out.services.get(fresh), supervisor: fresh, supervisorCreated: slot })
           else out.services
-        { ...acc, state: out.state, foreign: fs, logs: acc.logs.appendOption(out.log) }
+        { ...acc, state: out.state, foreign: fs, logs: acc.logs.appendOption(tagLog(id, out.log)) }
       }
     }
-    | _ => applyUpwardMessage(acc, caller, codeLen, slot, anchor, msg)
+    | _ => applyUpwardMessage(acc, caller, codeLen, slot, anchor, id, msg)
   }
 
   pure def replayApply(acc: AccumulateOutcome, caller: ParaId, codeLen: int,
-    slot: int, anchor: int, msg: UpwardMessage): AccumulateOutcome = {
-    val out = replayApplyBase(acc, caller, codeLen, slot, anchor, msg)
+    slot: int, anchor: int, id: MessageId, msg: UpwardMessage): AccumulateOutcome = {
+    val out = replayApplyBase(acc, caller, codeLen, slot, anchor, id, msg)
     { ...out, preimageOps: out.preimageOps.concat(releasedReferences(acc.state, out.state)) }
   }
 
@@ -96,8 +96,9 @@ module service_inputs {
         if (pre.rejected) plain else {
           val base: AccumulateOutcome = { state: pre.state, foreign: foreign,
             jamDesignate: designate, preimageOps: releasedReferences(state, pre.state),
-            jamAssigns: List(), logs: pre.logs }
-          val out = ok.upwardMessages.foldl(base, (a, m) => replayApply(a, ok.paraId, codeLen, slot, ok.lookupAnchor, m))
+            jamAssigns: List(), logs: List() }
+          val out = ok.upwardMessages.foldl(base, (a, m) =>
+            replayApply(a, ok.paraId, codeLen, slot, ok.lookupAnchor, m._1, m._2))
           { ...plain, state: out.state.appendAccumulateLogs(ok.paraId, slot, out.logs),
             foreign: out.foreign, solicited: applyPreimageOps(solicited, out.preimageOps),
             jamDesignate: out.jamDesignate, jamAssigns: out.jamAssigns }

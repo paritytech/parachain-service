@@ -25,7 +25,7 @@ module gas_inputs {
     | WorkOk(digest) => match digest {
       | Err(_) => 5000000
       | Ok(ok) => ok.upwardMessages.foldl(5000000, (cost, msg) => {
-        val forwarded = match msg {
+        val forwarded = match msg._2 {
           | TransferOut(t) => match t.deferred {
             | None => 0
             | Some(pair) => pair._2

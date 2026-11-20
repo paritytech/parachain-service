@@ -140,11 +140,13 @@ impl State {
 	/// [`Config::Mock`] actions fire their scripted host calls here, in order.
 	fn transition(&self, add: u64) -> State {
 		if let Config::Mock(actions) = &self.config {
-			for action in actions {
+			// §4.3: each upward message carries a caller-chosen `message_id`;
+			// the scripted actions use their position in the block body.
+			for (index, action) in actions.iter().enumerate() {
 				#[cfg(target_arch = "riscv64")]
-				host::run_action(action);
+				host::run_action(action, index as u64);
 				#[cfg(not(target_arch = "riscv64"))]
-				let _ = action;
+				let _ = (index, action);
 			}
 		}
 
@@ -336,15 +338,17 @@ mod host {
 
 	/// Fire one scripted side-effect host call. Entry-point-level actions
 	/// (`DuplicateSetHead`, `SkipHeadDeclarations`) are handled by
-	/// `jam_validate_block` itself and are no-ops here.
-	pub fn run_action(action: &MockAction) {
+	/// `jam_validate_block` itself and are no-ops here. `message_id` is the id the
+	/// emitted upward message carries (§4.3).
+	pub fn run_action(action: &MockAction, message_id: u64) {
 		use parachain_service_core::{
-			types::{ParaId, ValidationCodeHash, ValidationCodeRef},
+			types::{MessageId, ParaId, ValidationCodeHash, ValidationCodeRef},
 			upward_message::UpwardMessage,
 		};
 
-		// §4.3: every side effect now travels as one SCALE-encoded `UpwardMessage`
-		// through a single host call, so this only has to build the message.
+		// §4.3: every side effect now travels as one SCALE-encoded
+		// `(message_id, UpwardMessage)` pair through a single host call, so this
+		// only has to build the message.
 		let msg = match action {
 			MockAction::KVSet(key, value) => {
 				UpwardMessage::SetKV { key: key.clone(), value: value.clone() }
@@ -435,7 +439,7 @@ mod host {
 			},
 			MockAction::DuplicateSetHead(_) | MockAction::SkipHeadDeclarations => return,
 		};
-		let encoded = msg.encode();
+		let encoded = (MessageId::from(message_id), msg).encode();
 		unsafe { send_upward_message_raw(encoded.as_ptr() as u32, encoded.len() as u32) }
 	}
 }

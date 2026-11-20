@@ -33,7 +33,7 @@ module service_preimages {
     .then(normal(pair(MkServiceId(0))))
     .then(normal(pair(ParachainServiceId)))
   run created_request_works = replayInit
-    .then(normal(List(CreateService(createArgs(Some(MkServiceId(42)), 77)))
+    .then(normal(List(CreateService(createArgs(Some(MkServiceId(42)))))
       .concat(pair(MkServiceId(42)))))
     .then(normal(pair(MkServiceId(42))))
   run unauthorized_works = replayInit.then(replayBlock(List(replayWork(svc, CoretimeParaId,

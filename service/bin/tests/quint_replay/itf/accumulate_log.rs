@@ -2,15 +2,15 @@
 
 use codec::Compact;
 use parachain_service::state::log::{
-	AccumulateLog, InsufficientBalanceReason, ServiceCreationResult, ServiceEjectError,
-	ServiceSolicitError, ServiceSupervisorError, StateBalanceRejection, TransferError,
+	AccumulateLog, ServiceCreationResult, ServiceEjectError, ServiceSolicitError,
+	ServiceSupervisorError, StateBalanceRejection, TransferError,
 };
-use parachain_service_core::{types::ValidationCodeHash, upward_message::Target};
+use parachain_service_core::types::{MessageId, ValidationCodeHash};
 use serde_json::Value;
 
 use super::{
 	codex::Codex,
-	replay::{bounded_integer, field, integer, para_id, variant},
+	replay::{bounded_integer, field, integer, variant},
 };
 
 pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<AccumulateLog, String> {
@@ -24,31 +24,8 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 				)?;
 			Ok(AccumulateLog::InvalidCodeHash { hash: ValidationCodeHash::from(hash) })
 		},
-		"InsufficientStateBalance" => {
-			let (reason, payload) = variant(value)?;
-			match reason {
-				"FromSolicit" => {
-					let len = u32::try_from(integer(field(payload, "len")?)?)
-						.map_err(|_| "FromSolicit length out of range")?;
-					let hash =
-						codex.hash(integer(field(field(payload, "hash")?, "hashBytes")?)?, len)?;
-					Ok(AccumulateLog::InsufficientStateBalance {
-						reason: InsufficientBalanceReason::Solicit { hash, len: Compact(len) },
-					})
-				},
-				"FromSetKV" => Ok(AccumulateLog::InsufficientStateBalance {
-					reason: InsufficientBalanceReason::SetKV {
-						key_hash: codex.kv_key_hash(integer(field(
-							field(payload, "keyHash")?,
-							"kvKeyBytes",
-						)?)?)?,
-					},
-				}),
-				other => Err(format!("unsupported insufficient balance reason {other}")),
-			}
-		},
+		"InsufficientStateBalance" => Ok(AccumulateLog::InsufficientStateBalance),
 		"StateBalanceUpdateRejected" => {
-			let para = para_id(field(value, "paraId")?, codex)?;
 			let (reason, payload) = variant(field(value, "reason")?)?;
 			let reason = match reason {
 				"BelowUsed" => StateBalanceRejection::BelowUsed {
@@ -64,20 +41,9 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 				"ParachainIsDeregistering" => StateBalanceRejection::ParachainIsDeregistering,
 				other => return Err(format!("unsupported state balance rejection {other}")),
 			};
-			Ok(AccumulateLog::StateBalanceUpdateRejected {
-				para_id: para,
-				attempted: Compact(bounded_integer(field(value, "attempted")?, "attempted")?),
-				reason,
-			})
+			Ok(AccumulateLog::StateBalanceUpdateRejected { reason })
 		},
-		"ServiceUpgradePreimageMissing" => {
-			let hash = integer(field(field(value, "codeHash")?, "hashBytes")?)?;
-			Ok(AccumulateLog::ServiceUpgradePreimageMissing {
-				code_hash: codex
-					.known_hash(hash)
-					.ok_or("service upgrade error hash has no mapped preimage")?,
-			})
-		},
+		"ServiceUpgradePreimageMissing" => Ok(AccumulateLog::ServiceUpgradePreimageMissing),
 		"ServiceCreation" => {
 			let (tag, payload) = variant(field(value, "result")?)?;
 			let result = match tag {
@@ -88,26 +54,18 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 				"IdTaken" => ServiceCreationResult::IdTaken,
 				other => return Err(format!("unsupported creation result {other}")),
 			};
-			Ok(AccumulateLog::ServiceCreation {
-				message_id: Compact(bounded_integer::<u64>(
-					field(value, "messageId")?,
-					"creation message id",
-				)?),
-				result,
-			})
+			Ok(AccumulateLog::ServiceCreation { result })
 		},
 		"ServiceSolicitFailed" => {
 			let error = match variant(field(value, "error")?)?.0 {
 				"SolicitUnknownService" => ServiceSolicitError::UnknownService,
 				"SolicitNotSupervised" => ServiceSolicitError::NotSupervised,
+				"TargetCannotAfford" => ServiceSolicitError::TargetCannotAfford,
+				"AlreadySolicited" => ServiceSolicitError::AlreadySolicited,
 				other => return Err(format!("unsupported service solicit error {other}")),
 			};
-			Ok(AccumulateLog::ServiceSolicitFailed {
-				service: super::assignments::service_id(field(value, "service")?)?,
-				error,
-			})
+			Ok(AccumulateLog::ServiceSolicitFailed { error })
 		},
-
 		"ServiceSupervisorFailed" => {
 			let error = match variant(field(value, "error")?)?.0 {
 				"HandoffUnknownService" => ServiceSupervisorError::UnknownService,
@@ -115,22 +73,18 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 				"HandoffNotSupervised" => ServiceSupervisorError::NotSupervised,
 				other => return Err(format!("unsupported service supervisor error {other}")),
 			};
-			Ok(AccumulateLog::ServiceSupervisorFailed {
-				service: super::assignments::service_id(field(value, "service")?)?,
-				error,
-			})
+			Ok(AccumulateLog::ServiceSupervisorFailed { error })
 		},
 		"ServiceEjectFailed" => {
 			let error = match variant(field(value, "error")?)?.0 {
 				"TargetIsSelf" => ServiceEjectError::TargetIsSelf,
 				"EjectUnknownService" => ServiceEjectError::UnknownService,
 				"EjectNotSupervised" => ServiceEjectError::NotSupervised,
+				"NotEmpty" => ServiceEjectError::NotEmpty,
+				"CreatedThisSlot" => ServiceEjectError::CreatedThisSlot,
 				other => return Err(format!("unsupported ejection error {other}")),
 			};
-			Ok(AccumulateLog::ServiceEjectFailed {
-				service: super::assignments::service_id(field(value, "service")?)?,
-				error,
-			})
+			Ok(AccumulateLog::ServiceEjectFailed { error })
 		},
 		"TransferFailed" => {
 			let error = match variant(field(value, "error")?)?.0 {
@@ -142,13 +96,9 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 				"InsufficientServiceBalance" => TransferError::InsufficientServiceBalance,
 				other => return Err(format!("unsupported transfer error {other}")),
 			};
-			Ok(AccumulateLog::TransferFailed {
-				id: Compact(bounded_integer::<u64>(field(value, "id")?, "transfer id")?),
-				error,
-			})
+			Ok(AccumulateLog::TransferFailed { error })
 		},
 		"TransferredAmount" => Ok(AccumulateLog::TransferredAmount {
-			id: Compact(bounded_integer::<u64>(field(value, "id")?, "transfer id")?),
 			amount: Compact(bounded_integer::<u64>(field(value, "amount")?, "transferred amount")?),
 		}),
 		"DesignateRejected" => Ok(AccumulateLog::DesignateRejected {
@@ -156,19 +106,14 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 		}),
 		"StagedValidatorKeysOverflow" => Ok(AccumulateLog::StagedValidatorKeysOverflow),
 		"TooMuchStateHeld" => Ok(AccumulateLog::TooMuchStateHeld),
-		"CoreNotAssignable" => Ok(AccumulateLog::CoreNotAssignable {
-			core: bounded_integer(field(value, "core")?, "assignment core")?,
-		}),
-		"CodeUpgradeNotAvailable" | "CodeUpgradeNotAnnounced" | "CanNotRemoveCode" => {
+		"CoreNotAssignable" => Ok(AccumulateLog::CoreNotAssignable),
+		"CodeUpgradeNotAvailable" => Ok(AccumulateLog::CodeUpgradeNotAvailable),
+		"CodeUpgradeNotAnnounced" => Ok(AccumulateLog::CodeUpgradeNotAnnounced),
+		"CanNotRemoveCode" => {
 			let len = u32::try_from(integer(field(value, "len")?)?)
-				.map_err(|_| format!("{tag} length out of range"))?;
+				.map_err(|_| "CanNotRemoveCode length out of range")?;
 			let hash = codex.hash(integer(field(field(value, "hash")?, "hashBytes")?)?, len)?;
-			let len = Compact(len);
-			Ok(match tag {
-				"CodeUpgradeNotAvailable" => AccumulateLog::CodeUpgradeNotAvailable { hash, len },
-				"CodeUpgradeNotAnnounced" => AccumulateLog::CodeUpgradeNotAnnounced { hash, len },
-				_ => AccumulateLog::CanNotRemoveCode { hash, len },
-			})
+			Ok(AccumulateLog::CanNotRemoveCode { hash, len: Compact(len) })
 		},
 		"ForgetAgainAt" => {
 			let len = u32::try_from(integer(field(value, "len")?)?)
@@ -176,14 +121,23 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 			let hash = codex.hash(integer(field(field(value, "hash")?, "hashBytes")?)?, len)?;
 			let due = u32::try_from(integer(field(value, "due")?)?)
 				.map_err(|_| "ForgetAgainAt deadline out of range")?;
-			let (kind, target) = variant(field(value, "target")?)?;
-			let target = match kind {
-				"Parachain" => Target::Parachain(para_id(target, codex)?),
-				"Service" => Target::Service(super::assignments::service_id(target)?),
-				other => return Err(format!("unsupported ForgetAgainAt target {other}")),
-			};
-			Ok(AccumulateLog::ForgetAgainAt { target, hash, len: Compact(len), due })
+			Ok(AccumulateLog::ForgetAgainAt { hash, len: Compact(len), due })
 		},
 		other => Err(format!("unsupported accumulate log event {other}")),
 	}
+}
+
+/// Decode one `(message_id, AccumulateLog)` pair of a `LogEntry::Accumulate`.
+pub(super) fn tagged_accumulate_log(
+	value: &Value,
+	codex: &mut Codex,
+) -> Result<(MessageId, AccumulateLog), String> {
+	let pair = super::replay::tuple(value)?;
+	let [id, event] = pair.as_slice() else {
+		return Err("Accumulate entry must be a (message_id, event) pair".into());
+	};
+	Ok((
+		MessageId::from(bounded_integer::<u64>(id, "accumulate message id")?),
+		accumulate_log(event, codex)?,
+	))
 }

@@ -29,7 +29,10 @@ use jam_pvm_common::{
 	ApiError,
 };
 use jam_types::CodeHash;
-use parachain_service_core::{types::ServiceId, upward_message::CreateServiceArgs};
+use parachain_service_core::{
+	types::{MessageId, ServiceId},
+	upward_message::CreateServiceArgs,
+};
 
 /// The existence half of every §6.5 precondition, and the only half this host
 /// can actually answer.
@@ -38,18 +41,27 @@ fn exists(service: ServiceId) -> bool {
 }
 
 /// A `Service`-targeted `solicit`.
-pub fn solicit(service: ServiceId, logs: &mut Vec<AccumulateLog>) {
+pub fn solicit(
+	service: ServiceId,
+	message_id: MessageId,
+	logs: &mut Vec<(MessageId, AccumulateLog)>,
+) {
 	let error = if exists(service) {
 		ServiceSolicitError::NotSupervised
 	} else {
 		ServiceSolicitError::UnknownService
 	};
-	logs.push(AccumulateLog::ServiceSolicitFailed { service, error });
+	logs.push((message_id, AccumulateLog::ServiceSolicitFailed { error }));
 }
 
 /// An `eject_service`. `TargetIsSelf` is checked before existence, as §6.5
 /// orders it: naming ourselves is refused outright rather than looked up.
-pub fn eject(service: ServiceId, self_id: ServiceId, logs: &mut Vec<AccumulateLog>) {
+pub fn eject(
+	service: ServiceId,
+	self_id: ServiceId,
+	message_id: MessageId,
+	logs: &mut Vec<(MessageId, AccumulateLog)>,
+) {
 	let error = if service == self_id {
 		ServiceEjectError::TargetIsSelf
 	} else if !exists(service) {
@@ -61,7 +73,7 @@ pub fn eject(service: ServiceId, self_id: ServiceId, logs: &mut Vec<AccumulateLo
 		// and so is its `ServiceEjected` report.
 		ServiceEjectError::NotSupervised
 	};
-	logs.push(AccumulateLog::ServiceEjectFailed { service, error });
+	logs.push((message_id, AccumulateLog::ServiceEjectFailed { error }));
 }
 
 /// A `set_service_supervisor`. Both services must exist before supervision is
@@ -71,7 +83,8 @@ pub fn eject(service: ServiceId, self_id: ServiceId, logs: &mut Vec<AccumulateLo
 pub fn set_supervisor(
 	service: ServiceId,
 	new_supervisor: ServiceId,
-	logs: &mut Vec<AccumulateLog>,
+	message_id: MessageId,
+	logs: &mut Vec<(MessageId, AccumulateLog)>,
 ) {
 	let error = if !exists(service) {
 		ServiceSupervisorError::UnknownService
@@ -80,7 +93,7 @@ pub fn set_supervisor(
 	} else {
 		ServiceSupervisorError::NotSupervised
 	};
-	logs.push(AccumulateLog::ServiceSupervisorFailed { service, error });
+	logs.push((message_id, AccumulateLog::ServiceSupervisorFailed { error }));
 }
 
 /// A `create_service`: the one §6.5 operation the vendored host can execute.
@@ -90,13 +103,16 @@ pub fn set_supervisor(
 /// service's balance. `desired_id` is honoured only while this service holds
 /// JAM's `registrar` privilege and the index is inside the protected range;
 /// outside it the host silently allocates instead (D-13).
-pub fn create(args: CreateServiceArgs, logs: &mut Vec<AccumulateLog>) {
+pub fn create(
+	args: CreateServiceArgs,
+	message_id: MessageId,
+	logs: &mut Vec<(MessageId, AccumulateLog)>,
+) {
 	let CreateServiceArgs {
 		code_hash,
 		len,
 		min_item_gas,
 		min_memo_gas,
-		message_id,
 		desired_id,
 		source_supervisor_balance,
 		new_supervisor_balance,
@@ -108,10 +124,10 @@ pub fn create(args: CreateServiceArgs, logs: &mut Vec<AccumulateLog>) {
 	// FIXME: the design needs an error for an inexpressible balance selector
 	// (D-13).
 	if source_supervisor_balance || new_supervisor_balance {
-		logs.push(AccumulateLog::ServiceCreation {
+		logs.push((
 			message_id,
-			result: ServiceCreationResult::CannotAfford,
-		});
+			AccumulateLog::ServiceCreation { result: ServiceCreationResult::CannotAfford },
+		));
 		return;
 	}
 
@@ -132,5 +148,5 @@ pub fn create(args: CreateServiceArgs, logs: &mut Vec<AccumulateLog>) {
 		// back, so neither can its memory checks.
 		Err(_) => ServiceCreationResult::CannotAfford,
 	};
-	logs.push(AccumulateLog::ServiceCreation { message_id, result });
+	logs.push((message_id, AccumulateLog::ServiceCreation { result }));
 }

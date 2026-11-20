@@ -43,22 +43,22 @@ fn report(name: &str, gas: u64, elapsed: std::time::Duration, digest_len: usize)
 
 /// Pinned gas measurements for the benchmarks below.
 ///
-/// Re-baselined 2026-11-19 after `TransferAmount` and batched `Forget` /
-/// `RemoveServiceStorage` (§5.1, §6.1).
+/// Re-baselined 2026-11-20 after every upward message gained its `message_id`
+/// (§3.3, §4.3) and the due-assign flush stopped logging.
 /// These are measured PVM costs, not production budgets.
 mod gas {
 	/// 1024-solicit digest — the heaviest reachable digest replay.
-	pub const MAX_SOLICITS: u64 = 62_964_647;
+	pub const MAX_SOLICITS: u64 = 64_340_968;
 	/// 1024 KV writes filling the report's elective-data limit.
-	pub const MAX_KV_WRITES: u64 = 53_656_775;
+	pub const MAX_KV_WRITES: u64 = 54_952_818;
 	/// 329 outbound transfers to a friendly destination.
-	pub const MAX_TRANSFER_OUTS: u64 = 5_172_299;
+	pub const MAX_TRANSFER_OUTS: u64 = 5_439_373;
 	/// 329 outbound transfers to a destination demanding `HIGH_TRANSFER_GAS`.
-	pub const MAX_GAS_TRANSFER_OUTS: u64 = 5_153_146;
+	pub const MAX_GAS_TRANSFER_OUTS: u64 = 5_430_097;
 	/// Gas for 1024 incoming transfers recorded in one bucket write.
-	pub const MAX_INCOMING_TRANSFERS: u64 = 6_234_020;
+	pub const MAX_INCOMING_TRANSFERS: u64 = 6_233_590;
 	/// Due `assign` flush for all 341 cores in one block.
-	pub const ALL_DUE_ASSIGNS: u64 = 23_309_091;
+	pub const ALL_DUE_ASSIGNS: u64 = 23_308_706;
 	/// Marginal cost of a realistic destination's memo handler, per transfer.
 	pub const DEST_HANDLER_PER_TRANSFER: u64 = 17_301;
 	/// Gas for one Ed25519 authorization.
@@ -99,7 +99,7 @@ fn report_gas_margin_works() {
 				upward_messages, ..
 			} = &mut digest
 			{
-				if let Some(UpwardMessage::SetKV { value, .. }) = upward_messages.last_mut() {
+				if let Some((_, UpwardMessage::SetKV { value, .. })) = upward_messages.last_mut() {
 					value.resize(value.len() + extra, 0xAB);
 				}
 			}
@@ -145,17 +145,34 @@ fn solicit_bench_works() {
 /// Benchmarks the gas used to apply the maximum number of small KV writes.
 #[test]
 fn set_kv_bench_works() {
-	// We want to use up the whole WR size limit, so the last UMP must be large.
-	const LAST_VALUE_LEN: usize = 33_715;
-
 	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
-	let msgs = (0..MAX_UMPS)
-		.map(|i| UpwardMessage::SetKV {
-			key: i.to_le_bytes().to_vec(),
-			value: vec![0xAB; if i == MAX_UMPS - 1 { LAST_VALUE_LEN } else { 8 }],
-		})
-		.collect();
-	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", msgs, 0);
+	// Pad the last write so the digest fills `Wr` exactly. Its `message_id`
+	// (§4.3) and the other 1023 messages' ids are part of the encoding, so the
+	// padding is derived from the measured size instead of hard-coded.
+	let msgs = |last_value_len: usize| -> Vec<UpwardMessage> {
+		(0..MAX_UMPS)
+			.map(|i| UpwardMessage::SetKV {
+				key: i.to_le_bytes().to_vec(),
+				value: vec![0xAB; if i == MAX_UMPS - 1 { last_value_len } else { 8 }],
+			})
+			.collect()
+	};
+	let probe_len = 8;
+	let probe = ok_digest(PARA, CODE, b"genesis", b"head-1", msgs(probe_len), 0);
+	// The value's compact length prefix can itself grow, so settle on the exact
+	// length instead of assuming the first difference is byte-for-byte.
+	let mut last_value_len = probe_len + (MAX_REPORT_ELECTIVE_DATA - probe.encode().len());
+	for _ in 0..4 {
+		let len = ok_digest(PARA, CODE, b"genesis", b"head-1", msgs(last_value_len), 0)
+			.encode()
+			.len();
+		match len.cmp(&MAX_REPORT_ELECTIVE_DATA) {
+			std::cmp::Ordering::Equal => break,
+			std::cmp::Ordering::Less => last_value_len += MAX_REPORT_ELECTIVE_DATA - len,
+			std::cmp::Ordering::Greater => last_value_len -= len - MAX_REPORT_ELECTIVE_DATA,
+		}
+	}
+	let digest = ok_digest(PARA, CODE, b"genesis", b"head-1", msgs(last_value_len), 0);
 	let digest_len = digest.encode().len();
 	assert_eq!(digest_len, MAX_REPORT_ELECTIVE_DATA, "fills up the WR size limit");
 
@@ -175,7 +192,7 @@ fn transfer_out_bench_works() {
 		seed_service(s, 42, TRANSFER_GAS);
 	});
 	let msgs = (0..WR_TRANSFER_BENCH)
-		.map(|i| transfer_out_msg(42, 1, i as u64, Some(([7; 128], TRANSFER_GAS))))
+		.map(|_| transfer_out_msg(42, 1, Some(([7; 128], TRANSFER_GAS))))
 		.collect();
 	// Pads the digest to exactly the WR size limit.
 	let head = [0; 118];
@@ -204,7 +221,7 @@ fn transfer_out_max_gas_bench_works() {
 		seed_service(s, 42, HIGH_TRANSFER_GAS);
 	});
 	let msgs = (0..WR_TRANSFER_BENCH)
-		.map(|i| transfer_out_msg(42, 1, i as u64, Some(([7; 128], HIGH_TRANSFER_GAS))))
+		.map(|_| transfer_out_msg(42, 1, Some(([7; 128], HIGH_TRANSFER_GAS))))
 		.collect();
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", msgs, 0);
 	let digest_len = digest.encode().len();

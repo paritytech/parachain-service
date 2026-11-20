@@ -5,7 +5,7 @@ use jam_types::AccumulateItem;
 use parachain_service::work_digest::ParachainWorkDigest;
 use parachain_service_bin::mock::MOCK_SERVICE_ID;
 use parachain_service_core::{
-	types::{Hash, ParaId},
+	types::{Hash, MessageId, ParaId},
 	upward_message::{CodeUpgradePhase, Target, UpwardMessage},
 };
 use serde_json::Value;
@@ -148,9 +148,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 						r.pointer("/result/value/value/upwardMessages")
 							.and_then(Value::as_array)
 							.is_some_and(|msgs| {
-								msgs.iter().any(|m| {
-									m.get("tag").and_then(Value::as_str) == Some("SetValidatorKeys")
-								})
+								msgs.iter().any(|m| sent_tag(m) == Some("SetValidatorKeys"))
 							})
 					}) {
 					return Err(format!(
@@ -162,9 +160,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 						r.pointer("/result/value/value/upwardMessages")
 							.and_then(Value::as_array)
 							.is_some_and(|msgs| {
-								msgs.iter().any(|m| {
-									m.get("tag").and_then(Value::as_str) == Some("TransferOut")
-								})
+								msgs.iter().any(|m| sent_tag(m) == Some("TransferOut"))
 							})
 					}) {
 					return Err(format!(
@@ -176,9 +172,7 @@ pub fn document_trace(document: &Value) -> Result<(), String> {
 						r.pointer("/result/value/value/upwardMessages")
 							.and_then(Value::as_array)
 							.is_some_and(|msgs| {
-								msgs.iter().any(|m| {
-									m.get("tag").and_then(Value::as_str) == Some("UpgradeService")
-								})
+								msgs.iter().any(|m| sent_tag(m) == Some("UpgradeService"))
 							})
 					}) {
 					return Err("UpgradeService inputs require replayMinAccGas".into());
@@ -330,7 +324,7 @@ fn digest_ok(value: &Value, codex: &mut Codex) -> Result<ParachainWorkDigest, St
 		.as_array()
 		.ok_or("upwardMessages must be a list")?
 		.iter()
-		.map(|message| upward_message(message, para, codex))
+		.map(|message| sent_upward_message(message, para, codex))
 		.collect::<Result<Vec<_>, _>>()?;
 	Ok(ParachainWorkDigest::Ok {
 		para_id: para,
@@ -346,6 +340,22 @@ fn digest_ok(value: &Value, codex: &mut Codex) -> Result<ParachainWorkDigest, St
 fn preimage(hash: &Value, len: &Value, codex: &mut Codex) -> Result<(Hash, Compact<u32>), String> {
 	let len = u32::try_from(integer(len)?).map_err(|_| "preimage length out of range")?;
 	Ok((codex.hash(integer(field(hash, "hashBytes")?)?, len)?, Compact(len)))
+}
+
+/// One `(message_id, message)` pair of a digest's `upwardMessages` (§4.3).
+pub(super) fn sent_upward_message(
+	value: &Value,
+	caller: ParaId,
+	codex: &mut Codex,
+) -> Result<(MessageId, UpwardMessage), String> {
+	let pair = tuple(value)?;
+	let [id, message] = pair.as_slice() else {
+		return Err("upward message must be a (message_id, message) pair".into());
+	};
+	Ok((
+		MessageId::from(bounded_integer::<u64>(id, "upward message id")?),
+		upward_message(message, caller, codex)?,
+	))
 }
 
 pub(super) fn upward_message(
@@ -538,6 +548,12 @@ pub(crate) fn variant(value: &Value) -> Result<(&str, &Value), String> {
 }
 pub(crate) fn tuple(value: &Value) -> Result<&Vec<Value>, String> {
 	field(value, "#tup")?.as_array().ok_or("expected #tup".into())
+}
+
+/// The tag of the message inside one `(message_id, message)` pair (§4.3).
+pub(crate) fn sent_tag(value: &Value) -> Option<&str> {
+	let [_, message] = tuple(value).ok()?.as_slice() else { return None };
+	message.get("tag").and_then(Value::as_str)
 }
 pub(crate) fn set_values(value: &Value) -> Result<&Vec<Value>, String> {
 	field(value, "#set")?.as_array().ok_or("expected #set".into())

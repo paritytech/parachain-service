@@ -32,7 +32,7 @@ module upgrades {
   ): bool =
     s.paraLog(para).foldl(false, (found, e) => found or match e._2 {
       | Accumulate(events) =>
-        events.foldl(false, (seen, event) => seen or event == entry)
+        events.foldl(false, (seen, event) => seen or event._2 == entry)
       | _ => false
     })
 
@@ -116,7 +116,7 @@ module upgrades {
         Forget({ target: Parachain(CoretimeParaId), preimages: List((codeA.asPreimage(), FixedCodeLen)) }))))
       .then(expectThat(all {
         isUnrequested(svc.preimageStatus.get(oldKey)),
-        hasLog(svc, CoretimeParaId, ForgetAgainAt({ target: Parachain(CoretimeParaId),
+        hasLog(svc, CoretimeParaId, ForgetAgainAt({
           hash: codeA.asPreimage(), len: FixedCodeLen, due: now + ExpungePeriod }))
       }))
   }
@@ -135,7 +135,7 @@ module upgrades {
         svc.paraInfo(CoretimeParaId).validationCode == Some({ hash: codeA, len: FixedCodeLen }),
         svc.preimageStatus.get((b.asPreimage(), FixedCodeLen)) == Unprovided,
         hasLog(svc, CoretimeParaId,
-          CodeUpgradeNotAvailable({ hash: b.asPreimage(), len: FixedCodeLen }))
+          CodeUpgradeNotAvailable)
       }))
   }
 
@@ -154,7 +154,7 @@ module upgrades {
         not(svc.hasReferencer(b.asPreimage(), FixedCodeLen, CoretimeParaId)),
         svc.paraInfo(CoretimeParaId).announcedUpgrade == None,
         hasLog(svc, CoretimeParaId,
-          CodeUpgradeNotAvailable({ hash: b.asPreimage(), len: FixedCodeLen }))
+          CodeUpgradeNotAvailable)
       }))
   }
 
@@ -168,7 +168,7 @@ module upgrades {
         svc.paraInfo(CoretimeParaId).validationCode == Some({ hash: codeA, len: FixedCodeLen }),
         svc.paraInfo(CoretimeParaId).announcedUpgrade == None,
         hasLog(svc, CoretimeParaId,
-          CodeUpgradeNotAnnounced({ hash: b.asPreimage(), len: FixedCodeLen }))
+          CodeUpgradeNotAnnounced)
       }))
   }
 
@@ -189,7 +189,7 @@ module upgrades {
         svc.paraInfo(CoretimeParaId).validationCode == Some({ hash: codeA, len: FixedCodeLen }),
         announcedHashOf(svc.paraInfo(CoretimeParaId)) == Some(b),
         hasLog(svc, CoretimeParaId,
-          CodeUpgradeNotAnnounced({ hash: c.asPreimage(), len: FixedCodeLen }))
+          CodeUpgradeNotAnnounced)
       }))
   }
 
@@ -253,7 +253,7 @@ module upgrades {
       .then(expectThat(all {
         announcedHashOf(svc.paraInfo(CoretimeParaId)) == Some(c),
         isUnrequested(svc.preimageStatus.get((b.asPreimage(), FixedCodeLen))),
-        hasLog(svc, CoretimeParaId, ForgetAgainAt({ target: Parachain(CoretimeParaId),
+        hasLog(svc, CoretimeParaId, ForgetAgainAt({
           hash: b.asPreimage(), len: FixedCodeLen, due: now + ExpungePeriod }))
       }))
   }
@@ -280,8 +280,7 @@ module upgrades {
       .then(expectThat(all {
         announcedHashOf(svc.paraInfo(CoretimeParaId)) == Some(b),
         not(svc.preimageRegistry.keys().contains((c.asPreimage(), FixedCodeLen))),
-        hasLog(svc, CoretimeParaId,
-          InsufficientStateBalance(FromSolicit({ hash: c.asPreimage(), len: FixedCodeLen })))
+        hasLog(svc, CoretimeParaId, InsufficientStateBalance)
       }))
       // Announcing the unaffordable code is then rejected as unavailable.
       .then(applyHappyPath(CoretimeParaId, codeA, List(
@@ -289,7 +288,7 @@ module upgrades {
       .then(expectThat(all {
         announcedHashOf(svc.paraInfo(CoretimeParaId)) == Some(b),
         hasLog(svc, CoretimeParaId,
-          CodeUpgradeNotAvailable({ hash: c.asPreimage(), len: FixedCodeLen }))
+          CodeUpgradeNotAvailable)
       }))
   }
 

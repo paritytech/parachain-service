@@ -8,12 +8,7 @@ use jam_std_common::{hash_raw, Privileges};
 use jam_types::{AccumulateItem, CodeHash, FixedVec};
 use parachain_service::{
 	constants::MAX_STAGED_VALIDATOR_KEYS,
-	state::{
-		log::{AccumulateLog, LogEntry},
-		storage_key,
-		validator_keys::StagedKeys,
-		Tag,
-	},
+	state::{log::AccumulateLog, storage_key, validator_keys::StagedKeys, Tag},
 };
 use parachain_service_bin::mock::accumulate_context_with_privileges;
 
@@ -39,13 +34,7 @@ fn staged(storage: &jam_node::vm::Storage) -> StagedKeys {
 }
 
 fn ah_accumulate_logs(storage: &jam_node::vm::Storage) -> Vec<AccumulateLog> {
-	para_log(storage, ASSET_HUB_PARA_ID)
-		.into_iter()
-		.flat_map(|(_, e)| match e {
-			LogEntry::Accumulate { entries } => entries,
-			LogEntry::Refine { .. } => panic!("unexpected refine entry"),
-		})
-		.collect()
+	accumulate_logs(storage, ASSET_HUB_PARA_ID)
 }
 
 fn privileges_with_designate(designate: u32) -> Privileges {

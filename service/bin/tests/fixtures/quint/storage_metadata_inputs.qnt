@@ -16,7 +16,7 @@ module storage_metadata_inputs {
       validationCode: activeCodeHashOr(svc.paraInfo(caller), { vchBytes: 0 }),
       parentHeadHash: headHash(svc.paraInfo(caller).headData),
       headData: svc.paraInfo(caller).headData, lookupAnchor: 0,
-      upwardMessages: msgs })), authTrace: 0
+      upwardMessages: range(0, msgs.length()).foldl(List(), (acc, i) => acc.append((i, msgs[i]))) })), authTrace: 0
   }
   action metadataBlock(budget: int, total: int, newHead: int): bool =
     storageInvocation(budget, List(metadataWork(CoretimeParaId, List(

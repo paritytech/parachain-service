@@ -20,7 +20,7 @@ module service_upgrades_replay {
   def work(p: ParaId, parent: int, msgs: List[UpwardMessage]): WorkResult = {
     val h = if (p == AssetHubParaId) 2 else 1
     val pkg: WorkPackage = { items: List({ paraId: p, validationCode: { hash: { vchBytes: h }, len: FixedCodeLen } }) }
-    val calls = List(SetParentHeadHash(headHash(parent)), SetHead(parent + 1)).concat(sends(msgs))
+    val calls = List(SetParentHeadHash(headHash(parent)), SetHead(parent + 1)).concat(sends(withIndexIds(msgs)))
     { result: refine(svc, pkg, calls, now)[0], authTrace: 0 }
   }
   action block(packages: List[WorkResult]): bool = {

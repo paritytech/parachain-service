@@ -76,8 +76,8 @@ fn accumulate_log_wrong_deadline_errors() {
 				!states[i]["svc"]["parachainLog"]["#map"].as_array().unwrap().is_empty()
 		})
 		.expect("first successful forget block");
-	states[frame]["svc"]["parachainLog"]["#map"][0][1][0]["#tup"][1]["value"][0]["value"]["due"] =
-		serde_json::json!({"#bigint": "0"});
+	states[frame]["svc"]["parachainLog"]["#map"][0][1][0]["#tup"][1]["value"][0]["#tup"][1]
+		["value"]["due"] = serde_json::json!({"#bigint": "0"});
 	let error = replay::trace(&trace.to_string()).unwrap_err();
 	assert!(error.starts_with(&format!("frame {frame}: svc.parachainLog[1] differs;")), "{error}");
 }

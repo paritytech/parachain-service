@@ -27,12 +27,20 @@ use jam_pvm_common::refine;
 use jam_types::{core_count, Hash, PageMode, SignedGas};
 use parachain_service_core::{
 	host_call::HostCall,
-	types::ParaId,
+	types::{MessageId, ParaId},
 	upward_message::{
 		UpwardMessage, UpwardMessages, MAX_UPWARD_MESSAGE_BYTES, SET_VALIDATOR_KEYS_MAX_KEYS,
 	},
 };
 use polkavm::Reg;
+
+/// One `send_upward_message` payload: the caller's [`MessageId`] plus the message.
+pub type SentUpwardMessage = (MessageId, UpwardMessage);
+
+/// Encoded size of one `(message_id, message)` pair, the unit of the §4.3 budget.
+pub fn sent_size(message_id: MessageId, message: &UpwardMessage) -> usize {
+	message_id.encoded_size() + message.encoded_size()
+}
 
 /// Returned in `A0` by buffer-returning calls when the value does not exist.
 pub const ABSENT: u64 = u64::MAX;
@@ -290,13 +298,13 @@ impl ExecutorState {
 				relay_out(handle, full, &buf, out_ptr, cap, "historical_lookup");
 				regs[A0] = full;
 			},
-			HostCall::Compile
-			| HostCall::Machine
-			| HostCall::Peek
-			| HostCall::Poke
-			| HostCall::Pages
-			| HostCall::Invoke
-			| HostCall::Expunge => self.nested.dispatch(handle, call, gas_left, regs),
+			HostCall::Compile |
+			HostCall::Machine |
+			HostCall::Peek |
+			HostCall::Poke |
+			HostCall::Pages |
+			HostCall::Invoke |
+			HostCall::Expunge => self.nested.dispatch(handle, call, gas_left, regs),
 
 			// --- Side effects (§4.3) -------------------------------------------------
 			HostCall::Export => {
@@ -324,14 +332,14 @@ impl ExecutorState {
 					Some(HeadData::try_from(bytes).map_err(|_| RefineLog::HeadDataTooLarge)?);
 			},
 			HostCall::SendUpwardMessage => {
-				// §4.3: one host call now carries the whole `UpwardMessage`
-				// vocabulary as a SCALE blob. A message that fails to decode is a
-				// malformed PVF, not a digest-level error, so it panics (§4.2).
+				// §4.3: one host call carries the whole `(message_id, UpwardMessage)`
+				// pair as a SCALE blob. A payload that fails to decode is a malformed
+				// PVF, not a digest-level error, so it panics (§4.2).
 				let encoded = peek_bytes(handle, regs[A0], regs[A1]);
-				let msg = UpwardMessage::decode_all(&mut &encoded[..]).unwrap_or_else(|_| {
+				let sent = SentUpwardMessage::decode_all(&mut &encoded[..]).unwrap_or_else(|_| {
 					panic!("PVF `send_upward_message` payload did not decode; §4.2 whole-refine failure")
 				});
-				self.push(msg)?;
+				self.push(sent)?;
 			},
 			HostCall::JamLog | HostCall::Log => self.log(handle, regs),
 			HostCall::ReportError => {
@@ -371,8 +379,9 @@ impl ExecutorState {
 	/// Buffer an upward message, applying every §4.3 rule the per-message host
 	/// calls used to enforce individually: the parachain restrictions, the
 	/// requirements documented on each variant, the message-count cap, and the
-	/// parachain's encoded-message budget.
-	fn push(&mut self, msg: UpwardMessage) -> Result<(), RefineLog> {
+	/// parachain's encoded `(message_id, message)` budget.
+	fn push(&mut self, sent: SentUpwardMessage) -> Result<(), RefineLog> {
+		let (message_id, msg) = sent;
 		if !msg.allowed_for(self.para_id) {
 			return Err(RefineLog::RestrictedHostFunction);
 		}
@@ -411,13 +420,15 @@ impl ExecutorState {
 			},
 			_ => {},
 		}
-		// §4.3: the budget counts the encoded messages alone, independently of
-		// the Gray Paper's 48 KiB combined result-blob limit.
-		let size = msg.encoded_size();
+		// §4.3: the budget counts the encoded `(message_id, message)` pairs alone,
+		// independently of the Gray Paper's 48 KiB combined result-blob limit.
+		let size = sent_size(message_id, &msg);
 		if self.umps_bytes + size > MAX_UPWARD_MESSAGE_BYTES {
 			return Err(RefineLog::UpwardMessagesTooLarge);
 		}
-		self.umps.try_push(msg).map_err(|_| RefineLog::TooManyUpwardMessages)?;
+		self.umps
+			.try_push((message_id, msg))
+			.map_err(|_| RefineLog::TooManyUpwardMessages)?;
 		self.umps_bytes += size;
 		Ok(())
 	}

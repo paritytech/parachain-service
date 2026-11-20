@@ -13,19 +13,15 @@ use crate::{
 	constants::{
 		AUTHORIZER_QUEUE_LEN, CORE_COUNT, MAX_INCOMING_TRANSFERS, MAX_STAGED_VALIDATOR_KEYS,
 	},
-	hashing::blake2_256,
 	state::{
 		kv::KeyValueStorage,
-		log::{AccumulateLog, InsufficientBalanceReason},
+		log::AccumulateLog,
 		para_info::{ParaInfo, Parachains},
 		preimage_registry::PreimageRegistry,
 	},
 };
 use jam_pvm_common::accumulate::{forget, query, solicit, LookupRequestStatus};
-use parachain_service_core::{
-	types::{Balance, Hash, ParaId, Timeslot, ASSET_HUB_PARA_ID},
-	upward_message::Target,
-};
+use parachain_service_core::types::{Balance, Hash, ParaId, Timeslot, ASSET_HUB_PARA_ID};
 
 /// Gray Paper `C_itemdeposit`.
 pub const ITEM_DEPOSIT: u64 = 10;
@@ -180,9 +176,7 @@ pub fn add_referencer(para_id: ParaId, hash: &Hash, len: u32) -> Result<(), Accu
 	let delta = preimage_footprint(len);
 	let mut pi = Parachains::get(para_id).expect("caller checked the para is live; qed");
 	if !pi.has_headroom(delta) {
-		return Err(AccumulateLog::InsufficientStateBalance {
-			reason: InsufficientBalanceReason::Solicit { hash: *hash, len: len.into() },
-		});
+		return Err(AccumulateLog::InsufficientStateBalance);
 	}
 
 	let was_empty = entry.referencers.is_empty();
@@ -193,9 +187,7 @@ pub fn add_referencer(para_id: ParaId, hash: &Hash, len: u32) -> Result<(), Accu
 	// so a rejection leaves no para half-updated.
 	pi.charge(delta);
 	if Parachains::set(para_id, &pi).is_err() {
-		return Err(AccumulateLog::InsufficientStateBalance {
-			reason: InsufficientBalanceReason::Solicit { hash: *hash, len: len.into() },
-		});
+		return Err(AccumulateLog::InsufficientStateBalance);
 	}
 	entry.referencers.insert(para_id);
 	if PreimageRegistry::set(hash, len, &entry).is_err() {
@@ -205,9 +197,7 @@ pub fn add_referencer(para_id: ParaId, hash: &Hash, len: u32) -> Result<(), Accu
 		let mut rollback = pi;
 		rollback.refund(delta);
 		let _ = Parachains::set(para_id, &rollback);
-		return Err(AccumulateLog::InsufficientStateBalance {
-			reason: InsufficientBalanceReason::Solicit { hash: *hash, len: len.into() },
-		});
+		return Err(AccumulateLog::InsufficientStateBalance);
 	}
 
 	if is_rescue {
@@ -291,12 +281,7 @@ pub fn remove_referencer(para_id: ParaId, hash: &Hash, len: u32, now: Timeslot) 
 				.unwrap_or(now + crate::constants::EXPUNGE_PERIOD);
 			RemoveOutcome {
 				retained: true,
-				log: Some(AccumulateLog::ForgetAgainAt {
-					target: Target::Parachain(para_id),
-					hash: *hash,
-					len: len.into(),
-					due,
-				}),
+				log: Some(AccumulateLog::ForgetAgainAt { hash: *hash, len: len.into(), due }),
 			}
 		},
 		F::NotYetUnrequest { success_after } | F::NotYetExpunge { success_after } => {
@@ -304,7 +289,6 @@ pub fn remove_referencer(para_id: ParaId, hash: &Hash, len: u32, now: Timeslot) 
 			RemoveOutcome {
 				retained: true,
 				log: Some(AccumulateLog::ForgetAgainAt {
-					target: Target::Parachain(para_id),
 					hash: *hash,
 					len: len.into(),
 					due: success_after,
@@ -339,8 +323,8 @@ fn jam_forget(hash: &Hash, len: u32) {
 }
 
 /// Replay a `SetKV`: upsert `key_value_storage[(para_id, key)]`, delta-charged
-/// per §6.1. Rejected (state unchanged, `FromSetKV` logged) when a positive
-/// delta exceeds headroom.
+/// per §6.1. Rejected (state unchanged, `InsufficientStateBalance` logged) when
+/// a positive delta exceeds headroom.
 pub fn apply_set_kv(para_id: ParaId, key: &[u8], value: &[u8]) -> Result<(), AccumulateLog> {
 	// Check the lifecycle using the same read that supplies the balance check.
 	let Some(mut pi) = Parachains::get(para_id) else { return Ok(()) };
@@ -353,12 +337,9 @@ pub fn apply_set_kv(para_id: ParaId, key: &[u8], value: &[u8]) -> Result<(), Acc
 		None => kv_entry_footprint(key.len(), value.len()) as i128,
 		Some(old_len) => value.len() as i128 - old_len as i128,
 	};
-	// `blake2_256` is computed lazily in each rejection branch: the rejection path
-	// must not pay for hashing a key it never rejects (§6.1 pre-check).
+	// The private headroom pre-check runs before either host write (§6.1).
 	if delta > 0 && !pi.has_headroom(delta as Balance) {
-		return Err(AccumulateLog::InsufficientStateBalance {
-			reason: InsufficientBalanceReason::SetKV { key_hash: blake2_256(key) },
-		});
+		return Err(AccumulateLog::InsufficientStateBalance);
 	}
 	// The balance is adjusted before the writes (one read-modify-write of `pi`).
 	// A backstop write failure must not strand the adjustment: it is rolled back
@@ -371,9 +352,7 @@ pub fn apply_set_kv(para_id: ParaId, key: &[u8], value: &[u8]) -> Result<(), Acc
 	if Parachains::set(para_id, &pi).is_err() {
 		// Neither the charge nor the entry persisted; the in-memory bump is
 		// discarded.
-		return Err(AccumulateLog::InsufficientStateBalance {
-			reason: InsufficientBalanceReason::SetKV { key_hash: blake2_256(key) },
-		});
+		return Err(AccumulateLog::InsufficientStateBalance);
 	}
 	if KeyValueStorage::set(para_id, key, value).is_err() {
 		// The charge persisted but the entry did not: reverse the adjustment.
@@ -384,9 +363,7 @@ pub fn apply_set_kv(para_id: ParaId, key: &[u8], value: &[u8]) -> Result<(), Acc
 			pi.charge((-delta) as Balance);
 		}
 		let _ = Parachains::set(para_id, &pi);
-		return Err(AccumulateLog::InsufficientStateBalance {
-			reason: InsufficientBalanceReason::SetKV { key_hash: blake2_256(key) },
-		});
+		return Err(AccumulateLog::InsufficientStateBalance);
 	}
 	Ok(())
 }

@@ -299,9 +299,9 @@ fn inactive_code_heads_works() {
 		frame["lastStepWorkResults"] = trace["states"][1]["lastStepWorkResults"].clone();
 		let ok = &mut frame["lastStepWorkResults"][0]["result"]["value"]["value"];
 		ok["validationCode"] = json!({"vchBytes":{"#bigint":"777"}});
-		ok["upwardMessages"] = json!([{"tag":"ParachainSetHead", "value": {
+		ok["upwardMessages"] = json!([{"#tup": [{"#bigint":"0"}, {"tag":"ParachainSetHead", "value": {
 			"paraId":{"tag":"MkParaId", "value":{"#bigint":"2"}}, "newHead":{"#bigint":"99"}
-		}}]);
+		}}]}]);
 		transition(&before, &eligibility, &storage, &frame, None, &mut codex, 15).unwrap();
 		// Neither the candidate nor its messages may change a head with inactive code.
 		for (para, head) in [(1, 1), (2, 99)] {
@@ -328,10 +328,10 @@ fn same_invocation_code_change_works() {
 		serde_json::from_str(include_str!("../../fixtures/quint/minimal_replay.itf.json")).unwrap();
 	let mut first = trace["states"][1]["lastStepWorkResults"][0].clone();
 	first["result"]["value"]["value"]["upwardMessages"] = json!([{
-		"tag":"ParachainSetValidationCode", "value": {
+		"#tup": [{"#bigint":"0"}, {"tag":"ParachainSetValidationCode", "value": {
 			"paraId":{"tag":"MkParaId", "value":{"#bigint":"1"}},
 			"newValidationCode":{"hash":{"vchBytes":{"#bigint":"2"}}, "len":{"#bigint":"65536"}}
-		}
+		}}]
 	}]);
 	let mut second = trace["states"][1]["lastStepWorkResults"][0].clone();
 	second["result"]["value"]["value"]["validationCode"] = json!({"vchBytes":{"#bigint":"2"}});
@@ -442,10 +442,10 @@ fn deregistering_heads_works() {
 				.unwrap();
 		frame["lastStepWorkResults"] = trace["states"][1]["lastStepWorkResults"].clone();
 		frame["lastStepWorkResults"][0]["result"]["value"]["value"]["upwardMessages"] = json!([
-			{"tag": "ParachainSetHead", "value": {
+			{"#tup": [{"#bigint": "0"}, {"tag": "ParachainSetHead", "value": {
 				"paraId": {"tag": "MkParaId", "value": {"#bigint": "2"}},
 				"newHead": {"#bigint": "99"}
-			}}
+			}}]}
 		]);
 		if !frozen.contains(&Codex::para_id(1).unwrap()) {
 			info_change(&mut storage, |i| i.head_data = Codex::head(1).unwrap());

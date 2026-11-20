@@ -15,10 +15,7 @@ use alloc::vec::Vec;
 use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Compact, Decode, Encode};
 
-use crate::{
-	types::{Balance, CoreIndex, Hash, ParaId, ServiceId, Timeslot, ValidationCodeHash},
-	upward_message::Target,
-};
+use crate::types::{Balance, Hash, MessageId, ServiceId, Timeslot, ValidationCodeHash};
 
 /// §3.1 — per-parachain log byte budget (exact encoded size of all entries).
 pub const PARACHAIN_LOG_BYTE_CAP: usize = 64 * 1024;
@@ -28,19 +25,6 @@ pub const STORED_AUTH_TRACE_CAP: usize = 256;
 
 /// The maximum byte length of a `report_error` payload. Spec §4.3.
 pub const MAX_REPORT_ERROR_PAYLOAD: u32 = 1024;
-
-/// Why a state-balance reservation failed (spec §3.1, §6.1).
-///
-/// Covers solicit/preimage and `kv_set` growth. Baseline-covered writes have
-/// no per-write allowance check and do not emit this log on host failure.
-#[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
-pub enum InsufficientBalanceReason {
-	/// A `solicit` of the preimage with `hash` and `len`.
-	Solicit { hash: Hash, len: Compact<u32> },
-	/// A `kv_set(key, value)` write. Only the hash of `key` is recorded so an
-	/// arbitrarily large user key cannot inflate `parachain_log`.
-	SetKV { key_hash: Hash },
-}
 
 /// Why a JAM `transfer` replaying a `TransferOut` failed (spec §5.1 step 6).
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
@@ -175,13 +159,9 @@ pub enum RefineLog {
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub enum AccumulateLog {
 	/// Available state balance insufficient for the operation. Spec §6.1.
-	InsufficientStateBalance { reason: InsufficientBalanceReason },
-	/// `ParachainSetStateBalance` rejected for the named target and reason.
-	StateBalanceUpdateRejected {
-		para_id: ParaId,
-		attempted: Compact<Balance>,
-		reason: StateBalanceRejection,
-	},
+	InsufficientStateBalance,
+	/// `ParachainSetStateBalance` rejected for `reason`. Spec §6.1.
+	StateBalanceUpdateRejected { reason: StateBalanceRejection },
 	/// JAM `designate` rejected the assembled key set, because its length is not
 	/// in `valcount` or this service is not the delegator. The staging buffer is
 	/// cleared regardless. Spec §5.3.
@@ -191,45 +171,42 @@ pub enum AccumulateLog {
 	StagedValidatorKeysOverflow,
 	/// An `UpgradeService` whose code Asset Hub does not reference, or that is
 	/// not available for lookup. Spec §5.4.
-	ServiceUpgradePreimageMissing { code_hash: Hash },
+	ServiceUpgradePreimageMissing,
 	/// An `Announcement` whose code is not usable (§5.2).
-	CodeUpgradeNotAvailable { hash: Hash, len: Compact<u32> },
+	CodeUpgradeNotAvailable,
 	/// An `Apply` that does not match the standing announcement (§5.2).
-	CodeUpgradeNotAnnounced { hash: Hash, len: Compact<u32> },
+	CodeUpgradeNotAnnounced,
 	/// A `Forget` naming code in use: the para's active or announced validation
 	/// code (§5.2), or for Asset Hub the Parachain Service's active code (§5.4).
 	CanNotRemoveCode { hash: Hash, len: Compact<u32> },
 	/// JAM rejected an `assign` because this service is no longer the core's
 	/// assigner (§7.1).
-	CoreNotAssignable { core: CoreIndex },
-	/// The JAM `transfer` replaying a `TransferOut` failed. `id` is the
-	/// caller-supplied identifier, echoed back so the parachain can match the
-	/// failure to its own record. Spec §5.1 step 6.
-	TransferFailed { id: Compact<u64>, error: TransferError },
-	/// The `TransferOut` with this `id` and a `TransferAmount::Max` went through,
-	/// moving `amount`. Spec §5.1.
-	TransferredAmount { id: Compact<u64>, amount: Compact<Balance> },
+	CoreNotAssignable,
+	/// The JAM `transfer` replaying a `TransferOut` failed. Spec §5.1 step 6.
+	TransferFailed { error: TransferError },
+	/// A `TransferOut` with a `TransferAmount::Max` went through, moving
+	/// `amount`. Spec §5.1.
+	TransferredAmount { amount: Compact<Balance> },
 	/// A `forget` removed the last referencer without expunging the preimage;
 	/// `forget` again once strictly past `due`. Spec §6.1.
-	ForgetAgainAt { target: Target, hash: Hash, len: Compact<u32>, due: Timeslot },
+	ForgetAgainAt { hash: Hash, len: Compact<u32>, due: Timeslot },
 	/// A `Service`-targeted `forget` named a preimage the service never
 	/// requested. Spec §6.5.
-	ServiceForgetNotRequested { service: ServiceId, hash: Hash, len: Compact<u32> },
+	ServiceForgetNotRequested { hash: Hash, len: Compact<u32> },
 	/// A `remove_service_storage` named a key the service does not hold;
 	/// `key_hash` is the hash of that key. Spec §6.5.
-	ServiceKeyNotFound { service: ServiceId, key_hash: Hash },
+	ServiceKeyNotFound { key_hash: Hash },
 	/// A `Service`-targeted `solicit` failed. Spec §6.5.
-	ServiceSolicitFailed { service: ServiceId, error: ServiceSolicitError },
+	ServiceSolicitFailed { error: ServiceSolicitError },
 	/// An `eject_service` failed. Spec §6.5.
-	ServiceEjectFailed { service: ServiceId, error: ServiceEjectError },
+	ServiceEjectFailed { error: ServiceEjectError },
 	/// An `eject_service` succeeded, crediting the service's regular plus
 	/// supervisor balance back. Spec §6.5.
-	ServiceEjected { service: ServiceId, credited: Compact<Balance> },
+	ServiceEjected { credited: Compact<Balance> },
 	/// A `set_service_supervisor` failed. Spec §6.5.
-	ServiceSupervisorFailed { service: ServiceId, error: ServiceSupervisorError },
-	/// Announces a `create_service` outcome, echoing the caller's own `message_id`.
-	/// Spec §6.5.
-	ServiceCreation { message_id: Compact<u64>, result: ServiceCreationResult },
+	ServiceSupervisorFailed { error: ServiceSupervisorError },
+	/// Announces a `create_service` outcome. Spec §6.5.
+	ServiceCreation { result: ServiceCreationResult },
 	/// `parachain_clean_up` rejected: state held beyond baseline + codes. Spec §6.4.
 	TooMuchStateHeld,
 	/// The candidate's code does not match the active code. §5.1.
@@ -245,8 +222,10 @@ pub type StoredAuthTrace = BoundedVec<u8, ConstU32<{ STORED_AUTH_TRACE_CAP as u3
 pub enum LogEntry {
 	/// What went wrong during Refine, with the work-report's auth trace.
 	Refine { error: RefineLog, auth_trace: StoredAuthTrace },
-	/// Events recorded while Accumulating a work digest.
-	Accumulate { entries: Vec<AccumulateLog> },
+	/// Events recorded while Accumulating a work digest, each with the
+	/// `message_id` of the upward message that caused it. One message can cause
+	/// several events, e.g. one per preimage of a `Forget`. Spec §5.1.
+	Accumulate { entries: Vec<(MessageId, AccumulateLog)> },
 }
 
 /// A parachain's full log value: `(timeslot, entry)` pairs in append order.
@@ -257,7 +236,7 @@ pub type ParachainLog = Vec<(Timeslot, LogEntry)>;
 /// A parachain reads its log to learn why its last candidates were rejected
 /// (§5.1); the newest batch is the one that speaks about the newest work
 /// package, which is why the walk runs from the back.
-pub fn latest_accumulate(log: &ParachainLog) -> Option<&[AccumulateLog]> {
+pub fn latest_accumulate(log: &ParachainLog) -> Option<&[(MessageId, AccumulateLog)]> {
 	log.iter().rev().find_map(|(_, entry)| match entry {
 		LogEntry::Accumulate { entries } => Some(entries.as_slice()),
 		LogEntry::Refine { .. } => None,
@@ -267,7 +246,7 @@ pub fn latest_accumulate(log: &ParachainLog) -> Option<&[AccumulateLog]> {
 /// Whether any entry of `log` carries `event`, in any batch.
 pub fn contains_accumulate(log: &ParachainLog, event: &AccumulateLog) -> bool {
 	log.iter().any(|(_, entry)| match entry {
-		LogEntry::Accumulate { entries } => entries.iter().any(|e| e == event),
+		LogEntry::Accumulate { entries } => entries.iter().any(|(_, e)| e == event),
 		LogEntry::Refine { .. } => false,
 	})
 }

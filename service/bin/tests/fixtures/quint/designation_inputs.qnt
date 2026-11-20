@@ -29,21 +29,21 @@ module designation_inputs {
   def work(p: ParaId, parent: int, msgs: List[UpwardMessage]): WorkResult = {
     val h = if (p == AssetHubParaId) 2 else 1
     val pkg: WorkPackage = { items: List({ paraId: p, validationCode: { hash: { vchBytes: h }, len: FixedCodeLen } }) }
-    val calls = List(SetParentHeadHash(headHash(parent)), SetHead(parent + 1)).concat(sends(msgs))
+    val calls = List(SetParentHeadHash(headHash(parent)), SetHead(parent + 1)).concat(sends(withIndexIds(msgs)))
     { result: refine(svc, pkg, calls, now)[0], authTrace: 0 }
   }
   // The pin models valid key counts but assumes designation privilege.
   // Preserve its staging/length semantics, replacing only a successful host
   // designation with the corresponding rejection when the input denies it.
   pure def applyPrivilege(acc: AccumulateOutcome, caller: ParaId, slot: int,
-    anchor: int, message: UpwardMessage, allowed: bool): AccumulateOutcome = {
-    val out = applyUpwardMessage(acc, caller, FixedCodeLen, slot, anchor, message)
+    anchor: int, id: MessageId, message: UpwardMessage, allowed: bool): AccumulateOutcome = {
+    val out = applyUpwardMessage(acc, caller, FixedCodeLen, slot, anchor, id, message)
     match message {
       | SetValidatorKeys(k) => {
         val len = acc.state.stagedValidatorKeys.length() + k.keys.length()
         if (not(allowed) and k.isLast and k.keys != List() and ValCount.contains(len))
           { ...out, jamDesignate: acc.jamDesignate,
-            logs: acc.logs.append(DesignateRejected({ len: len })) }
+            logs: acc.logs.append((id, DesignateRejected({ len: len }))) }
         else out
       }
       | _ => out
@@ -59,8 +59,9 @@ module designation_inputs {
         | Ok(ok) => {
           val pre = accumulateOkPrefix(flushed.state, ok, FixedCodeLen, slot)
           val base: AccumulateOutcome = { state: pre.state, foreign: foreignServices,
-            jamDesignate: List(), preimageOps: List(), jamAssigns: List(), logs: pre.logs }
-          val applied = messages.foldl(base, (a, m) => applyPrivilege(a, ok.paraId, slot, ok.lookupAnchor, m, allowed))
+            jamDesignate: List(), preimageOps: List(), jamAssigns: List(), logs: List() }
+          val applied = messages.foldl(base, (a, m) =>
+            applyPrivilege(a, ok.paraId, slot, ok.lookupAnchor, 0, m, allowed))
           { ...applied, state: applied.state.appendAccumulateLogs(ok.paraId, slot, applied.logs) }
         }
         | _ => { state: plain.state, foreign: foreignServices, jamDesignate: List(), preimageOps: List(), jamAssigns: List(), logs: List() }

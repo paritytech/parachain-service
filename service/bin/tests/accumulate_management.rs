@@ -6,7 +6,7 @@ mod common;
 
 use common::*;
 use parachain_service::{
-	state::log::{AccumulateLog, LogEntry, StateBalanceRejection},
+	state::log::{AccumulateLog, StateBalanceRejection},
 	state_balance::{baseline_for, preimage_footprint},
 };
 use parachain_service_core::{
@@ -33,13 +33,7 @@ fn coretime_storage() -> jam_node::vm::Storage {
 }
 
 fn coretime_accumulate_logs(storage: &jam_node::vm::Storage) -> Vec<AccumulateLog> {
-	para_log(storage, CORETIME_PARA_ID)
-		.into_iter()
-		.flat_map(|(_, e)| match e {
-			LogEntry::Accumulate { entries } => entries,
-			LogEntry::Refine { .. } => panic!("unexpected refine entry"),
-		})
-		.collect()
+	accumulate_logs(storage, CORETIME_PARA_ID)
 }
 
 #[test]
@@ -90,8 +84,6 @@ fn registration_below_baseline_errors() {
 	assert_eq!(
 		coretime_accumulate_logs(&storage),
 		vec![AccumulateLog::StateBalanceUpdateRejected {
-			para_id: NEW_PARA,
-			attempted: 10.into(),
 			reason: StateBalanceRejection::BelowUsed {
 				current_total: 0.into(),
 				current_used: baseline_for(NEW_PARA).into()
@@ -123,8 +115,6 @@ fn lower_total_than_used_errors() {
 	assert_eq!(
 		coretime_accumulate_logs(&storage),
 		vec![AccumulateLog::StateBalanceUpdateRejected {
-			para_id: NEW_PARA,
-			attempted: (used - 1).into(),
 			reason: StateBalanceRejection::BelowUsed {
 				current_total: RICH.into(),
 				current_used: used.into()
@@ -363,8 +353,6 @@ fn deregistering_updates_works() {
 		[
 			existing_logs.clone(),
 			vec![AccumulateLog::StateBalanceUpdateRejected {
-				para_id: NEW_PARA,
-				attempted: (RICH * 2).into(),
 				reason: StateBalanceRejection::ParachainIsDeregistering
 			}]
 		]

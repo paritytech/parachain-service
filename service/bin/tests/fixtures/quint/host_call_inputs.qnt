@@ -38,10 +38,10 @@ module host_call_inputs {
           | Ok(ok) => {
           val pre = accumulateOkPrefix(a.state, ok, FixedCodeLen, slot)
           val base: AccumulateOutcome = { state: pre.state, foreign: a.foreign,
-            jamDesignate: List(), preimageOps: List(), jamAssigns: List(), logs: pre.logs }
+            jamDesignate: List(), preimageOps: List(), jamAssigns: List(), logs: List() }
           if (pre.rejected) List() else ok.upwardMessages.foldl({ acc: base, calls: List() }, (m, msg) => {
-            val applied = applyUpwardMessage(m.acc, ok.paraId, FixedCodeLen, slot, ok.lookupAnchor, msg)
-            { acc: applied, calls: m.calls.concat(messageHostCalls(m.acc, applied, msg)) }
+            val applied = applyUpwardMessage(m.acc, ok.paraId, FixedCodeLen, slot, ok.lookupAnchor, msg._1, msg._2)
+            { acc: applied, calls: m.calls.concat(messageHostCalls(m.acc, applied, msg._2)) }
           }).calls
           }
           | _ => List()

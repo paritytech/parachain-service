@@ -16,7 +16,7 @@ use parachain_service_bin::{
 	mock::{good_config_for, good_token, good_trace, refine_args, refine_work_item},
 };
 use parachain_service_core::{
-	types::ParaId,
+	types::{MessageId, ParaId},
 	upward_message::{UpwardMessage, UpwardMessages},
 };
 use refine_replay_pvf::Call;
@@ -90,7 +90,13 @@ fn measure_synthetic(name: &str, ro_bytes: usize) {
 	let pvf = synthetic_pvf(ro_bytes);
 	let digest = measure(name, &pvf, Vec::new());
 	match digest {
-		ParachainWorkDigest::Ok { parent_head_hash, head_data, upward_messages, lookup_anchor, .. } => {
+		ParachainWorkDigest::Ok {
+			parent_head_hash,
+			head_data,
+			upward_messages,
+			lookup_anchor,
+			..
+		} => {
 			assert_eq!(parent_head_hash, [0; 32]);
 			assert!(head_data.is_empty());
 			assert_eq!(upward_messages, UpwardMessages::new());
@@ -112,7 +118,13 @@ fn measured_scenarios_works() {
 	let script = vec![Call::Parent(parent), Call::Head(Vec::new())];
 	let digest = measure("minimal_script", &pvf, script.encode());
 	match digest {
-		ParachainWorkDigest::Ok { parent_head_hash, head_data, upward_messages, lookup_anchor, .. } => {
+		ParachainWorkDigest::Ok {
+			parent_head_hash,
+			head_data,
+			upward_messages,
+			lookup_anchor,
+			..
+		} => {
 			assert_eq!(parent_head_hash, parent);
 			assert!(head_data.is_empty());
 			assert_eq!(upward_messages, UpwardMessages::new());
@@ -124,13 +136,26 @@ fn measured_scenarios_works() {
 	// Exercise bounded input copying and digest assembly near the output budget.
 	let head = vec![0x55; 4096];
 	let message = UpwardMessage::SetKV { key: vec![0x77; 64], value: vec![0x99; 32 * 1024] };
-	let script = vec![Call::Parent(parent), Call::Head(head.clone()), Call::Send(message.encode())];
+	let script = vec![
+		Call::Parent(parent),
+		Call::Head(head.clone()),
+		Call::Send((MessageId::from(0u64), message.clone()).encode()),
+	];
 	let digest = measure("large_output", &pvf, script.encode());
 	match digest {
-		ParachainWorkDigest::Ok { parent_head_hash, head_data, upward_messages, lookup_anchor, .. } => {
+		ParachainWorkDigest::Ok {
+			parent_head_hash,
+			head_data,
+			upward_messages,
+			lookup_anchor,
+			..
+		} => {
 			assert_eq!(parent_head_hash, parent);
 			assert_eq!(head_data.into_inner(), head);
-			assert_eq!(upward_messages, UpwardMessages::try_from(vec![message]).unwrap());
+			assert_eq!(
+				upward_messages,
+				UpwardMessages::try_from(vec![(MessageId::from(0u64), message)]).unwrap()
+			);
 			assert_eq!(lookup_anchor, 0);
 		},
 		other => panic!("expected successful large digest, got {other:?}"),
@@ -146,11 +171,18 @@ fn measured_scenarios_works() {
 	};
 	let params = ValidationParams {
 		parent_head: parent.encode(),
-		block_data: BlockData { state: State { config: config.clone(), counter: 0 }, add: 512 }.encode(),
+		block_data: BlockData { state: State { config: config.clone(), counter: 0 }, add: 512 }
+			.encode(),
 	};
 	let digest = measure("frameless", &pvf, params.encode());
 	match digest {
-		ParachainWorkDigest::Ok { parent_head_hash, head_data, upward_messages, lookup_anchor, .. } => {
+		ParachainWorkDigest::Ok {
+			parent_head_hash,
+			head_data,
+			upward_messages,
+			lookup_anchor,
+			..
+		} => {
 			assert_eq!(parent_head_hash, blake2_256(&parent.encode()));
 			assert_eq!(upward_messages, UpwardMessages::new());
 			assert_eq!(lookup_anchor, 0);

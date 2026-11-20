@@ -76,14 +76,14 @@ pub fn normalize(document: &Value) -> Result<Cow<'_, Value>, String> {
 			let mut events = Vec::new();
 			for reason in pair[1].as_array().ok_or("expected storage reasons")? {
 				let (tag, payload) = variant(reason)?;
-				let reason = match tag {
-					"KVWrite" => {
-						let key = bounded_integer::<u8>(payload, "storage KV key")?;
-						json!({"tag":"FromSetKV", "value":{"keyHash":{"kvKeyBytes":{"#bigint":key.to_string()}}}})
-					},
+				let message_id = match tag {
+					"KVWrite" => bounded_integer::<u64>(payload, "storage KV message id")?,
 					_ => return Err(format!("unsupported storage reason {tag}")),
 				};
-				events.push(json!({"tag":"InsufficientStateBalance", "value":reason}));
+				events.push(json!({"#tup": [
+					{"#bigint": message_id.to_string()},
+					{"tag":"InsufficientStateBalance", "value":{}}
+				]}));
 			}
 			logs.push(json!({"#tup":[pair[0], {"tag":"Accumulate", "value":events}]}));
 		}
@@ -96,15 +96,15 @@ pub fn normalize(document: &Value) -> Result<Cow<'_, Value>, String> {
 // Legacy budget models start with the free balance available after the
 // singleton exists. Fund its first write separately and account for rollback.
 pub fn marker_reserve(storage: &Storage) -> Result<u64, String> {
-	let key = parachain_service::state::storage_key(
-		parachain_service::state::Tag::LastAccumulate, &(),
-	);
+	let key =
+		parachain_service::state::storage_key(parachain_service::state::Tag::LastAccumulate, &());
 	let marker = super::invariants::read::<u32>(storage, &key)?;
-	Ok(if marker.is_some() { 0 } else {
+	Ok(if marker.is_some() {
+		0
+	} else {
 		jam_types::deposit_per_item() + 39 * jam_types::deposit_per_byte()
 	})
 }
-
 
 pub fn prepare(storage: &mut Storage, frame: &Value) -> Result<(), String> {
 	let Some(budget) = frame.get("replayStorageBudget") else { return Ok(()) };
@@ -113,7 +113,8 @@ pub fn prepare(storage: &mut Storage, frame: &Value) -> Result<(), String> {
 	// An explicit fault-environment input, relative to the current footprint.
 	// Do not patch counters or intercept write calls: exercise JAM's real FULL.
 	let reserve = marker_reserve(storage)?;
-	service.balance = service.threshold()
+	service.balance = service
+		.threshold()
 		.checked_add(budget)
 		.and_then(|balance| balance.checked_add(reserve))
 		.ok_or("storage budget overflow")?;

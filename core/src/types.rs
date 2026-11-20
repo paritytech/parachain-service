@@ -8,7 +8,7 @@
 extern crate alloc;
 
 use bounded_collections::{BoundedVec, ConstU32};
-use codec::{Decode, Encode};
+use codec::{Compact, Decode, Encode};
 
 /// A JAM timeslot (`jam_types::Slot`).
 pub use jam_types::Slot as Timeslot;
@@ -36,6 +36,10 @@ pub type ValidatorKey = [u8; VALIDATOR_KEY_SIZE];
 
 /// Byte size of one [`ValidatorKey`]. Spec §5.3.
 pub const VALIDATOR_KEY_SIZE: usize = 336;
+
+/// Caller-supplied identifier of an upward message, logged with every
+/// `AccumulateLog` the message causes. Spec §4.3.
+pub type MessageId = Compact<u64>;
 
 /// Head data is capped at 4 KiB to bound the per-parachain footprint that
 /// `ParaInfo` contributes to the baseline state-balance reservation. Spec §3.1, §6.1.

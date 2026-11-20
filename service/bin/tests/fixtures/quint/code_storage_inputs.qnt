@@ -21,7 +21,7 @@ module code_storage_inputs {
   // Diagnostic coverage label, calculated from footprints before execution.
   var replayCodeFailure: str
   type CodeHost = { state: ParachainServiceState, free: int, slot: int,
-    logs: List[AccumulateLog], failure: str, trap: bool }
+    logs: List[(MessageId, AccumulateLog)], failure: str, trap: bool }
   pure def codeReject(h: CodeHost, label: str): CodeHost = { ...h, failure: label }
   pure def codeWrite(h: CodeHost, proposed: ParachainServiceState, label: str): CodeHost = {
     val delta = hostCost(proposed) - hostCost(h.state)
@@ -35,10 +35,10 @@ module code_storage_inputs {
     val chargeCost = hostCost(charged) - hostCost(h.state)
     val registryCost = hostCost(registered) - hostCost(h.state)
     val totalCost = hostCost(out.state) - hostCost(h.state)
-    if (out.log != None) { ...h, logs: match out.log { | Some(log) => h.logs.append(log) | None => h.logs } }
+    if (out.log != None) { ...h, logs: match out.log { | Some(log) => h.logs.append((0, log)) | None => h.logs } }
     else if (chargeCost > h.free or registryCost > h.free) {
       ...h, failure: if (chargeCost > h.free) "charge" else "registry",
-      logs: h.logs.append(InsufficientStateBalance(FromSolicit({ hash: hash, len: len })))
+      logs: h.logs.append((0, InsufficientStateBalance))
     } else if (totalCost > h.free) { ...h, trap: true, failure: "solicit" }
     else { ...h, state: out.state, free: h.free - totalCost }
   }
@@ -55,7 +55,7 @@ module code_storage_inputs {
     | RequestCodeUpgrade(p) => {
       val out = announceCodeUpgrade(h.state, CoretimeParaId, p.hash, p.len, 0)
       match out.log {
-        | Some(log) => { ...h, logs: h.logs.append(log) }
+        | Some(log) => { ...h, logs: h.logs.append((0, log)) }
         | None => codeWrite(h, out.state, "announcement")
       }
     }
@@ -85,7 +85,7 @@ module code_storage_inputs {
     val wr = { result: WorkOk(Ok({ paraId: CoretimeParaId,
       validationCode: activeCodeHashOr(pi, { vchBytes: 0 }),
       parentHeadHash: headHash(pi.headData), headData: pi.headData,
-      lookupAnchor: 0, upwardMessages: List(msg) })), authTrace: 0 }
+      lookupAnchor: 0, upwardMessages: List((0, msg)) })), authTrace: 0 }
     all {
       stop == -1 or not(applied.trap),
       svc' = out.state, prevSvc' = svc, now' = now + 1,

@@ -46,6 +46,7 @@ module fuzz {
     candidate: ParachainCandidate, mode: int, anchor: Timeslot, auth: int,
     msgs: List[UpwardMessage]
   ): RefinedWork = {
+    val sent = withIndexIds(msgs)
     val announced = match s.paraInfo(para).announcedUpgrade {
       | None => activeCodeCandidate(s, para)
       | Some(ref) => { paraId: para, validationCode: ref }
@@ -58,7 +59,7 @@ module fuzz {
       else List(SetParentHeadHash(headHash(if (mode == 7) StaleParentHead else curHead)))
     val headCalls = if (mode == 5) List() else List(SetHead(curHead + 1))
     val codeEnd = if (mode == 2) List(ReportError(42)) else if (mode == 4) List(Panic) else List()
-    val calls = parentCalls.concat(headCalls).concat(sends(msgs)).concat(codeEnd)
+    val calls = parentCalls.concat(headCalls).concat(sends(sent)).concat(codeEnd)
     val result = if (mode == 1) WorkErr else refine(s, pkg, calls, anchor)[0]
     { work: { result: result, authTrace: auth }, input: {
       pkg: pkg, calls: calls, anchor: anchor,
@@ -310,7 +311,7 @@ module fuzz {
     val packages = range(0, 3).foldl(List(), (acc, i) => acc.append(replayCandidate(svc, para, parent + i,
       activeCodeCandidate(svc, para), 0, now, 0,
       List(SetKV({ key: List(72), value: List(i + 1) }),
-        CreateService(createArgs(Some(MkServiceId(42 + i)), 90 + i)),
+        CreateService(createArgs(Some(MkServiceId(42 + i)))),
         serviceForget(MkServiceId(99)), TransferOut(transfer(0, 1, i, 100))))))
     refinedInterrupted(packages, now + 1,
       List({ source: MkServiceId(7), amount: 1000, toSupervisorBalance: false, memo: 0 }),
@@ -339,8 +340,8 @@ module fuzz {
     Forget({ target: Parachain(AssetHubParaId), preimages: List(({ hashBytes: 777 }, FixedCodeLen)) }),
     RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen, phase: Announcement }),
     RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen, phase: Apply }),
-    CreateService(createArgs(None, 77)),
-    CreateService(createArgs(Some(MkServiceId(42)), 78)),
+    CreateService(createArgs(None)),
+    CreateService(createArgs(Some(MkServiceId(42)))),
     EjectService({ service: MkServiceId(42) }),
     serviceSolicit(MkServiceId(42)),
     serviceForget(MkServiceId(42)),
@@ -409,7 +410,7 @@ module fuzz {
     val pkg: WorkPackage = { items: List({ paraId: p, validationCode: { hash: { vchBytes: h }, len: FixedCodeLen } }) }
     val input: RefineInput = { pkg: pkg, skip: false, byteFault: "valid", gasMode: "normal", gasSample: 0,
       available: codeAvailable(svc, pkg.items[0].validationCode), anchor: now,
-      calls: List(SetParentHeadHash(headHash(parent)), SetHead(parent + 1)).concat(sends(msgs)) }
+      calls: List(SetParentHeadHash(headHash(parent)), SetHead(parent + 1)).concat(sends(withIndexIds(msgs))) }
     all { lifecycleWork(p, h, msgs, gap), noGasWithRefine(Some(List(input))) }
   }
 

@@ -13,7 +13,7 @@ module services {
   import validator_key_inputs.* from "./validator_key_inputs"
   import service_upgrade_inputs.* from "./service_upgrade_inputs"
 
-  pure def create(desired: Option[ServiceId]): UpwardMessage = CreateService(createArgs(desired, 77))
+  pure def create(desired: Option[ServiceId]): UpwardMessage = CreateService(createArgs(desired))
   pure def eject(id: int): UpwardMessage = EjectService({ service: MkServiceId(id) })
   def work(msgs: List[UpwardMessage], parent: int): WorkResult =
     replayWork(svc, AssetHubParaId, parent, activeCodeCandidate(svc, AssetHubParaId), 0, now, 0, msgs)
@@ -37,9 +37,9 @@ module services {
     .then(normal(List(create(None), eject(65536))))
   run code_and_gas_boundaries_works = replayInit
     .then(normal(List(
-      CreateService({ ...createArgs(None, 0), codeHash: { hashBytes: 8802 }, len: 0,
+      CreateService({ ...createArgs(None), codeHash: { hashBytes: 8802 }, len: 0,
         minItemGas: 0, minMemoGas: 0 }),
-      CreateService({ ...createArgs(None, 18446744073709551615), codeHash: { hashBytes: 8803 }, len: 64,
+      CreateService({ ...createArgs(None), codeHash: { hashBytes: 8803 }, len: 64,
         minItemGas: 18446744073709551615, minMemoGas: 18446744073709551615 }))))
   run allocation_works = replayInit
     .then(normal(List(create(None), create(None), create(Some(MkServiceId(70000))))))
@@ -49,9 +49,9 @@ module services {
     .then(normal(List(create(Some(MkServiceId(42))), create(Some(MkServiceId(42))))))
     .then(normal(List(create(Some(ParachainServiceId)), create(Some(MkServiceId(0))))))
   run balance_selectors_works = replayInit
-    .then(normal(List(CreateService({ ...createArgs(None, 1), sourceSupervisorBalance: true }),
-      CreateService({ ...createArgs(None, 2), newSupervisorBalance: true }),
-      CreateService({ ...createArgs(None, 3), sourceSupervisorBalance: true, newSupervisorBalance: true }))))
+    .then(normal(List(CreateService({ ...createArgs(None), sourceSupervisorBalance: true }),
+      CreateService({ ...createArgs(None), newSupervisorBalance: true }),
+      CreateService({ ...createArgs(None), sourceSupervisorBalance: true, newSupervisorBalance: true }))))
   run ejection_refusals_works = replayInit
     .then(normal(List(eject(1), eject(99), eject(0), eject(7))))
     .then(normal(List(create(Some(MkServiceId(42))), eject(42))))

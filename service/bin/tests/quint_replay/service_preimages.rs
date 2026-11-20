@@ -71,7 +71,8 @@ fn changed_target_errors() {
 		// The oracle expects UnknownService; service 7 exists and must instead
 		// produce NotSupervised, with no preimage effects in either case.
 		trace["states"][1]["lastStepWorkResults"][0]["result"]["value"]["value"]
-			["upwardMessages"][message]["value"]["target"]["value"]["value"] = json!({"#bigint":"7"});
+			["upwardMessages"][message]["#tup"][1]["value"]["target"]["value"]["value"] =
+			json!({"#bigint":"7"});
 		assert!(replay::document_trace(&trace).unwrap_err().contains("parachainLog"));
 	}
 }
@@ -81,15 +82,18 @@ fn changed_refusal_log_errors() {
 	let path = "/states/1/svc/parachainLog/#map/0/1/0/#tup/1/value";
 	// Only the `Solicit` refuses; the `Forget` is a silent no-op.
 	for message in 0..1 {
-		for (field, value) in [
-			("service", json!({"tag":"MkServiceId", "value":{"#bigint":"7"}})),
-			("error", json!({"tag": "SolicitNotSupervised", "value":{"#tup":[]}})),
-		] {
+		for (field, value) in
+			[("error", json!({"tag": "SolicitNotSupervised", "value":{"#tup":[]}}))]
+		{
 			let mut trace: Value = serde_json::from_str(REFUSALS).unwrap();
-			trace.pointer_mut(path).unwrap()[message]["value"][field] = value;
+			trace.pointer_mut(path).unwrap()[message]["#tup"][1]["value"][field] = value;
 			assert!(replay::document_trace(&trace).unwrap_err().contains("parachainLog"));
 		}
 	}
+	// Re-tagging the event must also be caught: the id names the message.
+	let mut trace: Value = serde_json::from_str(REFUSALS).unwrap();
+	trace.pointer_mut(path).unwrap()[0]["#tup"][0] = json!({"#bigint":"9"});
+	assert!(replay::document_trace(&trace).unwrap_err().contains("parachainLog"));
 	let mut trace: Value = serde_json::from_str(REFUSALS).unwrap();
 	*trace.pointer_mut(path).unwrap() = json!([]);
 	assert!(replay::document_trace(&trace).unwrap_err().contains("parachainLog"));

@@ -28,8 +28,8 @@ module host_invocation {
       free: h.free - delta, safe: h.safe and delta <= h.free }
   }
   pure def limitedMessage(h: HostAcc, caller: ParaId, slot: int, anchor: int,
-    message: UpwardMessage): HostAcc = {
-    val applied = applyUpwardMessage(h.acc, caller, FixedCodeLen, slot, anchor, message)
+    id: MessageId, message: UpwardMessage): HostAcc = {
+    val applied = applyUpwardMessage(h.acc, caller, FixedCodeLen, slot, anchor, id, message)
     match message {
       | TransferOut(t) => {
         // Substitute only the threshold input to the pinned transfer oracle.
@@ -41,7 +41,7 @@ module host_invocation {
           and not(t.sourceSupervisorBalance) and not(t.destSupervisorBalance)
         val balance = serviceThreshold(h.acc.state) + h.free
         val state = { ...h.acc.state, jamAccount: { ...h.acc.state.jamAccount, balance: balance } }
-        val out = applyUpwardMessage({ ...h.acc, state: state }, caller, FixedCodeLen, slot, anchor, message)
+        val out = applyUpwardMessage({ ...h.acc, state: state }, caller, FixedCodeLen, slot, anchor, id, message)
         val done = transferred(t, h.acc.logs, out.logs)
         val debit = match done {
           | Some(d) => if (t.dest == ParachainServiceId) amountOf(d.amount)
@@ -57,8 +57,8 @@ module host_invocation {
       | CreateService(c) => {
         val cost = BaseDeposit + 2 * ItemDeposit + PreimageRequestOverhead + c.len
         val out = if (cost > h.free)
-          { ...h.acc, logs: h.acc.logs.append(ServiceCreation({ messageId: c.messageId, result: CannotAfford })) }
-          else replayApply(h.acc, caller, FixedCodeLen, slot, anchor, message)
+          { ...h.acc, logs: h.acc.logs.append((id, ServiceCreation({ result: CannotAfford }))) }
+          else replayApply(h.acc, caller, FixedCodeLen, slot, anchor, id, message)
         val nextHost = moved(h, out)
         { ...nextHost, creations: out.foreign.keys().exclude(h.acc.foreign.keys())
           .fold(h.creations, (list, id) => list.append({ service: id, args: c })) }
@@ -78,19 +78,19 @@ module host_invocation {
         val hostRejected = applied.logs == h.acc.logs and
           (piGrowth > h.free or piGrowth + storageGrowth > h.free)
         if (hostRejected) { ...h, rejects: h.rejects + 1, acc: { ...h.acc,
-          logs: h.acc.logs.append(InsufficientStateBalance(FromSetKV({ keyHash: listHash(kv.key) }))) } }
+          logs: h.acc.logs.append((id, InsufficientStateBalance)) } }
         else moved(h, applied)
       }
       | UpgradeService(p) => {
         val nextHost = moved(h, applied)
         { ...nextHost, calls: h.calls.concat(messageHostCalls(h.acc, applied, message)), minGas: if (applied.logs == h.acc.logs) Some(p.minAccGas) else h.minGas }
       }
-      | RemoveServiceStorage(_) => moved(h, replayApply(h.acc, caller, FixedCodeLen, slot, anchor, message))
-      | SetServiceSupervisor(_) => moved(h, replayApply(h.acc, caller, FixedCodeLen, slot, anchor, message))
+      | RemoveServiceStorage(_) => moved(h, replayApply(h.acc, caller, FixedCodeLen, slot, anchor, id, message))
+      | SetServiceSupervisor(_) => moved(h, replayApply(h.acc, caller, FixedCodeLen, slot, anchor, id, message))
       | RemoveKV(_) => moved(h, applied)
-      | Forget(_) => moved(h, replayApply(h.acc, caller, FixedCodeLen, slot, anchor, message))
+      | Forget(_) => moved(h, replayApply(h.acc, caller, FixedCodeLen, slot, anchor, id, message))
       | Solicit(p) => match p.target {
-        | Service(_) => moved(h, replayApply(h.acc, caller, FixedCodeLen, slot, anchor, message))
+        | Service(_) => moved(h, replayApply(h.acc, caller, FixedCodeLen, slot, anchor, id, message))
         | _ => { ...h, safe: false }
       }
       | RequestCodeUpgrade(_) => moved(h, applied)
@@ -123,7 +123,7 @@ module host_invocation {
             acc: { state: if (headFits) headed else base, foreign: h.foreign,
               jamDesignate: List(), jamAssigns: List(),
               preimageOps: releasedReferences(h.state, if (headFits) headed else base), logs: List() } }
-          val out = ok.upwardMessages.foldl(start, (a, m) => limitedMessage(a, ok.paraId, slot, ok.lookupAnchor, m))
+          val out = ok.upwardMessages.foldl(start, (a, m) => limitedMessage(a, ok.paraId, slot, ok.lookupAnchor, m._1, m._2))
           val logged = out.acc.state.appendAccumulateLogs(ok.paraId, slot, out.acc.logs)
           val logDelta = hostCost(logged) - hostCost(out.acc.state)
           val logFits = logDelta <= out.free

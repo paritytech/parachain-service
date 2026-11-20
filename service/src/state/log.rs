@@ -13,12 +13,12 @@ use crate::{
 };
 use alloc::vec::Vec;
 use codec::Encode;
-use parachain_service_core::types::{ParaId, Timeslot};
+use parachain_service_core::types::{MessageId, ParaId, Timeslot};
 
 pub use parachain_service_core::log::{
-	AccumulateLog, InsufficientBalanceReason, LogEntry, ParachainLog, RefineLog,
-	ServiceCreationResult, ServiceEjectError, ServiceSolicitError, ServiceSupervisorError,
-	StateBalanceRejection, StoredAuthTrace, TransferError,
+	AccumulateLog, LogEntry, ParachainLog, RefineLog, ServiceCreationResult, ServiceEjectError,
+	ServiceSolicitError, ServiceSupervisorError, StateBalanceRejection, StoredAuthTrace,
+	TransferError,
 };
 
 /// Truncate a work-report auth trace to the stored cap (§3.3).
@@ -121,8 +121,13 @@ impl ParachainLogs {
 	}
 
 	/// Append one batched `Accumulate` entry for a live para (§5.1). No-op for an
-	/// unregistered para or an empty batch.
-	pub fn append_accumulate(para_id: ParaId, now: Timeslot, entries: Vec<AccumulateLog>) {
+	/// unregistered para or an empty batch. Each event keeps the `message_id` of
+	/// the upward message that caused it.
+	pub fn append_accumulate(
+		para_id: ParaId,
+		now: Timeslot,
+		entries: Vec<(MessageId, AccumulateLog)>,
+	) {
 		if entries.is_empty() || !super::para_info::Parachains::is_live(para_id) {
 			return;
 		}
@@ -156,11 +161,15 @@ mod tests {
 	}
 
 	fn accumulate_entry() -> LogEntry {
-		LogEntry::Accumulate { entries: alloc::vec![AccumulateLog::TooMuchStateHeld] }
+		LogEntry::Accumulate {
+			entries: alloc::vec![(0u64.into(), AccumulateLog::TooMuchStateHeld)],
+		}
 	}
 
 	fn big_accumulate_entry(events: usize) -> LogEntry {
-		LogEntry::Accumulate { entries: alloc::vec![AccumulateLog::TooMuchStateHeld; events] }
+		LogEntry::Accumulate {
+			entries: alloc::vec![(0u64.into(), AccumulateLog::TooMuchStateHeld); events],
+		}
 	}
 
 	fn opaque_entry(payload_len: usize) -> LogEntry {

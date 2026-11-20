@@ -156,8 +156,10 @@ JAM balances, installed code lengths, and upgrade gas-setting mismatches are rej
   `TooMuchStateHeld`, `InvalidCodeHashAcc`, `CodeUpgradeNotAvailable`,
   `CodeUpgradeNotAnnounced`, `CanNotRemoveCode`, `CoreNotAssignable`,
   `DesignateRejected`, `StagedValidatorKeysOverflow`, `TransferFailed` (all six reasons), `TransferredAmount`,
-  `ServiceUpgradePreimageMissing`, and
-  `InsufficientStateBalance` from `FromSolicit` or `FromSetKV`; other events fail explicitly.
+  `ServiceUpgradePreimageMissing`, and the unit `InsufficientStateBalance`; other
+  events fail explicitly. Every entry is decoded as the spec's
+  `(message_id, AccumulateLog)` pair, and the id is compared against the
+  service's own `parachain_log` (§5.1).
 - `Solicit` and `Forget` support explicit parachain targets, including delegated
   calls, and historical fixtures without `Target`. Service targets replay the
   host's `UnknownService` and `NotSupervised` refusals. Seeded foreign accounts

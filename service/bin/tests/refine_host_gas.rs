@@ -13,7 +13,7 @@ use parachain_service_bin::{
 	mock::{good_config_for, good_token, good_trace, refine_args, refine_work_item},
 };
 use parachain_service_core::{
-	types::ParaId,
+	types::{MessageId, ParaId},
 	upward_message::{UpwardMessage, MAX_UPWARD_MESSAGE_BYTES},
 };
 use polkavm_common::{
@@ -45,17 +45,19 @@ fn call(code: &mut Vec<Instruction>, index: i32, args: &[u64], expected: Option<
 
 fn program(case: &str, enabled: bool, preimage: &[u8], message: &[u8]) -> Vec<u8> {
 	let memory = polkavm::MemoryMapBuilder::new(jam_types::PAGE_SIZE)
-		.rw_data_size(RW_SIZE).stack_size(4096).build().unwrap();
+		.rw_data_size(RW_SIZE)
+		.stack_size(4096)
+		.build()
+		.unwrap();
 	let rw = u64::from(memory.rw_data_address());
 	let mut inner = ProgramBlobBuilder::new(InstructionSetKind::JamV1);
-	let inner_instructions = if case == "compile" {
-		vec![Instruction::trap; 16 * 1024]
-	} else {
-		vec![asm::ret()]
-	};
+	let inner_instructions =
+		if case == "compile" { vec![Instruction::trap; 16 * 1024] } else { vec![asm::ret()] };
 	inner.set_code(&inner_instructions, &[]);
 	let inner_blob = inner.into_vec().unwrap();
-	let inner_code = polkavm::ProgramParts::from_bytes(inner_blob.into()).unwrap().code_and_jump_table;
+	let inner_code = polkavm::ProgramParts::from_bytes(inner_blob.into())
+		.unwrap()
+		.code_and_jump_table;
 	let mut data = vec![b'a'; RW_SIZE as usize];
 	data[HASH as usize..HASH as usize + 32].copy_from_slice(&hash_raw(preimage));
 	data[NESTED as usize..NESTED as usize + inner_code.len()].copy_from_slice(&inner_code);
@@ -64,9 +66,11 @@ fn program(case: &str, enabled: bool, preimage: &[u8], message: &[u8]) -> Vec<u8
 	}
 	data[ARGS as usize..ARGS as usize + 112].fill(0);
 	data[ARGS as usize..ARGS as usize + 8].copy_from_slice(&100_000i64.to_le_bytes());
-	data[ARGS as usize + 8..ARGS as usize + 16].copy_from_slice(&polkavm::RETURN_TO_HOST.to_le_bytes());
+	data[ARGS as usize + 8..ARGS as usize + 16]
+		.copy_from_slice(&polkavm::RETURN_TO_HOST.to_le_bytes());
 	let mut code = Vec::new();
-	let nested_module = matches!(case, "machine" | "peek" | "poke" | "pages" | "invoke" | "expunge");
+	let nested_module =
+		matches!(case, "machine" | "peek" | "poke" | "pages" | "invoke" | "expunge");
 	let nested_machine = matches!(case, "peek" | "poke" | "pages" | "invoke" | "expunge");
 	if nested_module {
 		call(&mut code, 9, &[0, rw + NESTED, inner_code.len() as u64, 0, 0], Some(0));
@@ -85,11 +89,26 @@ fn program(case: &str, enabled: bool, preimage: &[u8], message: &[u8]) -> Vec<u8
 	}
 	if enabled {
 		match case {
-			"gas" => for _ in 0..4 { call(&mut code, 0, &[], None); },
-			"grow_heap" => call(&mut code, 1, &[u64::from(memory.heap_base()).div_ceil(4096) + 16], None),
-			"fetch" => call(&mut code, 2, &[rw + BUF, 0, SAMPLE as u64, 4, 0, 0], Some(SAMPLE as i32)),
-			"historical_lookup" => call(&mut code, 7, &[u64::MAX, rw + HASH, rw + BUF, 0, SAMPLE as u64], Some(SAMPLE as i32)),
-			"compile" => call(&mut code, 9, &[0, rw + NESTED, inner_code.len() as u64, 0, 0], Some(0)),
+			"gas" => {
+				for _ in 0..4 {
+					call(&mut code, 0, &[], None);
+				}
+			},
+			"grow_heap" => {
+				call(&mut code, 1, &[u64::from(memory.heap_base()).div_ceil(4096) + 16], None)
+			},
+			"fetch" => {
+				call(&mut code, 2, &[rw + BUF, 0, SAMPLE as u64, 4, 0, 0], Some(SAMPLE as i32))
+			},
+			"historical_lookup" => call(
+				&mut code,
+				7,
+				&[u64::MAX, rw + HASH, rw + BUF, 0, SAMPLE as u64],
+				Some(SAMPLE as i32),
+			),
+			"compile" => {
+				call(&mut code, 9, &[0, rw + NESTED, inner_code.len() as u64, 0, 0], Some(0))
+			},
 			"machine" => call(&mut code, 10, &[0, 0], Some(0)),
 			"peek" => call(&mut code, 11, &[0, rw + BUF, 512 * 4096, 65536], Some(0)),
 			"poke" => call(&mut code, 12, &[0, rw + BUF, 512 * 4096, 65536], Some(0)),
@@ -121,16 +140,31 @@ fn measure(case: &str, enabled: bool, preimage: &[u8], message: &[u8]) -> u64 {
 	let service = blob();
 	let pvf = program(case, enabled, preimage, message);
 	let para = ParaId::new(0);
-	let payload = ParachainCandidate { para_id: para, validation_code: validation_code_hash(&pvf) }.encode();
+	let payload =
+		ParachainCandidate { para_id: para, validation_code: validation_code_hash(&pvf) }.encode();
 	let mut item = refine_work_item(&service, payload, vec![preimage.to_vec()]);
-	if case == "export" && enabled { item.0.export_count = 1; }
-	let (engine, hash, mut ctx) = refine_args(&service, &authorizer_blob(), good_config_for(vec![para]), good_token(), good_trace(), vec![item], &[&pvf, preimage], 0);
-	let outcome = pj::refine(&engine, hash, &mut ctx).expect("real-engine refine must return a digest");
+	if case == "export" && enabled {
+		item.0.export_count = 1;
+	}
+	let (engine, hash, mut ctx) = refine_args(
+		&service,
+		&authorizer_blob(),
+		good_config_for(vec![para]),
+		good_token(),
+		good_trace(),
+		vec![item],
+		&[&pvf, preimage],
+		0,
+	);
+	let outcome =
+		pj::refine(&engine, hash, &mut ctx).expect("real-engine refine must return a digest");
 	let expected_error = if !enabled && matches!(case, "parent" | "head") {
 		Some(RefineLog::InvalidHeadDeclaration)
 	} else if enabled && case == "report_error" {
 		Some(RefineLog::Opaque(vec![b'a'; 1024].try_into().unwrap()))
-	} else { None };
+	} else {
+		None
+	};
 	match (outcome.digest, expected_error) {
 		(ParachainWorkDigest::Err { error, .. }, Some(expected)) => assert_eq!(error, expected),
 		(ParachainWorkDigest::Ok { parent_head_hash, head_data, upward_messages, .. }, None) => {
@@ -153,7 +187,12 @@ fn measured_host_calls_works() {
 	use parachain_service::pvf::executor::host_call_gas_cost;
 	use parachain_service_core::host_call::HostCall;
 	let preimage = vec![b'p'; SAMPLE];
-	let message = UpwardMessage::SetKV { key: vec![1], value: vec![2; MAX_UPWARD_MESSAGE_BYTES - 16] }.encode();
+	let message = (
+		MessageId::from(0u64),
+		UpwardMessage::SetKV { key: vec![1], value: vec![2; MAX_UPWARD_MESSAGE_BYTES - 16] },
+	)
+		.encode();
+	// The §4.3 budget counts the encoded `(message_id, message)` pair.
 	assert!(message.len() <= MAX_UPWARD_MESSAGE_BYTES);
 	for (case, call) in [
 		("gas", HostCall::Gas),

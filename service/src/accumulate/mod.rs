@@ -21,11 +21,10 @@ pub mod validator_keys;
 
 use crate::{
 	head_commitment::HeadTracker,
-	state::{self, log::ParachainLogs, Tag},
+	state::{self, Tag},
 };
 use jam_pvm_common::accumulate::{accumulate_items, checkpoint, gas, yield_hash};
 use jam_types::{AccumulateItem, Hash, ServiceId, Slot, UnsignedGas};
-use parachain_service_core::types::CORETIME_PARA_ID;
 
 #[derive(Debug)]
 pub enum AccumulateError {}
@@ -96,9 +95,8 @@ pub fn accumulate(
 	Ok(commitment)
 }
 
-/// Fire up to `budget` due assigns. `AssignCore` is Coretime only, so the
-/// rejections are logged against it.
+/// Flush up to `budget` due assigns (§5.1). The spec records `CoreNotAssignable`
+/// only while replaying an `AssignCore`, so a rejection here is silent.
 fn flush_due_assigns(now: Slot, service_id: ServiceId, budget: usize) {
-	let logs = assigns::apply_due_assigns(now, service_id, budget);
-	ParachainLogs::append_accumulate(CORETIME_PARA_ID, now, logs);
+	assigns::apply_due_assigns(now, service_id, budget);
 }

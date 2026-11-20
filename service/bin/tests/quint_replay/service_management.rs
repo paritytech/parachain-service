@@ -71,7 +71,8 @@ fn changed_target_errors() {
 	for message in 1..5 {
 		let mut trace: Value = serde_json::from_str(REFUSALS).unwrap();
 		trace["states"][1]["lastStepWorkResults"][0]["result"]["value"]["value"]
-			["upwardMessages"][message]["value"]["service"]["value"] = json!({"#bigint":"7"});
+			["upwardMessages"][message]["#tup"][1]["value"]["service"]["value"] =
+			json!({"#bigint":"7"});
 		assert!(replay::document_trace(&trace).unwrap_err().contains("parachainLog"));
 	}
 }
@@ -82,7 +83,7 @@ fn changed_supervisor_errors() {
 	// Target 7 exists: changing the missing new supervisor to self must
 	// change UnknownNewSupervisor to NotSupervised.
 	trace["states"][2]["lastStepWorkResults"][0]["result"]["value"]["value"]["upwardMessages"][1]
-		["value"]["newSupervisor"]["value"] = json!({"#bigint":"1"});
+		["#tup"][1]["value"]["newSupervisor"]["value"] = json!({"#bigint":"1"});
 	assert!(replay::document_trace(&trace).unwrap_err().contains("parachainLog"));
 }
 
@@ -90,7 +91,7 @@ fn changed_supervisor_errors() {
 fn invalid_storage_key_errors() {
 	let mut trace: Value = serde_json::from_str(REFUSALS).unwrap();
 	trace["states"][1]["lastStepWorkResults"][0]["result"]["value"]["value"]["upwardMessages"][0]
-		["value"]["keys"][0][0] = json!({"#bigint":"256"});
+		["#tup"][1]["value"]["keys"][0][0] = json!({"#bigint":"256"});
 	assert!(replay::document_trace(&trace).unwrap_err().contains("byte"));
 }
 

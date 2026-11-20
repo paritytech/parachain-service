@@ -6,10 +6,12 @@
 //! than the JAM host calls the service itself uses (`fetch` = 2, etc. in
 //! [`crate::host_call::HostCall`]) — conflating the two sets is a silent ABI break.
 
-use alloc::vec::Vec;
 use codec::{Compact, Encode};
 
-use crate::upward_message::{CodeUpgradePhase, Target};
+use crate::{
+	types::MessageId,
+	upward_message::{CodeUpgradePhase, Target},
+};
 
 /// The subset of the service's `UpwardMessage` ABI this runtime emits. The SCALE variant
 /// index is positional, so the ordering has to match the spec's `enum UpwardMessage`.
@@ -42,9 +44,15 @@ pub fn set_head(head: &[u8]) {
 }
 
 /// Signal a PVF code upgrade request (`hash` + encoded-code length + phase).
-pub fn request_code_upgrade(hash: [u8; 32], len: u32, phase: CodeUpgradePhase) {
+pub fn request_code_upgrade(
+	message_id: MessageId,
+	hash: [u8; 32],
+	len: u32,
+	phase: CodeUpgradePhase,
+) {
 	send_upward_message(
-		&UpwardMessage::RequestCodeUpgrade { hash, len: Compact(len), phase }.encode(),
+		message_id,
+		&UpwardMessage::RequestCodeUpgrade { hash, len: Compact(len), phase },
 	)
 }
 
@@ -53,18 +61,20 @@ pub fn request_code_upgrade(hash: [u8; 32], len: u32, phase: CodeUpgradePhase) {
 /// A parachain must reference a code before it can announce it, so this precedes every
 /// `Announcement`. The service treats a repeat solicit of an already-referenced code as a
 /// no-op, so emitting it alongside each announcement is safe.
-pub fn solicit(target: Target, hash: [u8; 32], len: u32) {
-	send_upward_message(&UpwardMessage::Solicit { target, hash, len: Compact(len) }.encode())
+pub fn solicit(message_id: MessageId, target: Target, hash: [u8; 32], len: u32) {
+	send_upward_message(message_id, &UpwardMessage::Solicit { target, hash, len: Compact(len) })
 }
 
-/// Append one upward message to the work digest.
+/// Append one upward message to the work digest, tagged with `message_id`.
 ///
-/// The message is the SCALE encoding of one `UpwardMessage` (§3.3). Public because a
-/// parachain runtime emits messages this crate's own wrappers do not cover — the
-/// Coretime chain's `AssignCore` is the first — and every emitter must encode into the
-/// same single stream the service replays in emission order.
-pub fn send_upward_message(msg: &[u8]) {
-	unsafe { send_upward_message_raw(msg.as_ptr() as u32, msg.len() as u32) }
+/// The payload is the SCALE encoding of one `(MessageId, UpwardMessage)` pair (§3.3,
+/// §4.3). Public because a parachain runtime emits messages this crate's own wrappers do
+/// not cover — the Coretime chain's `AssignCore` is the first — and every emitter must
+/// encode into the same single stream the service replays in emission order. Every
+/// `AccumulateLog` the message causes is logged with `message_id`.
+pub fn send_upward_message(message_id: MessageId, msg: &UpwardMessage) {
+	let encoded = (message_id, msg).encode();
+	unsafe { send_upward_message_raw(encoded.as_ptr() as u32, encoded.len() as u32) }
 }
 
 /// Abort the PVF with an opaque error payload; never returns.

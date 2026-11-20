@@ -109,6 +109,11 @@ pub fn transition(
 			.iter()
 			.enumerate()
 		{
+			// Each entry is the spec's `(message_id, message)` pair (§4.3).
+			let message = match tuple(message)?.as_slice() {
+				[_, message] => message,
+				_ => return Err("upward message must be a (message_id, message) pair".into()),
+			};
 			let (tag, payload) = variant(message)?;
 			if tag == "ParachainSetHead" {
 				let target = para_id(field(payload, "paraId")?, codex)?;

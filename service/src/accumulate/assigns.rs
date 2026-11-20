@@ -13,7 +13,7 @@ use jam_pvm_common::{accumulate::assign, ApiError};
 use jam_types::{
 	auth_queue_len, core_count, AuthQueue, AuthorizerHash as JamAuthorizerHash, UnsignedGas,
 };
-use parachain_service_core::types::{AuthorizerHash, CoreIndex, ServiceId, Timeslot};
+use parachain_service_core::types::{AuthorizerHash, CoreIndex, MessageId, ServiceId, Timeslot};
 
 /// Replay an `AssignCore` message (Coretime only, §4.3). Refine rejects a
 /// malformed queue or an unknown core (§3.3), so either is a defensive no-op
@@ -26,7 +26,8 @@ pub fn schedule(
 	queue: Vec<AuthorizerHash>,
 	new_assigner: Option<ServiceId>,
 	jam_slot: Timeslot,
-	logs: &mut Vec<AccumulateLog>,
+	message_id: MessageId,
+	logs: &mut Vec<(MessageId, AccumulateLog)>,
 ) {
 	if !well_formed(&queue, new_assigner) || core >= core_count() {
 		return;
@@ -39,7 +40,7 @@ pub fn schedule(
 			Err(ApiError::ActionInvalid) => {
 				PendingAssigns::remove(core);
 				DirtyCores::remove(core);
-				logs.push(AccumulateLog::CoreNotAssignable { core });
+				logs.push((message_id, AccumulateLog::CoreNotAssignable));
 			},
 			Err(e) => jam_pvm_common::error!("assign for core {core} failed: {e:?}"),
 		}
@@ -84,17 +85,13 @@ pub fn budget(gas: UnsignedGas) -> usize {
 /// newer ones. Due cores beyond the budget stay cached for a later flush. Gating
 /// reads only the dirty-core index; the payload is read just for fired cores.
 ///
-/// Returns the rejections to record in the Coretime chain's log.
-pub fn apply_due_assigns(
-	now: Timeslot,
-	service_id: ServiceId,
-	budget: usize,
-) -> Vec<AccumulateLog> {
-	let mut logs = Vec::new();
+/// A rejection here is silent: §5.1 records `CoreNotAssignable` only when
+/// replaying an `AssignCore`, and drops the core from both maps.
+pub fn apply_due_assigns(now: Timeslot, service_id: ServiceId, budget: usize) {
 	let cores = DirtyCores::get();
 	let mut due: Vec<_> = cores.iter().copied().filter(|(_, jam_slot)| *jam_slot <= now).collect();
 	if due.is_empty() || budget == 0 {
-		return logs;
+		return;
 	}
 	due.sort_unstable_by_key(|&(core, jam_slot)| (jam_slot, core));
 	due.truncate(budget);
@@ -110,10 +107,7 @@ pub fn apply_due_assigns(
 				.try_push((core, jam_slot + auth_queue_len() as Timeslot))
 				.expect("re-arming cannot exceed the original number of dirty cores; qed"),
 			// The core was handed away since the entry was cached: drop it (§5.1).
-			Err(ApiError::ActionInvalid) => {
-				PendingAssigns::remove(core);
-				logs.push(AccumulateLog::CoreNotAssignable { core });
-			},
+			Err(ApiError::ActionInvalid) => PendingAssigns::remove(core),
 			// TODO: the design does not say what happens to an entry JAM rejects
 			// for any other reason; it is retried.
 			Err(e) => {
@@ -125,7 +119,6 @@ pub fn apply_due_assigns(
 	}
 	// Flushing due cores never grows the index; JAM never rejects it.
 	DirtyCores::set(&next).expect("flushing due cores never grows the index; qed");
-	logs
 }
 
 /// §3.3: a queue holds 1 to `AUTHORIZER_QUEUE_LEN` hashes, and one handing the

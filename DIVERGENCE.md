@@ -102,7 +102,7 @@ Each enum's variant order is its wire ABI. Against the design doc's listing:
 
 - `UpwardMessage`: all three agree since Quint `85eb47d5e4` moved `UpgradeService`
   before the four Coretime-only calls.
-- `AccumulateLog`: Rust follows the design doc for all 17 variants and appends an 18th,
+- `AccumulateLog`: Rust follows the design doc for all 20 variants and appends a 21st,
   `InvalidCodeHash`, that nothing emits any more (the model dropped `InvalidCodeHashAcc`).
 
 `RefineLog` agrees on all three sides since Quint `096a193dccf` dropped `MalformedPayload` and
@@ -110,12 +110,12 @@ Each enum's variant order is its wire ABI. Against the design doc's listing:
 Quint `85eb47d5e4` also aligns `MerkleTree` with Rust and the design (`Node = 0`,
 `Leaf = 1`); the replay codex now uses those discriminants for abstract hashes.
 
-`InsufficientBalanceReason` now agrees with the design and model: only `Solicit` and
-`SetKV` remain after Quint `85eb47d5e4`. Rust no longer logs insufficient allowance
-for baseline-covered validator keys, incoming queues, or ParaInfo writes. Actual
-JAM `StorageFull` still leaves failed writes unapplied; queue failures roll back
-this invocation's new buckets. The replay-only storage-budget model exercises this
-host-failure recovery, which the pinned model does not represent.
+`InsufficientBalanceReason` is gone from both sides: Quint `09c7224954f9` deleted it and
+made `InsufficientStateBalance` a unit variant, and Rust followed. Rust no longer logs
+insufficient allowance for baseline-covered validator keys, incoming queues, or ParaInfo
+writes. Actual JAM `StorageFull` still leaves failed writes unapplied; queue failures
+roll back this invocation's new buckets. The replay-only storage-budget model exercises
+this host-failure recovery, which the pinned model does not represent.
 
 Fix: drop the dead `InvalidCodeHash`.
 
@@ -187,8 +187,11 @@ model transfers to `false`.
 
 Since Quint `64713864ffa` the model, like the service, learns of a handoff only from `assign`: a
 future-slot `AssignCore` is cached whatever the core's assigner, and the flush that calls `assign`
-once it falls due drops the entry and logs `CoreNotAssignable` in the Coretime chain's log. Pinned
-by the `future_assign_after_handoff_works` replay fixture.
+once it falls due drops the entry. Since Quint `09c7224954f9` only the replay-time rejection is
+logged (`CoreNotAssignable`, tagged with the `message_id` of the `AssignCore`); a rejection inside
+the due flush is silent, and Rust matches. Pinned by `accumulate_assigns.rs`
+`handed_away_core_flush_errors` and the `assignments.qnt` `future_assign_after_handoff_works`
+fixture.
 
 ## M-14: an `assign` JAM rejects for a bad core index — resolved
 
@@ -205,3 +208,17 @@ Rust now follows spec §5.1 and Quint: flush the due-assignment prefix paid for 
 the always-accumulate allowance, retry remaining entries after work packages
 using leftover gas, and carry any unprocessed entries into later blocks. Replay
 checks `fired_assign_not_left_due`; entries that did not fire may remain due.
+
+## M-16: `AssignCore.queue` is a `Vec` bounded in Refine, not a `BoundedVec`
+
+**Neither is wrong; the bound is checked where the spec checks it.**
+
+The design types `AssignCore.queue` as `BoundedVec<AuthorizerHash, AUTH_QUEUE_SIZE>` with
+`AUTH_QUEUE_SIZE = 80` (§3.3). Rust keeps a plain `Vec<AuthorizerHash>`
+(`core/src/upward_message.rs:159`) and enforces the bound in Refine
+(`service/src/pvf/executor.rs:392`), rejecting a queue outside 1..=`AUTHORIZER_QUEUE_LEN`
+hashes — and any queue other than exactly `AUTHORIZER_QUEUE_LEN` when `new_assigner` hands
+the core away — with `RefineLog::InvalidAuthorizerQueue`, exactly the rule the design prose
+states. The Quint model does the same (`quint/messages.qnt` `wellFormedAssignQueue`), so
+model and Rust agree. A `BoundedVec` encodes as its inner `Vec`, so the encodings are
+identical for every input that decodes under the spec; only the in-memory type differs.

@@ -21,7 +21,7 @@ fn immediate_credit_errors() {
 	// At the exact boundary, an immediate self-credit would incorrectly fund
 	// this second payment within the same invocation.
 	let message = trace["states"][2]["lastStepWorkResults"][1]["result"]["value"]["value"]
-		["upwardMessages"][1]["value"]
+		["upwardMessages"][1]["#tup"][1]["value"]
 		.clone();
 	trace["states"][2]["replayTransfers"].as_array_mut().unwrap().push(message);
 	assert!(replay::document_trace(&trace).unwrap_err().contains("replayTransfers differs"));

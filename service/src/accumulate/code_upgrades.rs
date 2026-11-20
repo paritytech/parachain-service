@@ -10,7 +10,7 @@ use crate::state::{
 };
 use alloc::vec::Vec;
 use parachain_service_core::types::{
-	validation_code_hash_bytes, ParaId, Timeslot, ValidationCodeHash, ValidationCodeRef,
+	validation_code_hash_bytes, MessageId, ParaId, Timeslot, ValidationCodeHash, ValidationCodeRef,
 };
 
 /// §5.2 `announceCodeUpgrade`: declare the code a later `Apply` may switch to.
@@ -22,7 +22,8 @@ pub fn announce_code_upgrade(
 	new_hash: ValidationCodeHash,
 	code_len: u32,
 	lookup_anchor: Timeslot,
-	logs: &mut Vec<AccumulateLog>,
+	message_id: MessageId,
+	logs: &mut Vec<(MessageId, AccumulateLog)>,
 ) {
 	let pi = Parachains::get(para_id).expect("origin is live per step 1; qed");
 	let new_ref = ValidationCodeRef { hash: new_hash, len: code_len };
@@ -43,10 +44,7 @@ pub fn announce_code_upgrade(
 			code_len,
 			lookup_anchor,
 		) {
-		logs.push(AccumulateLog::CodeUpgradeNotAvailable {
-			hash: validation_code_hash_bytes(&new_hash),
-			len: code_len.into(),
-		});
+		logs.push((message_id, AccumulateLog::CodeUpgradeNotAvailable));
 		return;
 	}
 
@@ -63,16 +61,14 @@ pub fn apply_code_upgrade(
 	para_id: ParaId,
 	new_hash: ValidationCodeHash,
 	code_len: u32,
-	logs: &mut Vec<AccumulateLog>,
+	message_id: MessageId,
+	logs: &mut Vec<(MessageId, AccumulateLog)>,
 ) {
 	let pi = Parachains::get(para_id).expect("origin is live per step 1; qed");
 	let new_ref = ValidationCodeRef { hash: new_hash, len: code_len };
 
 	if pi.announced_upgrade != Some(new_ref) {
-		logs.push(AccumulateLog::CodeUpgradeNotAnnounced {
-			hash: validation_code_hash_bytes(&new_hash),
-			len: code_len.into(),
-		});
+		logs.push((message_id, AccumulateLog::CodeUpgradeNotAnnounced));
 		return;
 	}
 

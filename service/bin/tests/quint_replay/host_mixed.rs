@@ -71,7 +71,7 @@ fn cleanup_bucket_range_errors() {
 	))
 	.unwrap();
 	let message = &mut trace["states"][1]["lastStepWorkResults"][0]["result"]["value"]["value"]
-		["upwardMessages"][1];
+		["upwardMessages"][1]["#tup"][1];
 	assert_eq!(message["tag"], "CleanUpBucketsUpTo");
 	message["value"] = serde_json::json!({"#bigint":"-1"});
 	assert!(replay::document_trace(&trace).unwrap_err().contains("cleanup bucket out of"));

@@ -88,8 +88,8 @@ module log_pruning {
         Forget({ target: Parachain(CoretimeParaId), preimages: List((second, len)) }))))
       .then(expectThat(all {
         svc.parachainLog.get(CoretimeParaId) == List(
-          (3, Accumulate(List(ForgetAgainAt({ target: Parachain(CoretimeParaId), hash: first, len: len, due: 3 + ExpungePeriod })))),
-          (4, Accumulate(List(ForgetAgainAt({ target: Parachain(CoretimeParaId), hash: second, len: len, due: 4 + ExpungePeriod }))))),
+          (3, Accumulate(List((0, ForgetAgainAt({ hash: first, len: len, due: 3 + ExpungePeriod }))))),
+          (4, Accumulate(List((0, ForgetAgainAt({ hash: second, len: len, due: 4 + ExpungePeriod })))))),
         unrequestedSince(svc.preimageStatus.get((first, len))) == 3,
         unrequestedSince(svc.preimageStatus.get((second, len))) == 4
       }))
@@ -97,7 +97,7 @@ module log_pruning {
       .then(expectThat(all {
         svc.paraInfo(CoretimeParaId).headData == 4,
         svc.parachainLog.get(CoretimeParaId) == List(
-          (4, Accumulate(List(ForgetAgainAt({ target: Parachain(CoretimeParaId), hash: second, len: len, due: 4 + ExpungePeriod }))))),
+          (4, Accumulate(List((0, ForgetAgainAt({ hash: second, len: len, due: 4 + ExpungePeriod })))))),
         svc.preimageRegistry == prevSvc.preimageRegistry,
         svc.preimageStatus == prevSvc.preimageStatus,
         svc.paraInfo(CoretimeParaId).usedStateBalance == prevSvc.paraInfo(CoretimeParaId).usedStateBalance

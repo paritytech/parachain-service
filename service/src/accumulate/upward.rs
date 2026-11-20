@@ -14,27 +14,36 @@ use alloc::vec::Vec;
 use jam_pvm_common::accumulate::{lookup_into, my_info, query, upgrade, LookupRequestStatus};
 use jam_types::{CodeHash, ServiceId, Slot};
 use parachain_service_core::{
-	types::{Hash, ParaId, Timeslot, ASSET_HUB_PARA_ID},
+	types::{Hash, MessageId, ParaId, Timeslot, ASSET_HUB_PARA_ID},
 	upward_message::{CodeUpgradePhase, Target, UpwardMessage},
 };
 
-/// Apply one upward message emitted by `origin`'s PVF. Log entries are batched
-/// into `logs` and appended to the origin's `parachain_log` by the caller.
+/// Apply one upward message emitted by `origin`'s PVF, tagged with the
+/// `message_id` it was sent with. Log entries are batched into `logs` and
+/// appended to the origin's `parachain_log` by the caller.
 pub fn apply(
 	now: Slot,
 	service_id: ServiceId,
 	origin: ParaId,
 	lookup_anchor: Timeslot,
+	message_id: MessageId,
 	message: UpwardMessage,
-	logs: &mut Vec<AccumulateLog>,
+	logs: &mut Vec<(MessageId, AccumulateLog)>,
 	heads: &mut HeadTracker,
 ) {
 	match message {
 		UpwardMessage::RequestCodeUpgrade { hash, len, phase } => match phase {
-			CodeUpgradePhase::Announcement => {
-				code_upgrades::announce_code_upgrade(origin, hash, len.0, lookup_anchor, logs)
+			CodeUpgradePhase::Announcement => code_upgrades::announce_code_upgrade(
+				origin,
+				hash,
+				len.0,
+				lookup_anchor,
+				message_id,
+				logs,
+			),
+			CodeUpgradePhase::Apply => {
+				code_upgrades::apply_code_upgrade(origin, hash, len.0, message_id, logs)
 			},
-			CodeUpgradePhase::Apply => code_upgrades::apply_code_upgrade(origin, hash, len.0, logs),
 		},
 
 		UpwardMessage::Solicit { target: Target::Parachain(target), hash, len } => {
@@ -44,7 +53,7 @@ pub fn apply(
 				return;
 			}
 			if let Err(log) = state_balance::add_referencer(target, &hash, len.0) {
-				logs.push(log);
+				logs.push((message_id, log));
 			}
 		},
 
@@ -56,28 +65,28 @@ pub fn apply(
 		UpwardMessage::UpgradeService { service: Some(_), .. } => {},
 
 		UpwardMessage::Solicit { target: Target::Service(service), .. } => {
-			foreign_services::solicit(service, logs)
+			foreign_services::solicit(service, message_id, logs)
 		},
 
 		UpwardMessage::EjectService { service } => {
-			foreign_services::eject(service, service_id, logs)
+			foreign_services::eject(service, service_id, message_id, logs)
 		},
 
 		UpwardMessage::SetServiceSupervisor { service, new_supervisor } => {
-			foreign_services::set_supervisor(service, new_supervisor, logs)
+			foreign_services::set_supervisor(service, new_supervisor, message_id, logs)
 		},
 
-		UpwardMessage::CreateService(args) => foreign_services::create(args, logs),
+		UpwardMessage::CreateService(args) => foreign_services::create(args, message_id, logs),
 
 		UpwardMessage::Forget { target: Target::Parachain(para_id), preimages } => {
 			for (hash, len) in preimages {
-				forget_preimage(now, para_id, hash, len.0, logs);
+				forget_preimage(now, para_id, hash, len.0, message_id, logs);
 			}
 		},
 
 		UpwardMessage::SetKV { key, value } => {
 			if let Err(log) = state_balance::apply_set_kv(origin, &key, &value) {
-				logs.push(log);
+				logs.push((message_id, log));
 			}
 		},
 
@@ -87,14 +96,23 @@ pub fn apply(
 			}
 		},
 
-		UpwardMessage::TransferOut(args) => transfers::transfer_out(service_id, args, logs),
-
-		UpwardMessage::AssignCore { core, queue, new_assigner, jam_slot } => {
-			assigns::schedule(now, service_id, core, queue, new_assigner, jam_slot, logs)
+		UpwardMessage::TransferOut(args) => {
+			transfers::transfer_out(service_id, args, message_id, logs)
 		},
 
+		UpwardMessage::AssignCore { core, queue, new_assigner, jam_slot } => assigns::schedule(
+			now,
+			service_id,
+			core,
+			queue,
+			new_assigner,
+			jam_slot,
+			message_id,
+			logs,
+		),
+
 		UpwardMessage::SetValidatorKeys { keys, is_last } => {
-			validator_keys::apply(keys, is_last, logs)
+			validator_keys::apply(keys, is_last, message_id, logs)
 		},
 
 		UpwardMessage::CleanUpBucketsUpTo(id) => transfers::clean_up_buckets_up_to(id),
@@ -122,7 +140,7 @@ pub fn apply(
 			if referenced && available {
 				upgrade(&CodeHash(code_hash), min_acc_gas, min_memo_gas);
 			} else {
-				logs.push(AccumulateLog::ServiceUpgradePreimageMissing { code_hash });
+				logs.push((message_id, AccumulateLog::ServiceUpgradePreimageMissing));
 			}
 		},
 
@@ -131,13 +149,15 @@ pub fn apply(
 		},
 
 		UpwardMessage::ParachainSetValidationCode { para_id, new_validation_code } => {
-			management::set_validation_code(para_id, new_validation_code, logs)
+			management::set_validation_code(para_id, new_validation_code, message_id, logs)
 		},
 
-		UpwardMessage::ParachainCleanUp(para_id) => management::clean_up(para_id, now, logs, heads),
+		UpwardMessage::ParachainCleanUp(para_id) => {
+			management::clean_up(para_id, now, message_id, logs, heads)
+		},
 
 		UpwardMessage::ParachainSetStateBalance { para_id, new_total } => {
-			management::set_state_balance(para_id, new_total.0, logs, heads)
+			management::set_state_balance(para_id, new_total.0, message_id, logs, heads)
 		},
 	}
 }
@@ -148,11 +168,12 @@ fn forget_preimage(
 	para_id: ParaId,
 	hash: Hash,
 	len: u32,
-	logs: &mut Vec<AccumulateLog>,
+	message_id: MessageId,
+	logs: &mut Vec<(MessageId, AccumulateLog)>,
 ) {
 	// §5.4: expunging the running service code would prevent future accumulation.
 	if para_id == ASSET_HUB_PARA_ID && is_service_code(&hash, len) {
-		logs.push(AccumulateLog::CanNotRemoveCode { hash, len: len.into() });
+		logs.push((message_id, AccumulateLog::CanNotRemoveCode { hash, len: len.into() }));
 		return;
 	}
 	// `para_id` names whose reference is released (Coretime may name any
@@ -164,11 +185,11 @@ fn forget_preimage(
 	let is_validation_code = pi.validation_code.as_ref().is_some_and(|vc| vc.is(&hash, len)) ||
 		pi.announced_upgrade.as_ref().is_some_and(|vc| vc.is(&hash, len));
 	if is_validation_code {
-		logs.push(AccumulateLog::CanNotRemoveCode { hash, len: len.into() });
+		logs.push((message_id, AccumulateLog::CanNotRemoveCode { hash, len: len.into() }));
 		return;
 	}
 	let out = state_balance::remove_referencer(para_id, &hash, len, now);
-	logs.extend(out.log);
+	logs.extend(out.log.map(|log| (message_id, log)));
 }
 
 /// Whether `(hash, len)` names this service's own running code. Its length is

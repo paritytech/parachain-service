@@ -57,13 +57,6 @@ impl Codex {
 		self.kv_keys.values().map(Vec::as_slice)
 	}
 
-	pub fn kv_key_hash(&self, value: i128) -> Result<Hash, String> {
-		self.kv_keys
-			.get(&value)
-			.map(|key| hash_raw(key))
-			.ok_or_else(|| format!("KV key hash {value} has no registered key"))
-	}
-
 	pub fn para_id(value: i128) -> Result<ParaId, String> {
 		Ok(ParaId::new(checked_u32(value, "ParaId")?))
 	}
@@ -236,10 +229,9 @@ mod tests {
 		let mut codex = Codex::default();
 		for key in [vec![], vec![1], vec![2, 0, 255]] {
 			codex.register_kv_key(&key).unwrap();
-			let abstract_hash = key.iter().fold(0i128, |acc, byte| acc * 257 + i128::from(*byte));
-			assert_eq!(codex.kv_key_hash(abstract_hash).unwrap(), hash_raw(&key));
 		}
 		assert!(codex.preimages().is_empty());
+		assert_eq!(codex.kv_keys().collect::<Vec<_>>(), [&[][..], &[1][..], &[2, 0, 255][..]]);
 	}
 
 	#[test]
@@ -247,7 +239,6 @@ mod tests {
 		let mut codex = Codex::default();
 		codex.register_kv_key(&[]).unwrap();
 		assert!(codex.register_kv_key(&[0]).unwrap_err().contains("ambiguous"));
-		assert!(codex.kv_key_hash(99).unwrap_err().contains("no registered key"));
 		assert!(codex.register_kv_key(&[255; 32]).unwrap_err().contains("exceeds i128"));
 	}
 

@@ -6,9 +6,7 @@ mod common;
 
 use common::*;
 use parachain_service::{
-	constants::EXPUNGE_PERIOD,
-	state::log::{AccumulateLog, InsufficientBalanceReason, LogEntry},
-	state_balance::preimage_footprint,
+	constants::EXPUNGE_PERIOD, state::log::AccumulateLog, state_balance::preimage_footprint,
 };
 use parachain_service_core::{
 	types::{Hash, ParaId, ValidationCodeRef},
@@ -28,14 +26,34 @@ fn blob_len() -> u32 {
 	BLOB.len() as u32
 }
 
-fn accumulate_logs(storage: &jam_node::vm::Storage, para: ParaId) -> Vec<AccumulateLog> {
-	para_log(storage, para)
-		.into_iter()
-		.flat_map(|(_, e)| match e {
-			LogEntry::Accumulate { entries } => entries,
-			LogEntry::Refine { .. } => panic!("unexpected refine entry"),
-		})
-		.collect()
+#[test]
+fn log_entries_carry_the_message_id_works() {
+	// §5.1 step 6: every event is logged with the `message_id` of the upward
+	// message that caused it, so a para can match outcomes to its own requests.
+	// One message can cause several events: this `Forget` names two preimages,
+	// each of which is refused because it is the para's running code.
+	let storage = fresh_storage(|s| seed_para(s, PARA, b"genesis", CODE, RICH));
+	let reference = code_ref(CODE);
+	let hash = validation_code_hash_bytes(&reference.hash);
+	let solicit = UpwardMessage::Solicit {
+		target: Target::Parachain(PARA),
+		hash: blob_hash(),
+		len: blob_len().into(),
+	};
+	let forget = UpwardMessage::Forget {
+		target: Target::Parachain(PARA),
+		preimages: vec![(hash, reference.len.into()), (hash, reference.len.into())],
+	};
+	let digest =
+		ok_digest_sent(PARA, CODE, b"genesis", b"head-1", vec![(7, solicit), (42, forget)], 0);
+
+	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+
+	let refused = AccumulateLog::CanNotRemoveCode { hash, len: reference.len.into() };
+	assert_eq!(
+		accumulate_entries(&storage, PARA),
+		vec![(42u64.into(), refused.clone()), (42u64.into(), refused)]
+	);
 }
 
 /// Storage with `PARA` seeded and one block run that solicits `BLOB`.
@@ -93,12 +111,7 @@ fn solicit_insufficient_balance_errors() {
 	let (_, storage, _) = accumulate_block(storage, vec![work_item(&digest)], NOW);
 
 	assert!(registry_entry(&storage, code_ref(BLOB)).is_none());
-	assert!(matches!(
-		accumulate_logs(&storage, PARA)[..],
-		[AccumulateLog::InsufficientStateBalance {
-			reason: InsufficientBalanceReason::Solicit { .. }
-		}]
-	));
+	assert_eq!(accumulate_logs(&storage, PARA), vec![AccumulateLog::InsufficientStateBalance]);
 }
 
 #[test]
@@ -338,18 +351,8 @@ fn forget_rescued_three_steps_works() {
 	assert_eq!(
 		accumulate_logs(&storage, OTHER),
 		vec![
-			AccumulateLog::ForgetAgainAt {
-				target: Target::Parachain(OTHER),
-				hash,
-				len,
-				due: first_due
-			},
-			AccumulateLog::ForgetAgainAt {
-				target: Target::Parachain(OTHER),
-				hash,
-				len,
-				due: second_due
-			},
+			AccumulateLog::ForgetAgainAt { hash, len, due: first_due },
+			AccumulateLog::ForgetAgainAt { hash, len, due: second_due },
 		]
 	);
 }

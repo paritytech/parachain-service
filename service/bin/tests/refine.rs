@@ -31,7 +31,6 @@ fn transfer_out_args(dest: ServiceId, amount: Balance) -> TransferOutArgs {
 		source: None,
 		dest,
 		amount: TransferAmount::Exact(amount.into()),
-		id: 1.into(),
 		source_supervisor_balance: false,
 		dest_supervisor_balance: false,
 		deferred: Some(([9; 128], 500)),
@@ -112,10 +111,10 @@ fn send_upward_messages_works() {
 	let (_, head_data, upward_messages, _) = expect_ok(outcome);
 	assert_eq!(
 		upward_messages,
-		UpwardMessages::try_from(vec![UpwardMessage::SetKV {
-			key: b"KEY".to_vec(),
-			value: b"VALUE".to_vec()
-		}])
+		UpwardMessages::try_from(vec![(
+			0u64.into(),
+			UpwardMessage::SetKV { key: b"KEY".to_vec(), value: b"VALUE".to_vec() }
+		)])
 		.unwrap()
 	);
 
@@ -191,7 +190,10 @@ fn asset_hub_transfer_out_works() {
 	let outcome = run_block(action, &parent, 1, vec![ASSET_HUB_PARA_ID]);
 
 	let (_, _, upward_messages, _) = expect_ok(outcome);
-	assert_eq!(upward_messages.into_iter().next(), Some(UpwardMessage::TransferOut(args)));
+	assert_eq!(
+		upward_messages.into_iter().next(),
+		Some((0u64.into(), UpwardMessage::TransferOut(args)))
+	);
 }
 
 /// The §6.5 operations on a supervised service, paired with the upward message
@@ -203,7 +205,6 @@ fn service_op_actions() -> Vec<(MockAction, UpwardMessage)> {
 		len: 1024.into(),
 		min_item_gas: 0,
 		min_memo_gas: 0,
-		message_id: 77.into(),
 		desired_id: Some(42),
 		source_supervisor_balance: false,
 		new_supervisor_balance: false,
@@ -267,7 +268,7 @@ fn service_ops_from_asset_hub_works() {
 		let outcome = run_block(config, &parent, 1, vec![ASSET_HUB_PARA_ID]);
 
 		let (_, _, upward_messages, _) = expect_ok(outcome);
-		assert_eq!(upward_messages.into_iter().next(), Some(expected));
+		assert_eq!(upward_messages.into_iter().next(), Some((0u64.into(), expected)));
 	}
 }
 
@@ -308,7 +309,7 @@ fn own_para_target_from_any_chain_works() {
 		let outcome = run_block(config, &parent, 1, vec![ParaId::new(0)]);
 
 		let (_, _, upward_messages, _) = expect_ok(outcome);
-		assert_eq!(upward_messages.into_iter().next(), Some(expected));
+		assert_eq!(upward_messages.into_iter().next(), Some((0u64.into(), expected)));
 	}
 }
 
@@ -423,9 +424,10 @@ fn too_many_validator_keys_errors() {
 
 #[test]
 fn oversized_upward_messages_errors() {
-	// Variant (1) + one-byte-key prefix and key (2) + four-byte value prefix (4)
-	// means 40 KiB - 6 bytes of value is the first rejected encoding.
-	let action = Config::Mock(vec![MockAction::KVSet(vec![0], vec![0; 40 * 1024 - 6])]);
+	// The budget counts the encoded `(message_id, message)` pair (§4.3): a
+	// one-byte id + variant (1) + key prefix and key (2) + four-byte value prefix
+	// (4) means 40 KiB - 7 bytes of value is the first rejected encoding.
+	let action = Config::Mock(vec![MockAction::KVSet(vec![0], vec![0; 40 * 1024 - 7])]);
 	let parent = genesis(action.clone());
 
 	let outcome = run_block(action, &parent, 1, vec![ParaId::new(0)]);
@@ -436,7 +438,7 @@ fn oversized_upward_messages_errors() {
 #[test]
 fn upward_messages_at_size_budget_works() {
 	// The same encoding with one less value byte is exactly 40 KiB.
-	let action = Config::Mock(vec![MockAction::KVSet(vec![0], vec![0; 40 * 1024 - 7])]);
+	let action = Config::Mock(vec![MockAction::KVSet(vec![0], vec![0; 40 * 1024 - 8])]);
 	let parent = genesis(action.clone());
 
 	let outcome = run_block(action, &parent, 1, vec![ParaId::new(0)]);

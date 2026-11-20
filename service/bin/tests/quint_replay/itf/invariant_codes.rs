@@ -97,6 +97,13 @@ impl Eligibility {
 				result.pointer("/result/value/value/upwardMessages").and_then(Value::as_array)
 			{
 				for message in messages {
+					// Each entry is the spec's `(message_id, message)` pair (§4.3).
+					let message = match tuple(message)?.as_slice() {
+						[_, message] => message,
+						_ => {
+							return Err("upward message must be a (message_id, message) pair".into())
+						},
+					};
 					let (tag, payload) = variant(message)?;
 					changed |= tag == "ParachainSetValidationCode" ||
 						tag == "ParachainCleanUp" ||

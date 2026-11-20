@@ -16,7 +16,7 @@ use jam_types::{
 use parachain_service::{
 	state::{
 		kv,
-		log::ParachainLog,
+		log::{AccumulateLog, LogEntry, ParachainLog},
 		para_info::ParaInfo,
 		preimage_registry::PreimageEntry,
 		storage_key,
@@ -30,7 +30,7 @@ use parachain_service_bin::mock::{accumulate_context, provide_preimage, MOCK_SER
 
 use parachain_service_bin::blob as service;
 use parachain_service_core::{
-	types::{Balance, BucketId, ParaId, ServiceId, Timeslot},
+	types::{Balance, BucketId, MessageId, ParaId, ServiceId, Timeslot},
 	upward_message::{TransferAmount, TransferOutArgs, UpwardMessage},
 };
 
@@ -43,14 +43,12 @@ pub const RICH: Balance = 10_000_000;
 pub fn transfer_out_msg(
 	dest: ServiceId,
 	amount: Balance,
-	id: u64,
 	deferred: Option<([u8; 128], u64)>,
 ) -> UpwardMessage {
 	UpwardMessage::TransferOut(TransferOutArgs {
 		source: None,
 		dest,
 		amount: TransferAmount::Exact(amount.into()),
-		id: id.into(),
 		source_supervisor_balance: false,
 		dest_supervisor_balance: false,
 		deferred,
@@ -116,6 +114,23 @@ pub fn para_info(storage: &Storage, para: ParaId) -> Option<ParaInfo> {
 
 pub fn para_log(storage: &Storage, para: ParaId) -> ParachainLog {
 	get_state(storage, &storage_key(Tag::ParachainLog, &para)).unwrap_or_default()
+}
+
+/// The `(message_id, event)` pairs of every `Accumulate` entry in `para`'s log,
+/// in append order.
+pub fn accumulate_entries(storage: &Storage, para: ParaId) -> Vec<(MessageId, AccumulateLog)> {
+	para_log(storage, para)
+		.into_iter()
+		.flat_map(|(_, e)| match e {
+			LogEntry::Accumulate { entries } => entries,
+			LogEntry::Refine { .. } => panic!("unexpected refine entry"),
+		})
+		.collect()
+}
+
+/// The events of every `Accumulate` entry in `para`'s log, without their ids.
+pub fn accumulate_logs(storage: &Storage, para: ParaId) -> Vec<AccumulateLog> {
+	accumulate_entries(storage, para).into_iter().map(|(_, log)| log).collect()
 }
 
 pub fn registry_entry(storage: &Storage, code: ValidationCodeRef) -> Option<PreimageEntry> {
@@ -217,7 +232,8 @@ fn seed_para_inner(
 // --- Work items -------------------------------------------------------------
 
 /// A successful digest for `para`, built on `parent_head`, validated with
-/// `code`, producing `new_head` and `msgs`.
+/// `code`, producing `new_head` and `msgs`. Each message is sent with its index
+/// in `msgs` as its `message_id`.
 pub fn ok_digest(
 	para: ParaId,
 	code: &[u8],
@@ -226,12 +242,36 @@ pub fn ok_digest(
 	msgs: Vec<UpwardMessage>,
 	lookup_anchor: Timeslot,
 ) -> ParachainWorkDigest {
+	ok_digest_sent(
+		para,
+		code,
+		parent_head,
+		new_head,
+		msgs.into_iter().enumerate().map(|(id, msg)| (id as u64, msg)).collect(),
+		lookup_anchor,
+	)
+}
+
+/// [`ok_digest`] with explicit `(message_id, message)` pairs.
+pub fn ok_digest_sent(
+	para: ParaId,
+	code: &[u8],
+	parent_head: &[u8],
+	new_head: &[u8],
+	msgs: Vec<(u64, UpwardMessage)>,
+	lookup_anchor: Timeslot,
+) -> ParachainWorkDigest {
 	ParachainWorkDigest::Ok {
 		para_id: para,
 		validation_code: code_ref(code).hash,
 		parent_head_hash: hash_raw(parent_head),
 		head_data: new_head.to_vec().try_into().expect("test heads fit 4 KiB"),
-		upward_messages: msgs.try_into().expect("test messages fit the bound"),
+		upward_messages: msgs
+			.into_iter()
+			.map(|(id, msg)| (MessageId::from(id), msg))
+			.collect::<Vec<_>>()
+			.try_into()
+			.expect("test messages fit the bound"),
 		lookup_anchor,
 	}
 }

@@ -47,13 +47,7 @@ fn dirty_cores(storage: &jam_node::vm::Storage) -> PendingAssignCores {
 }
 
 fn ct_accumulate_logs(storage: &jam_node::vm::Storage) -> Vec<AccumulateLog> {
-	para_log(storage, CORETIME_PARA_ID)
-		.into_iter()
-		.flat_map(|(_, e)| match e {
-			LogEntry::Accumulate { entries } => entries,
-			LogEntry::Refine { .. } => panic!("unexpected refine entry"),
-		})
-		.collect()
+	accumulate_logs(storage, CORETIME_PARA_ID)
 }
 
 fn privileges_with_assign(assign: u32) -> Privileges {
@@ -354,7 +348,7 @@ fn handed_away_core_inline_errors() {
 		privileges_with_assign(99),
 	);
 
-	assert_eq!(ct_accumulate_logs(&storage), vec![AccumulateLog::CoreNotAssignable { core: CORE }]);
+	assert_eq!(ct_accumulate_logs(&storage), vec![AccumulateLog::CoreNotAssignable]);
 	assert!(pending(&storage).is_none(), "no pending assign cached");
 	assert!(dirty_cores(&storage).is_empty(), "no dirty-core entry");
 	assert!(mutations.auths.is_empty(), "JAM assign must not fire");
@@ -363,8 +357,8 @@ fn handed_away_core_inline_errors() {
 #[test]
 fn handed_away_core_flush_errors() {
 	// §5.1: a rewrite left armed on a core that has since been handed away is
-	// rejected by JAM when due: the entry is dropped from both maps and the
-	// rejection lands in the Coretime chain's log.
+	// rejected by JAM when due and dropped from both maps. Only the replay path
+	// records `CoreNotAssignable`, so the flush leaves no log entry.
 	let msg = assign_msg(vec![HASH_A, HASH_B, HASH_A], NOW + 10);
 	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
 	let (_, armed, _) = accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
@@ -375,9 +369,7 @@ fn handed_away_core_flush_errors() {
 	assert!(pending(&storage).is_none(), "the dead entry is dropped");
 	assert!(dirty_cores(&storage).is_empty(), "and not re-armed");
 	assert!(mutations.auths.is_empty());
-	let entry =
-		LogEntry::Accumulate { entries: vec![AccumulateLog::CoreNotAssignable { core: CORE }] };
-	assert_eq!(para_log(&storage, CORETIME_PARA_ID).last(), Some(&(NOW + 10, entry)));
+	assert!(para_log(&storage, CORETIME_PARA_ID).is_empty(), "the flush logs nothing");
 }
 
 #[test]
@@ -401,13 +393,13 @@ fn handed_away_core_inline_clears_cache_errors() {
 	assert!(pending(&storage).is_none(), "the cached entry is dropped");
 	assert!(dirty_cores(&storage).is_empty());
 	assert!(mutations.auths.is_empty());
-	assert_eq!(ct_accumulate_logs(&storage), vec![AccumulateLog::CoreNotAssignable { core: CORE }]);
+	assert_eq!(ct_accumulate_logs(&storage), vec![AccumulateLog::CoreNotAssignable]);
 }
 
 #[test]
 fn handed_away_core_flush_log_order_works() {
-	// §5.1: the always-accumulate flush runs before the block's work packages, so
-	// its entry precedes a same-block Coretime package's own entry.
+	// §5.1: the always-accumulate flush runs before the block's work packages and
+	// logs nothing, so only the same-block Coretime package's own rejection lands.
 	let msg = assign_msg(vec![HASH_A, HASH_B, HASH_A], NOW + 10);
 	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
 	let (_, armed, _) = accumulate_block(ct_storage(), vec![work_item(&digest)], NOW);
@@ -426,25 +418,18 @@ fn handed_away_core_flush_log_order_works() {
 		privileges_with_assign(99),
 	);
 
-	let rejected = |core| {
-		(
-			NOW + 10,
-			LogEntry::Accumulate { entries: vec![AccumulateLog::CoreNotAssignable { core }] },
-		)
-	};
+	let rejected = (
+		NOW + 10,
+		LogEntry::Accumulate { entries: vec![(0u64.into(), AccumulateLog::CoreNotAssignable)] },
+	);
 	let log = para_log(&storage, CORETIME_PARA_ID);
-	assert_eq!(log[log.len().saturating_sub(2)..], [rejected(CORE), rejected(CORE + 1)]);
+	assert_eq!(log.last(), Some(&rejected));
 }
 
 #[test]
 fn first_slot_zero_works() {
-	let (_, storage, _) = run_block_with_gas(
-		ct_storage(),
-		vec![],
-		0,
-		privileges_with_assign(99),
-		Some(1_000_000),
-	);
+	let (_, storage, _) =
+		run_block_with_gas(ct_storage(), vec![], 0, privileges_with_assign(99), Some(1_000_000));
 	assert_eq!(get_state::<u32>(&storage, &storage_key(Tag::LastAccumulate, &())), Some(0));
 	assert!(dirty_cores(&storage).is_empty());
 }
@@ -477,14 +462,12 @@ fn repeated_slot_flush_order_works() {
 			slot,
 			privileges_with_assign(99),
 		);
-		let order = if slot == due { [CORE + 1, CORE] } else { [CORE, CORE + 1] };
-		let expected = order.map(|core| {
-			(slot, LogEntry::Accumulate {
-				entries: vec![AccumulateLog::CoreNotAssignable { core }],
-			})
-		});
-		let log = para_log(&storage, CORETIME_PARA_ID);
-		assert_eq!(log[log.len() - 2..], expected);
+		// Only the replayed message is logged; the due flush drops its core silently.
+		let expected = (
+			slot,
+			LogEntry::Accumulate { entries: vec![(0u64.into(), AccumulateLog::CoreNotAssignable)] },
+		);
+		assert_eq!(para_log(&storage, CORETIME_PARA_ID), vec![expected]);
 		assert!(dirty_cores(&storage).is_empty());
 		assert_eq!(get_state::<u32>(&storage, &storage_key(Tag::LastAccumulate, &())), Some(slot));
 	}
@@ -565,8 +548,8 @@ fn due_assigns_beyond_allowance_carried_over_works() {
 #[test]
 fn due_assigns_applied_after_packages_works() {
 	// §5.1: due assigns the allowance cannot pay for are applied at the end of
-	// the invocation from the gas the work packages left, so a rejection is
-	// logged after the same block's Coretime package.
+	// the invocation from the gas the work packages left. A rejection there is
+	// silent, so only the replayed message's own rejection is logged.
 	let storage = armed(&[(CORE, NOW + 10)]);
 	let other = UpwardMessage::AssignCore {
 		core: CORE + 1,
@@ -584,13 +567,10 @@ fn due_assigns_applied_after_packages_works() {
 		Some(pool_for(0, REPORT_GAS)),
 	);
 
-	let rejected = |core| {
-		(
-			NOW + 10,
-			LogEntry::Accumulate { entries: vec![AccumulateLog::CoreNotAssignable { core }] },
-		)
-	};
-	let log = para_log(&storage, CORETIME_PARA_ID);
-	assert_eq!(log[log.len().saturating_sub(2)..], [rejected(CORE + 1), rejected(CORE)]);
+	let rejected = (
+		NOW + 10,
+		LogEntry::Accumulate { entries: vec![(0u64.into(), AccumulateLog::CoreNotAssignable)] },
+	);
+	assert_eq!(para_log(&storage, CORETIME_PARA_ID), vec![rejected]);
 	assert!(dirty_cores(&storage).is_empty());
 }

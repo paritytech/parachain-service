@@ -15,7 +15,7 @@ use alloc::vec::Vec;
 use jam_pvm_common::accumulate::{my_info, service_info, transfer};
 use jam_types::{Memo as JamMemo, TransferRecord};
 use parachain_service_core::{
-	types::{Balance, BucketId, ServiceId},
+	types::{Balance, BucketId, MessageId, ServiceId},
 	upward_message::{TransferAmount, TransferOutArgs},
 };
 
@@ -147,15 +147,19 @@ pub fn clean_up_buckets_up_to(bucket_id: BucketId) {
 ///
 /// A `TransferAmount::Max` that goes through logs the moved amount in
 /// `TransferredAmount`.
-pub fn transfer_out(service_id: ServiceId, args: TransferOutArgs, logs: &mut Vec<AccumulateLog>) {
-	let id = args.id;
+pub fn transfer_out(
+	service_id: ServiceId,
+	args: TransferOutArgs,
+	message_id: MessageId,
+	logs: &mut Vec<(MessageId, AccumulateLog)>,
+) {
 	let is_max = matches!(args.amount, TransferAmount::Max(_));
 	match replay_transfer_out(service_id, args) {
 		Ok(amount) if is_max => {
-			logs.push(AccumulateLog::TransferredAmount { id, amount: amount.into() })
+			logs.push((message_id, AccumulateLog::TransferredAmount { amount: amount.into() }))
 		},
 		Ok(_) => {},
-		Err(error) => logs.push(AccumulateLog::TransferFailed { id, error }),
+		Err(error) => logs.push((message_id, AccumulateLog::TransferFailed { error })),
 	}
 }
 
@@ -168,7 +172,6 @@ fn replay_transfer_out(
 		source,
 		dest,
 		amount,
-		id: _,
 		source_supervisor_balance,
 		dest_supervisor_balance,
 		deferred,

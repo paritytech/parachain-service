@@ -14,31 +14,28 @@ module host_sizes {
     + (if (pi.announcedUpgrade == None) 1 else 37)
     + scaleCompact(pi.totalStateBalance) + scaleCompact(pi.usedStateBalance) + 1
   pure def accBytes(log: AccumulateLog): int = 1 + match log {
-    | InsufficientStateBalance(reason) => 1 + match reason {
-      | FromSolicit(p) => 32 + scaleCompact(p.len)
-      | FromSetKV(_) => 32
-    }
+    | InsufficientStateBalance => 0
     | StateBalanceUpdateRejected(p) =>
-      4 + scaleCompact(p.attempted) + 1 + match p.reason {
+      1 + match p.reason {
         | BelowUsed(b) => scaleCompact(b.currentTotal) + scaleCompact(b.currentUsed)
         | _ => 0
       }
     | DesignateRejected(p) => scaleCompact(p.len)
-    | ServiceUpgradePreimageMissing(_) => 32
-    | CodeUpgradeNotAvailable(p) => 32 + scaleCompact(p.len)
-    | CodeUpgradeNotAnnounced(p) => 32 + scaleCompact(p.len)
+    | ServiceUpgradePreimageMissing => 0
+    | CodeUpgradeNotAvailable => 0
+    | CodeUpgradeNotAnnounced => 0
     | CanNotRemoveCode(p) => 32 + scaleCompact(p.len)
-    | CoreNotAssignable(_) => 2
-    | TransferFailed(p) => scaleCompact(p.id) + 1
-    | TransferredAmount(p) => scaleCompact(p.id) + scaleCompact(p.amount)
-    | ForgetAgainAt(p) => 5 + 32 + scaleCompact(p.len) + 4
-    | ServiceForgetNotRequested(p) => 36 + scaleCompact(p.len)
-    | ServiceKeyNotFound(_) => 36
-    | ServiceSolicitFailed(_) => 5
-    | ServiceEjectFailed(_) => 5
-    | ServiceEjected(p) => 4 + scaleCompact(p.credited)
-    | ServiceSupervisorFailed(_) => 5
-    | ServiceCreation(p) => scaleCompact(p.messageId) + 1 + match p.result {
+    | CoreNotAssignable => 0
+    | TransferFailed(_) => 1
+    | TransferredAmount(p) => scaleCompact(p.amount)
+    | ForgetAgainAt(p) => 32 + scaleCompact(p.len) + 4
+    | ServiceForgetNotRequested(p) => 32 + scaleCompact(p.len)
+    | ServiceKeyNotFound(_) => 32
+    | ServiceSolicitFailed(_) => 1
+    | ServiceEjectFailed(_) => 1
+    | ServiceEjected(p) => scaleCompact(p.credited)
+    | ServiceSupervisorFailed(_) => 1
+    | ServiceCreation(p) => 1 + match p.result {
       | Created(_) => 4 | _ => 0
     }
     | _ => 0
@@ -47,7 +44,8 @@ module host_sizes {
     | Refine(p) => 1 + (match p.error {
       | Opaque(n) => scaleCompact(n) + n | _ => 0
     }) + scaleCompact(p.authTrace) + p.authTrace
-    | Accumulate(logs) => scaleCompact(logs.length()) + logs.foldl(0, (n, l) => n + accBytes(l))
+    | Accumulate(logs) => scaleCompact(logs.length()) + logs.foldl(0, (n, l) =>
+        n + scaleCompact(l._1) + accBytes(l._2))
   }
   pure def logBytes(log: List[(Timeslot, LogEntry)]): int =
     scaleCompact(log.length()) + log.foldl(0, (n, e) => n + 4 + entryBytes(e._2))

@@ -262,7 +262,6 @@ fn kv_remove_works() {
 
 #[test]
 fn kv_insufficient_balance_errors() {
-	use parachain_service::state::log::InsufficientBalanceReason;
 	use parachain_service_core::upward_message::UpwardMessage;
 
 	// Seed with zero headroom: total == used.
@@ -287,10 +286,7 @@ fn kv_insufficient_balance_errors() {
 	assert_eq!(kv_value(&storage, PARA, b"k"), None);
 	let log = para_log(&storage, PARA);
 	let (_, LogEntry::Accumulate { entries }) = &log[0] else { panic!("{log:?}") };
-	assert!(matches!(
-		entries[0],
-		AccumulateLog::InsufficientStateBalance { reason: InsufficientBalanceReason::SetKV { .. } }
-	));
+	assert_eq!(entries, &vec![(0u64.into(), AccumulateLog::InsufficientStateBalance)]);
 	// The candidate itself still enacted — only the write was rejected.
 	assert_eq!(&para_info(&storage, PARA).unwrap().head_data[..], b"head-1");
 }
@@ -358,7 +354,7 @@ fn forwarded_transfer_gas_counts_works() {
 			seed_service(s, 42, FORWARDED);
 		})
 	};
-	let transfer = transfer_out_msg(42, 1, 7, Some(([7; 128], FORWARDED)));
+	let transfer = transfer_out_msg(42, 1, Some(([7; 128], FORWARDED)));
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", vec![transfer], 0);
 	let without_forwarded = REPORT_BASE_GAS + UPWARD_MESSAGE_GAS;
 

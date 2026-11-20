@@ -24,20 +24,21 @@ module outgoing_inputs {
     foreignServices' = Map(MkServiceId(0) -> destination(MkServiceId(0), 100),
       MkServiceId(7) -> destination(MkServiceId(7), 200)), noOutgoing
   }
-  pure def transfer(dest: int, amount: int, id: int, gas: int): TransferOutArgs = {
-    source: None, dest: MkServiceId(dest), amount: Exact(amount), id: id,
+  // `memo` also seeds the deferred transfer's memo, so records stay distinguishable.
+  pure def transfer(dest: int, amount: int, memo: int, gas: int): TransferOutArgs = {
+    source: None, dest: MkServiceId(dest), amount: Exact(amount),
     sourceSupervisorBalance: false, destSupervisorBalance: false,
-    deferred: Some((id, gas))
+    deferred: Some((memo, gas))
   }
   pure def amountOf(a: TransferAmount): int = match a { | Exact(n) => n | Max(n) => n }
   // A successful transfer as JAM records it, with a `Max` resolved to the
   // `TransferredAmount` it logged; None when refused.
-  pure def transferred(t: TransferOutArgs, before: List[AccumulateLog],
-    after: List[AccumulateLog]): Option[TransferOutArgs] =
+  pure def transferred(t: TransferOutArgs, before: List[(MessageId, AccumulateLog)],
+    after: List[(MessageId, AccumulateLog)]): Option[TransferOutArgs] =
     if (after.length() == before.length()) match t.amount {
       | Exact(_) => Some(t)
       | Max(_) => None
-    } else match after[after.length() - 1] {
+    } else match after[after.length() - 1]._2 {
       | TransferredAmount(p) => Some({ ...t, amount: Exact(p.amount) })
       | _ => None
     }
@@ -78,13 +79,13 @@ module outgoing_inputs {
             val pre = accumulateOkPrefix(a.state, ok, FixedCodeLen, slot)
             if (pre.rejected) noEffects else {
               val base: AccumulateOutcome = { state: pre.state, foreign: a.foreign,
-                jamDesignate: a.staging, preimageOps: List(), jamAssigns: List(), logs: pre.logs }
+                jamDesignate: a.staging, preimageOps: List(), jamAssigns: List(), logs: List() }
               val messages = ok.upwardMessages.foldl({ acc: base, effects: noEffects }, (m, msg) => {
-                val applied = replayApply(m.acc, ok.paraId, FixedCodeLen, slot, ok.lookupAnchor, msg)
+                val applied = replayApply(m.acc, ok.paraId, FixedCodeLen, slot, ok.lookupAnchor, msg._1, msg._2)
                 // applyUpwardMessage appends a log for every refused transfer or
                 // upgrade; logs are only bounded later, when the package ends.
                 val success = applied.logs.length() == m.acc.logs.length()
-                val effects = match msg {
+                val effects = match msg._2 {
                   | CreateService(c) => {
                     val fresh = applied.foreign.keys().exclude(m.acc.foreign.keys())
                     { ...m.effects, creations: fresh.fold(m.effects.creations, (list, id) => list.append({ service: id, args: c })) }
@@ -98,7 +99,7 @@ module outgoing_inputs {
                     { ...m.effects, minAccGas: Some(u.minAccGas) } else m.effects
                   | _ => m.effects
                 }
-                { acc: applied, effects: { ...effects, calls: effects.calls.concat(messageHostCalls(m.acc, applied, msg)) } }
+                { acc: applied, effects: { ...effects, calls: effects.calls.concat(messageHostCalls(m.acc, applied, msg._2)) } }
               })
               messages.effects
             }

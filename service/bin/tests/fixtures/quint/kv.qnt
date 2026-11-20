@@ -68,8 +68,8 @@ module kv {
         svc.keyValueStorage == prevSvc.keyValueStorage,
         svc.paraInfo(CoretimeParaId).usedStateBalance == prevSvc.paraInfo(CoretimeParaId).usedStateBalance,
         svc.paraLog(CoretimeParaId).nth(svc.paraLog(CoretimeParaId).length() - 1)._2 == Accumulate(List(
-          InsufficientStateBalance(FromSetKV({ keyHash: listHash(key) })),
-          InsufficientStateBalance(FromSetKV({ keyHash: listHash(other) }))))
+          (0, InsufficientStateBalance),
+          (1, InsufficientStateBalance)))
       }))
       // Same-size replacement needs no headroom; deletion funds a later write.
       .then(core(List(writeKV(key, List(99)), remove(CoretimeParaId, key), writeKV(other, List(45)))))

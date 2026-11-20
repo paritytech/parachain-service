@@ -107,14 +107,12 @@ fn creation_numeric_bounds_errors() {
 	for (name, number) in [
 		("len", "-1"),
 		("len", "4294967296"),
-		("messageId", "-1"),
-		("messageId", "18446744073709551616"),
 		("minItemGas", "-1"),
 		("minMemoGas", "18446744073709551616"),
 	] {
 		let mut bad = original.clone();
 		bad["states"][1]["lastStepWorkResults"][0]["result"]["value"]["value"]["upwardMessages"]
-			[0]["value"][name] = serde_json::json!({"#bigint":number});
+			[0]["#tup"][1]["value"][name] = serde_json::json!({"#bigint":number});
 		assert!(replay::document_trace(&bad).unwrap_err().contains("out of"), "{name}");
 	}
 }

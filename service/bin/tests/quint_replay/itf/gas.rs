@@ -86,6 +86,11 @@ pub(super) fn cost(result: &Value) -> Result<u64, String> {
 			field(digest, "upwardMessages")?.as_array().ok_or("messages must be a list")?
 		{
 			cost = cost.saturating_add(250_000);
+			// Each entry is the spec's `(message_id, message)` pair (§4.3).
+			let message = match tuple(message)?.as_slice() {
+				[_, message] => message,
+				_ => return Err("upward message must be a (message_id, message) pair".into()),
+			};
 			let (tag, payload) = variant(message)?;
 			if tag == "TransferOut" {
 				let (tag, payload) = variant(field(payload, "deferred")?)?;

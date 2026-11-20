@@ -18,7 +18,7 @@ module outgoing_replay {
   def work(p: ParaId, parent: int, msgs: List[UpwardMessage]): WorkResult = {
     val h = if (p == AssetHubParaId) 2 else 1
     val pkg: WorkPackage = { items: List({ paraId: p, validationCode: { hash: { vchBytes: h }, len: FixedCodeLen } }) }
-    val calls = List(SetParentHeadHash(headHash(parent)), SetHead(parent + 1)).concat(sends(msgs))
+    val calls = List(SetParentHeadHash(headHash(parent)), SetHead(parent + 1)).concat(sends(withIndexIds(msgs)))
     { result: refine(svc, pkg, calls, now)[0], authTrace: 0 }
   }
   action block(packages: List[WorkResult]): bool = {
@@ -75,6 +75,8 @@ module outgoing_replay {
     .then(hub(TransferOut(transfer(7, 1, 2, 200))))
     .then(hub(TransferOut(transfer(7, 1, 3, 201))))
     .then(check(svc.jamAccount.balance == TotalSupply - 2))
+  // Transfers carry no caller id any more; the memo keeps them distinguishable
+  // and the order JAM records them in stays observable.
   run ordered_repeated_ids_works = start
     .then(block(List(work(AssetHubParaId, 0, List(
       TransferOut(transfer(0, 11, 7, 100)), TransferOut(transfer(7, 22, 7, 199)),

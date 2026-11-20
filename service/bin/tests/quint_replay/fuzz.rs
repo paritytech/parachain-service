@@ -456,7 +456,7 @@ fn storage_generated_works() {
 				let report = super::itf::replay::integer(&pair[0]).unwrap() as usize;
 				let message = super::itf::replay::integer(&pair[1]).unwrap() as usize;
 				let msg = &frame["lastStepWorkResults"][report]["result"]["value"]["value"]
-					["upwardMessages"][message];
+					["upwardMessages"][message]["#tup"][1];
 				let tag = msg["tag"].as_str().unwrap();
 				let kind = if tag == "ParachainSetStateBalance" {
 					let target = &msg["value"]["paraId"];
@@ -560,7 +560,9 @@ fn services_generated_works() {
 	let mut interrupted_creation = false;
 	let mut refusals = std::collections::BTreeSet::new();
 	// Fixed seeds reach creation recovery and all five reachable refusal classes.
-	for seed in [162, 803] {
+	// Re-tuned for spec 09c7224954f9: `TargetIsSelf` and `EjectUnknownService` are
+	// rare single-message outcomes, so coverage is unioned over four seeds.
+	for seed in [19, 77, 145, 198] {
 		let stream = generator(seed, 1, 1, 50).output().expect("service generator");
 		assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
 		let line = String::from_utf8(stream.stdout).unwrap();
@@ -596,23 +598,27 @@ fn services_generated_works() {
 #[test]
 #[ignore = "checks service preimage refusals in default replay fuzzing; requires Node and Quint 0.32.0"]
 fn service_preimages_generated_works() {
-	let stream = generator(1035, 1, 1, 50).output().expect("service preimage generator");
-	assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
+	// Re-tuned for spec 09c7224954f9: one seed per refusal class, unioned, because
+	// `SolicitUnknownService` needs a solicit of a never-created service.
 	let mut refusals = std::collections::BTreeSet::new();
-	for line in stream.stdout.split(|b| *b == b'\n').filter(|line| !line.is_empty()) {
-		let envelope: Value = serde_json::from_slice(line).unwrap();
-		for state in envelope["trace"]["states"].as_array().unwrap() {
-			let logs = state["svc"]["parachainLog"].to_string();
-			// A `Forget` on an unsupervised service is a silent no-op (§6.5).
-			for tag in ["SolicitUnknownService", "SolicitNotSupervised"] {
-				if logs.contains(&format!("\"tag\":\"{tag}\"")) {
-					refusals.insert(tag);
+	for seed in [3, 1] {
+		let stream = generator(seed, 1, 1, 50).output().expect("service preimage generator");
+		assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
+		for line in stream.stdout.split(|b| *b == b'\n').filter(|line| !line.is_empty()) {
+			let envelope: Value = serde_json::from_slice(line).unwrap();
+			for state in envelope["trace"]["states"].as_array().unwrap() {
+				let logs = state["svc"]["parachainLog"].to_string();
+				// A `Forget` on an unsupervised service is a silent no-op (§6.5).
+				for tag in ["SolicitUnknownService", "SolicitNotSupervised"] {
+					if logs.contains(&format!("\"tag\":\"{tag}\"")) {
+						refusals.insert(tag);
+					}
 				}
 			}
-		}
-		if let Err(error) = replay::document_trace(&envelope["trace"]) {
-			let path = preserve(&envelope, &error).unwrap();
-			panic!("{error}; {}", path.display());
+			if let Err(error) = replay::document_trace(&envelope["trace"]) {
+				let path = preserve(&envelope, &error).unwrap();
+				panic!("{error}; {}", path.display());
+			}
 		}
 	}
 	assert_eq!(refusals.len(), 2, "service preimage refusals: {refusals:?}");
@@ -622,9 +628,11 @@ fn service_preimages_generated_works() {
 #[ignore = "checks service management refusals in default replay fuzzing; requires Node and Quint 0.32.0"]
 fn service_management_generated_works() {
 	let mut refusals = std::collections::BTreeSet::new();
-	// This seed reaches all three handoff errors; storage removal on an
-	// unsupervised service is a silent no-op (§6.5).
-	for seed in [1271] {
+	// Re-tuned for spec 09c7224954f9: `HandoffUnknownNewSupervisor` needs a handoff
+	// to a never-created supervisor, which is rare enough that coverage is unioned
+	// over three seeds. Storage removal on an unsupervised service stays a silent
+	// no-op (§6.5).
+	for seed in [3, 151, 264] {
 		let stream = generator(seed, 1, 1, 50).output().expect("service management generator");
 		assert!(stream.status.success(), "{}", String::from_utf8_lossy(&stream.stderr));
 		for line in stream.stdout.split(|b| *b == b'\n').filter(|line| !line.is_empty()) {
@@ -1074,7 +1082,7 @@ fn storage_recovery_generated_works() {
 					report
 						.pointer("/result/value/value/upwardMessages")
 						.and_then(Value::as_array)
-						.is_some_and(Vec::is_empty)
+						.is_some_and(|msgs| msgs.is_empty())
 				});
 			if phase != "-1" {
 				metadata_failure |= !state["replayFailedMessages"].as_array().unwrap().is_empty();

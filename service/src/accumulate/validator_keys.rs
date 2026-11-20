@@ -16,10 +16,15 @@ use crate::{
 use alloc::vec::Vec;
 use jam_pvm_common::accumulate::designate;
 use jam_types::{OpaqueValKeyset, OpaqueValKeysets};
-use parachain_service_core::types::ValidatorKey;
+use parachain_service_core::types::{MessageId, ValidatorKey};
 
 /// Replay of `SetValidatorKeys { keys, is_last }` (Asset Hub only, §4.3).
-pub fn apply(chunk: Vec<ValidatorKey>, is_last: bool, logs: &mut Vec<AccumulateLog>) {
+pub fn apply(
+	chunk: Vec<ValidatorKey>,
+	is_last: bool,
+	message_id: MessageId,
+	logs: &mut Vec<(MessageId, AccumulateLog)>,
+) {
 	let staged = StagedValidatorKeys::get();
 
 	if is_last {
@@ -39,14 +44,14 @@ pub fn apply(chunk: Vec<ValidatorKey>, is_last: bool, logs: &mut Vec<AccumulateL
 		let designated =
 			OpaqueValKeysets::try_from(assembled).is_ok_and(|set| designate(&set).is_ok());
 		if !designated {
-			logs.push(AccumulateLog::DesignateRejected { len: (len as u32).into() });
+			logs.push((message_id, AccumulateLog::DesignateRejected { len: (len as u32).into() }));
 		}
 		return;
 	}
 
 	// Partial append: the chunk stays in the buffer until finalization.
 	if staged.len() + chunk.len() > MAX_STAGED_VALIDATOR_KEYS {
-		logs.push(AccumulateLog::StagedValidatorKeysOverflow);
+		logs.push((message_id, AccumulateLog::StagedValidatorKeysOverflow));
 		return;
 	}
 	let mut staged: StagedKeys = staged;

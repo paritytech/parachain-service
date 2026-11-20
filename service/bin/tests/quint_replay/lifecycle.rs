@@ -38,7 +38,7 @@ fn head_operand_errors() {
 	))
 	.unwrap();
 	let pointer =
-		"/states/4/lastStepWorkResults/0/result/value/value/upwardMessages/1/value/newHead/#bigint";
+		"/states/4/lastStepWorkResults/0/result/value/value/upwardMessages/1/#tup/1/value/newHead/#bigint";
 	*trace.pointer_mut(pointer).expect("registration head operand") = serde_json::json!("99");
 	let error = replay::document_trace(&trace).unwrap_err();
 	assert!(error.contains("headData differs"), "{error}");
@@ -52,7 +52,7 @@ fn cleanup_operand_errors() {
 	.unwrap();
 	// Redirect successful cleanup to an absent para, preserving expected removal.
 	let pointer =
-		"/states/6/lastStepWorkResults/0/result/value/value/upwardMessages/0/value/value/#bigint";
+		"/states/6/lastStepWorkResults/0/result/value/value/upwardMessages/0/#tup/1/value/value/#bigint";
 	*trace.pointer_mut(pointer).expect("cleanup para operand") = serde_json::json!("4");
 	let error = replay::document_trace(&trace).unwrap_err();
 	assert!(error.contains("registered set differs"), "{error}");

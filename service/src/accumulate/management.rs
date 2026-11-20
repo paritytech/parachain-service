@@ -18,7 +18,8 @@ use crate::{
 use alloc::vec::Vec;
 use jam_types::Slot;
 use parachain_service_core::types::{
-	validation_code_hash_bytes, Balance, HeadData, ParaId, ValidationCodeRef, ASSET_HUB_PARA_ID,
+	validation_code_hash_bytes, Balance, HeadData, MessageId, ParaId, ValidationCodeRef,
+	ASSET_HUB_PARA_ID,
 };
 
 /// §6.1 — the sole creator of `ParaInfo`. On an unused ParaId, creates the entry
@@ -27,21 +28,23 @@ use parachain_service_core::types::{
 pub fn set_state_balance(
 	para_id: ParaId,
 	new_total: Balance,
-	logs: &mut Vec<AccumulateLog>,
+	message_id: MessageId,
+	logs: &mut Vec<(MessageId, AccumulateLog)>,
 	heads: &mut HeadTracker,
 ) {
 	match Parachains::get(para_id) {
 		None => {
 			let baseline = baseline_for(para_id);
 			if new_total < baseline {
-				logs.push(AccumulateLog::StateBalanceUpdateRejected {
-					para_id,
-					attempted: new_total.into(),
-					reason: StateBalanceRejection::BelowUsed {
-						current_total: 0u64.into(),
-						current_used: baseline.into(),
+				logs.push((
+					message_id,
+					AccumulateLog::StateBalanceUpdateRejected {
+						reason: StateBalanceRejection::BelowUsed {
+							current_total: 0u64.into(),
+							current_used: baseline.into(),
+						},
 					},
-				});
+				));
 				return;
 			}
 			// Registration gives the para its first head, which §5.5 counts as a
@@ -61,23 +64,25 @@ pub fn set_state_balance(
 		},
 		Some(mut pi) => {
 			if pi.is_deregistering {
-				logs.push(AccumulateLog::StateBalanceUpdateRejected {
-					para_id,
-					attempted: new_total.into(),
-					reason: StateBalanceRejection::ParachainIsDeregistering,
-				});
+				logs.push((
+					message_id,
+					AccumulateLog::StateBalanceUpdateRejected {
+						reason: StateBalanceRejection::ParachainIsDeregistering,
+					},
+				));
 				return;
 			}
 			if new_total < pi.used_state_balance {
 				// The Coretime chain cannot strand currently-paid-for state.
-				logs.push(AccumulateLog::StateBalanceUpdateRejected {
-					para_id,
-					attempted: new_total.into(),
-					reason: StateBalanceRejection::BelowUsed {
-						current_total: pi.total_state_balance.into(),
-						current_used: pi.used_state_balance.into(),
+				logs.push((
+					message_id,
+					AccumulateLog::StateBalanceUpdateRejected {
+						reason: StateBalanceRejection::BelowUsed {
+							current_total: pi.total_state_balance.into(),
+							current_used: pi.used_state_balance.into(),
+						},
 					},
-				});
+				));
 				return;
 			}
 			pi.total_state_balance = new_total;
@@ -106,7 +111,8 @@ pub fn set_head(para_id: ParaId, new_head: HeadData, heads: &mut HeadTracker) {
 pub fn set_validation_code(
 	para_id: ParaId,
 	new_code: ValidationCodeRef,
-	logs: &mut Vec<AccumulateLog>,
+	message_id: MessageId,
+	logs: &mut Vec<(MessageId, AccumulateLog)>,
 ) {
 	let Some(pi) = Parachains::get(para_id) else { return };
 	if pi.is_deregistering {
@@ -118,7 +124,7 @@ pub fn set_validation_code(
 	if let Err(log) =
 		add_referencer(para_id, &validation_code_hash_bytes(&new_code.hash), new_code.len)
 	{
-		logs.push(log);
+		logs.push((message_id, log));
 		return;
 	}
 
@@ -136,7 +142,8 @@ pub fn set_validation_code(
 pub fn clean_up(
 	para_id: ParaId,
 	now: Slot,
-	logs: &mut Vec<AccumulateLog>,
+	message_id: MessageId,
+	logs: &mut Vec<(MessageId, AccumulateLog)>,
 	heads: &mut HeadTracker,
 ) {
 	let Some(pi) = Parachains::get(para_id) else { return };
@@ -145,7 +152,7 @@ pub fn clean_up(
 		// Still holds solicited preimages or KV entries beyond the baseline —
 		// they must be released first (by the para or by Coretime via the
 		// para_id-taking `forget`/`kv_remove`, §6.4).
-		logs.push(AccumulateLog::TooMuchStateHeld);
+		logs.push((message_id, AccumulateLog::TooMuchStateHeld));
 		return;
 	}
 
@@ -158,7 +165,7 @@ pub fn clean_up(
 			now,
 		);
 		retained |= out.retained;
-		logs.extend(out.log);
+		logs.extend(out.log.map(|log| (message_id, log)));
 	}
 
 	if retained {
