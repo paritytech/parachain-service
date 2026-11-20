@@ -42,18 +42,22 @@ module host_invocation {
         val balance = serviceThreshold(h.acc.state) + h.free
         val state = { ...h.acc.state, jamAccount: { ...h.acc.state.jamAccount, balance: balance } }
         val out = applyUpwardMessage({ ...h.acc, state: state }, caller, FixedCodeLen, slot, anchor, message)
-        val debit = if (t.dest == ParachainServiceId and out.logs == h.acc.logs) t.amount
-          else balance - out.state.jamAccount.balance
+        val done = transferred(t, h.acc.logs, out.logs)
+        val debit = match done {
+          | Some(d) => if (t.dest == ParachainServiceId) amountOf(d.amount)
+            else balance - out.state.jamAccount.balance
+          | None => balance - out.state.jamAccount.balance
+        }
         val restored = { ...out, state: { ...out.state,
           jamAccount: { ...h.acc.state.jamAccount, balance: h.acc.state.jamAccount.balance - debit } } }
         val nextHost = moved(h, restored)
         { ...nextHost, safe: nextHost.safe and supported,
-          transfers: if (out.logs == h.acc.logs) h.transfers.append(t) else h.transfers }
+          transfers: match done { | Some(d) => h.transfers.append(d) | None => h.transfers } }
       }
       | CreateService(c) => {
         val cost = BaseDeposit + 2 * ItemDeposit + PreimageRequestOverhead + c.len
         val out = if (cost > h.free)
-          { ...h.acc, logs: h.acc.logs.append(ServiceCreation({ id: c.id, result: CannotAfford })) }
+          { ...h.acc, logs: h.acc.logs.append(ServiceCreation({ messageId: c.messageId, result: CannotAfford })) }
           else replayApply(h.acc, caller, FixedCodeLen, slot, anchor, message)
         val nextHost = moved(h, out)
         { ...nextHost, creations: out.foreign.keys().exclude(h.acc.foreign.keys())
@@ -184,7 +188,7 @@ module host_invocation {
       // Scheduler delivery is outside guest execution and checkpoint rollback.
       // Only the retained prefix's emitted records receive this later credit.
       svc' = { ...out.state, jamAccount: out.state.jamAccount.credit(
-        out.transfers.foldl(0, (n, t) => n + (if (t.dest == ParachainServiceId) t.amount else 0)), false) },
+        out.transfers.foldl(0, (n, t) => n + (if (t.dest == ParachainServiceId) amountOf(t.amount) else 0)), false) },
       foreignServices' = out.foreign, prevSvc' = svc, now' = slot,
       solicitedSet' = out.solicited, jamStagingSet' = jamStagingSet,
       lastStepWorkResults' = packages, lastStepAssigns' = due.assigns,

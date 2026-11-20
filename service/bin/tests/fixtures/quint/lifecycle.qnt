@@ -39,7 +39,7 @@ module lifecycle {
     .then(core(List(ParachainCleanUp(p))))
     .then(expectThat(svc.isLive(p) and not(svc.paraInfo(p).isDeregistering)))
     .then(work(List(RemoveKV({ paraId: p, key: List(1) }),
-      Forget({ target: Parachain(p), hash: { hashBytes: 7 }, len: 1024 }))))
+      Forget({ target: Parachain(p), preimages: List(({ hashBytes: 7 }, 1024)) }))))
     .then(core(List(ParachainCleanUp(p))))
     .then(expectThat(not(svc.isLive(p))))
     .then(work(List()))

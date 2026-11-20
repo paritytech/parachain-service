@@ -35,7 +35,7 @@ fn lost_delivery_errors() {
 	.unwrap();
 	let frame = &mut trace["states"][1];
 	let balance = replay::integer(&frame["svc"]["jamAccount"]["balance"]).unwrap();
-	let amount = replay::integer(&frame["replayTransfers"][0]["amount"]).unwrap();
+	let amount = replay::integer(&frame["replayTransfers"][0]["amount"]["value"]).unwrap();
 	frame["svc"]["jamAccount"]["balance"] = json!({"#bigint": (balance - amount).to_string()});
 	assert!(replay::document_trace(&trace).unwrap_err().contains("JAM account"));
 }

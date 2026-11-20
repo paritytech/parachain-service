@@ -45,7 +45,8 @@ pub fn args(value: &Value, codex: &mut Codex) -> Result<CreateServiceArgs, Strin
 		len: len.into(),
 		min_item_gas: bounded_integer(field(value, "minItemGas")?, "creation item gas")?,
 		min_memo_gas: bounded_integer(field(value, "minMemoGas")?, "creation memo gas")?,
-		id: bounded_integer::<u64>(field(value, "id")?, "creation id")?.into(),
+		message_id: bounded_integer::<u64>(field(value, "messageId")?, "creation message id")?
+			.into(),
 		desired_id: super::assignments::assigner(field(value, "desiredId")?)?,
 		source_supervisor_balance: boolean(field(value, "sourceSupervisorBalance")?)?,
 		new_supervisor_balance: boolean(field(value, "newSupervisorBalance")?)?,

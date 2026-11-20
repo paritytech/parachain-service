@@ -217,12 +217,12 @@ module storage_inputs {
   action storageInvocation(budget: int, packages: List[WorkResult], incoming: List[IncomingTransfer]): bool = {
     val start: Host = { state: svc, free: budget, logs: replayStorageLogs,
       sizes: replayStorageSizes, failed: List(), failedMessages: List(), assignmentFailure: "", assigns: List() }
-    val arrived = arrivals(start, incoming, now + 1)
+    val arrived = arrivals(dueAssignments(start, now + 1, FullAssignBudget.flush), incoming, now + 1)
     val out = range(0, packages.length()).foldl(arrived,
       (a, i) => report(a, packages[i], i, now + 1))
     all {
       svc' = out.state, prevSvc' = svc, now' = now + 1,
-      lastStepWorkResults' = packages, lastStepAssigns' = List(), lastStepAssignBudget' = FullAssignBudget, lastStepOutOfGas' = Never,
+      lastStepWorkResults' = packages, lastStepAssigns' = out.assigns, lastStepAssignBudget' = FullAssignBudget, lastStepOutOfGas' = Never,
       lastHeadRoot' = headCommitment(svc, out.state),
       solicitedSet' = solicitedSet, jamStagingSet' = jamStagingSet,
       foreignServices' = foreignServices, logPrunedBelow' = logPrunedBelow,

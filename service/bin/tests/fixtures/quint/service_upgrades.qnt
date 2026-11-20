@@ -53,7 +53,7 @@ module service_upgrades_replay {
   pure def solicitCode(p: ParaId, hash: Hash): UpwardMessage =
     Solicit({ target: Parachain(p), hash: hash, len: ServiceCodeLen })
   pure def forgetCode(hash: Hash): UpwardMessage =
-    Forget({ target: Parachain(AssetHubParaId), hash: hash, len: ServiceCodeLen })
+    Forget({ target: Parachain(AssetHubParaId), preimages: List((hash, ServiceCodeLen)) })
   action core(msgs: List[UpwardMessage]): bool = block(List(work(CoretimeParaId,
     svc.paraInfo(CoretimeParaId).headData, msgs)))
   action fund = core(List(

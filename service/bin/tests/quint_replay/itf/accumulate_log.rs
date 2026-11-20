@@ -52,8 +52,14 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 			let (reason, payload) = variant(field(value, "reason")?)?;
 			let reason = match reason {
 				"BelowUsed" => StateBalanceRejection::BelowUsed {
-					current_total: Compact(bounded_integer(field(payload, "currentTotal")?, "currentTotal")?),
-					current_used: Compact(bounded_integer(field(payload, "currentUsed")?, "currentUsed")?),
+					current_total: Compact(bounded_integer(
+						field(payload, "currentTotal")?,
+						"currentTotal",
+					)?),
+					current_used: Compact(bounded_integer(
+						field(payload, "currentUsed")?,
+						"currentUsed",
+					)?),
 				},
 				"ParachainIsDeregistering" => StateBalanceRejection::ParachainIsDeregistering,
 				other => return Err(format!("unsupported state balance rejection {other}")),
@@ -83,7 +89,10 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 				other => return Err(format!("unsupported creation result {other}")),
 			};
 			Ok(AccumulateLog::ServiceCreation {
-				id: Compact(bounded_integer::<u64>(field(value, "id")?, "creation id")?),
+				message_id: Compact(bounded_integer::<u64>(
+					field(value, "messageId")?,
+					"creation message id",
+				)?),
 				result,
 			})
 		},
@@ -138,6 +147,10 @@ pub(super) fn accumulate_log(value: &Value, codex: &mut Codex) -> Result<Accumul
 				error,
 			})
 		},
+		"TransferredAmount" => Ok(AccumulateLog::TransferredAmount {
+			id: Compact(bounded_integer::<u64>(field(value, "id")?, "transfer id")?),
+			amount: Compact(bounded_integer::<u64>(field(value, "amount")?, "transferred amount")?),
+		}),
 		"DesignateRejected" => Ok(AccumulateLog::DesignateRejected {
 			len: Compact(bounded_integer::<u32>(field(value, "len")?, "designation length")?),
 		}),

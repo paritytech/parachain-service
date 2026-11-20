@@ -19,7 +19,7 @@ module host_mixed {
   pure def solicit(hash: int, len: int): UpwardMessage =
     Solicit({ target: Parachain(AssetHubParaId), hash: { hashBytes: hash }, len: len })
   pure def forget(hash: int, len: int): UpwardMessage =
-    Forget({ target: Parachain(AssetHubParaId), hash: { hashBytes: hash }, len: len })
+    Forget({ target: Parachain(AssetHubParaId), preimages: List(({ hashBytes: hash }, len)) })
   pure def code(phase: CodeUpgradePhase): UpwardMessage =
     RequestCodeUpgrade({ hash: { vchBytes: 777 }, len: FixedCodeLen, phase: phase })
   action normal(caller: ParaId, msgs: List[UpwardMessage]): bool =

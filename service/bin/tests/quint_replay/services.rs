@@ -107,8 +107,8 @@ fn creation_numeric_bounds_errors() {
 	for (name, number) in [
 		("len", "-1"),
 		("len", "4294967296"),
-		("id", "-1"),
-		("id", "18446744073709551616"),
+		("messageId", "-1"),
+		("messageId", "18446744073709551616"),
 		("minItemGas", "-1"),
 		("minMemoGas", "18446744073709551616"),
 	] {

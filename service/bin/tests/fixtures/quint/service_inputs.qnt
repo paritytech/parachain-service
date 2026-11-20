@@ -22,9 +22,9 @@ module service_inputs {
     MkServiceId(start.to(start + fs.keys().size()).filter(i => not(fs.keys().contains(MkServiceId(i))))
       .fold(start + fs.keys().size(), (n, i) => if (i < n) i else n))
   }
-  pure def createArgs(desired: Option[ServiceId], id: int): CreateServiceArgs = {
+  pure def createArgs(desired: Option[ServiceId], messageId: int): CreateServiceArgs = {
     codeHash: { hashBytes: 8801 }, len: 1024, minItemGas: 123, minMemoGas: 200,
-    id: id, desiredId: desired, sourceSupervisorBalance: false, newSupervisorBalance: false
+    messageId: messageId, desiredId: desired, sourceSupervisorBalance: false, newSupervisorBalance: false
   }
   pure def serviceMessages(fs: ForeignServices): Set[UpwardMessage] = {
     val targets = fs.keys().union(Set(ParachainServiceId, MkServiceId(99)))
@@ -43,9 +43,9 @@ module service_inputs {
   pure def serviceSolicit(id: ServiceId): UpwardMessage =
     Solicit({ target: Service(id), hash: { hashBytes: 8801 }, len: 1024 })
   pure def serviceForget(id: ServiceId): UpwardMessage =
-    Forget({ target: Service(id), hash: { hashBytes: 8801 }, len: 1024 })
+    Forget({ target: Service(id), preimages: List(({ hashBytes: 8801 }, 1024)) })
   pure def serviceRemove(id: ServiceId): UpwardMessage =
-    RemoveServiceStorage({ service: id, key: List(0, 255, 1) })
+    RemoveServiceStorage({ service: id, keys: List(List(0, 255, 1)) })
   pure def serviceSupervisor(id: ServiceId, successor: ServiceId): UpwardMessage =
     SetServiceSupervisor({ service: id, newSupervisor: successor })
   pure def replayApplyBase(acc: AccumulateOutcome, caller: ParaId, codeLen: int,
@@ -62,7 +62,7 @@ module service_inputs {
       else applyUpwardMessage(acc, caller, codeLen, slot, anchor, msg)
     | CreateService(c) => {
       if (c.sourceSupervisorBalance or c.newSupervisorBalance)
-        { ...acc, logs: acc.logs.append(ServiceCreation({ id: c.id, result: CannotAfford })) }
+        { ...acc, logs: acc.logs.append(ServiceCreation({ messageId: c.messageId, result: CannotAfford })) }
       else {
         val fresh = match c.desiredId {
           | Some(id) => match id { | MkServiceId(i) => if (i < MinPublicServiceIndex) id else publicId(acc.foreign, slot) | _ => publicId(acc.foreign, slot) }

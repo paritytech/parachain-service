@@ -51,7 +51,8 @@ differs for:
 
 The model also approximates this service's threshold balance from above (it bills each
 parachain as the sole user of shared entries), so close to the threshold it can refuse a
-spend JAM allows. Replay now covers deferred regular-balance transfers and the
+spend JAM allows, and a `TransferAmount::Max` drains less than Rust, which reads the host's
+threshold. Replay now covers deferred regular-balance transfers and the
 host-compatible refusals, checking ordered transfer records and regular balances.
 Its input profile excludes supervised-service moves and spends near the model's
 approximate threshold; unsupported outcomes fail rather than being normalized.

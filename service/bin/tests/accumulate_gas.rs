@@ -43,27 +43,27 @@ fn report(name: &str, gas: u64, elapsed: std::time::Duration, digest_len: usize)
 
 /// Pinned gas measurements for the benchmarks below.
 ///
-/// Re-baselined 2026-11-05 after laying assign queues out by slot (§7.1) and
-/// yielding the head commitment before each report's checkpoint (§5.1).
+/// Re-baselined 2026-11-19 after `TransferAmount` and batched `Forget` /
+/// `RemoveServiceStorage` (§5.1, §6.1).
 /// These are measured PVM costs, not production budgets.
 mod gas {
 	/// 1024-solicit digest — the heaviest reachable digest replay.
-	pub const MAX_SOLICITS: u64 = 62_679_560;
+	pub const MAX_SOLICITS: u64 = 62_964_647;
 	/// 1024 KV writes filling the report's elective-data limit.
-	pub const MAX_KV_WRITES: u64 = 53_504_801;
-	/// 332 outbound transfers to a friendly destination.
-	pub const MAX_TRANSFER_OUTS: u64 = 5_034_306;
-	/// 332 outbound transfers to a destination demanding `HIGH_TRANSFER_GAS`.
-	pub const MAX_GAS_TRANSFER_OUTS: u64 = 5_034_306;
+	pub const MAX_KV_WRITES: u64 = 53_656_775;
+	/// 329 outbound transfers to a friendly destination.
+	pub const MAX_TRANSFER_OUTS: u64 = 5_172_299;
+	/// 329 outbound transfers to a destination demanding `HIGH_TRANSFER_GAS`.
+	pub const MAX_GAS_TRANSFER_OUTS: u64 = 5_153_146;
 	/// Gas for 1024 incoming transfers recorded in one bucket write.
-	pub const MAX_INCOMING_TRANSFERS: u64 = 6_269_656;
+	pub const MAX_INCOMING_TRANSFERS: u64 = 6_234_020;
 	/// Due `assign` flush for all 341 cores in one block.
-	pub const ALL_DUE_ASSIGNS: u64 = 23_309_096;
+	pub const ALL_DUE_ASSIGNS: u64 = 23_309_091;
 	/// Marginal cost of a realistic destination's memo handler, per transfer.
 	pub const DEST_HANDLER_PER_TRANSFER: u64 = 17_301;
 	/// Gas for one Ed25519 authorization.
 	/// Re-measured with the pinned `nightly-2026-08-31` toolchain.
-	pub const IS_AUTHORIZED_ED25519: u64 = 4_018_278;
+	pub const IS_AUTHORIZED_ED25519: u64 = 4_043_874;
 }
 
 /// A report admitted by the gas gate must leave 20% execution headroom.
@@ -177,7 +177,8 @@ fn transfer_out_bench_works() {
 	let msgs = (0..WR_TRANSFER_BENCH)
 		.map(|i| transfer_out_msg(42, 1, i as u64, Some(([7; 128], TRANSFER_GAS))))
 		.collect();
-	let head = [0; 4];
+	// Pads the digest to exactly the WR size limit.
+	let head = [0; 118];
 	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", &head, msgs, 0);
 	let digest_len = digest.encode().len();
 	assert_eq!(digest_len, MAX_REPORT_ELECTIVE_DATA);
@@ -190,7 +191,7 @@ fn transfer_out_bench_works() {
 }
 
 /// Maximum transfers fitting in `Wr`.
-const WR_TRANSFER_BENCH: u32 = 332;
+const WR_TRANSFER_BENCH: u32 = 329;
 
 /// Gas each transfer forwards in the high-gas benchmarks, `Ga / 100`.
 const HIGH_TRANSFER_GAS: u64 = 100_000;

@@ -69,12 +69,11 @@ pub enum MockAction {
 	CreateService(parachain_service_core::upward_message::CreateServiceArgs),
 	Forget {
 		target: parachain_service_core::upward_message::Target,
-		hash: [u8; 32],
-		len: u32,
+		preimages: Vec<([u8; 32], u32)>,
 	},
 	RemoveServiceStorage {
 		service: u32,
-		key: Vec<u8>,
+		keys: Vec<Vec<u8>>,
 	},
 	RequestCodeUpgrade {
 		hash: [u8; 32],
@@ -366,11 +365,12 @@ mod host {
 				}
 			},
 			MockAction::CreateService(args) => UpwardMessage::CreateService(args.clone()),
-			MockAction::Forget { target, hash, len } => {
-				UpwardMessage::Forget { target: *target, hash: *hash, len: (*len).into() }
+			MockAction::Forget { target, preimages } => UpwardMessage::Forget {
+				target: *target,
+				preimages: preimages.iter().map(|(hash, len)| (*hash, (*len).into())).collect(),
 			},
-			MockAction::RemoveServiceStorage { service, key } => {
-				UpwardMessage::RemoveServiceStorage { service: *service, key: key.clone() }
+			MockAction::RemoveServiceStorage { service, keys } => {
+				UpwardMessage::RemoveServiceStorage { service: *service, keys: keys.clone() }
 			},
 			MockAction::RequestCodeUpgrade { hash, len, phase } => {
 				UpwardMessage::RequestCodeUpgrade {

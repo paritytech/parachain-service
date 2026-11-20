@@ -58,9 +58,9 @@ pub enum TransferError {
 	DestinationNotSupervised,
 	/// The supplied gas is below `dest`'s `min_memo_gas`.
 	GasBelowDestinationMinimum,
-	/// The `source` service cannot cover `amount`, either because the debited
-	/// balance is too small or because the transfer would leave it below its
-	/// threshold balance.
+	/// The `source` service cannot cover a `TransferAmount::Exact`, either because
+	/// the debited balance is too small or because the transfer would leave it
+	/// below its threshold balance.
 	InsufficientServiceBalance,
 }
 
@@ -206,6 +206,9 @@ pub enum AccumulateLog {
 	/// caller-supplied identifier, echoed back so the parachain can match the
 	/// failure to its own record. Spec §5.1 step 6.
 	TransferFailed { id: Compact<u64>, error: TransferError },
+	/// The `TransferOut` with this `id` and a `TransferAmount::Max` went through,
+	/// moving `amount`. Spec §5.1.
+	TransferredAmount { id: Compact<u64>, amount: Compact<Balance> },
 	/// A `forget` removed the last referencer without expunging the preimage;
 	/// `forget` again once strictly past `due`. Spec §6.1.
 	ForgetAgainAt { target: Target, hash: Hash, len: Compact<u32>, due: Timeslot },
@@ -224,8 +227,9 @@ pub enum AccumulateLog {
 	ServiceEjected { service: ServiceId, credited: Compact<Balance> },
 	/// A `set_service_supervisor` failed. Spec §6.5.
 	ServiceSupervisorFailed { service: ServiceId, error: ServiceSupervisorError },
-	/// Announces a `create_service` outcome, echoing the caller's own `id`. Spec §6.5.
-	ServiceCreation { id: Compact<u64>, result: ServiceCreationResult },
+	/// Announces a `create_service` outcome, echoing the caller's own `message_id`.
+	/// Spec §6.5.
+	ServiceCreation { message_id: Compact<u64>, result: ServiceCreationResult },
 	/// `parachain_clean_up` rejected: state held beyond baseline + codes. Spec §6.4.
 	TooMuchStateHeld,
 	/// The candidate's code does not match the active code. §5.1.

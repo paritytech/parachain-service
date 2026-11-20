@@ -15,7 +15,7 @@ use parachain_service::{
 };
 use parachain_service_core::{
 	types::ASSET_HUB_PARA_ID,
-	upward_message::{TransferOutArgs, UpwardMessage},
+	upward_message::{TransferAmount, TransferOutArgs, UpwardMessage},
 };
 
 const NOW: u32 = 100;
@@ -371,7 +371,7 @@ fn pay_42() -> TransferOutArgs {
 	TransferOutArgs {
 		source: None,
 		dest: 42,
-		amount: 100.into(),
+		amount: TransferAmount::Exact(100.into()),
 		id: 1.into(),
 		source_supervisor_balance: false,
 		dest_supervisor_balance: false,
@@ -470,12 +470,59 @@ fn transfer_out_high_gas_works() {
 	assert_eq!(replay_transfer_out(args), (vec![], vec![1_000_000]));
 }
 
+/// Replay Asset Hub `TransferOut`s with a `Max` amount in one digest, returning the
+/// accumulate log and the amount of each transfer JAM was asked to make.
+fn replay_max_transfers(args: &[TransferOutArgs]) -> (Vec<AccumulateLog>, Vec<u64>) {
+	let storage = fresh_storage(|s| {
+		seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH);
+		seed_service(s, 42, 500);
+	});
+	let msgs = args.iter().cloned().map(UpwardMessage::TransferOut).collect();
+	let digest = ok_digest(ASSET_HUB_PARA_ID, AH_CODE, b"ah-genesis", b"ah-1", msgs, 0);
+
+	let (_, storage, mutations) = accumulate_block(storage, vec![work_item(&digest)], NOW);
+
+	(ah_accumulate_logs(&storage), mutations.transfers.iter().map(|t| t.amount).collect())
+}
+
+fn max_42(cap: u64) -> TransferOutArgs {
+	TransferOutArgs { amount: TransferAmount::Max(cap.into()), ..pay_42() }
+}
+
+#[test]
+fn transfer_out_max_works() {
+	// §5.1: a `Max` below what this service can spare moves exactly the cap, and the
+	// empty supervisor balance caps it at zero; both report the moved amount.
+	let (logs, amounts) = replay_max_transfers(&[
+		max_42(10),
+		TransferOutArgs { id: 2.into(), source_supervisor_balance: true, ..max_42(10) },
+	]);
+	assert_eq!(
+		logs,
+		vec![
+			AccumulateLog::TransferredAmount { id: 1.into(), amount: 10.into() },
+			AccumulateLog::TransferredAmount { id: 2.into(), amount: 0.into() },
+		]
+	);
+	assert_eq!(amounts, vec![10, 0]);
+}
+
+#[test]
+fn transfer_out_max_drains_to_threshold_works() {
+	// The first `Max` takes everything above the threshold, so the next finds nothing
+	// to spare and moves zero instead of failing.
+	let (_, amounts) =
+		replay_max_transfers(&[max_42(u64::MAX), TransferOutArgs { id: 2.into(), ..max_42(1) }]);
+	let [drained, 0] = amounts[..] else { panic!("unexpected transfers {amounts:?}") };
+	assert!(drained > 0, "the seeded balance has room above the threshold");
+}
+
 #[test]
 fn transfer_out_empty_self_move_works() {
 	// Moving nothing between this service's two balances touches neither.
 	let args = TransferOutArgs {
 		dest: SVC,
-		amount: 0.into(),
+		amount: TransferAmount::Exact(0.into()),
 		source_supervisor_balance: true,
 		deferred: None,
 		..pay_42()
