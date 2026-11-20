@@ -10,16 +10,8 @@ use codec::{Compact, Encode};
 
 use crate::{
 	types::MessageId,
-	upward_message::{CodeUpgradePhase, Target},
+	upward_message::{CodeUpgradePhase, Target, UpwardMessage},
 };
-
-/// The subset of the service's `UpwardMessage` ABI this runtime emits. The SCALE variant
-/// index is positional, so the ordering has to match the spec's `enum UpwardMessage`.
-#[derive(Encode)]
-enum UpwardMessage {
-	RequestCodeUpgrade { hash: [u8; 32], len: Compact<u32>, phase: CodeUpgradePhase },
-	Solicit { target: Target, hash: [u8; 32], len: Compact<u32> },
-}
 
 #[polkavm_derive::polkavm_import]
 extern "C" {
@@ -52,7 +44,7 @@ pub fn request_code_upgrade(
 ) {
 	send_upward_message(
 		message_id,
-		&UpwardMessage::RequestCodeUpgrade { hash, len: Compact(len), phase },
+		&UpwardMessage::RequestCodeUpgrade { hash: hash.into(), len: Compact(len), phase },
 	)
 }
 
