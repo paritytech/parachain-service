@@ -1,0 +1,32 @@
+[package]
+name = "parachain-service-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+repository.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+bounded-collections = { workspace = true }
+codec = { workspace = true }
+jam-types = { workspace = true }
+polkadot-parachain-primitives = { workspace = true }
+sp-crypto-hashing = { workspace = true }
+
+[dev-dependencies]
+codec = { workspace = true, features = ["std"] }
+jam-std-common = { workspace = true }
+
+[features]
+default = ["std"]
+std = [
+	"bounded-collections/std",
+	"codec/std",
+	"jam-types/std",
+	"polkadot-parachain-primitives/std",
+	"sp-crypto-hashing/std",
+]
