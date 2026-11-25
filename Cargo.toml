@@ -1,14 +1,5 @@
 [workspace]
-members = [
-    "authorizer",
-    "authorizer/bin",
-    "cumulus",
-    "runtimes/frameless",
-    "service",
-    "service/bin",
-    "service-interface",
-    "tools/executor",
-]
+members = []
 exclude = [
     "vendor/polkadot-sdk-companion",
     "vendor/polkajam",
@@ -26,36 +17,6 @@ license = "Apache-2.0"
 unexpected_cfgs = { level = "warn", check-cfg = [] }
 
 [workspace.dependencies]
-jam-types = { path = "vendor/polkajam/crates/jam-types", default-features = false }
-jam-pvm-common = { path = "vendor/polkajam/crates/jam-pvm-common", default-features = false }
-jam-std-common = { path = "vendor/polkajam/crates/jam-std-common" }
-binary-merkle-tree = { version = "16.1.1", default-features = false }
-blake2b_simd = { version = "1", default-features = false }
-primitive-types = { version = "0.13.1", default-features = false, features = ["codec"] }
-jam-pvm-builder = { version = "0.1.28" }
-polkavm-derive = { version = "0.36.0", default-features = false }
-bounded-collections = { version = "0.3.2", default-features = false, features = ["scale-codec"] }
-polkavm = { version = "0.30.0", default-features = false }
-num_enum = { version = "0.7", default-features = false }
-
-# Guest crates and their blob builder crates.
-frameless = { path = "runtimes/frameless" }
-parachain-service = { path = "service" }
-parachain-service-bin = { path = "service/bin" }
-parachain-authorizer = { path = "authorizer" }
-parachain-authorizer-bin = { path = "authorizer/bin" }
-parachain-service-interface = { path = "service-interface", default-features = false }
-
-codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }
-# Sourced from the vendored companion (not a polkadot-sdk git rev) so `substrate-wasm-builder`
-# links the runtime PVF with the companion's `polkavm-linker`, pinned to 0.30 to match the JamV1
-# instruction encoding the vendored polkajam host (`polkavm 0.30`) decodes. A 0.36-linked blob is
-# misdecoded by the 0.30 VM (wide stores / memcpy / memset corrupt or trap). `sp-io` moves with it
-# to keep a single, consistent SDK source.
-substrate-wasm-builder = { path = "vendor/polkadot-sdk-companion/substrate/utils/wasm-builder" }
-executor = { path = "tools/executor" }
-tiny-keccak = { version = "2.0.2", default-features = false, features = ["keccak"] }
-sp-io = { path = "vendor/polkadot-sdk-companion/substrate/primitives/io", default-features = false }
 
 [profile.production]
 inherits = "release"
