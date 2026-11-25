@@ -139,7 +139,8 @@ fn code_hash_mismatch_errors() {
 #[test]
 fn work_package_signature_errors() {
 	let blob = authorizer_blob();
-	let auth = authorization(&blob, 0, aura::hash_signing_payload(&BLOCK_HASH));
+	let signed = H256(blake2_256(&[aura::WORK_PACKAGE_SIGN_CTX, &BLOCK_HASH[..]].concat()));
+	let auth = authorization(&blob, 0, signed);
 
 	assert_eq!(
 		check(&state(&blob, &auth), PARA, &auth),

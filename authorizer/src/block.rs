@@ -45,7 +45,9 @@ pub fn authorize_block<S: SignatureVerifier>(
 
 	token
 		.check_proof(&config, config.expected_collator_index(params.slot))
-		.map_err(BlockAuthorizationError::BadAuthorization)?;
+		.map_err(|e| {
+			BlockAuthorizationError::BadAuthorization(aura::AuthorizationError::BadToken(e))
+		})?;
 	token
 		.check_signature::<S>(signable_block_hash(&params.block_hash))
 		.map_err(|e| {
