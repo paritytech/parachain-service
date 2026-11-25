@@ -15,14 +15,14 @@ pub use state_key::{
 	service_preimage_state_key, service_request_state_key, service_value_state_key,
 };
 
-/// The parachain service's JAM service ID. Network constant; must match genesis registration.
+/// The parachain service's JAM service ID.
 pub const PARACHAIN_SERVICE_ID: types::ServiceId = 1337;
 
-/// A JAM state key: 31 octets, per the Gray Paper's state-merklization appendix.
+/// A 31-byte JAM state key.
 pub type StateKey = [u8; 31];
 
-/// A 32-octet blake2b hash — a node hash, a state root, or a hashed value.
+/// A 32-byte blake2b hash.
 pub type Hash = [u8; 32];
 
-/// blake2b-256, JAM's standard hash (`jam_std_common::hash_raw`).
+/// blake2b-256 hash function.
 pub use sp_crypto_hashing::blake2_256;

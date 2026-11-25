@@ -1,14 +1,10 @@
-//! Canonical storage key layout and per-parachain metadata (`ParaInfo`).
-//!
-//! Field order, field types, and `#[codec(...)]` attributes on [`ParaInfo`] are **wire format**:
-//! reordering fields or dropping a `compact` attribute silently breaks decoding of live service
-//! state.
+//! Service storage key layout and per-parachain metadata (`ParaInfo`).
 
 use crate::types::{Balance, HeadData, ParaId, ValidationCodeRef};
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
 
-/// Storage-item tags (spec §3.1, "Storage key encoding").
+/// Storage-item tags (spec §3.1).
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tag {
@@ -24,7 +20,7 @@ pub enum Tag {
 	LastAccumulate = 0x09,
 }
 
-/// The full JAM storage key for a map entry: `[tag] || SCALE(key)`.
+/// Service storage key for a map entry: `[tag] || SCALE(key)`.
 pub fn storage_key(tag: Tag, key: &impl Encode) -> Vec<u8> {
 	let mut k = Vec::with_capacity(1 + key.encoded_size());
 	k.push(tag as u8);
@@ -32,15 +28,12 @@ pub fn storage_key(tag: Tag, key: &impl Encode) -> Vec<u8> {
 	k
 }
 
-/// Storage key of the para's [`ParaInfo`] entry in the parachain service.
+/// Storage key for a parachain's [`ParaInfo`] entry.
 pub fn para_info_key(para_id: ParaId) -> Vec<u8> {
 	storage_key(Tag::Parachains, &para_id)
 }
 
-/// Storage key of a para's `parachain_log` entry in the parachain service.
-///
-/// A parachain's validation code reads its own log back through the JAM state
-/// proof under this key; the service writes it under the same one (spec §5.1).
+/// Storage key for a parachain's log entry (spec §5.1).
 pub fn para_log_key(para_id: ParaId) -> Vec<u8> {
 	storage_key(Tag::ParachainLog, &para_id)
 }
@@ -51,26 +44,21 @@ pub struct ParaInfo {
 	/// Current head data (output of last included block).
 	pub head_data: HeadData,
 
-	/// Currently active validation code, or `None` for a freshly-registered
-	/// parachain. Spec §6.
+	/// Active validation code, or `None` if newly registered (spec §6).
 	pub validation_code: Option<ValidationCodeRef>,
 
-	/// Code announced for upgrade, awaiting an `Apply`; `None` when no
-	/// announcement stands. An announcement carries no deadline and stays
-	/// standing until applied or superseded. Spec §5.2.
+	/// Announced code upgrade awaiting `Apply` (spec §5.2).
 	pub announced_upgrade: Option<ValidationCodeRef>,
 
-	/// Total state balance allocated to this parachain. Set exclusively by the
-	/// Coretime chain via `parachain_set_state_balance`. Spec §6.1.
+	/// Total state balance allocated by Coretime (spec §6.1).
 	#[codec(compact)]
 	pub total_state_balance: Balance,
 
-	/// State balance currently consumed by this parachain's footprint. Spec §6.1.
+	/// State balance currently consumed by this parachain (spec §6.1).
 	#[codec(compact)]
 	pub used_state_balance: Balance,
 
-	/// Set once `parachain_clean_up` has begun deregistering this parachain but
-	/// some preimage still awaits its second, expunging `forget`. Spec §6.4.
+	/// Set while deregistration awaits final preimage cleanup (spec §6.4).
 	pub is_deregistering: bool,
 }
 
@@ -87,21 +75,9 @@ mod tests {
 	fn para_info_key_works() {
 		assert_eq!(para_info_key(ParaId::from(3)), vec![0x00, 3, 0, 0, 0]);
 		assert_eq!(para_info_key(ParaId::from(0)), vec![0x00, 0, 0, 0, 0]);
-		// Para 2000 (0x000007D0): pins the little-endian layout beyond a single byte.
 		assert_eq!(para_info_key(ParaId::from(2000)), vec![0x00, 0xd0, 0x07, 0, 0]);
 	}
 
-	/// Byte layout (SCALE encoding, field-by-field):
-	///   head_data              `08 ca fe`         compact(2) prefix + bytes
-	///   validation_code Some   `01`
-	///   code_ref.hash          `[0x11; 32]`       `ValidationCodeHash` inner `[u8; 32]`
-	///   code_ref.len           `01 00 00 00`      `1u32` LE
-	///   announced_upgrade Some `01`
-	///   code_ref.hash          `[0x22; 32]`
-	///   code_ref.len           `02 00 00 00`      `2u32` LE
-	///   total_state_balance    `28`               compact(10) = 10 << 2
-	///   used_state_balance     `14`               compact(5)  =  5 << 2
-	///   is_deregistering       `01`               true
 	#[test]
 	fn wire_decode_works() {
 		let bytes: &[u8] = &[
@@ -112,17 +88,18 @@ mod tests {
 			0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x22,
 			0x22, 0x22, 0x22, 0x02, 0x00, 0x00, 0x00, 0x28, 0x14, 0x01,
 		];
-		let info = ParaInfo::decode(&mut &bytes[..]).expect("well-formed fixture; qed");
+
+		let info = ParaInfo::decode(&mut &bytes[..]).unwrap();
 		assert_eq!(info.encode(), bytes);
 
-		let expected_head = HeadData::try_from(vec![0xca, 0xfe]).expect("2 bytes < 4 KiB; qed");
+		let expected_head = HeadData::try_from(vec![0xca, 0xfe]).unwrap();
 		assert_eq!(info.head_data, expected_head);
 
-		let vc = info.validation_code.expect("Some in fixture; qed");
+		let vc = info.validation_code.unwrap();
 		assert_eq!(validation_code_hash_bytes(&vc.hash), [0x11u8; 32]);
 		assert_eq!(vc.len, 1);
 
-		let announced = info.announced_upgrade.expect("Some in fixture; qed");
+		let announced = info.announced_upgrade.unwrap();
 		assert_eq!(validation_code_hash_bytes(&announced.hash), [0x22u8; 32]);
 		assert_eq!(announced.len, 2);
 
@@ -136,8 +113,7 @@ mod tests {
 		let code_ref_a = ValidationCodeRef { hash: ValidationCodeHash::from([0xab; 32]), len: 512 };
 		let code_ref_b =
 			ValidationCodeRef { hash: ValidationCodeHash::from([0xcd; 32]), len: 1024 };
-		let head_data: HeadData =
-			HeadData::try_from(vec![0xde, 0xad, 0xbe, 0xef]).expect("4 bytes < 4 KiB; qed");
+		let head_data = HeadData::try_from(vec![0xde, 0xad, 0xbe, 0xef]).unwrap();
 
 		let original = ParaInfo {
 			head_data,
@@ -149,7 +125,7 @@ mod tests {
 		};
 
 		let encoded = original.encode();
-		let decoded = ParaInfo::decode(&mut &encoded[..]).expect("own encoding decodes; qed");
+		let decoded = ParaInfo::decode(&mut &encoded[..]).unwrap();
 		assert_eq!(original, decoded);
 	}
 }
