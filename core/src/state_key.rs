@@ -8,12 +8,13 @@ const VALUE_PREFIX: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
 const PREIMAGE_PREFIX: [u8; 4] = [0xfe, 0xff, 0xff, 0xff];
 
 fn interleave_service_key(service_id: ServiceId, hash: [u8; 32]) -> StateKey {
-	let id = service_id.to_le_bytes();
-	let mut state_key = [0u8; 31];
-	state_key[..8]
-		.copy_from_slice(&[id[0], hash[0], id[1], hash[1], id[2], hash[2], id[3], hash[3]]);
-	state_key[8..].copy_from_slice(&hash[4..27]);
-	state_key
+	let [id0, id1, id2, id3] = service_id.to_le_bytes();
+	let [h0, h1, h2, h3, ..] = hash;
+
+	let mut key = [0; 31];
+	key[..8].copy_from_slice(&[id0, h0, id1, h1, id2, h2, id3, h3]);
+	key[8..].copy_from_slice(&hash[4..27]);
+	key
 }
 
 /// State key for a service storage value (`ServiceKey::Value`).
