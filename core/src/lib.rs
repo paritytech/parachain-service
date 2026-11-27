@@ -21,8 +21,5 @@ pub const PARACHAIN_SERVICE_ID: types::ServiceId = 1337;
 /// A 31-byte JAM state key.
 pub type StateKey = [u8; 31];
 
-/// A 32-byte blake2b hash.
-pub type Hash = [u8; 32];
-
 /// blake2b-256 hash function.
 pub use sp_crypto_hashing::blake2_256;

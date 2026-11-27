@@ -60,9 +60,7 @@ pub struct ParaInfo {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::types::{
-		validation_code_hash_bytes, HeadData, ParaId, ValidationCodeHash, ValidationCodeRef,
-	};
+	use crate::types::{HeadData, ParaId, ValidationCodeHash, ValidationCodeRef};
 	use alloc::vec;
 	use codec::{Decode, Encode};
 
@@ -94,11 +92,11 @@ mod tests {
 		assert_eq!(info.head_data, expected_head);
 
 		let vc = info.validation_code.unwrap();
-		assert_eq!(validation_code_hash_bytes(&vc.hash), [0x11u8; 32]);
+		assert_eq!(vc.hash, ValidationCodeHash::from([0x11; 32]));
 		assert_eq!(vc.len, 1);
 
 		let announced = info.announced_upgrade.unwrap();
-		assert_eq!(validation_code_hash_bytes(&announced.hash), [0x22u8; 32]);
+		assert_eq!(announced.hash, ValidationCodeHash::from([0x22; 32]));
 		assert_eq!(announced.len, 2);
 
 		assert_eq!(info.total_state_balance, 10);
