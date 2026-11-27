@@ -8,14 +8,14 @@ use crate::{
 use alloc::vec::Vec;
 use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Decode, Encode};
-use parachain_service_core::types::{AuthorizerHash, CoreIndex, ServiceId, Timeslot};
+use parachain_service_core::types::{CoreIndex, ServiceId, Timeslot, WireAuthorizerHash};
 
 /// A scheduled JAM `assign` for one core (spec §3.1, §7.1). The queue is
 /// stored as the Coretime chain sent it; each assign lays it out for the slots
 /// it covers. JAM writes the queue and assigner atomically.
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub struct PendingAssign {
-	pub queue: Vec<AuthorizerHash>,
+	pub queue: Vec<WireAuthorizerHash>,
 	/// `None` keeps this service as the core's assigner; `Some(s)` hands the
 	/// core to `s` (one-way).
 	pub assigner: Option<ServiceId>,
@@ -29,18 +29,23 @@ pub type PendingAssignCores = BoundedVec<(CoreIndex, Timeslot), ConstU32<{ CORE_
 pub struct PendingAssigns;
 
 impl PendingAssigns {
+	fn key(core: CoreIndex) -> [u8; 3] {
+		let [b0, b1] = core.to_le_bytes();
+		[Tag::PendingAssigns as u8, b0, b1]
+	}
+
 	pub fn get(core: CoreIndex) -> Option<PendingAssign> {
-		state::read(Tag::PendingAssigns, &core)
+		state::read(&Self::key(core))
 	}
 
 	/// Cache a pending assign. `Err(StorageFull)` on the §6.1 backstop; see
 	/// [`crate::state::write`].
 	pub fn set(core: CoreIndex, assign: &PendingAssign) -> Result<(), StorageFull> {
-		state::write(Tag::PendingAssigns, &core, assign)
+		state::write(&Self::key(core), assign)
 	}
 
 	pub fn remove(core: CoreIndex) {
-		state::clear(Tag::PendingAssigns, &core)
+		state::clear(&Self::key(core))
 	}
 }
 

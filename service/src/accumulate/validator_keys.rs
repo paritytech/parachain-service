@@ -16,11 +16,11 @@ use crate::{
 use alloc::vec::Vec;
 use jam_pvm_common::accumulate::designate;
 use jam_types::{OpaqueValKeyset, OpaqueValKeysets};
-use parachain_service_core::types::{MessageId, ValidatorKey};
+use parachain_service_core::types::{MessageId, WireValidatorKey};
 
 /// Replay of `SetValidatorKeys { keys, is_last }` (Asset Hub only, §4.3).
 pub fn apply(
-	chunk: Vec<ValidatorKey>,
+	chunk: Vec<WireValidatorKey>,
 	is_last: bool,
 	message_id: MessageId,
 	logs: &mut Vec<(MessageId, AccumulateLog)>,
@@ -64,9 +64,9 @@ pub fn apply(
 	let _ = StagedValidatorKeys::set(&staged);
 }
 
-/// A [`ValidatorKey`] is the 336-byte concatenation of the `OpaqueValKeyset`
+/// A [`WireValidatorKey`] is the 336-byte concatenation of the `OpaqueValKeyset`
 /// fields (bandersnatch 32 ‖ ed25519 32 ‖ bls 144 ‖ metadata 128).
-fn decode_key(raw: &ValidatorKey) -> OpaqueValKeyset {
+fn decode_key(raw: &WireValidatorKey) -> OpaqueValKeyset {
 	jam_codec::Decode::decode(&mut &raw[..])
 		.expect("OpaqueValKeyset is exactly 336 fixed bytes; qed")
 }

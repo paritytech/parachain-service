@@ -89,17 +89,17 @@ pub struct ParachainLogs;
 
 impl ParachainLogs {
 	pub fn get(para_id: ParaId) -> ParachainLog {
-		state::read(Tag::ParachainLog, &para_id).unwrap_or_default()
+		state::read(&Tag::ParachainLog.para_key(para_id)).unwrap_or_default()
 	}
 
 	/// Persist the log. `Err(StorageFull)` on the §6.1 backstop; see
 	/// [`crate::state::write`].
 	pub fn set(para_id: ParaId, log: &ParachainLog) -> Result<(), StorageFull> {
-		state::write(Tag::ParachainLog, &para_id, log)
+		state::write(&Tag::ParachainLog.para_key(para_id), log)
 	}
 
 	pub fn remove(para_id: ParaId) {
-		state::clear(Tag::ParachainLog, &para_id)
+		state::clear(&Tag::ParachainLog.para_key(para_id))
 	}
 
 	/// Append a Refine failure for a live para (§3.3). No-op for an unregistered

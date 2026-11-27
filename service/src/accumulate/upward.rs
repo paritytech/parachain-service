@@ -12,9 +12,9 @@ use crate::{
 };
 use alloc::vec::Vec;
 use jam_pvm_common::accumulate::{lookup_into, my_info, query, upgrade, LookupRequestStatus};
-use jam_types::{CodeHash, ServiceId, Slot};
+use jam_types::{CodeHash, Hash, ServiceId, Slot};
 use parachain_service_core::{
-	types::{Hash, MessageId, ParaId, Timeslot, ASSET_HUB_PARA_ID},
+	types::{MessageId, ParaId, Timeslot, ValidationCodeHash, ASSET_HUB_PARA_ID},
 	upward_message::{CodeUpgradePhase, Target, UpwardMessage},
 };
 
@@ -182,8 +182,9 @@ fn forget_preimage(
 	// The target's active or announced validation code: the forget is
 	// refused, so the referencer and the balance both stay (§5.2). This
 	// is what stops a forced call from stripping running validation code.
-	let is_validation_code = pi.validation_code.as_ref().is_some_and(|vc| vc.is(&hash, len)) ||
-		pi.announced_upgrade.as_ref().is_some_and(|vc| vc.is(&hash, len));
+	let code_hash = ValidationCodeHash::from(hash);
+	let is_validation_code = pi.validation_code.as_ref().is_some_and(|vc| vc.is(&code_hash, len)) ||
+		pi.announced_upgrade.as_ref().is_some_and(|vc| vc.is(&code_hash, len));
 	if is_validation_code {
 		logs.push((message_id, AccumulateLog::CanNotRemoveCode { hash, len: len.into() }));
 		return;

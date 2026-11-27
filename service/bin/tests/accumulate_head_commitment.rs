@@ -11,9 +11,10 @@ mod common;
 
 use codec::Encode;
 use common::*;
+use jam_types::Hash;
 use parachain_service::hashing::keccak_256;
 use parachain_service_core::{
-	types::{Hash, ParaId, CORETIME_PARA_ID},
+	types::{ParaId, CORETIME_PARA_ID},
 	upward_message::UpwardMessage,
 };
 use tiny_keccak::{Hasher as _, Keccak};

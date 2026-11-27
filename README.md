@@ -76,7 +76,8 @@ For local runs, `QUINT_FUZZ_WORKERS` overrides the recipe's default of eight wor
   [Accumulate](service/src/accumulate/mod.rs), with [integration tests](service/bin/tests).
 - [Authorizer core](authorizer), with [ed25519](authorizer-ed25519) and
   [sr25519](authorizer-sr25519) verifiers.
-- [Cumulus interface](cumulus) and [mock parachain runtime](runtimes/frameless).
+- [Shared core](core): parachain metadata, system IDs, storage keys and state proofs.
+- [Mock parachain runtime](runtimes/frameless).
 - [PolkaJAM executor](tools/executor/src/polkajam.rs) for PVM blob tests.
 - [Pinned design and Quint model](vendor/polkadot-sdk-quint/designs/parachain-service-on-jam).
 - [Implementation decisions](DECISIONS.md), [divergences](DIVERGENCE.md), and

@@ -10,7 +10,8 @@ use crate::state::{self, StorageFull, Tag};
 use alloc::collections::BTreeSet;
 use codec::{Decode, Encode};
 use jam_pvm_common::accumulate::{query, LookupRequestStatus};
-use parachain_service_core::types::{Hash, ParaId, Timeslot};
+use jam_types::Hash;
+use parachain_service_core::types::{ParaId, Timeslot};
 
 /// One registry entry: the parachains currently referencing this preimage.
 // TODO: the spec bounds this by "the protocol-level maximum number of
@@ -28,18 +29,26 @@ pub struct PreimageEntry {
 pub struct PreimageRegistry;
 
 impl PreimageRegistry {
+	pub fn key(hash: &Hash, len: u32) -> [u8; 37] {
+		let mut key = [0; 37];
+		key[0] = Tag::PreimageRegistry as u8;
+		key[1..33].copy_from_slice(hash);
+		key[33..].copy_from_slice(&len.to_le_bytes());
+		key
+	}
+
 	pub fn get(hash: &Hash, len: u32) -> Option<PreimageEntry> {
-		state::read(Tag::PreimageRegistry, &(*hash, len))
+		state::read(&Self::key(hash, len))
 	}
 
 	/// Upsert an entry. `Err(StorageFull)` on the §6.1 backstop; see
 	/// [`crate::state::write`].
 	pub fn set(hash: &Hash, len: u32, entry: &PreimageEntry) -> Result<(), StorageFull> {
-		state::write(Tag::PreimageRegistry, &(*hash, len), entry)
+		state::write(&Self::key(hash, len), entry)
 	}
 
 	pub fn remove(hash: &Hash, len: u32) {
-		state::clear(Tag::PreimageRegistry, &(*hash, len))
+		state::clear(&Self::key(hash, len))
 	}
 
 	/// Is `para_id` currently referencing `(hash, len)`?

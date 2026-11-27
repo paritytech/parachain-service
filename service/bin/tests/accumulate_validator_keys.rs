@@ -14,7 +14,7 @@ use parachain_service_bin::mock::accumulate_context_with_privileges;
 
 use parachain_service_bin::blob as service;
 use parachain_service_core::{
-	types::{ValidatorKey, ASSET_HUB_PARA_ID},
+	types::{WireValidatorKey, ASSET_HUB_PARA_ID},
 	upward_message::UpwardMessage,
 };
 
@@ -25,7 +25,7 @@ fn ah_storage() -> jam_node::vm::Storage {
 	fresh_storage(|s| seed_para(s, ASSET_HUB_PARA_ID, b"ah-genesis", AH_CODE, RICH))
 }
 
-fn keys(n: usize, fill: u8) -> Vec<ValidatorKey> {
+fn keys(n: usize, fill: u8) -> Vec<WireValidatorKey> {
 	vec![[fill; 336]; n]
 }
 

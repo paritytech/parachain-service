@@ -14,8 +14,8 @@ issue exists for them; numbering is not reused.
 Gap: the design does not specify the required JAM privileges or bootstrap state.
 
 Refine must enforce restricted host functions (§4.3) but is stateless, so it cannot learn
-the privileged ParaIds from service storage. The PoC hard-codes
-`ASSET_HUB_PARA_ID` and `CORETIME_PARA_ID` in `service-interface`.
+the privileged ParaIds from service storage. `parachain-service-core` defines
+`ASSET_HUB_PARA_ID` (1000) and `CORETIME_PARA_ID` (1005).
 
 **Spec feedback**: the design must state where the privileged-para identity lives.
 Constants require a service self-upgrade to migrate Asset Hub or Coretime to a new ParaId.

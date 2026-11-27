@@ -14,8 +14,9 @@ extern crate alloc;
 use alloc::vec::Vec;
 use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Compact, Decode, Encode};
+use jam_types::Hash;
 
-use crate::types::{Balance, Hash, MessageId, ServiceId, Timeslot, ValidationCodeHash};
+use crate::types::{Balance, MessageId, ServiceId, Timeslot, ValidationCodeHash};
 
 /// §3.1 — per-parachain log byte budget (exact encoded size of all entries).
 pub const PARACHAIN_LOG_BYTE_CAP: usize = 64 * 1024;

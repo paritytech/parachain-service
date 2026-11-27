@@ -1,26 +1,12 @@
-//! Mirror of `service/src/state/para_info.rs`, `service/src/state/mod.rs` (`Tag` +
-//! `storage_key`), and `cumulus/src/lib.rs` (`service_state::para_info_key`).
-//!
-//! IMPORTANT: this file MUST be kept in step with the canonical definitions. Field
-//! order, field types, and `#[codec(...)]` attributes are **wire format**: reordering
-//! fields or dropping a `compact` silently breaks decoding of live service state.
-//! When the canonical changes, update this file and re-run the byte-pinning tests.
-//!
-//! Sources mirrored (read-only; do not edit those files):
-//!   - `service/src/state/para_info.rs`   — `ParaInfo`
-//!   - `service/src/state/mod.rs`         — `Tag`, `storage_key`
-//!   - `cumulus/src/lib.rs service_state` — `para_info_key`
+//! Service storage key layout and per-parachain metadata (`ParaInfo`).
 
 use crate::types::{Balance, HeadData, ParaId, ValidationCodeRef};
-use alloc::vec::Vec;
 use codec::{Decode, Encode};
 
-/// Storage-item tags (spec §3.1, "Storage key encoding").
-///
-/// Mirrors `service::state::Tag`.
+/// Storage-item tags (spec §3.1).
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Tag {
+pub enum StorageKey {
 	Parachains = 0x00,
 	ParachainLog = 0x01,
 	PendingAssigns = 0x02,
@@ -33,39 +19,21 @@ pub enum Tag {
 	LastAccumulate = 0x09,
 }
 
-/// The full JAM storage key for a map entry: `[tag] || SCALE(key)`.
-///
-/// Mirrors `service::state::storage_key`.
-pub fn storage_key(tag: Tag, key: &impl Encode) -> Vec<u8> {
-	let mut k = Vec::with_capacity(1 + key.encoded_size());
-	k.push(tag as u8);
-	key.encode_to(&mut k);
-	k
-}
+impl StorageKey {
+	/// Service storage key for an unkeyed item.
+	pub const fn key(self) -> [u8; 1] {
+		[self as u8]
+	}
 
-/// Storage key of the para's [`ParaInfo`] entry in the parachain service.
-///
-/// Byte-identical to `cumulus::service_state::para_info_key`.
-pub fn para_info_key(para_id: ParaId) -> Vec<u8> {
-	storage_key(Tag::Parachains, &para_id)
-}
-
-/// Storage key of a para's `parachain_log` entry in the parachain service.
-///
-/// A parachain's validation code reads its own log back through the JAM state
-/// proof under this key; the service writes it under the same one (spec §5.1).
-pub fn para_log_key(para_id: ParaId) -> Vec<u8> {
-	storage_key(Tag::ParachainLog, &para_id)
+	/// Service storage key for a parachain entry: `[tag] || SCALE(para_id)`.
+	pub fn para_key(self, para_id: ParaId) -> [u8; 5] {
+		let [key_prefix] = self.key();
+		let [b0, b1, b2, b3] = u32::from(para_id).to_le_bytes();
+		[key_prefix, b0, b1, b2, b3]
+	}
 }
 
 /// Per-parachain metadata (spec §3.1).
-///
-/// Mirrors `service::state::para_info::ParaInfo`. Field order, types, and codec
-/// attributes match the canonical definition exactly; any drift is a silent
-/// wire-format break.
-///
-/// The write-side methods (`has_headroom`, `charge`, `refund`) are deliberately
-/// omitted: a PVM guest only reads this type and has no use for them.
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub struct ParaInfo {
 	/// Current head data (output of last included block).
@@ -89,6 +57,23 @@ pub struct ParaInfo {
 	pub is_deregistering: bool,
 }
 
+impl ParaInfo {
+	/// Whether increasing the used balance stays within the allocated balance.
+	pub fn has_headroom(&self, delta: Balance) -> bool {
+		self.used_state_balance.saturating_add(delta) <= self.total_state_balance
+	}
+
+	/// Grow the used balance after checking headroom.
+	pub fn charge(&mut self, delta: Balance) {
+		self.used_state_balance = self.used_state_balance.saturating_add(delta);
+	}
+
+	/// Shrink the used balance after releasing state.
+	pub fn refund(&mut self, delta: Balance) {
+		self.used_state_balance = self.used_state_balance.saturating_sub(delta);
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -98,16 +83,14 @@ mod tests {
 	use alloc::vec;
 	use codec::{Decode, Encode};
 
-	/// Key must be byte-identical to `cumulus::service_state::para_info_key`.
-	/// Pinned from `cumulus/src/lib.rs service_state::tests`.
 	#[test]
-	fn para_info_key_is_tag_then_scale_para_id() {
-		// Canonical pinning case from cumulus/src/lib.rs.
-		assert_eq!(para_info_key(ParaId::from(3)), vec![0x00, 3, 0, 0, 0]);
-		// Para 0: all-zeroes case.
-		assert_eq!(para_info_key(ParaId::from(0)), vec![0x00, 0, 0, 0, 0]);
-		// Para 2000 (0x000007D0): pins the little-endian layout beyond a single byte.
-		assert_eq!(para_info_key(ParaId::from(2000)), vec![0x00, 0xd0, 0x07, 0, 0]);
+	fn storage_keys_works() {
+		assert_eq!(StorageKey::LastAccumulate.key(), [0x09]);
+		assert_eq!(StorageKey::Parachains.para_key(ParaId::from(0)), [0; 5]);
+		assert_eq!(
+			StorageKey::ParachainLog.para_key(ParaId::from(0x1234_5678)),
+			[0x01, 0x78, 0x56, 0x34, 0x12]
+		);
 	}
 
 	/// Both optional fields are `Some` so a degenerate all-`None` implementation cannot pass.

@@ -20,20 +20,15 @@ gas allotment; the mock's `Default::default()` (empty map) is insufficient for p
 ## Always-accumulate gas allotment
 
 The service performs housekeeping work without candidate operands (e.g., flushing due `assign` calls).
-The worst case is flushing a due `assign` for every core (341 entries, full 80-hash queues) in one block,
-measured at `gas::ALL_DUE_ASSIGNS = 9_943_182` (from `service/bin/tests/accumulate_gas.rs`).
-
-An allotment of approximately 10M gas covers this avalanche and is reserved on top of the block's
-accumulation pool, so it does not compete with candidate gas.
+Size the allotment for a simultaneous flush on all 341 cores with full 80-hash queues.
+The measured cost is `gas::ALL_DUE_ASSIGNS` in
+[`accumulate_gas.rs`](service/bin/tests/accumulate_gas.rs); 10M gas is insufficient.
 
 ## min_memo_gas floor
 
 Incoming transfers are recorded in the service's state, charged to the transfers' own `gas_limit`.
-The measured cost per transfer is `DEST_HANDLER_PER_TRANSFER = 1_665` gas
-(from `service/bin/tests/accumulate_gas.rs:72`).
-
-The service's `min_memo_gas` privilege must cover this recording cost with margin; a token value
-like the mock's 100 would be insufficient.
+Set `min_memo_gas` to cover receipt and storage with margin. The destination-handler
+benchmark measures a separate mock service, not this service's incoming-transfer cost.
 
 ## Gratis allowance
 

@@ -20,21 +20,7 @@ pub mod validator_keys;
 use alloc::vec::Vec;
 use codec::{Decode, Encode};
 
-/// Storage-item tags (spec §3.1, "Storage key encoding").
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Tag {
-	Parachains = 0x00,
-	ParachainLog = 0x01,
-	PendingAssigns = 0x02,
-	PendingAssignCores = 0x03,
-	PreimageRegistry = 0x04,
-	StagedValidatorKeys = 0x05,
-	IncomingTransfers = 0x06,
-	IncomingTransferBuckets = 0x07,
-	KeyValueStorage = 0x08,
-	LastAccumulate = 0x09,
-}
+pub use parachain_service_core::para_info::StorageKey as Tag;
 
 /// The full JAM storage key for a map entry: `[tag] || SCALE(key)`.
 pub fn storage_key(tag: Tag, key: &impl Encode) -> Vec<u8> {
@@ -48,8 +34,8 @@ pub fn storage_key(tag: Tag, key: &impl Encode) -> Vec<u8> {
 ///
 /// Panics on undecodable stored data: state is only ever written by this
 /// service, so a decode failure is a bug, not an input error.
-pub fn read<V: Decode>(tag: Tag, key: &impl Encode) -> Option<V> {
-	let raw = jam_pvm_common::accumulate::get_storage(&storage_key(tag, key))?;
+fn read<V: Decode>(key: &[u8]) -> Option<V> {
+	let raw = jam_pvm_common::accumulate::get_storage(key)?;
 	Some(V::decode(&mut &raw[..]).expect("service-written state must decode; qed"))
 }
 
@@ -75,27 +61,25 @@ pub struct StorageFull;
 /// It is surfaced rather than panicked: a panic would revert to the last
 /// checkpoint and wedge the service until manual intervention.
 /// FIXME: consensus-critical — private headroom ≠ real JAM balance.
-pub fn write(tag: Tag, key: &impl Encode, value: &impl Encode) -> Result<(), StorageFull> {
-	jam_pvm_common::accumulate::set_storage(&storage_key(tag, key), &value.encode())
-		.map(|_| ())
-		.map_err(|_| StorageFull)
+fn write(key: &[u8], value: &impl Encode) -> Result<(), StorageFull> {
+	jam_pvm_common::accumulate::set_storage(key, &value.encode()).map(|_| ()).map_err(|_| StorageFull)
 }
 
 /// Remove a map entry (no-op if absent).
-pub fn clear(tag: Tag, key: &impl Encode) {
-	let _ = jam_pvm_common::accumulate::remove_storage(&storage_key(tag, key));
+fn clear(key: &[u8]) {
+	let _ = jam_pvm_common::accumulate::remove_storage(key);
 }
 
 /// Read + decode a singleton (the tag alone is the key).
 pub fn read_singleton<V: Decode>(tag: Tag) -> Option<V> {
-	read(tag, &())
+	read(&tag.key())
 }
 
 /// Encode + write a singleton. See [`write`] for the failure semantics.
 pub fn write_singleton(tag: Tag, value: &impl Encode) -> Result<(), StorageFull> {
-	write(tag, &(), value)
+	write(&tag.key(), value)
 }
 
 pub fn clear_singleton(tag: Tag) {
-	clear(tag, &())
+	clear(&tag.key())
 }

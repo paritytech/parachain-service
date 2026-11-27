@@ -7,13 +7,14 @@
 extern crate alloc;
 
 use crate::types::{
-	AuthorizerHash, Balance, BucketId, CoreIndex, Hash, HeadData, Memo, MessageId, ParaId,
-	ServiceId, Timeslot, ValidationCodeHash, ValidationCodeRef, ValidatorKey, ASSET_HUB_PARA_ID,
-	CORETIME_PARA_ID,
+	Balance, BucketId, CoreIndex, HeadData, MessageId, ParaId, ServiceId, Timeslot,
+	ValidationCodeHash, ValidationCodeRef, WireAuthorizerHash, WireMemo, WireValidatorKey,
+	ASSET_HUB_PARA_ID, CORETIME_PARA_ID,
 };
 use alloc::vec::Vec;
 use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Compact, Decode, Encode};
+use jam_types::Hash;
 
 /// Maximum number of upward messages per Refine invocation / `ParachainWorkDigest`.
 /// Spec §4.3.
@@ -71,7 +72,7 @@ pub struct TransferOutArgs {
 	pub amount: TransferAmount,
 	pub source_supervisor_balance: bool,
 	pub dest_supervisor_balance: bool,
-	pub deferred: Option<(Memo, u64)>,
+	pub deferred: Option<(WireMemo, u64)>,
 }
 
 /// Payload of `UpwardMessage::CreateService` (spec §6.5).
@@ -156,13 +157,13 @@ pub enum UpwardMessage {
 	/// core's assigner; `Some(s)` hands the core to `s` (one-way).
 	AssignCore {
 		core: CoreIndex,
-		queue: Vec<AuthorizerHash>,
+		queue: Vec<WireAuthorizerHash>,
 		new_assigner: Option<ServiceId>,
 		jam_slot: Timeslot,
 	},
 	/// Append a chunk of upcoming validator keys
 	/// (Asset Hub only, §5.3).
-	SetValidatorKeys { keys: Vec<ValidatorKey>, is_last: bool },
+	SetValidatorKeys { keys: Vec<WireValidatorKey>, is_last: bool },
 	/// Remove every `incoming_transfers` bucket up
 	/// to and including this bucket id (Asset Hub only, §5.1).
 	CleanUpBucketsUpTo(BucketId),

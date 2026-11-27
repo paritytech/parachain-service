@@ -1,17 +1,19 @@
 //! The parachain service's genesis description.
 
-use parachain_service_core::types::validation_code_hash_bytes;
 use std::collections::{BTreeMap, BTreeSet};
 
 use codec::Encode;
 use jam_chainspec::GenesisService;
 use jam_types::{AuthorizerHash, Balance, ServiceId};
 use parachain_service::{
-	state::{para_info::ParaInfo, preimage_registry::PreimageEntry, storage_key, Tag},
+	state::preimage_registry::{PreimageEntry, PreimageRegistry},
 	state_balance::{baseline_for, preimage_footprint},
 	work_digest::validation_code_hash,
 };
-use parachain_service_core::types::{HeadData, ParaId, ValidationCodeRef};
+use parachain_service_core::{
+	types::{validation_code_hash_bytes, HeadData, ParaId, ValidationCodeHash, ValidationCodeRef},
+	ParaInfo, StorageKey,
+};
 
 use crate::{parachain::ParachainSpec, Error};
 
@@ -106,7 +108,7 @@ impl ParachainServiceSpec {
 		// every para referencing that `(hash, len)`.
 		let mut preimages: Vec<Vec<u8>> = Vec::new();
 		let mut hosted: BTreeSet<Vec<u8>> = BTreeSet::new();
-		let mut registry: BTreeMap<([u8; 32], u32), BTreeSet<ParaId>> = BTreeMap::new();
+		let mut registry: BTreeMap<(ValidationCodeHash, u32), BTreeSet<ParaId>> = BTreeMap::new();
 
 		for para in &paras {
 			let validation_code = para.code.as_ref().map(|code| {
@@ -114,7 +116,7 @@ impl ParachainServiceSpec {
 					ValidationCodeRef { hash: validation_code_hash(code), len: code.len() as u32 };
 				host(&mut preimages, &mut hosted, code);
 				registry
-					.entry((validation_code_hash_bytes(&cref.hash), cref.len))
+					.entry((cref.hash, cref.len))
 					.or_default()
 					.insert(para.id);
 				cref
@@ -145,13 +147,15 @@ impl ParachainServiceSpec {
 				used_state_balance,
 				is_deregistering: false,
 			};
-			service = service.storage(storage_key(Tag::Parachains, &para.id), info.encode());
+			service = service.storage(StorageKey::Parachains.para_key(para.id), info.encode());
 		}
 
 		for ((hash, len), referencers) in &registry {
 			let entry = PreimageEntry { referencers: referencers.clone() };
-			service =
-				service.storage(storage_key(Tag::PreimageRegistry, &(*hash, *len)), entry.encode());
+			service = service.storage(
+				PreimageRegistry::key(&validation_code_hash_bytes(hash), *len),
+				entry.encode(),
+			);
 		}
 
 		for blob in &self.extra_preimages {

@@ -8,7 +8,7 @@ use parachain_service::state::{
 	storage_key, Tag,
 };
 use parachain_service_bin::mock::MOCK_SERVICE_ID;
-use parachain_service_core::types::Hash;
+use jam_types::Hash;
 use serde_json::Value;
 
 use super::{codex::Codex, refine_log::refine_log, replay::*, seed::option_code_ref};
@@ -35,7 +35,7 @@ pub fn state(
 		let para = para_id(para_value, codex)?;
 		expected_paras.insert(para);
 		let actual: ParaInfo = get_state(storage, &storage_key(Tag::Parachains, &para))
-			.ok_or_else(|| format!("frame {frame}: para {} missing", u32::from(para)))?;
+			.ok_or_else(|| format!("frame {frame}: para {} missing", Codex::para_int(para)))?;
 		let expected_validation = option_code_ref(value, "validationCode", codex)?;
 		let expected_announcement = option_code_ref(value, "announcedUpgrade", codex)?;
 		let checks = [
@@ -66,7 +66,7 @@ pub fn state(
 		if let Some((name, _)) = checks.into_iter().find(|(_, equal)| !equal) {
 			return Err(format!(
 				"frame {frame}: svc.parachains[{}].{name} differs; Rust={actual:?}",
-				u32::from(para)
+				Codex::para_int(para)
 			));
 		}
 	}
@@ -75,7 +75,7 @@ pub fn state(
 		if present.is_some() != expected_paras.contains(&para) {
 			return Err(format!(
 				"frame {frame}: svc.parachains registered set differs at para {}",
-				u32::from(para)
+				Codex::para_int(para)
 			));
 		}
 	}
@@ -129,7 +129,7 @@ fn parachain_logs(
 			log.push((slot, entry));
 		}
 		if expected.insert(para, log).is_some() {
-			return Err(format!("duplicate svc.parachainLog key for para {}", u32::from(para)));
+			return Err(format!("duplicate svc.parachainLog key for para {}", Codex::para_int(para)));
 		}
 	}
 
@@ -141,7 +141,7 @@ fn parachain_logs(
 		if actual != expected {
 			return Err(format!(
 				"frame {frame}: svc.parachainLog[{}] differs; Quint={expected:?}; Rust={actual:?}",
-				u32::from(para)
+				Codex::para_int(para)
 			));
 		}
 	}

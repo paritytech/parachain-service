@@ -31,7 +31,8 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 use codec::{Decode, Encode};
 
-use crate::{blake2_256, Hash, ProofNode, StateKey};
+use jam_types::Hash;
+use crate::{blake2_256, ProofNode, StateKey};
 
 /// Longest possible path: one bit per bit of a 31-octet key.
 const MAX_DEPTH: usize = 31 * 8;

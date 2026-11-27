@@ -7,10 +7,10 @@ use crate::{
 	state::{StorageFull, Tag},
 };
 use bounded_collections::{BoundedVec, ConstU32};
-use parachain_service_core::types::ValidatorKey;
+use parachain_service_core::types::WireValidatorKey;
 
 /// The staging buffer value: at most `CORE_COUNT * 3 = 1023` keys.
-pub type StagedKeys = BoundedVec<ValidatorKey, ConstU32<{ MAX_STAGED_VALIDATOR_KEYS as u32 }>>;
+pub type StagedKeys = BoundedVec<WireValidatorKey, ConstU32<{ MAX_STAGED_VALIDATOR_KEYS as u32 }>>;
 
 /// Storage accessors for the `staged_validator_keys` singleton (tag `0x05`).
 pub struct StagedValidatorKeys;

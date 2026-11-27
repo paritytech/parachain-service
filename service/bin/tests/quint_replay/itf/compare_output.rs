@@ -16,11 +16,11 @@ fn keccak(bytes: &[u8]) -> Hash {
 	hash
 }
 
-fn heads(state: &Value, codex: &mut Codex) -> Result<BTreeMap<u32, i128>, String> {
+fn heads(state: &Value, codex: &mut Codex) -> Result<BTreeMap<i128, i128>, String> {
 	map_entries(field(field(state, "svc")?, "parachains")?)?
 		.into_iter()
 		.map(|(para, info)| {
-			Ok((u32::from(para_id(para, codex)?), integer(field(info, "headData")?)?))
+			Ok((Codex::para_int(para_id(para, codex)?), integer(field(info, "headData")?)?))
 		})
 		.collect()
 }
@@ -34,13 +34,15 @@ fn commitment(
 ) -> Result<Option<(i128, Hash)>, String> {
 	let before = heads(previous, codex)?;
 	let after = heads(current, codex)?;
-	let mut level = Vec::new();
-	for (para, head) in after {
-		if before.get(&para) == Some(&head) {
+	let mut abstract_level = Vec::new();
+	let mut concrete_leaves = Vec::new();
+	for (model_para, head) in after {
+		if before.get(&model_para) == Some(&head) {
 			continue;
 		}
+		let para = u32::from(Codex::para_id(model_para)?);
 		let data = Codex::head(head)?;
-		let abstract_hash = (i128::from(para) * 257 + head)
+		let abstract_hash = (model_para * 257 + head)
 			.checked_mul(2)
 			.and_then(|v| v.checked_add(1))
 			.ok_or("abstract leaf overflow")?;
@@ -48,30 +50,42 @@ fn commitment(
 		let mut leaf = vec![1];
 		leaf.extend_from_slice(&para.to_le_bytes());
 		leaf.extend_from_slice(&keccak(&data));
-		level.push((abstract_hash, keccak(&leaf)));
+		abstract_level.push(abstract_hash);
+		concrete_leaves.push((para, keccak(&leaf)));
 	}
-	while level.len() > 1 {
+	concrete_leaves.sort_unstable_by_key(|(para, _)| *para);
+	let mut concrete_level: Vec<Hash> = concrete_leaves.into_iter().map(|(_, hash)| hash).collect();
+	while abstract_level.len() > 1 {
 		let mut next = Vec::new();
-		for pair in level.chunks(2) {
+		for pair in abstract_level.chunks(2) {
 			if pair.len() == 1 {
 				next.push(pair[0]);
 				continue;
 			}
-			let abstract_hash = pair[0]
-				.0
+			next.push(pair[0]
 				.checked_mul(257)
-				.and_then(|v| v.checked_add(pair[1].0))
+				.and_then(|v| v.checked_add(pair[1]))
 				.and_then(|v| v.checked_mul(2))
-				.ok_or("abstract node overflow")?;
+				.ok_or("abstract node overflow")?);
+		}
+		abstract_level = next;
+	}
+	while concrete_level.len() > 1 {
+		let mut next = Vec::new();
+		for pair in concrete_level.chunks(2) {
+			if pair.len() == 1 {
+				next.push(pair[0]);
+				continue;
+			}
 			// SCALE Node discriminant=0 followed by its two fixed-width hashes.
 			let mut node = vec![0];
-			node.extend_from_slice(&pair[0].1);
-			node.extend_from_slice(&pair[1].1);
-			next.push((abstract_hash, keccak(&node)));
+			node.extend_from_slice(&pair[0]);
+			node.extend_from_slice(&pair[1]);
+			next.push(keccak(&node));
 		}
-		level = next;
+		concrete_level = next;
 	}
-	Ok(level.first().copied())
+	Ok(abstract_level.first().copied().zip(concrete_level.first().copied()))
 }
 
 pub fn state(
@@ -119,6 +133,28 @@ pub fn state(
 mod tests {
 	use super::*;
 	use serde_json::json;
+
+	#[test]
+	fn system_heads_use_model_and_concrete_order_independently() {
+		let before = json!({"svc":{"parachains":{"#map":[]}}});
+		let after = json!({"svc":{"parachains":{"#map":[
+			[{"tag":"MkParaId","value":{"#bigint":"1"}},{"headData":{"#bigint":"10"}}],
+			[{"tag":"MkParaId","value":{"#bigint":"2"}},{"headData":{"#bigint":"20"}}]
+		]}}});
+		let (abstract_root, concrete_root) =
+			commitment(&before, &after, &mut Codex::default()).unwrap().unwrap();
+		assert_eq!(abstract_root, (((257 + 10) * 2 + 1) * 257 + ((514 + 20) * 2 + 1)) * 2);
+		let leaf = |para: u32, head: i128| {
+			let mut bytes = vec![1];
+			bytes.extend_from_slice(&para.to_le_bytes());
+			bytes.extend_from_slice(&keccak(&Codex::head(head).unwrap()));
+			keccak(&bytes)
+		};
+		let mut node = vec![0];
+		node.extend_from_slice(&leaf(1000, 20));
+		node.extend_from_slice(&leaf(1005, 10));
+		assert_eq!(concrete_root, keccak(&node));
+	}
 
 	fn fixture() -> Value {
 		serde_json::from_str(include_str!("../../fixtures/quint/minimal_replay.itf.json")).unwrap()

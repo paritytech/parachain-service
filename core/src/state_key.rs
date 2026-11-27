@@ -1,61 +1,46 @@
-//! Deriving a 31-octet JAM state key from a service's own storage key.
+//! Derivation of 31-byte JAM state keys from service-local storage and preimage keys.
 //!
-//! A service addresses its storage by a key of its own choosing, but that is not the key the
-//! state trie is built over. JAM interleaves the service id with a hash of the service-local key
-//! so that one service's entries cannot collide with another's. Three parties must agree on this
-//! mapping byte-for-byte — the collator asking for a proof, the guest verifying it, and the node
-//! serving it — which is why it lives here rather than being open-coded at each site.
-//!
-//! Mirrors the `ServiceKey::Value` arm of `impl From<ServiceKey> for StorageKey` in
-//! `jam-std-common`; the test module pins the two together.
+//! Mirrors `impl From<ServiceKey> for StorageKey` in `jam-std-common`.
 
-use crate::{blake2_256, StateKey};
+use crate::{blake2_256, types::ServiceId, StateKey};
 
-/// Marks a key as addressing a service's *storage*, as opposed to its metadata or preimages.
 const VALUE_PREFIX: [u8; 4] = [0xff, 0xff, 0xff, 0xff];
+const PREIMAGE_PREFIX: [u8; 4] = [0xfe, 0xff, 0xff, 0xff];
 
-/// The state key of `service_id`'s storage entry under its own `key`.
-pub fn service_value_state_key(service_id: u32, key: &[u8]) -> StateKey {
-	let hash = blake2_256(&[VALUE_PREFIX.as_slice(), key].concat());
+fn interleave_service_key(service_id: ServiceId, hash: [u8; 32]) -> StateKey {
+	let [id0, id1, id2, id3] = service_id.to_le_bytes();
+	let [h0, h1, h2, h3, ..] = hash;
 
-	let id = service_id.to_le_bytes();
-	let mut state_key = [0u8; 31];
-	// The first eight octets interleave the service id with the hash, so that the entries of one
-	// service are spread across the trie rather than sharing a common prefix.
-	state_key[..8]
-		.copy_from_slice(&[id[0], hash[0], id[1], hash[1], id[2], hash[2], id[3], hash[3]]);
-	state_key[8..].copy_from_slice(&hash[4..27]);
-	state_key
+	let mut key = [0; 31];
+	key[..8].copy_from_slice(&[id0, h0, id1, h1, id2, h2, id3, h3]);
+	key[8..].copy_from_slice(&hash[4..27]);
+	key
 }
 
-/// The state key of `service_id`'s preimage request for a value of length `len` and hash `hash`.
-///
-/// Unlike a service's own storage, the service does not choose this key: JAM derives it from the
-/// length and hash of the preimage, so any party can compute where a request lands from the
-/// preimage alone. Mirrors the `ServiceKey::Request` arm of `jam-std-common` — note the preimage
-/// is `len.to_le_bytes() ‖ hash` with no prefix (the `0xfe 0xff 0xff 0xff` prefix belongs to the
-/// `Preimage` arm).
-pub fn service_request_state_key(service_id: u32, hash: &[u8; 32], len: u32) -> StateKey {
-	let hash = blake2_256(&[&len.to_le_bytes()[..], &hash[..]].concat());
+/// State key for a service storage value (`ServiceKey::Value`).
+pub fn service_value_state_key(service_id: ServiceId, key: &[u8]) -> StateKey {
+	let hash = blake2_256(&[VALUE_PREFIX.as_slice(), key].concat());
+	interleave_service_key(service_id, hash)
+}
 
-	let id = service_id.to_le_bytes();
-	let mut state_key = [0u8; 31];
-	// Same interleave as the `Value` arm: the service id is woven through the hash so that the
-	// entries of one service are spread across the trie rather than sharing a common prefix.
-	state_key[..8]
-		.copy_from_slice(&[id[0], hash[0], id[1], hash[1], id[2], hash[2], id[3], hash[3]]);
-	state_key[8..].copy_from_slice(&hash[4..27]);
-	state_key
+/// State key for a service preimage (`ServiceKey::Preimage`).
+pub fn service_preimage_state_key(service_id: ServiceId, hash: &[u8; 32]) -> StateKey {
+	let hash = blake2_256(&[PREIMAGE_PREFIX.as_slice(), &hash[..]].concat());
+	interleave_service_key(service_id, hash)
+}
+
+/// State key for a service preimage request (`ServiceKey::Request`).
+pub fn service_request_state_key(service_id: ServiceId, hash: &[u8; 32], len: u32) -> StateKey {
+	let hash = blake2_256(&[&len.to_le_bytes()[..], &hash[..]].concat());
+	interleave_service_key(service_id, hash)
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
 
-	/// The whole point of this module: our derivation must be byte-identical to polkajam's, or the
-	/// guest would verify a proof for a key the node never proved.
 	#[test]
-	fn matches_jam_std_common() {
+	fn matches_jam_std_common_works() {
 		let cases: &[(u32, &[u8])] = &[
 			(0, &[]),
 			(0, &[0x00, 0x00, 0x00, 0x00, 0x00]),
@@ -87,19 +72,24 @@ mod tests {
 					.into();
 			assert_eq!(ours, *theirs, "service {service_id}, len {len}, hash {hash:02x?}");
 		}
+
+		for (service_id, hash) in [(0, [0x00; 32]), (1, [0xff; 32]), (0x0100_0001, [0xab; 32])] {
+			let ours = service_preimage_state_key(service_id, &hash);
+			let theirs: jam_std_common::StorageKey =
+				jam_std_common::ServiceKey::Preimage { id: service_id, hash }.into();
+			assert_eq!(ours, *theirs, "service {service_id}, hash {hash:02x?}");
+		}
 	}
 
-	/// Distinct paras must land on distinct keys; a shared prefix would be a silent aliasing bug.
 	#[test]
-	fn distinct_keys_for_distinct_paras() {
+	fn distinct_paras_works() {
 		let para_0 = service_value_state_key(9, &[0x00, 0, 0, 0, 0]);
 		let para_1 = service_value_state_key(9, &[0x00, 1, 0, 0, 0]);
 		assert_ne!(para_0, para_1);
 	}
 
-	/// ...and so must the same key under different services.
 	#[test]
-	fn distinct_keys_for_distinct_services() {
+	fn distinct_services_works() {
 		let key = [0x00, 0, 0, 0, 0];
 		assert_ne!(service_value_state_key(9, &key), service_value_state_key(10, &key));
 	}

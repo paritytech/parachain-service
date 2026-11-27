@@ -4,7 +4,7 @@ mod common;
 
 use codec::Encode;
 use common::*;
-use jam_types::{AccumulateItem, Memo as JamMemo, TransferRecord};
+use jam_types::{AccumulateItem, Hash, Memo as JamMemo, TransferRecord};
 use parachain_service::{
 	constants::{CORE_COUNT, REPORT_BASE_GAS, UPWARD_MESSAGE_GAS},
 	state::{
@@ -14,12 +14,12 @@ use parachain_service::{
 };
 use parachain_service_bin::mock_dest_blob;
 use parachain_service_core::{
-	types::{CoreIndex, Hash, ParaId, ASSET_HUB_PARA_ID},
+	types::{CoreIndex, ParaId, ASSET_HUB_PARA_ID},
 	upward_message::{Target, UpwardMessage, MAX_UPWARD_MESSAGES_PER_DIGEST},
 };
 
 const NOW: u32 = 100;
-const PARA: ParaId = ParaId::new(1000);
+const PARA: ParaId = ParaId::new(30000);
 const CODE: &[u8] = b"para-1000-code";
 const AH_CODE: &[u8] = b"ah-code";
 const MAX_UMPS: u32 = MAX_UPWARD_MESSAGES_PER_DIGEST;
@@ -43,27 +43,24 @@ fn report(name: &str, gas: u64, elapsed: std::time::Duration, digest_len: usize)
 
 /// Pinned gas measurements for the benchmarks below.
 ///
-/// Re-baselined 2026-11-20 after every upward message gained its `message_id`
-/// (§3.3, §4.3) and the due-assign flush stopped logging.
 /// These are measured PVM costs, not production budgets.
 mod gas {
 	/// 1024-solicit digest — the heaviest reachable digest replay.
-	pub const MAX_SOLICITS: u64 = 64_340_968;
+	pub const MAX_SOLICITS: u64 = 55_416_811;
 	/// 1024 KV writes filling the report's elective-data limit.
-	pub const MAX_KV_WRITES: u64 = 54_952_818;
+	pub const MAX_KV_WRITES: u64 = 44_601_269;
 	/// 329 outbound transfers to a friendly destination.
-	pub const MAX_TRANSFER_OUTS: u64 = 5_439_373;
+	pub const MAX_TRANSFER_OUTS: u64 = 5_428_123;
 	/// 329 outbound transfers to a destination demanding `HIGH_TRANSFER_GAS`.
-	pub const MAX_GAS_TRANSFER_OUTS: u64 = 5_430_097;
+	pub const MAX_GAS_TRANSFER_OUTS: u64 = 5_419_886;
 	/// Gas for 1024 incoming transfers recorded in one bucket write.
-	pub const MAX_INCOMING_TRANSFERS: u64 = 6_233_590;
+	pub const MAX_INCOMING_TRANSFERS: u64 = 6_223_141;
 	/// Due `assign` flush for all 341 cores in one block.
-	pub const ALL_DUE_ASSIGNS: u64 = 23_308_706;
+	pub const ALL_DUE_ASSIGNS: u64 = 22_296_257;
 	/// Marginal cost of a realistic destination's memo handler, per transfer.
-	pub const DEST_HANDLER_PER_TRANSFER: u64 = 17_301;
+	pub const DEST_HANDLER_PER_TRANSFER: u64 = 17_322;
 	/// Gas for one Ed25519 authorization.
-	/// Re-measured with the pinned `nightly-2026-08-31` toolchain.
-	pub const IS_AUTHORIZED_ED25519: u64 = 4_043_874;
+	pub const IS_AUTHORIZED_ED25519: u64 = 4_033_737;
 }
 
 /// A report admitted by the gas gate must leave 20% execution headroom.

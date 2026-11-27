@@ -36,7 +36,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [] }
 # polkadot-sdk tree (cumulus) resolves it to its own copy and cannot hold a second path crate tree.
 cumulus-aura-authorizer-utils = { version = "0.1.0", default-features = false }
 polkadot-parachain-primitives = { version = "23.0.0", default-features = false }
-jam-types = { path = "vendor/polkajam/crates/jam-types", default-features = false }
+jam-types = { version = "0.1.29", default-features = false }
 jam-codec = { version = "0.1.1", default-features = false, features = ["derive"] }
 jam-pvm-common = { path = "vendor/polkajam/crates/jam-pvm-common", default-features = false }
 jam-std-common = { path = "vendor/polkajam/crates/jam-std-common" }
@@ -85,15 +85,11 @@ sp-crypto-hashing = { version = "0.1.0", default-features = false }
 # Like `cumulus-aura-authorizer-utils`: the companion's copy through the patch below.
 sp-io = { version = "30.0.0", default-features = false }
 
-# Use the same JAM types for the service and the SDK AURA utilities.
+# Keep the SDK authorizer and vendored JAM node/PVM on the same Rust types.
 [patch.crates-io]
 cumulus-aura-authorizer-utils = { path = "vendor/polkadot-sdk-companion/cumulus/jam/aura-authorizer-utils" }
 jam-types = { path = "vendor/polkajam/crates/jam-types" }
 sp-io = { path = "vendor/polkadot-sdk-companion/substrate/primitives/io" }
-
-[patch."ssh://git@github.com/paritytech/polkajam.git"]
-jam-std-common = { path = "vendor/polkajam/crates/jam-std-common" }
-jam-types = { path = "vendor/polkajam/crates/jam-types" }
 
 # Optimized host tests and fuzzing with runtime correctness checks retained.
 [profile.testnet]

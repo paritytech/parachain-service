@@ -1,11 +1,11 @@
 use codec::Compact;
 use jam_node::vm::Storage;
 use jam_std_common::hash_raw;
-use jam_types::AccumulateItem;
+use jam_types::{AccumulateItem, Hash};
 use parachain_service::work_digest::ParachainWorkDigest;
 use parachain_service_bin::mock::MOCK_SERVICE_ID;
 use parachain_service_core::{
-	types::{Hash, MessageId, ParaId},
+	types::{MessageId, ParaId},
 	upward_message::{CodeUpgradePhase, Target, UpwardMessage},
 };
 use serde_json::Value;

@@ -1,12 +1,12 @@
 //! Validator-key input and output mapping. Abstract keys occupy the first eight
 //! bytes (little endian) of the 336-byte JAM key record; the rest is zero.
 use jam_node::vm::StateMutations;
-use parachain_service_core::types::ValidatorKey;
+use parachain_service_core::types::WireValidatorKey;
 use serde_json::Value;
 
 use super::replay::*;
 
-pub fn keys(value: &Value) -> Result<Vec<ValidatorKey>, String> {
+pub fn keys(value: &Value) -> Result<Vec<WireValidatorKey>, String> {
 	value
 		.as_array()
 		.ok_or("validator keys must be a list")?

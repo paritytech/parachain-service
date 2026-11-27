@@ -52,6 +52,12 @@ JAM balances, installed code lengths, and upgrade gas-setting mismatches are rej
 
 ## Adapter limits
 
+Quint parachain IDs 1 (Coretime) and 2 (Asset Hub) map to production IDs
+1005 and 1000 respectively. The adapter swaps those pairs in both directions,
+so traces containing 1005 or 1000 as ordinary model IDs remain collision-free.
+Commitment comparisons use model ordering for the abstract root and concrete
+ordering for the service root.
+
 - Validator-key integers map to a u64 little-endian prefix padded to 336 bytes.
   Initial staging buffers are seeded, and stored buffers and final JAM key sets
   are compared byte-for-byte in order. Blocks containing `SetValidatorKeys` must

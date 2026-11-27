@@ -20,7 +20,7 @@ use parachain_service_core::{
 };
 
 const NOW: u32 = 100;
-const PARA: ParaId = ParaId::new(1000);
+const PARA: ParaId = ParaId::new(30000);
 const CODE: &[u8] = b"para-1000-code";
 const NEW_CODE: &[u8] = b"para-1000-code-v2";
 const THIRD_CODE: &[u8] = b"para-1000-code-v3";

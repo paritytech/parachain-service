@@ -7,7 +7,7 @@ use parachain_service::work_digest::{
 	ValidationCodeHash, ValidationCodeRef, MAX_REFINE_OUTPUT_SIZE,
 };
 use parachain_service_bin::blob as service;
-use parachain_service_core::types::{HeadData, ParaId};
+use parachain_service_core::types::{HeadData, ParaId, ASSET_HUB_PARA_ID, CORETIME_PARA_ID};
 
 // Large reservations need a hash identity, not gigabytes of synthetic bytes.
 // Provision beyond this adapter limit is explicitly rejected by `blob`.
@@ -57,12 +57,27 @@ impl Codex {
 		self.kv_keys.values().map(Vec::as_slice)
 	}
 
+	/// Swap model system IDs with their production IDs, retaining a bijection
+	/// even when a trace also contains either production ID as an ordinary para.
 	pub fn para_id(value: i128) -> Result<ParaId, String> {
-		Ok(ParaId::new(checked_u32(value, "ParaId")?))
+		let id = checked_u32(value, "ParaId")?;
+		Ok(ParaId::new(match id {
+			1 => u32::from(CORETIME_PARA_ID),
+			2 => u32::from(ASSET_HUB_PARA_ID),
+			1005 => 1,
+			1000 => 2,
+			other => other,
+		}))
 	}
 
 	pub fn para_int(value: ParaId) -> i128 {
-		u32::from(value).into()
+		match u32::from(value) {
+			1005 => 1,
+			1000 => 2,
+			1 => 1005,
+			2 => 1000,
+			other => i128::from(other),
+		}
 	}
 
 	pub fn register_para(&mut self, value: i128) -> Result<ParaId, String> {
@@ -279,6 +294,15 @@ mod tests {
 
 		let trace = Codex::auth_trace(256).unwrap();
 		assert_eq!(Codex::auth_trace_int(&trace).unwrap(), 256);
+	}
+
+	#[test]
+	fn system_para_mapping_is_bijective() {
+		assert_eq!(Codex::para_id(1).unwrap(), CORETIME_PARA_ID);
+		assert_eq!(Codex::para_id(2).unwrap(), ASSET_HUB_PARA_ID);
+		for model in [0, 1, 2, 3, 1000, 1005, u32::MAX as i128] {
+			assert_eq!(Codex::para_int(Codex::para_id(model).unwrap()), model);
+		}
 	}
 
 	#[test]

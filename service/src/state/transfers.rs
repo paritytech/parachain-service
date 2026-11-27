@@ -9,7 +9,7 @@ use crate::{
 };
 use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Compact, Decode, Encode};
-use parachain_service_core::types::{Balance, BucketId, Memo, ServiceId};
+use parachain_service_core::types::{Balance, BucketId, ServiceId, WireMemo};
 
 #[derive(Clone, Debug, PartialEq, Eq, Encode, Decode)]
 pub struct QueuedTransfer {
@@ -18,7 +18,7 @@ pub struct QueuedTransfer {
 	pub amount: Balance,
 	/// Whether JAM credited the supervisor balance instead of the regular balance.
 	pub to_supervisor_balance: bool,
-	pub memo: Memo,
+	pub memo: WireMemo,
 }
 
 /// One fixed-size bucket of the `incoming_transfers` queue, in arrival order.
@@ -43,18 +43,25 @@ const _: fn(Balance) -> Compact<u64> = Compact::<u64>;
 pub struct TransferBuckets;
 
 impl TransferBuckets {
+	fn key(id: BucketId) -> [u8; 9] {
+		let mut key = [0; 9];
+		key[0] = Tag::IncomingTransfers as u8;
+		key[1..].copy_from_slice(&id.to_le_bytes());
+		key
+	}
+
 	pub fn get(id: BucketId) -> Option<IncomingTransfers> {
-		state::read(Tag::IncomingTransfers, &id)
+		state::read(&Self::key(id))
 	}
 
 	/// Upsert a bucket. `Err(StorageFull)` on the §6.1 backstop; see
 	/// [`crate::state::write`].
 	pub fn set(id: BucketId, bucket: &IncomingTransfers) -> Result<(), StorageFull> {
-		state::write(Tag::IncomingTransfers, &id, bucket)
+		state::write(&Self::key(id), bucket)
 	}
 
 	pub fn remove(id: BucketId) {
-		state::clear(Tag::IncomingTransfers, &id)
+		state::clear(&Self::key(id))
 	}
 }
 

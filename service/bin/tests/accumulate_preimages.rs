@@ -5,16 +5,17 @@ use parachain_service_core::types::validation_code_hash_bytes;
 mod common;
 
 use common::*;
+use jam_types::Hash;
 use parachain_service::{
 	constants::EXPUNGE_PERIOD, state::log::AccumulateLog, state_balance::preimage_footprint,
 };
 use parachain_service_core::{
-	types::{Hash, ParaId, ValidationCodeRef},
+	types::{ParaId, ValidationCodeRef},
 	upward_message::{CodeUpgradePhase, Target, UpwardMessage},
 };
 
 const NOW: u32 = 100;
-const PARA: ParaId = ParaId::new(1000);
+const PARA: ParaId = ParaId::new(30000);
 const CODE: &[u8] = b"para-1000-code";
 const BLOB: &[u8] = b"some-arbitrary-preimage-blob";
 

@@ -10,7 +10,7 @@ use parachain_service::{
 use parachain_service_core::types::ParaId;
 
 const NOW: u32 = 100;
-const PARA: ParaId = ParaId::new(1000);
+const PARA: ParaId = ParaId::new(30000);
 const CODE: &[u8] = b"para-1000-code";
 
 #[test]

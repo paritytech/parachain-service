@@ -13,7 +13,7 @@ use jam_pvm_common::{accumulate::assign, ApiError};
 use jam_types::{
 	auth_queue_len, core_count, AuthQueue, AuthorizerHash as JamAuthorizerHash, UnsignedGas,
 };
-use parachain_service_core::types::{AuthorizerHash, CoreIndex, MessageId, ServiceId, Timeslot};
+use parachain_service_core::types::{CoreIndex, MessageId, ServiceId, Timeslot, WireAuthorizerHash};
 
 /// Replay an `AssignCore` message (Coretime only, §4.3). Refine rejects a
 /// malformed queue or an unknown core (§3.3), so either is a defensive no-op
@@ -23,7 +23,7 @@ pub fn schedule(
 	now: Timeslot,
 	service_id: ServiceId,
 	core: CoreIndex,
-	queue: Vec<AuthorizerHash>,
+	queue: Vec<WireAuthorizerHash>,
 	new_assigner: Option<ServiceId>,
 	jam_slot: Timeslot,
 	message_id: MessageId,
@@ -52,7 +52,7 @@ pub fn schedule(
 /// Keep the payload and due time together when either storage write is rejected.
 fn cache(
 	core: CoreIndex,
-	queue: Vec<AuthorizerHash>,
+	queue: Vec<WireAuthorizerHash>,
 	new_assigner: Option<ServiceId>,
 	jam_slot: Timeslot,
 ) {
@@ -123,7 +123,7 @@ pub fn apply_due_assigns(now: Timeslot, service_id: ServiceId, budget: usize) {
 
 /// §3.3: a queue holds 1 to `AUTHORIZER_QUEUE_LEN` hashes, and one handing the
 /// core to another service holds exactly `AUTHORIZER_QUEUE_LEN`.
-fn well_formed(queue: &[AuthorizerHash], new_assigner: Option<ServiceId>) -> bool {
+fn well_formed(queue: &[WireAuthorizerHash], new_assigner: Option<ServiceId>) -> bool {
 	match new_assigner {
 		None => (1..=AUTHORIZER_QUEUE_LEN).contains(&queue.len()),
 		Some(_) => queue.len() == AUTHORIZER_QUEUE_LEN,
@@ -134,7 +134,7 @@ fn well_formed(queue: &[AuthorizerHash], new_assigner: Option<ServiceId>) -> boo
 /// so it is rewritten 80 slots after `due` (§7.1).
 fn settle_after_assign(
 	core: CoreIndex,
-	queue: Vec<AuthorizerHash>,
+	queue: Vec<WireAuthorizerHash>,
 	assigner: Option<ServiceId>,
 	due: Timeslot,
 ) {
@@ -160,7 +160,7 @@ fn fills_directly(queue_len: usize) -> bool {
 fn jam_assign(
 	service_id: ServiceId,
 	core: CoreIndex,
-	queue: &[AuthorizerHash],
+	queue: &[WireAuthorizerHash],
 	assigner: Option<ServiceId>,
 	applied: Timeslot,
 ) -> Result<(), ApiError> {

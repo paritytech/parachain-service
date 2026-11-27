@@ -20,21 +20,21 @@ use std::collections::BTreeSet;
 
 use parachain_service_bin::blob as service;
 use parachain_service_core::{
-	types::{AuthorizerHash, CoreIndex, CORETIME_PARA_ID},
+	types::{WireAuthorizerHash, CoreIndex, CORETIME_PARA_ID},
 	upward_message::UpwardMessage,
 };
 
 const NOW: u32 = 100;
 const CT_CODE: &[u8] = b"coretime-code";
 const CORE: CoreIndex = 3;
-const HASH_A: AuthorizerHash = [0xAA; 32];
-const HASH_B: AuthorizerHash = [0xBB; 32];
+const HASH_A: WireAuthorizerHash = [0xAA; 32];
+const HASH_B: WireAuthorizerHash = [0xBB; 32];
 
 fn ct_storage() -> jam_node::vm::Storage {
 	fresh_storage(|s| seed_para(s, CORETIME_PARA_ID, b"ct-genesis", CT_CODE, RICH))
 }
 
-fn assign_msg(queue: Vec<AuthorizerHash>, jam_slot: u32) -> UpwardMessage {
+fn assign_msg(queue: Vec<WireAuthorizerHash>, jam_slot: u32) -> UpwardMessage {
 	UpwardMessage::AssignCore { core: CORE, queue, new_assigner: None, jam_slot }
 }
 
@@ -236,14 +236,14 @@ fn invalid_core_is_noop_works() {
 }
 
 /// The 80-hash queue JAM got for `CORE`.
-fn written(mutations: &jam_node::vm::StateMutations) -> Vec<AuthorizerHash> {
+fn written(mutations: &jam_node::vm::StateMutations) -> Vec<WireAuthorizerHash> {
 	let queue: Vec<_> = mutations.auths.get(&CORE).expect("assign fired").clone().into();
 	queue.into_iter().map(|hash| hash.0).collect()
 }
 
 /// §7.1: JAM reads entry `t % 80` at slot `t`, which must hold hash `t % len` of
 /// the set, for the 80 slots from `applied` on.
-fn assert_covers(queue: &[AuthorizerHash], set: &[AuthorizerHash], applied: u32) {
+fn assert_covers(queue: &[WireAuthorizerHash], set: &[WireAuthorizerHash], applied: u32) {
 	for slot in applied..applied + 80 {
 		assert_eq!(queue[slot as usize % 80], set[slot as usize % set.len()], "slot {slot}");
 	}
@@ -251,7 +251,7 @@ fn assert_covers(queue: &[AuthorizerHash], set: &[AuthorizerHash], applied: u32)
 
 #[test]
 fn non_tiling_queue_follows_slots_works() {
-	let queue: Vec<AuthorizerHash> = (0..11).map(|i| [i; 32]).collect();
+	let queue: Vec<WireAuthorizerHash> = (0..11).map(|i| [i; 32]).collect();
 	let msg = assign_msg(queue.clone(), NOW);
 	let digest = ok_digest(CORETIME_PARA_ID, CT_CODE, b"ct-genesis", b"ct-1", vec![msg], 0);
 

@@ -1,19 +1,16 @@
 //! Types shared by the service, authorizers, and collator tooling.
 //!
-//! NOTE: jam-types wrapper structs (`jam_types::AuthorizerHash`, `jam_types::Memo`,
-//! `jam_types::OpaqueValKeyset`) implement `jam_codec`'s traits, not the SCALE `codec`
-//! ones these wire types derive. Fields therefore use plain byte arrays and are
-//! converted into the jam-types wrappers at the JAM host-call sites.
+//! JAM wrapper types use `jam_codec`; the explicitly named `Wire` types retain
+//! the raw fixed-width SCALE representation used by the PoC ABI and storage.
 
 extern crate alloc;
 
 use bounded_collections::{BoundedVec, ConstU32};
 use codec::{Compact, Decode, Encode};
+use jam_types::Hash;
 
 /// A JAM timeslot (`jam_types::Slot`).
 pub use jam_types::Slot as Timeslot;
-/// A 32-byte hash, layout-compatible with `jam_types::Hash`.
-pub type Hash = [u8; 32];
 /// A JAM core index (`jam_types::CoreIndex`).
 pub use jam_types::CoreIndex;
 /// A JAM service identifier (`jam_types::ServiceId`).
@@ -24,17 +21,16 @@ pub type BucketId = u64;
 /// A JAM balance. The design doc says `Compact<u128>`, but JAM's `Balance` is `u64`
 /// (see DECISIONS.md D-3); wire encodings use `Compact<u64>`.
 pub use jam_types::Balance;
-/// An authorizer hash (`H(code_hash ⌢ config)`), layout-compatible with
-/// `jam_types::AuthorizerHash`.
-pub type AuthorizerHash = [u8; 32];
-/// Fixed 128-byte transfer memo, matching Gray Paper `C_memosize = 128` and
-/// layout-compatible with `jam_types::Memo`.
-pub type Memo = [u8; 128];
-/// Opaque 336-byte validator key blob, layout-compatible with
-/// `jam_types::OpaqueValKeyset` (bandersnatch 32 + ed25519 32 + bls 144 + metadata 128).
-pub type ValidatorKey = [u8; VALIDATOR_KEY_SIZE];
+pub use jam_types::{AuthorizerHash, Memo, OpaqueValKeyset};
 
-/// Byte size of one [`ValidatorKey`]. Spec §5.3.
+/// SCALE representation of an authorizer hash at the PoC wire boundary.
+pub type WireAuthorizerHash = [u8; 32];
+/// SCALE representation of a fixed-size JAM transfer memo.
+pub type WireMemo = [u8; 128];
+/// SCALE representation of a JAM validator keyset.
+pub type WireValidatorKey = [u8; VALIDATOR_KEY_SIZE];
+
+/// Byte size of one [`WireValidatorKey`]. Spec §5.3.
 pub const VALIDATOR_KEY_SIZE: usize = 336;
 
 /// Caller-supplied identifier of an upward message, logged with every
@@ -53,17 +49,14 @@ pub use polkadot_parachain_primitives::primitives::Id as ParaId;
 /// The Coretime chain's `ParaId`. Owns parachain management (§6) and core
 /// assignment (§7).
 ///
-/// Compile-time constant per DECISIONS.md D-2; matches the Quint model's
-/// `CoretimeParaId`. FIXME: production needs a bootstrap/governance story for
-/// migrating this identity.
-pub const CORETIME_PARA_ID: ParaId = ParaId::new(1);
+/// Production Coretime identity.
+pub const CORETIME_PARA_ID: ParaId = ParaId::new(1005);
 
 /// Asset Hub's `ParaId`. Owns validator-key updates (§5.3), service self-upgrade
 /// (§5.4), outbound transfers, and the incoming-transfer queue (§5.1).
 ///
-/// Compile-time constant per DECISIONS.md D-2; matches the Quint model's
-/// `AssetHubParaId`. FIXME: see [`CORETIME_PARA_ID`].
-pub const ASSET_HUB_PARA_ID: ParaId = ParaId::new(2);
+/// Production Asset Hub identity.
+pub const ASSET_HUB_PARA_ID: ParaId = ParaId::new(1000);
 
 /// Hash of a parachain's validation code (PVF) preimage.
 pub use polkadot_parachain_primitives::primitives::ValidationCodeHash;
@@ -85,7 +78,21 @@ pub struct ValidationCodeRef {
 
 impl ValidationCodeRef {
 	/// Does the `(hash, len)` pair of a `solicit`/`forget` name this validation code?
-	pub fn is(&self, hash: &Hash, len: u32) -> bool {
-		validation_code_hash_bytes(&self.hash) == *hash && self.len == len
+	pub fn is(&self, hash: &ValidationCodeHash, len: u32) -> bool {
+		self.hash == *hash && self.len == len
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn validation_code_reference_matches_hash_and_length() {
+		let hash = ValidationCodeHash::from([1; 32]);
+		let code = ValidationCodeRef { hash, len: 42 };
+		assert!(code.is(&hash, 42));
+		assert!(!code.is(&hash, 43));
+		assert!(!code.is(&ValidationCodeHash::from([2; 32]), 42));
 	}
 }
