@@ -1,5 +1,7 @@
 [workspace]
-members = []
+members = [
+    "core",
+]
 exclude = [
     "vendor/polkadot-sdk-companion",
     "vendor/polkajam",
@@ -17,6 +19,14 @@ license = "Apache-2.0"
 unexpected_cfgs = { level = "warn", check-cfg = [] }
 
 [workspace.dependencies]
+bounded-collections = { version = "0.3.2", default-features = false, features = ["scale-codec"] }
+codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }
+jam-std-common = "0.1.29"
+jam-types = { version = "0.1.29", default-features = false }
+polkadot-parachain-primitives = { version = "23.0.0", default-features = false }
+sp-crypto-hashing = { version = "0.1.0", default-features = false }
+
+parachain-service-core = { path = "core", default-features = false }
 
 [profile.production]
 inherits = "release"
