@@ -21,19 +21,12 @@ unexpected_cfgs = { level = "warn", check-cfg = [] }
 [workspace.dependencies]
 bounded-collections = { version = "0.3.2", default-features = false, features = ["scale-codec"] }
 codec = { version = "3.7", package = "parity-scale-codec", default-features = false, features = ["derive"] }
-jam-std-common = { path = "vendor/polkajam/crates/jam-std-common" }
-jam-types = { path = "vendor/polkajam/crates/jam-types", default-features = false }
+jam-std-common = "0.1.29"
+jam-types = { version = "0.1.29", default-features = false }
 polkadot-parachain-primitives = { version = "23.0.0", default-features = false }
 sp-crypto-hashing = { version = "0.1.0", default-features = false }
 
 parachain-service-core = { path = "core", default-features = false }
-
-[patch.crates-io]
-jam-types = { path = "vendor/polkajam/crates/jam-types" }
-
-[patch."ssh://git@github.com/paritytech/polkajam.git"]
-jam-std-common = { path = "vendor/polkajam/crates/jam-std-common" }
-jam-types = { path = "vendor/polkajam/crates/jam-types" }
 
 [profile.production]
 inherits = "release"
