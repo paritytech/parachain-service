@@ -1,13 +1,12 @@
 //! Service storage key layout and per-parachain metadata (`ParaInfo`).
 
 use crate::types::{Balance, HeadData, ParaId, ValidationCodeRef};
-use alloc::vec::Vec;
 use codec::{Decode, Encode};
 
 /// Storage-item tags (spec §3.1).
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Tag {
+pub enum StorageKey {
 	Parachains = 0x00,
 	ParachainLog = 0x01,
 	PendingAssigns = 0x02,
@@ -20,22 +19,18 @@ pub enum Tag {
 	LastAccumulate = 0x09,
 }
 
-/// Service storage key for a map entry: `[tag] || SCALE(key)`.
-pub fn storage_key(tag: Tag, key: &impl Encode) -> Vec<u8> {
-	let mut k = Vec::with_capacity(1 + key.encoded_size());
-	k.push(tag as u8);
-	key.encode_to(&mut k);
-	k
-}
+impl StorageKey {
+	/// Service storage key for an unkeyed item.
+	pub const fn key(self) -> [u8; 1] {
+		[self as u8]
+	}
 
-/// Storage key for a parachain's [`ParaInfo`] entry.
-pub fn para_info_key(para_id: ParaId) -> Vec<u8> {
-	storage_key(Tag::Parachains, &para_id)
-}
-
-/// Storage key for a parachain's log entry (spec §5.1).
-pub fn para_log_key(para_id: ParaId) -> Vec<u8> {
-	storage_key(Tag::ParachainLog, &para_id)
+	/// Service storage key for a parachain entry: `[tag] || SCALE(para_id)`.
+	pub fn para_key(self, para_id: ParaId) -> [u8; 5] {
+		let [key_prefix] = self.key();
+		let [b0, b1, b2, b3] = u32::from(para_id).to_le_bytes();
+		[key_prefix, b0, b1, b2, b3]
+	}
 }
 
 /// Per-parachain metadata (spec §3.1).
@@ -72,10 +67,13 @@ mod tests {
 	use codec::{Decode, Encode};
 
 	#[test]
-	fn para_info_key_works() {
-		assert_eq!(para_info_key(ParaId::from(3)), vec![0x00, 3, 0, 0, 0]);
-		assert_eq!(para_info_key(ParaId::from(0)), vec![0x00, 0, 0, 0, 0]);
-		assert_eq!(para_info_key(ParaId::from(2000)), vec![0x00, 0xd0, 0x07, 0, 0]);
+	fn storage_keys_works() {
+		assert_eq!(StorageKey::LastAccumulate.key(), [0x09]);
+		assert_eq!(StorageKey::Parachains.para_key(ParaId::from(0)), [0; 5]);
+		assert_eq!(
+			StorageKey::ParachainLog.para_key(ParaId::from(0x1234_5678)),
+			[0x01, 0x78, 0x56, 0x34, 0x12]
+		);
 	}
 
 	#[test]

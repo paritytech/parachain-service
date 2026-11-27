@@ -10,7 +10,7 @@ pub mod state_key;
 pub mod types;
 
 pub use constants::MAX_VALIDATION_CODE_SIZE;
-pub use para_info::{para_info_key, para_log_key, storage_key, ParaInfo, Tag};
+pub use para_info::{ParaInfo, StorageKey};
 pub use state_key::{
 	service_preimage_state_key, service_request_state_key, service_value_state_key,
 };
