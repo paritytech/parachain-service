@@ -29,15 +29,11 @@ pub type HeadData = BoundedVec<u8, ConstU32<MAX_HEAD_DATA_SIZE>>;
 pub use polkadot_parachain_primitives::primitives::Id as ParaId;
 
 /// Coretime chain `ParaId`. Owns parachain management (§6) and core assignment (§7).
-///
-/// FIXME: production needs a bootstrap/governance story for migrating this identity.
-pub const CORETIME_PARA_ID: ParaId = ParaId::new(1);
+pub const CORETIME_PARA_ID: ParaId = ParaId::new(1005);
 
 /// Asset Hub `ParaId`. Owns validator-key updates (§5.3), service upgrades (§5.4),
 /// and transfers (§5.1).
-///
-/// FIXME: see [`CORETIME_PARA_ID`].
-pub const ASSET_HUB_PARA_ID: ParaId = ParaId::new(2);
+pub const ASSET_HUB_PARA_ID: ParaId = ParaId::new(1000);
 
 /// Hash of a parachain's validation code (PVF) preimage.
 pub use polkadot_parachain_primitives::primitives::ValidationCodeHash;
