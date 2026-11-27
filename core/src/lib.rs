@@ -4,12 +4,10 @@
 
 extern crate alloc;
 
-pub mod constants;
 pub mod para_info;
 pub mod state_key;
 pub mod types;
 
-pub use constants::MAX_VALIDATION_CODE_SIZE;
 pub use para_info::{ParaInfo, StorageKey};
 pub use state_key::{
 	service_preimage_state_key, service_request_state_key, service_value_state_key,
